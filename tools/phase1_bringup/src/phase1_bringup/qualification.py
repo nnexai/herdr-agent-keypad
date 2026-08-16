@@ -400,6 +400,7 @@ def run_qualification(
     overlap = "U"
     overlap_reason: str | None = "not confirmed"
     cue_response = "U"
+    led_cue_status = "unavailable"
     cue_reason: str | None = "not confirmed"
     try:
         def opener(candidate: Any) -> Any:
@@ -412,7 +413,6 @@ def run_qualification(
         transitions.extend(item.as_dict() for item in recovery)
         cue_stimuli = (
             *(f"PANEL-{panel}" for panel in range(1, 5)),
-            *(f"LED-{led}" for led in range(1, 14)),
             "BRIGHTNESS-LOW",
             "BRIGHTNESS-MEDIUM",
             "BRIGHTNESS-HIGH",
@@ -426,7 +426,7 @@ def run_qualification(
             session.stimulate(f"PREFLIGHT-{index}", ((index - 1) % 4) + 1, stimulus)
         cue_response = _operator_checkpoint(
             "preflight-cues",
-            "Observe the bounded preflight cue sweep: each display panel, LED range 1-13, low/medium/high brightness, KEY-1..KEY-4, encoder clockwise/counter-clockwise, and encoder click. Confirm every cue is physically observed; answer N if any cue is absent.",
+            "Observe the bounded preflight cue sweep: each display panel, low/medium/high brightness, KEY-1..KEY-4, encoder clockwise/counter-clockwise, and encoder click. LED output is unavailable until the board LED API is proven stable; do not claim LED overlap from this gate.",
         )
         if cue_response == "N":
             raise QualificationError("preflight cue observation was rejected by the operator")
@@ -545,6 +545,7 @@ def run_qualification(
         blockers.append("qualification_error:" + run_error)
     if cue_response != "Y":
         blockers.append("preflight_cues_not_confirmed")
+    blockers.append("led_workload_unavailable:" + led_cue_status)
     row_observations = [item for item in transitions if "response" in item]
     rows_ok = {item.get("id") for item in row_observations} == set(INTERRUPTION_ROWS) and all(item.get("response") == "Y" or (item.get("response") == "U" and item.get("reason")) for item in row_observations)
     strict_ok = device_metrics is not None and all(counters.get(name) == 0 for name in STRICT_COUNTERS[3:])
@@ -567,7 +568,7 @@ def run_qualification(
         "strict_failure_counters_available": device_metrics is not None,
         "resource_metrics_available": device_metrics is not None,
         "qualification_blockers": blockers,
-        "preflight_cues": {"response": cue_response, "reason": cue_reason},
+        "preflight_cues": {"response": cue_response, "reason": cue_reason, "led_status": led_cue_status},
         "interruption_matrix": transitions,
         "counter_scope": "post-reset qualification traffic only",
         "qualification": {

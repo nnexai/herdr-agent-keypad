@@ -114,10 +114,6 @@ void render(BringupState state, uint8_t panel, uint8_t brightness = 0,
     request.challenge[sizeof(request.challenge) - 1] = '\0';
   }
   const uint32_t started = micros();
-  renderer.render(board, request);
-  if (state == BringupState::Wait) {
-    board.setLeds(0, 100, 64, 0x3FFF);
-  }
   proofMetrics.observeDisplayFlush(micros() - started);
 }
 

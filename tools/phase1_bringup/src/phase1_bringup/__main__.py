@@ -102,9 +102,11 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
             if checkpoint_labels != ["preflight-cues", "physical-overlap"]:
                 raise AssertionError("physical-overlap prompt ordering changed")
             cue_bytes = b"".join(bytes.fromhex(item["bytes"]) for item in traffic if item.get("phase") == "preflight")
-            for cue in (b"PANEL-1", b"LED-13", b"BRIGHTNESS-LOW", b"KEY-4", b"ENC-CW", b"ENC-CLICK"):
+            for cue in (b"PANEL-1", b"BRIGHTNESS-LOW", b"KEY-4", b"ENC-CW", b"ENC-CLICK"):
                 if cue not in cue_bytes:
                     raise AssertionError(f"missing preflight cue {cue!r}")
+            if not any(str(item).startswith("led_workload_unavailable:") for item in result.get("qualification_blockers", [])):
+                raise AssertionError("qualification did not record unavailable LED workload")
             if result.get("status") != "fail" or result.get("physical_overlap") != "N":
                 raise AssertionError("overlap N was not recorded as a non-pass result")
             if not any(item.get("phase") == "preflight" and item.get("direction") == "host_to_device" for item in traffic):
