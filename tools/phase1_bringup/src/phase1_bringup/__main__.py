@@ -2,16 +2,18 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import io
 import json
 import re
 import secrets
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
 
-from .evidence import EvidenceError, EvidenceWriter, self_check_roundtrip
+from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, parse_group_responses, self_check_roundtrip, verify_machine_run, verify_physical_evidence
 from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, validate_frame
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
@@ -224,6 +226,163 @@ def run_batch(schema_path: Path, evidence_root: Path, port: str | None = None, d
         print(f"Batch failed; evidence was preserved: {str(exc)[:256]}", file=sys.stderr)
         return 1
 
+def run_machine_only(schema_path: Path, evidence_root: Path, port: str | None = None, dwell_seconds: float = 1.0) -> int:
+    """Capture device observations without reading stdin or authorizing physical PASS."""
+    environment = dependency_gate()
+    load_schema(schema_path)
+    import serial
+    from .protocol import ProtocolSession
+
+    ui = TerminalUI(output=sys.stdout)
+    selected_port = port or _discover_port()
+    if selected_port is None:
+        ui.show_no_keypad()
+        return 2
+    run_id = _run_id()
+    writer = EvidenceWriter(evidence_root, run_id)
+    run = BatchRun(None, writer, ui, run_id, dwell_seconds=dwell_seconds, machine_only=True)
+    try:
+        with serial.Serial(selected_port, 115200, timeout=0.5) as connection:
+            run.session = ProtocolSession(connection, "host-" + secrets.token_hex(6), "session-" + secrets.token_hex(6))
+            run.start()
+            while not run.complete_physical_gates:
+                run.stimulate_gate()
+                run.advance_machine_gate()
+            result = run.machine_result()
+            manifest = {
+                "schema_version": 1,
+                "kind": "manifest",
+                "run_id": run_id,
+                "status": result["status"],
+                "workflow": "batch-machine-only",
+                "physical_confirmation": False,
+                "protocol": {"version": PROTOCOL_VERSION, "max_line_bytes_including_lf": MAX_LINE_BYTES, "transport": "usb-cdc"},
+                "environment": {**environment, "dependency_lock": dependency_lock()},
+                "device": {"port_discovery": "descriptor-only", "selected_port": "redacted", "identity": "unavailable"},
+                "batch_order": list(BATCH_GATE_ORDER),
+                "guided_order": list(GUIDED_ORDER),
+            }
+            path = writer.write(manifest, result)
+            print(f"Machine-only batch preserved (no physical PASS): {path}")
+            return 0
+    except Exception as exc:
+        failure_result = run.machine_result()
+        failure_result["status"] = "machine-failed"
+        failure_result["error"] = {"type": type(exc).__name__, "message": str(exc)[:256]}
+        failure_manifest = {
+            "schema_version": 1,
+            "kind": "manifest",
+            "run_id": run_id,
+            "status": "machine-failed",
+            "workflow": "batch-machine-only",
+            "physical_confirmation": False,
+            "protocol": {"version": PROTOCOL_VERSION, "max_line_bytes_including_lf": MAX_LINE_BYTES, "transport": "usb-cdc"},
+            "environment": environment,
+            "device": {"port_discovery": "descriptor-only", "identity": "unavailable"},
+            "batch_order": list(BATCH_GATE_ORDER),
+            "guided_order": list(GUIDED_ORDER),
+        }
+        try:
+            writer.write(failure_manifest, failure_result)
+        except EvidenceError:
+            pass
+        print(f"Machine-only batch failed; observations preserved: {str(exc)[:256]}", file=sys.stderr)
+        return 1
+
+
+def run_confirm_batch(machine_run_dir: Path, groups: str) -> int:
+    """Convert one verified machine run into a separate human-confirmed artifact."""
+    checked = verify_machine_run(machine_run_dir)
+    manifest = checked["manifest"]
+    result = checked["result"]
+    run_id = str(result["run_id"])
+    responses = parse_group_responses(groups, run_id)
+    observations = result["machine_observations"]
+    by_gate: dict[str, list[dict[str, Any]]] = {}
+    for observation in observations:
+        by_gate.setdefault(str(observation["gate"]).upper(), []).append(observation)
+    confirmed_id = f"confirmed-{run_id}-{secrets.token_hex(3)}"
+    writer = EvidenceWriter(Path(machine_run_dir).resolve().parent, confirmed_id)
+    rows: list[dict[str, Any]] = []
+    confirmations: list[dict[str, Any]] = []
+    for gate in BATCH_GATE_ORDER:
+        gate_key = gate.upper()
+        action = responses[gate_key]
+        gate_observations = by_gate.get(gate_key, [])
+        if not gate_observations:
+            raise EvidenceError(f"machine run has no observations for {gate}")
+        all_acknowledged = all(item["machine_status"] == "acknowledged" for item in gate_observations)
+        if action == "Y" and not all_acknowledged:
+            raise EvidenceError(f"group PASS for {gate} requires acknowledged machine evidence for every row")
+        physical_status = {"Y": "pass", "N": "failed", "R": "repeated"}[action]
+        confirmation = {
+            "gate": gate,
+            "response": action,
+            "run_id": run_id,
+            "run_suffix": run_id[-6:],
+            "source_machine_run": run_id,
+        }
+        confirmations.append(confirmation)
+        for index, observation in enumerate(gate_observations, start=1):
+            observed_value = observation.get("observed_value", "unavailable")
+            if observed_value is None:
+                observed_value = "unavailable"
+            rows.append(
+                {
+                    "row_id": f"{confirmed_id}:{len(rows) + 1}",
+                    "run_id": confirmed_id,
+                    "step_id": observation["step_id"],
+                    "gate": gate,
+                    "machine_status": observation["machine_status"],
+                    "machine_reply_seq": observation["machine_reply_seq"],
+                    "human_response": action,
+                    "physical_status": physical_status,
+                    "observed_value": observed_value,
+                    "timestamp": time.time(),
+                    "machine_observation": {
+                        "source_row_id": observation["row_id"],
+                        "source_run_id": run_id,
+                        "observed_value": observed_value,
+                    },
+                    "group_confirmation": confirmation,
+                }
+            )
+    writer.record_rows(rows)
+    status = "pass" if all(responses[gate] == "Y" for gate in MACHINE_BATCH_GATES) else "fail" if any(responses[gate] == "N" for gate in MACHINE_BATCH_GATES) else "incomplete"
+    confirmed_manifest = {
+        "schema_version": 1,
+        "kind": "manifest",
+        "run_id": confirmed_id,
+        "status": status,
+        "workflow": "batch-confirmed",
+        "source_machine_run": run_id,
+        "source_machine_checksum": _source_checksum(machine_run_dir),
+        "group_confirmations": confirmations,
+        "guided_order": list(GUIDED_ORDER),
+    }
+    confirmed_result = {
+        "schema_version": 1,
+        "kind": "result",
+        "run_id": confirmed_id,
+        "status": status,
+        "mode": "batch-confirmed",
+        "source_machine_run": run_id,
+        "physical_confirmation": True,
+        "group_confirmations": confirmations,
+        "physical_map": {"rows": rows, "guided_order": list(GUIDED_ORDER)},
+        "batch_order": list(BATCH_GATE_ORDER),
+    }
+    path = writer.finalize(confirmed_manifest, confirmed_result)
+    print(f"Confirmed batch preserved: {path} ({status})")
+    return 0 if status == "pass" else 1
+
+
+def _source_checksum(path: Path) -> str:
+    """Return the immutable source checksum recorded by confirm-batch."""
+    import hashlib
+    sums = (Path(path) / "SHA256SUMS").read_bytes()
+    return hashlib.sha256(sums).hexdigest()
+
 
 def firmware_contract_check(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
@@ -257,6 +416,150 @@ def ui_check() -> None:
         raise AssertionError("screen/event detail was not emitted")
     if any(len(line) > MIN_WIDTH for line in screen.splitlines()):
         raise AssertionError("host prose exceeded the 80-column bound")
+
+
+def _sample_machine_run(root: Path, run_id: str = "machine-self-check", rejected_gate: str | None = None) -> Path:
+    writer = EvidenceWriter(root, run_id)
+    observations = []
+    for index, gate in enumerate(BATCH_GATE_ORDER, start=1):
+        observation = {
+            "row_id": f"{run_id}:machine:{index}",
+            "run_id": run_id,
+            "step_id": gate.upper(),
+            "gate": gate,
+            "machine_status": "rejected" if gate == rejected_gate else "acknowledged",
+            "machine_reply_seq": index,
+            "observed_value": {"event": {"kind": "key_transition", "key": 2}} if gate == "Keys" else "unavailable",
+            "timestamp": time.time(),
+        }
+        observations.append(observation)
+    result = {
+        "schema_version": 1,
+        "kind": "result",
+        "run_id": run_id,
+        "status": "machine-complete",
+        "mode": "machine-only",
+        "physical_confirmation": False,
+        "machine_observations": observations,
+        "batch_order": list(BATCH_GATE_ORDER),
+    }
+    manifest = {
+        "schema_version": 1,
+        "kind": "manifest",
+        "run_id": run_id,
+        "status": "machine-complete",
+        "workflow": "batch-machine-only",
+        "physical_confirmation": False,
+    }
+    return writer.write(manifest, result)
+
+
+def machine_only_no_stdin_check() -> None:
+    source = inspect.getsource(run_machine_only)
+    if "input(" in source or "sys.stdin" in source:
+        raise AssertionError("machine-only capture must never read stdin")
+    from .protocol import MachineFact
+
+    class FakeSession:
+        def __init__(self):
+            self.sequence = 0
+
+        def _fact(self) -> MachineFact:
+            self.sequence += 1
+            return MachineFact("acknowledged", time.time(), self.sequence)
+
+        def hello(self) -> MachineFact:
+            return self._fact()
+
+        def stimulate(self, step_id: str, panel: int, stimulus: str) -> MachineFact:
+            return self._fact()
+
+        def wait_event(self, step_id: str) -> dict[str, Any]:
+            return {"payload": {"step_id": step_id, "key": int(step_id[-1])}}
+
+    with tempfile.TemporaryDirectory() as directory:
+        emitted = io.StringIO()
+        writer = EvidenceWriter(Path(directory), "machine-no-stdin")
+        run = BatchRun(FakeSession(), writer, TerminalUI(output=emitted), "machine-no-stdin", dwell_seconds=0, machine_only=True)
+        run.start()
+        while not run.complete_physical_gates:
+            run.stimulate_gate()
+            run.advance_machine_gate()
+        result = run.machine_result()
+        if result["mode"] != "machine-only" or result["physical_confirmation"] is not False:
+            raise AssertionError("machine-only run produced a physical confirmation marker")
+        if "Type Y" in emitted.getvalue():
+            raise AssertionError("machine-only UI emitted an interactive confirmation prompt")
+
+def machine_artifact_check() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        path = _sample_machine_run(Path(directory))
+        checked = verify_machine_run(path)
+        result = checked["result"]
+        if "physical_map" in result or result.get("physical_confirmation") is not False:
+            raise AssertionError("machine-only artifact contains physical confirmation")
+        if not any(item["observed_value"] != "unavailable" for item in result["machine_observations"]):
+            raise AssertionError("machine observations did not retain details")
+
+
+def group_parser_check() -> None:
+    run_id = "machine-self-check"
+    valid = ",".join(f"{gate.upper()}=Y" for gate in BATCH_GATE_ORDER)
+    parsed = parse_group_responses(valid, run_id)
+    if len(parsed) != len(BATCH_GATE_ORDER):
+        raise AssertionError("valid group set was not parsed")
+    for invalid in ("", "IDENTIFY=ACK", "UNKNOWN=Y", valid.replace("REBOOT=Y", "")):
+        try:
+            parse_group_responses(invalid, run_id)
+        except EvidenceError:
+            continue
+        raise AssertionError(f"invalid group set was accepted: {invalid!r}")
+    suffix_mismatch = valid.replace("IDENTIFY=Y", "IDENTIFY=Y@WRONG")
+    try:
+        parse_group_responses(suffix_mismatch, run_id)
+    except EvidenceError:
+        pass
+    else:
+        raise AssertionError("mismatched run suffix was accepted")
+
+
+def confirmed_directory_check() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = _sample_machine_run(root)
+        groups = ",".join(f"{gate.upper()}=Y" for gate in BATCH_GATE_ORDER)
+        if run_confirm_batch(source, groups) != 0:
+            raise AssertionError("all acknowledged groups did not confirm")
+        confirmed = sorted(root.glob("confirmed-*"))
+        if len(confirmed) != 1:
+            raise AssertionError("confirm-batch did not create a separate directory")
+        checked = verify_physical_evidence(confirmed[0], require_physical_map=True)
+        rows = checked and json.loads((confirmed[0] / "result.json").read_text(encoding="utf-8"))["physical_map"]["rows"]
+        if not rows or not all(row.get("group_confirmation") for row in rows):
+            raise AssertionError("confirmed rows lost group confirmation metadata")
+        if not all(row.get("machine_observation") for row in rows):
+            raise AssertionError("confirmed rows lost machine observation details")
+
+
+def confirmation_rejection_check() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = _sample_machine_run(root, rejected_gate="Keys")
+        all_yes = ",".join(f"{gate.upper()}=Y" for gate in BATCH_GATE_ORDER)
+        try:
+            run_confirm_batch(source, all_yes)
+        except EvidenceError:
+            pass
+        else:
+            raise AssertionError("ACK-only PASS was not rejected for a rejected machine gate")
+        for action, expected in (("N", "fail"), ("R", "incomplete")):
+            groups = ",".join(f"{gate.upper()}={action if gate == 'Keys' else 'Y'}" for gate in BATCH_GATE_ORDER)
+            if run_confirm_batch(source, groups) == 0:
+                raise AssertionError(f"group {action} unexpectedly reported physical pass")
+            dirs = sorted(root.glob("confirmed-*"))
+            checked = json.loads((dirs[-1] / "result.json").read_text(encoding="utf-8"))
+            if checked["status"] != expected:
+                raise AssertionError(f"group {action} status was not {expected}")
 
 
 def command_self_check(args: argparse.Namespace) -> int:
@@ -303,6 +606,21 @@ def command_self_check(args: argparse.Namespace) -> int:
     if args.batch_no_ack_pass:
         batch_no_ack_check()
         print("Batch confirmation: ACK-only group PASS rejected")
+    if args.machine_only_no_stdin:
+        machine_only_no_stdin_check()
+        print("Machine-only: no stdin path present")
+    if args.machine_artifact:
+        machine_artifact_check()
+        print("Machine artifact: immutable observations with no physical PASS")
+    if args.group_parser:
+        group_parser_check()
+        print("Group parser: exact seven gates, ACK-only/invalid/missing/mismatched rejected")
+    if args.confirmed_directory:
+        confirmed_directory_check()
+        print("Confirmed artifact: separate hash-verified directory with linked details")
+    if args.confirmation_rejection:
+        confirmation_rejection_check()
+        print("Confirmation semantics: Y requires all acknowledgements; N/R preserve non-pass history")
     return 0
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="phase1_bringup")
@@ -321,8 +639,14 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--batch-parser", action="store_true", help="check explicit gate/run-bound group responses")
     self_check.add_argument("--batch-key-events", action="store_true", help="check observed key indices survive batch stimulation")
     self_check.add_argument("--batch-no-ack-pass", action="store_true", help="check ACK-only group PASS is rejected")
+    self_check.add_argument("--machine-only-no-stdin", action="store_true", help="check machine-only capture has no stdin path")
+    self_check.add_argument("--machine-artifact", action="store_true", help="check machine-only artifact semantics and verification")
+    self_check.add_argument("--group-parser", action="store_true", help="check exact group parsing and mismatch rejection")
+    self_check.add_argument("--confirmed-directory", action="store_true", help="check confirmed artifact creation and linked details")
+    self_check.add_argument("--confirmation-rejection", action="store_true", help="check Y/N/R confirmation semantics")
     start = subparsers.add_parser("start", help="run guided mode, or use --batch for seven gate confirmations")
     start.add_argument("--batch", action="store_true", help="stimulate Identify through Reboot and confirm once per gate")
+    start.add_argument("--machine-only", action="store_true", help="with --batch, capture machine observations without stdin or physical PASS")
     start.add_argument("--dwell", type=float, default=1.0, help="bounded visible dwell seconds for non-key batch rows (max 5)")
     start.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
     start.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
@@ -330,6 +654,9 @@ def main(argv: list[str] | None = None) -> int:
     verify = subparsers.add_parser("verify-evidence")
     verify.add_argument("path", type=Path)
     verify.add_argument("--require", choices=("physical-map",), default=None)
+    confirm = subparsers.add_parser("confirm-batch", help="confirm one immutable machine-only batch artifact")
+    confirm.add_argument("machine_run_dir", type=Path, help="concrete machine-only run directory")
+    confirm.add_argument("--groups", required=True, help="IDENTIFY=Y,DISPLAYS=Y,KEYS=Y,ENCODER=Y,LEDS=Y,BRIGHTNESS=Y,REBOOT=Y")
     args = parser.parse_args(argv)
     try:
         if args.command == "self-check":
@@ -339,6 +666,12 @@ def main(argv: list[str] | None = None) -> int:
             path = verify_physical_evidence(args.path, require_physical_map=args.require == "physical-map")
             print(f"Evidence verified: {path}")
             return 0
+        if args.command == "confirm-batch":
+            return run_confirm_batch(args.machine_run_dir, args.groups)
+        if args.machine_only and not args.batch:
+            raise ValueError("--machine-only requires --batch")
+        if args.batch and args.machine_only:
+            return run_machine_only(args.schema, args.evidence_root, args.port, args.dwell)
         return run_batch(args.schema, args.evidence_root, args.port, args.dwell) if args.batch else run_start(args.schema, args.evidence_root, args.port)
     except (EvidenceError, RuntimeError, ValueError, OSError, AssertionError) as exc:
         print(f"phase1_bringup: {exc}", file=sys.stderr)
