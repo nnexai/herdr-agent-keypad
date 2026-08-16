@@ -38,6 +38,65 @@ def qualification_cli_check() -> None:
     if status != 2:
         raise AssertionError("qualify command did not fail closed before hardware access")
 
+def qualification_early_rejection_check(manifest_path: Path) -> None:
+    """Exercise overlap-N persistence with fake link/session objects only."""
+    from . import qualification as qualification_module
+    from .pairing import PairingStore
+
+    class FakeLink:
+        def write(self, data: bytes) -> int:
+            return len(data)
+
+        def close(self) -> None:
+            return None
+
+    class FakeCandidate:
+        def snapshot(self) -> dict[str, str]:
+            return {"device": "fake", "vid": "0x303a", "pid": "0x1001"}
+
+    class FakeSession:
+        connection: Any
+
+        def stimulate(self, step_id: str, panel: int, stimulus: str) -> None:
+            self.connection.write(f"{step_id}:{panel}:{stimulus}\n".encode())
+
+    def fake_reconnect(*_args: Any, **_kwargs: Any) -> tuple[FakeCandidate, FakeLink, FakeSession, list[Any]]:
+        link = FakeLink()
+        session = FakeSession()
+        session.connection = link
+        return FakeCandidate(), link, session, []
+
+    original_load = PairingStore.load
+    original_reconnect = qualification_module.reconnect_exact
+    original_checkpoint = qualification_module._operator_checkpoint
+    PairingStore.load = lambda _self: object()
+    qualification_module.reconnect_exact = fake_reconnect
+    qualification_module._operator_checkpoint = lambda _label, _instruction: "N"
+    try:
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_root = Path(directory)
+            status = qualification_module.run_qualification(
+                Path(manifest_path),
+                "usb",
+                evidence_root,
+                evidence_root / "binding.json",
+            )
+            if status != 1:
+                raise AssertionError("overlap N must return a failing qualification status")
+            result_paths = list(evidence_root.glob("*/result.json"))
+            traffic_paths = list(evidence_root.glob("*/traffic.json"))
+            if len(result_paths) != 1 or len(traffic_paths) != 1:
+                raise AssertionError("overlap N did not preserve an immutable result and traffic file")
+            result = json.loads(result_paths[0].read_text(encoding="utf-8"))
+            traffic = json.loads(traffic_paths[0].read_text(encoding="utf-8"))
+            if result.get("status") != "fail" or result.get("physical_overlap") != "N":
+                raise AssertionError("overlap N was not recorded as a non-pass result")
+            if not any(item.get("phase") == "preflight" and item.get("direction") == "host_to_device" for item in traffic):
+                raise AssertionError("physical-overlap prompt occurred before a preflight device write")
+    finally:
+        PairingStore.load = original_load
+        qualification_module.reconnect_exact = original_reconnect
+        qualification_module._operator_checkpoint = original_checkpoint
 
 
 
@@ -957,6 +1016,9 @@ def command_self_check(args: argparse.Namespace) -> int:
     if args.qualification_cli:
         qualification_cli_check()
         print("Qualification CLI: registered and fails closed before hardware access")
+    if args.qualification_early_rejection:
+        qualification_early_rejection_check(Path(args.qualification_manifest))
+        print("Qualification early rejection: preflight write precedes overlap prompt; N persists immutable failure")
     if args.qualification_no_false_pass:
         qualification_no_false_pass_check(Path(args.qualification_manifest))
         print("Qualification PASS gate: unavailable firmware evidence cannot pass")
@@ -986,6 +1048,7 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--batch-no-ack-pass", action="store_true", help="check ACK-only group PASS is rejected")
     self_check.add_argument("--machine-only-no-stdin", action="store_true", help="check machine-only capture has no stdin path")
     self_check.add_argument("--machine-artifact", action="store_true", help="check machine-only artifact semantics and verification")
+    self_check.add_argument("--qualification-early-rejection", action="store_true", help="check preflight activity and immutable overlap-N failure")
     self_check.add_argument("--qualification-no-false-pass", action="store_true", help="reject PASS without measured firmware metrics/counters")
     self_check.add_argument("--group-parser", action="store_true", help="check exact group parsing and mismatch rejection")
     self_check.add_argument("--confirmed-directory", action="store_true", help="check confirmed artifact creation and linked details")

@@ -377,6 +377,7 @@ def run_qualification(
     """
 
     manifest = qualification_manifest_check(Path(manifest_path))
+    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + secrets.token_hex(3)
     binding = PairingStore(Path(binding_path)).load()
     if binding is None:
         raise QualificationError("no exact paired keypad binding exists; run pair before qualify")
@@ -396,24 +397,30 @@ def run_qualification(
     run_error: str | None = None
     device_metrics: dict[str, int] | None = None
     metrics_query_error: str | None = None
-    overlap = _operator_checkpoint(
-        "physical-overlap",
-        "Keep all four displays/LEDs active and continuously poll keys and encoder while you perform the prompted key/encoder actions. Confirm every expected action is physically observed; counters cannot answer this.",
-    )
-    overlap_reason = None
-    if overlap == "U":
-        overlap_reason = input("Explain why physical overlap is unavailable (required): ").strip()
-        if not overlap_reason:
-            raise QualificationError("physical overlap U requires a reason")
+    overlap = "U"
+    overlap_reason: str | None = "not confirmed"
     try:
         def opener(candidate: Any) -> Any:
             return serial.Serial(candidate.device, baudrate=115200, timeout=0.2, write_timeout=3)
 
         candidate, base_link, session, recovery = reconnect_exact(binding, None, opener, timeout=3.0)
         link = base_link
-        recording = _RecordingConnection(base_link, traffic)
+        recording = _RecordingConnection(base_link, traffic, phase="preflight")
         session.connection = recording
         transitions.extend(item.as_dict() for item in recovery)
+        for panel in range(1, 5):
+            session.stimulate(f"PREFLIGHT-{panel}", panel, "PREFLIGHT-BRIGHTNESS")
+        recording.phase = "traffic"
+        overlap = _operator_checkpoint(
+            "physical-overlap",
+            "The paired keypad is active after preflight writes. Keep all four displays/LEDs active and continuously poll keys and encoder while you perform the prompted key/encoder actions. Confirm every expected action is physically observed; counters cannot answer this.",
+        )
+        if overlap == "N":
+            raise QualificationError("physical overlap was rejected by the operator")
+        if overlap == "U":
+            overlap_reason = input("Explain why physical overlap is unavailable (required): ").strip()
+            if not overlap_reason:
+                raise QualificationError("physical overlap U requires a reason")
         baseline_count = int(manifest["baseline"]["expected_snapshots"])
         final_count = int(manifest["final_maximum"]["frames_each_direction"])
         burst_count = int(manifest["burst"]["frames_each_direction"])
