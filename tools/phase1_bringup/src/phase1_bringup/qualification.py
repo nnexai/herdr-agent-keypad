@@ -543,8 +543,8 @@ def run_qualification(
         "qualification_blockers": blockers,
         "metrics": metrics,
         "interruption_matrix": transitions,
+        "counter_scope": "post-reset qualification traffic only",
         "qualification": {
-            "manifest_sha256": manifest["manifest_sha256"],
             "manifest_profile": PROFILE_ID,
             "traffic_sha256": traffic_hash,
             "traffic_path": "traffic.json",
