@@ -257,6 +257,10 @@ bool applyStimulus(const char *stimulus, uint8_t &panel) {
       armedInput = ArmedInput::EncoderClick;
       render(BringupState::Click, panel);
       return true;
+    case StimulusKind::Brightness:
+      board.setBrightness(value);
+      render(BringupState::Brightness, panel, value);
+      return true;
     case StimulusKind::Led: {
       const uint16_t led_mask = value == 14 ? 0x3FFF : (value == 15 ? 0 : static_cast<uint16_t>(1U << value));
       const uint8_t led_brightness = value == 15 ? 0 : 32;
