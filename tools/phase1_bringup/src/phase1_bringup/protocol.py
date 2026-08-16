@@ -1,6 +1,7 @@
-"""Bounded v1 protocol/session helpers shared by the guided host run."""
+"""Bounded v1 protocol/session helpers shared by host and firmware fixtures."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import time
@@ -11,6 +12,32 @@ MAX_LINE_BYTES = 4096
 PROTOCOL_VERSION = 1
 FRAME_TYPES = {"hello", "hello_ack", "probe", "probe_ack", "event", "error"}
 ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+DIGEST_PATTERN = re.compile(r"^[0-9a-f]{16}$")
+
+PAYLOAD_KEYS: dict[str, set[str]] = {
+    "hello": {"device_id", "firmware", "protocol"},
+    "hello_ack": {"accepted", "device_id", "firmware", "protocol"},
+    "probe": {"panel", "step_id", "stimulus"},
+    "probe_ack": {"accepted", "step_id"},
+    "event": {"key", "kind", "step_id"},
+    "error": {"code", "detail"},
+}
+
+
+class ProtocolError(ValueError):
+    """A validation failure with the stable typed rejection code."""
+
+    def __init__(self, code: str, detail: str | None = None):
+        self.code = code
+        super().__init__(detail or code)
+
+
+@dataclass(frozen=True)
+class ProtocolResult:
+    accepted: bool
+    reason: str
+    frame: dict[str, Any] | None = None
+    dispatched: bool = False
 
 
 def _is_int(value: Any) -> bool:
@@ -19,86 +46,131 @@ def _is_int(value: Any) -> bool:
 
 def _require_string(value: Any, name: str, maximum: int = 64) -> None:
     if not isinstance(value, str) or not (1 <= len(value) <= maximum) or not ID_PATTERN.fullmatch(value):
-        raise ValueError(f"{name} must be a bounded opaque identifier")
+        raise ProtocolError("invalid_identifier", f"{name} must be a bounded opaque identifier")
+
+
+def _payload_digest(payload: dict[str, Any]) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
+    digest = 0xCBF29CE484222325
+    for byte in canonical:
+        digest ^= byte
+        digest = (digest * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
+    return f"{digest:016x}"
 
 
 def validate_frame(frame: Any) -> dict[str, Any]:
     if not isinstance(frame, dict):
-        raise ValueError("frame must be an object")
-    required = {"v", "type", "boot_id", "session_id", "seq", "reply_to", "payload"}
+        raise ProtocolError("invalid_envelope", "frame must be an object")
+    required = {"v", "type", "boot_id", "session_id", "seq", "reply_to", "digest", "payload"}
     if set(frame) != required:
-        raise ValueError("frame envelope is closed")
-    if frame["v"] != PROTOCOL_VERSION or frame["type"] not in FRAME_TYPES:
-        raise ValueError("unsupported protocol version or frame type")
+        raise ProtocolError("unknown_field", "frame envelope is closed")
+    if frame["v"] != PROTOCOL_VERSION:
+        raise ProtocolError("invalid_version", "only protocol v1 is accepted")
+    if frame["type"] not in FRAME_TYPES:
+        raise ProtocolError("unknown_type", "frame type is not in the closed v1 set")
     _require_string(frame["boot_id"], "boot_id")
     _require_string(frame["session_id"], "session_id")
     if not _is_int(frame["seq"]) or not 1 <= frame["seq"] <= 0xFFFFFFFF:
-        raise ValueError("seq must be a positive uint32")
+        raise ProtocolError("invalid_sequence", "seq must be a positive uint32")
     if frame["reply_to"] is not None and (not _is_int(frame["reply_to"]) or not 1 <= frame["reply_to"] <= 0xFFFFFFFF):
-        raise ValueError("reply_to must be null or a positive uint32")
+        raise ProtocolError("invalid_reply_to", "reply_to must be null or a positive uint32")
+    if not isinstance(frame["digest"], str) or not DIGEST_PATTERN.fullmatch(frame["digest"]):
+        raise ProtocolError("invalid_digest", "digest must be a lowercase 64-bit hex value")
     payload = frame["payload"]
     if not isinstance(payload, dict):
-        raise ValueError("payload must be an object")
-    expected: dict[str, set[str]] = {
-        "hello": {"device_id", "firmware", "protocol"},
-        "hello_ack": {"accepted", "protocol", "device_id", "firmware"},
-        "probe": {"step_id", "panel", "stimulus"},
-        "probe_ack": {"accepted", "step_id"},
-        "event": {"kind", "step_id", "key"},
-        "error": {"code", "detail"},
-    }
-    if set(payload) != expected[frame["type"]]:
-        raise ValueError(f"{frame['type']} payload is closed")
-    if frame["type"] in {"hello", "hello_ack"} and payload.get("protocol") != PROTOCOL_VERSION:
-        raise ValueError("payload protocol must be v1")
-    if frame["type"] == "hello" and any(not isinstance(payload[name], str) or not payload[name] for name in ("device_id", "firmware")):
-        raise ValueError("hello identity fields must be non-empty strings")
-    if frame["type"] == "hello_ack":
+        raise ProtocolError("invalid_payload", "payload must be an object")
+    frame_type = frame["type"]
+    if set(payload) != PAYLOAD_KEYS[frame_type]:
+        raise ProtocolError("invalid_shape", f"{frame_type} payload is closed")
+    if frame_type in {"hello", "hello_ack"} and payload.get("protocol") != PROTOCOL_VERSION:
+        raise ProtocolError("invalid_shape", "payload protocol must be v1")
+    if frame_type == "hello":
+        _require_string(payload["device_id"], "device_id")
+        _require_string(payload["firmware"], "firmware", 64)
+    elif frame_type == "hello_ack":
         if not isinstance(payload["accepted"], bool):
-            raise ValueError("hello_ack accepted must be boolean")
-        if any(not isinstance(payload[name], str) or not payload[name] for name in ("device_id", "firmware")):
-            raise ValueError("hello_ack identity fields must be non-empty strings")
-    if frame["type"] == "probe":
-        if not isinstance(payload["step_id"], str) or not payload["step_id"]:
-            raise ValueError("probe step_id must be non-empty")
+            raise ProtocolError("invalid_shape", "hello_ack accepted must be boolean")
+        _require_string(payload["device_id"], "device_id")
+        _require_string(payload["firmware"], "firmware", 64)
+    elif frame_type == "probe":
+        _require_string(payload["step_id"], "step_id")
         if not _is_int(payload["panel"]) or not 1 <= payload["panel"] <= 4:
-            raise ValueError("probe panel must be one through four")
+            raise ProtocolError("invalid_shape", "probe panel must be one through four")
         if not isinstance(payload["stimulus"], str) or not 1 <= len(payload["stimulus"]) <= 64:
-            raise ValueError("probe stimulus must be bounded")
-    if frame["type"] == "probe_ack":
-        if not isinstance(payload["accepted"], bool) or not isinstance(payload["step_id"], str) or not payload["step_id"]:
-            raise ValueError("probe_ack fields are invalid")
-    if frame["type"] == "event":
+            raise ProtocolError("invalid_shape", "probe stimulus must be bounded")
+    elif frame_type == "probe_ack":
+        if not isinstance(payload["accepted"], bool):
+            raise ProtocolError("invalid_shape", "probe_ack accepted must be boolean")
+        _require_string(payload["step_id"], "step_id")
+    elif frame_type == "event":
         if payload["kind"] != "key_transition":
-            raise ValueError("event kind is invalid")
-        _require_string(payload["step_id"], "event step_id")
+            raise ProtocolError("invalid_shape", "event kind is invalid")
+        _require_string(payload["step_id"], "step_id")
         if not _is_int(payload["key"]) or not 0 <= payload["key"] <= 4:
-            raise ValueError("event key is invalid")
-    if frame["type"] == "error" and any(not isinstance(payload[name], str) or not payload[name] for name in ("code", "detail")):
-        raise ValueError("error fields must be non-empty strings")
+            raise ProtocolError("invalid_shape", "event key is invalid")
+    elif frame_type == "error":
+        _require_string(payload["code"], "error code", 64)
+        if not isinstance(payload["detail"], str) or not 1 <= len(payload["detail"]) <= 128:
+            raise ProtocolError("invalid_shape", "error detail must be bounded")
+    if frame["digest"] != _payload_digest(payload):
+        raise ProtocolError("digest_mismatch", "payload digest does not match canonical payload")
     return frame
 
 
 def encode_frame(frame: dict[str, Any]) -> bytes:
     validate_frame(frame)
-    encoded = (json.dumps(frame, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    encoded = (json.dumps(frame, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("ascii")
     if len(encoded) > MAX_LINE_BYTES:
-        raise ValueError("encoded frame exceeds 4096 bytes including LF")
+        raise ProtocolError("line_too_long", "encoded frame exceeds 4096 bytes including LF")
     return encoded
 
 
-def decode_frame(line: bytes) -> dict[str, Any]:
-    if len(line) == 0 or len(line) > MAX_LINE_BYTES or not line.endswith(b"\n"):
-        raise ValueError("line must include LF and fit the 4096-byte bound")
+def classify_line(line: bytes) -> ProtocolResult:
+    if not line:
+        return ProtocolResult(False, "empty_line")
+    if len(line) > MAX_LINE_BYTES:
+        return ProtocolResult(False, "line_too_long")
+    if not line.endswith(b"\n"):
+        return ProtocolResult(False, "missing_lf")
     try:
         frame = json.loads(line[:-1].decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("invalid JSON frame") from exc
-    return validate_frame(frame)
+    except UnicodeDecodeError:
+        return ProtocolResult(False, "invalid_utf8")
+    except json.JSONDecodeError:
+        return ProtocolResult(False, "invalid_json")
+    try:
+        validated = validate_frame(frame)
+    except ProtocolError as exc:
+        return ProtocolResult(False, exc.code)
+    return ProtocolResult(True, "ok", validated)
 
 
-def new_frame(frame_type: str, boot_id: str, session_id: str, seq: int, payload: dict[str, Any], reply_to: int | None = None) -> dict[str, Any]:
-    return {"v": PROTOCOL_VERSION, "type": frame_type, "boot_id": boot_id, "session_id": session_id, "seq": seq, "reply_to": reply_to, "payload": payload}
+def decode_frame(line: bytes) -> dict[str, Any]:
+    result = classify_line(line)
+    if not result.accepted:
+        raise ProtocolError(result.reason)
+    assert result.frame is not None
+    return result.frame
+
+
+def new_frame(
+    frame_type: str,
+    boot_id: str,
+    session_id: str,
+    seq: int,
+    payload: dict[str, Any],
+    reply_to: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "v": PROTOCOL_VERSION,
+        "type": frame_type,
+        "boot_id": boot_id,
+        "session_id": session_id,
+        "seq": seq,
+        "reply_to": reply_to,
+        "digest": _payload_digest(payload),
+        "payload": payload,
+    }
 
 
 @dataclass(frozen=True)
@@ -114,14 +186,35 @@ class MachineFact:
 class ProtocolSession:
     """One bounded session over a serial-like connection."""
 
-    def __init__(self, connection: Any, boot_id: str, session_id: str, timeout: float = 10.0):
+    def __init__(
+        self,
+        connection: Any,
+        boot_id: str,
+        session_id: str,
+        timeout: float = 10.0,
+        queue_limit: int = 16,
+    ):
         self.connection = connection
+        self.timeout = timeout
+        self.queue_limit = queue_limit
+        self.reset(boot_id, session_id)
+
+    def reset(self, boot_id: str, session_id: str) -> None:
+        _require_string(boot_id, "boot_id")
+        _require_string(session_id, "session_id")
         self.boot_id = boot_id
         self.session_id = session_id
-        self.timeout = timeout
         self.next_seq = 0
         self.last_received_seq = 0
+        self._seen: list[int] = []
+        self.pending: list[dict[str, Any]] = []
         self.device: dict[str, Any] = {}
+
+    def prime_received(self, sequence: int) -> None:
+        if not 0 <= sequence <= 0xFFFFFFFF:
+            raise ValueError("invalid prior sequence")
+        self.last_received_seq = sequence
+        self._seen = [sequence] if sequence else []
 
     def send(self, frame_type: str, payload: dict[str, Any]) -> int:
         self.next_seq += 1
@@ -129,17 +222,46 @@ class ProtocolSession:
         self.connection.write(encode_frame(frame))
         return self.next_seq
 
+    def accept(self, line: bytes, dispatch: bool = True) -> ProtocolResult:
+        result = classify_line(line)
+        if not result.accepted:
+            return result
+        assert result.frame is not None
+        frame = result.frame
+        if frame["boot_id"] != self.boot_id:
+            return ProtocolResult(False, "boot_mismatch", frame)
+        if frame["session_id"] != self.session_id:
+            return ProtocolResult(False, "session_mismatch", frame)
+        sequence = frame["seq"]
+        if sequence in self._seen:
+            return ProtocolResult(False, "duplicate", frame)
+        if sequence <= self.last_received_seq:
+            return ProtocolResult(False, "out_of_order", frame)
+        if dispatch and len(self.pending) >= self.queue_limit:
+            return ProtocolResult(False, "queue_full", frame)
+        self.last_received_seq = sequence
+        self._seen.append(sequence)
+        if len(self._seen) > self.queue_limit:
+            self._seen.pop(0)
+        if dispatch:
+            self.pending.append(frame)
+        return ProtocolResult(True, "ok", frame, dispatch)
+
+    def discard_pending(self) -> int:
+        discarded = len(self.pending)
+        self.pending.clear()
+        return discarded
+
     def _receive(self) -> dict[str, Any] | None:
         line = self.connection.readline()
         if not line:
             return None
-        frame = decode_frame(line)
-        if frame["session_id"] != self.session_id:
-            raise RuntimeError("session correlation mismatch")
-        if frame["seq"] <= self.last_received_seq:
-            raise RuntimeError("out-of-order or duplicate frame received")
-        self.last_received_seq = frame["seq"]
-        return frame
+        result = self.accept(line, dispatch=False)
+        if not result.accepted:
+            raise ProtocolError(result.reason)
+        assert result.frame is not None
+        return result.frame
+
     def request(self, frame_type: str, payload: dict[str, Any], allowed: Iterable[str]) -> tuple[dict[str, Any], MachineFact]:
         request_seq = self.send(frame_type, payload)
         deadline = time.monotonic() + self.timeout
@@ -149,7 +271,7 @@ class ProtocolSession:
             if frame is None:
                 continue
             if frame["type"] == "error":
-                raise RuntimeError(f"device rejected frame: {frame['payload']['code']}")
+                raise ProtocolError(frame["payload"]["code"], frame["payload"]["detail"])
             if frame["type"] in allowed_set and frame["reply_to"] == request_seq:
                 accepted = frame["payload"].get("accepted", True)
                 fact = MachineFact("acknowledged" if accepted else "rejected", time.time(), frame["seq"])
@@ -182,5 +304,35 @@ class ProtocolSession:
             if frame["type"] == "event" and frame["payload"]["step_id"] == step_id:
                 return frame
             if frame["type"] == "error":
-                raise RuntimeError(f"device rejected probe: {frame['payload']['code']}")
+                raise ProtocolError(frame["payload"]["code"], frame["payload"]["detail"])
         raise TimeoutError("timed out waiting for matching physical key transition")
+
+
+def protocol_golden_check(fixture_path: Any, schema_path: Any) -> int:
+    """Run every repository vector through the same host codec/session rules."""
+    fixture = json.loads(open(fixture_path, encoding="utf-8").read())
+    schema = json.loads(open(schema_path, encoding="utf-8").read())
+    if schema.get("x-max-encoded-line-bytes-including-lf") != MAX_LINE_BYTES:
+        raise AssertionError("schema bound drift")
+    if "digest" not in schema.get("required", []):
+        raise AssertionError("schema digest requirement missing")
+    vectors = fixture.get("vectors")
+    if not isinstance(vectors, list) or not vectors:
+        raise AssertionError("golden fixture is empty")
+    for vector in vectors:
+        line_value = vector.get("line")
+        if line_value == "synthetic:oversized":
+            line = b"x" * MAX_LINE_BYTES + b"\n"
+        elif isinstance(line_value, str):
+            line = line_value.encode("ascii")
+        else:
+            raise AssertionError(f"{vector.get('id')}: missing line")
+        expected = vector["expected"]
+        session = ProtocolSession(None, vector.get("expected_boot_id", "boot-a"), vector.get("expected_session_id", "session-a"), queue_limit=4)
+        session.prime_received(int(vector.get("prior_seq", 0)))
+        result = session.accept(line)
+        if result.reason != expected["reason"] or result.accepted != (expected["outcome"] == "accepted"):
+            raise AssertionError(f"{vector.get('id')}: host {result.reason}, expected {expected['reason']}")
+        if result.dispatched != bool(expected.get("dispatch", False)):
+            raise AssertionError(f"{vector.get('id')}: dispatch mismatch")
+    return len(vectors)

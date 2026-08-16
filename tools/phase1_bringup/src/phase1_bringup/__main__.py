@@ -18,7 +18,7 @@ from .discovery import discovery_check
 from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, parse_group_responses, self_check_roundtrip, verify_machine_run, verify_physical_evidence
 from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, RECOVERY_TOUR_STEPS, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check, recovery_tour_check, recovery_ui_check
 from .pairing import pairing_check
-from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, validate_frame
+from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, protocol_golden_check, validate_frame
 from .serial_link import reconnect_exact, serial_reconnect_check, udev_rule_check
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
 
@@ -846,6 +846,9 @@ def command_self_check(args: argparse.Namespace) -> int:
         base = new_frame("probe", "boot", "session", 1, {"step_id": "PANEL-1", "panel": 1, "stimulus": "1 ^ CYAN"})
         if decode_frame(encode_frame(base)) != base or validate_frame(base) != base:
             raise RuntimeError("frame round trip mismatch")
+    if args.protocol_golden:
+        count = protocol_golden_check(Path(args.protocol_golden), Path(args.schema))
+        print(f"Protocol golden: verified {count} vectors with host codec/session")
         print("Schema: v1 closed envelope; 4096-byte including-LF bound")
     if args.discovery:
         discovery_check()
@@ -918,6 +921,7 @@ def main(argv: list[str] | None = None) -> int:
     self_check = subparsers.add_parser("self-check", help="run narrow protocol, UI, evidence, and batch checks")
     self_check.add_argument("--environment", action="store_true")
     self_check.add_argument("--schema", type=Path)
+    self_check.add_argument("--protocol-golden", type=Path, help="run the shared host golden fixture")
     self_check.add_argument("--firmware-contract", type=Path)
     self_check.add_argument("--device-render-contract", type=Path)
     self_check.add_argument("--discovery", action="store_true", help="check fail-closed measured USB candidate handling")

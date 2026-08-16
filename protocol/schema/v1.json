@@ -2,10 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://herdr.dev/keypad/protocol/schema/v1.json",
   "title": "Herdr keypad bounded transport v1",
-  "description": "Newline-delimited v1 frames. The encoded JSON line including LF is at most 4096 bytes.",
+  "description": "Newline-delimited canonical JSON frames. The encoded JSON line including LF is at most 4096 bytes.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["v", "type", "boot_id", "session_id", "seq", "reply_to", "payload"],
+  "required": ["v", "type", "boot_id", "session_id", "seq", "reply_to", "digest", "payload"],
   "properties": {
     "v": {"const": 1},
     "type": {"enum": ["hello", "hello_ack", "probe", "probe_ack", "event", "error"]},
@@ -13,23 +13,26 @@
     "session_id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]+$"},
     "seq": {"type": "integer", "minimum": 1, "maximum": 4294967295},
     "reply_to": {"type": ["integer", "null"], "minimum": 1, "maximum": 4294967295},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
     "payload": {"type": "object", "additionalProperties": false}
   },
   "allOf": [
     {"if": {"properties": {"type": {"const": "hello"}}}, "then": {"properties": {"payload": {"required": ["device_id", "firmware", "protocol"]}}}},
-    {"if": {"properties": {"type": {"const": "hello_ack"}}}, "then": {"properties": {"payload": {"required": ["accepted", "protocol", "device_id", "firmware"]}}}},
-    {"if": {"properties": {"type": {"const": "probe"}}}, "then": {"properties": {"payload": {"required": ["step_id", "panel", "stimulus"]}}}},
+    {"if": {"properties": {"type": {"const": "hello_ack"}}}, "then": {"properties": {"payload": {"required": ["accepted", "device_id", "firmware", "protocol"]}}}},
+    {"if": {"properties": {"type": {"const": "probe"}}}, "then": {"properties": {"payload": {"required": ["panel", "step_id", "stimulus"]}}}},
     {"if": {"properties": {"type": {"const": "probe_ack"}}}, "then": {"properties": {"payload": {"required": ["accepted", "step_id"]}}}},
-    {"if": {"properties": {"type": {"const": "event"}}}, "then": {"properties": {"payload": {"required": ["kind", "step_id", "key"]}}}},
-    {"if": {"properties": {"type": {"const": "error"}}}, "then": {"properties": {"payload": {"required": ["code"]}}}}
+    {"if": {"properties": {"type": {"const": "event"}}}, "then": {"properties": {"payload": {"required": ["key", "kind", "step_id"]}}}},
+    {"if": {"properties": {"type": {"const": "error"}}}, "then": {"properties": {"payload": {"required": ["code", "detail"]}}}}
   ],
   "x-max-encoded-line-bytes-including-lf": 4096,
+  "x-digest": {"algorithm": "fnv1a-64", "input": "canonical sorted-key payload JSON UTF-8 bytes", "encoding": "lowercase hexadecimal"},
   "x-payload-contract": {
-    "hello": {"device_id": "string", "firmware": "string", "protocol": {"const": 1}},
-    "hello_ack": {"accepted": "boolean", "protocol": {"const": 1}, "device_id": "string", "firmware": "string"},
-    "probe": {"step_id": "string", "panel": {"type": "integer", "minimum": 1, "maximum": 4}, "stimulus": {"type": "string", "maxLength": 64}},
-    "probe_ack": {"accepted": "boolean", "step_id": "string"},
-    "event": {"kind": {"const": "key_transition"}, "step_id": "string", "key": {"type": "integer", "minimum": 0, "maximum": 4}},
-    "error": {"code": "string", "detail": "string"}
-  }
+    "hello": {"device_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}, "firmware": {"type": "string", "maxLength": 64}, "protocol": {"const": 1}},
+    "hello_ack": {"accepted": {"type": "boolean"}, "device_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}, "firmware": {"type": "string", "maxLength": 64}, "protocol": {"const": 1}},
+    "probe": {"panel": {"type": "integer", "minimum": 1, "maximum": 4}, "step_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}, "stimulus": {"type": "string", "minLength": 1, "maxLength": 64}},
+    "probe_ack": {"accepted": {"type": "boolean"}, "step_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}},
+    "event": {"key": {"type": "integer", "minimum": 0, "maximum": 4}, "kind": {"const": "key_transition"}, "step_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}},
+    "error": {"code": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}, "detail": {"type": "string", "minLength": 1, "maxLength": 128}}
+  },
+  "x-rejection-codes": ["empty_line", "missing_lf", "line_too_long", "invalid_utf8", "invalid_json", "unknown_field", "invalid_version", "unknown_type", "invalid_envelope", "invalid_payload", "invalid_shape", "invalid_identifier", "invalid_sequence", "invalid_reply_to", "invalid_digest", "digest_mismatch", "boot_mismatch", "session_mismatch", "out_of_order", "duplicate", "queue_full"]
 }
