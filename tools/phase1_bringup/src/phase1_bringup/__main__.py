@@ -957,6 +957,15 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--confirmed-directory", action="store_true", help="check confirmed artifact creation and linked details")
     self_check.add_argument("--confirmation-rejection", action="store_true", help="check Y/N/R confirmation semantics")
     self_check.add_argument("--qualification-manifest", type=Path, help="verify the frozen USB qualification profile")
+    freeze = subparsers.add_parser("freeze-manifest", help="create or reopen the deterministic USB qualification manifest")
+    freeze.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
+    freeze.add_argument("--fixture", type=Path, default=repo_root() / "protocol" / "fixtures" / "v1-golden.json")
+    freeze.add_argument("--output", type=Path, default=repo_root() / "artifacts" / "phase1" / "qualification-manifest.json")
+    qualification = subparsers.add_parser("verify-qualification", help="verify qualification manifest/result hash lineage")
+    qualification.add_argument("manifest", type=Path)
+    qualification.add_argument("result", type=Path)
+    qualification.add_argument("--traffic", type=Path)
+    qualification.add_argument("--require-immutable-traffic", action="store_true")
     start = subparsers.add_parser("start", help="run guided mode, or use --batch for seven physical gate confirmations")
     start.add_argument("--batch", action="store_true", help="stimulate Identify through Reboot; Keys are KEY-1..KEY-4 and encoder click is ENC-CLICK")
     start.add_argument("--machine-only", action="store_true", help="with --batch, capture machine observations without stdin or physical PASS")
@@ -990,6 +999,21 @@ def main(argv: list[str] | None = None) -> int:
             return run_recovery_tour(args.schema, args.evidence_root, args.binding, args.resume)
         if args.command == "self-check":
             return command_self_check(args)
+        if args.command == "freeze-manifest":
+            from .qualification import freeze_manifest
+            manifest = freeze_manifest(args.output, args.schema, args.fixture)
+            print(f"Qualification manifest: {args.output} ({manifest['manifest_sha256']})")
+            return 0
+        if args.command == "verify-qualification":
+            from .evidence import verify_qualification_linkage
+            checked = verify_qualification_linkage(
+                args.manifest,
+                args.result,
+                args.traffic,
+                require_immutable_traffic=args.require_immutable_traffic,
+            )
+            print(f"Qualification evidence: manifest {checked['manifest']['manifest_sha256']} linked")
+            return 0
         if args.command == "recover":
             return run_recover(args.schema, args.evidence_root, args.binding, args.interruption)
         if args.command == "pair":

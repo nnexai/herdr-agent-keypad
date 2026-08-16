@@ -7,6 +7,8 @@
 #include "board/board_adapter.h"
 #include "board/physical_map.h"
 #include "ui/bringup_renderer.h"
+#include "transport/link.h"
+#include "metrics/proof_metrics.h"
 
 namespace {
 constexpr size_t kMaxLineBytes = 4096;  // includes the trailing LF
@@ -15,12 +17,15 @@ char frame[kMaxLineBytes + 1];
 size_t frameLength = 0;
 bool frameOverflow = false;
 uint32_t txSequence = 0;
+uint32_t lastKeyPollAt = 0;
 String bootId;
 String sessionId;
 String deviceId;
 BoardAdapter board;
 BringupRenderer renderer;
 PhysicalMap physicalMap;
+UsbCdcLink usbLink;
+ProofMetrics proofMetrics;
 
 // Input arming is deliberately separate from the physical map.  Until a user
 // confirms the observation, the firmware only knows that an input changed.
@@ -50,18 +55,30 @@ void sendFrame(const char *type, uint32_t replyTo, JsonObjectConst payload) {
     doc["reply_to"] = replyTo;
   }
   doc["payload"] = payload;
-  size_t encoded = measureJson(doc) + 1;
-  if (encoded > kMaxLineBytes) {
+  const size_t encoded = serializeJson(doc, frame, sizeof(frame) - 1);
+  if (encoded + 1 > kMaxLineBytes) {
     return;
   }
-  serializeJson(doc, Serial);
-  Serial.write('\n');
+  frame[encoded] = '\n';
+  if (usbLink.write(reinterpret_cast<const uint8_t *>(frame), encoded + 1) == encoded + 1) {
+    proofMetrics.recordSent();
+    if (strcmp(type, "hello_ack") == 0 || strcmp(type, "probe_ack") == 0) {
+      proofMetrics.recordAcknowledged();
+    }
+  }
 }
 
 void sendError(const char *code, const char *detail, uint32_t replyTo) {
   JsonDocument payload;
   payload["code"] = code;
   payload["detail"] = detail;
+  if (strcmp(code, "invalid_json") == 0 || strcmp(code, "line_too_long") == 0) {
+    proofMetrics.recordMalformed();
+  } else if (strcmp(code, "digest_mismatch") == 0) {
+    proofMetrics.recordDigestMismatch();
+  } else {
+    proofMetrics.recordRejected();
+  }
   sendFrame("error", replyTo, payload.as<JsonObjectConst>());
 }
 
@@ -76,8 +93,11 @@ void render(BringupState state, uint8_t panel, uint8_t brightness = 0,
     strncpy(request.challenge, challenge, sizeof(request.challenge) - 1);
     request.challenge[sizeof(request.challenge) - 1] = '\0';
   }
+  const uint32_t started = micros();
   renderer.render(board, request);
+  proofMetrics.observeDisplayFlush(micros() - started);
 }
+
 
 enum class StimulusKind : uint8_t {
   Invalid = 0,
@@ -304,9 +324,11 @@ void handleFrame(char *line, size_t length) {
 }
 
 void readFrames() {
-  while (Serial.available()) {
-    const char byte = static_cast<char>(Serial.read());
+  while (usbLink.available() > 0) {
+    uint8_t byte = 0;
+    if (usbLink.read(&byte, 1) != 1) break;
     if (byte == '\n') {
+      proofMetrics.recordReceived();
       if (!frameOverflow) {
         frame[frameLength] = '\0';
         handleFrame(frame, frameLength);
@@ -317,15 +339,15 @@ void readFrames() {
       frameOverflow = false;
       continue;
     }
-    if (frameOverflow) {
-      continue;
-    }
+    if (frameOverflow) continue;
     if (frameLength + 1 >= sizeof(frame)) {
       frameOverflow = true;
       continue;
     }
-    frame[frameLength++] = byte;
+    frame[frameLength++] = static_cast<char>(byte);
+    proofMetrics.observeParser(frameLength);
   }
+  proofMetrics.observeQueue(static_cast<size_t>(usbLink.available()));
 }
 
 void reportKeyTransition(uint8_t rawKey) {
@@ -361,18 +383,23 @@ void reportInput() {
 }  // namespace
 
 void setup() {
-  Serial.begin(kBaud);
+  usbLink.begin(kBaud);
   const bool boardReady = board.begin();
   board.setBrightness(80);
   board.clearDisplays(TFT_BLACK);
   deviceId = opaqueId();
   bootId = deviceId + "-" + String(millis());
+  proofMetrics.sampleRuntime();
   render(boardReady ? BringupState::Wait : BringupState::LinkLost, 0);
 }
 
 void loop() {
   board.update();
   readFrames();
+  const uint32_t now = micros();
+  if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
+  lastKeyPollAt = now;
   reportInput();
+  proofMetrics.sampleRuntime();
   delay(1);
 }

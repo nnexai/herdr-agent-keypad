@@ -27,6 +27,42 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def verify_qualification_manifest(path: Path) -> dict[str, Any]:
+    """Reopen the frozen profile without opening a transport."""
+    from .qualification import qualification_manifest_check
+
+    return qualification_manifest_check(Path(path))
+
+
+def verify_qualification_linkage(
+    manifest_path: Path,
+    result_path: Path,
+    traffic_path: Path | None = None,
+    *,
+    require_immutable_traffic: bool = False,
+) -> dict[str, Any]:
+    """Verify result-to-manifest and immutable traffic hash lineage."""
+    manifest = verify_qualification_manifest(Path(manifest_path))
+    try:
+        result = json.loads(Path(result_path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise EvidenceError(f"qualification result is not valid JSON: {exc}") from exc
+    if not isinstance(result, dict):
+        raise EvidenceError("qualification result must be a JSON object")
+    linkage = result.get("qualification")
+    if not isinstance(linkage, dict) or linkage.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise EvidenceError("qualification result does not link the frozen manifest hash")
+    linked_traffic = linkage.get("traffic_path")
+    linked_hash = linkage.get("traffic_sha256")
+    if require_immutable_traffic and (not isinstance(linked_traffic, str) or not isinstance(linked_hash, str) or len(linked_hash) != 64):
+        raise EvidenceError("immutable qualification traffic path/hash linkage is required")
+    if traffic_path is not None:
+        traffic = Path(traffic_path)
+        if not traffic.is_file() or not isinstance(linked_hash, str) or _sha256(traffic) != linked_hash:
+            raise EvidenceError("qualification traffic hash does not match the linked immutable file")
+    return {"manifest": manifest, "result": result}
+
+
 def _fsync_directory(directory: Path) -> None:
     fd = os.open(directory, os.O_RDONLY)
     try:
