@@ -21,10 +21,12 @@ enum class BringupState : uint8_t {
 struct RenderRequest {
   BringupState state;
   uint8_t active_panel;
+  uint8_t expected_key;
   uint8_t brightness_percent;
   char challenge[9];
 
-  RenderRequest() : state(BringupState::Wait), active_panel(0), brightness_percent(0), challenge{} {}
+  RenderRequest()
+      : state(BringupState::Wait), active_panel(0), expected_key(0), brightness_percent(0), challenge{} {}
 };
 
 // Fixed-state renderer for the temporary physical bring-up.  It owns no
@@ -217,6 +219,11 @@ class BringupRenderer {
       char panel_label[8];
       snprintf(panel_label, sizeof(panel_label), "PANEL-%u", request.active_panel);
       display.drawString(panel_label, 22, 72);
+    } else if (request.state == BringupState::Press) {
+      char key_label[8];
+      snprintf(key_label, sizeof(key_label), "KEY-%u", static_cast<unsigned>(request.expected_key));
+      display.setTextSize(2);
+      display.drawString(key_label, 34, 48);
     } else {
       display.drawString(glyph, request.state == BringupState::Pair ? 36 : 48, 48);
     }

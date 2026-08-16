@@ -69,6 +69,7 @@ void render(BringupState state, uint8_t panel, uint8_t brightness = 0,
   RenderRequest request;
   request.state = state;
   request.active_panel = panel;
+  request.expected_key = expectedKey;
   request.brightness_percent = brightness;
   if (challenge != nullptr) {
     strncpy(request.challenge, challenge, sizeof(request.challenge) - 1);
