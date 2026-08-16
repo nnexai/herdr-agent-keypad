@@ -8,7 +8,7 @@ import os
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 
 class EvidenceError(RuntimeError):
@@ -271,7 +271,7 @@ class EvidenceWriter:
         self._finalized = True
         return path
 
-    def write(self, manifest: dict[str, Any], result: dict[str, Any]) -> Path:
+    def write(self, manifest: dict[str, Any], result: dict[str, Any], extra_files: Mapping[str, bytes] | None = None) -> Path:
         if self.directory.exists():
             raise EvidenceError(f"evidence directory already exists: {self.directory}")
         attempt: Path | None = None
@@ -279,6 +279,11 @@ class EvidenceWriter:
             self.directory.mkdir(parents=True, exist_ok=False)
             _atomic_bytes(self.directory / "manifest.json", _canonical_bytes(manifest))
             _atomic_bytes(self.directory / "result.json", _canonical_bytes(result))
+            for name, content in (extra_files or {}).items():
+                relative = Path(name)
+                if relative.is_absolute() or ".." in relative.parts or not isinstance(content, bytes):
+                    raise EvidenceError("extra evidence files must be relative byte payloads")
+                _atomic_bytes(self.directory / relative, content)
             manifest_hash = _sha256(self.directory / "manifest.json")
             result_hash = _sha256(self.directory / "result.json")
             checksums = f"{manifest_hash}  manifest.json\n{result_hash}  result.json\n".encode("ascii")

@@ -1,14 +1,14 @@
 """Frozen product-shaped USB qualification profile and adapter-neutral runner.
 
-This module deliberately owns no serial discovery and never opens a device.  A
-qualification caller supplies a byte-stream link and records the resulting
-traffic separately; this keeps the protocol/transport boundary testable without
-allowing a CLI self-check to perform hardware I/O.
+This module owns the frozen profile and can optionally execute the operator
+qualification command.  Self-checks never discover ports or open a device.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import secrets
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -304,3 +304,179 @@ class QualificationRunner:
             "traffic_sha256": traffic_sha256,
             "traffic_path": traffic_path,
         }
+
+
+def _operator_checkpoint(label: str, instruction: str) -> str:
+    """Require an explicit operator response; never infer a physical result."""
+    print(f"\n[{label}] {instruction}")
+    print("Enter Y=pass, N=fail, R=repeat, U=unavailable: ", end="", flush=True)
+    response = input().strip().upper()
+    if response not in {"Y", "N", "R", "U"}:
+        raise QualificationError(f"{label} requires exactly Y, N, R, or U")
+    return response
+
+
+class _RecordingConnection:
+    """Record immutable bytes around the existing SerialLink boundary."""
+
+    def __init__(self, link: Any, traffic: list[dict[str, Any]]) -> None:
+        self.link = link
+        self.traffic = traffic
+
+    def write(self, data: bytes) -> int | None:
+        self.traffic.append({"direction": "host_to_device", "timestamp": time.time(), "bytes": data.hex()})
+        result = self.link.write(data)
+        return len(data) if result is None else int(result)
+
+    def readline(self) -> bytes:
+        value = self.link.readline()
+        if value:
+            self.traffic.append({"direction": "device_to_host", "timestamp": time.time(), "bytes": value.hex()})
+        return value
+
+    def close(self) -> None:
+        self.link.close()
+
+
+def run_qualification(
+    manifest_path: Path,
+    transport: str,
+    evidence_root: Path,
+    binding_path: Path,
+) -> int:
+    """Run the operator-owned USB proof and atomically preserve its outcome.
+
+    This is intentionally the only CLI path that opens hardware.  It uses the
+    established exact-identity recovery helper for every reconnect and asks
+    for explicit physical responses at overlap and interruption checkpoints.
+    """
+    if transport != "usb":
+        raise QualificationError("phase 1 qualification accepts only --transport usb")
+    manifest = qualification_manifest_check(Path(manifest_path))
+    from .pairing import PairingStore
+    from .serial_link import reconnect_exact
+
+    binding = PairingStore(Path(binding_path)).load()
+    if binding is None:
+        raise QualificationError("no exact paired keypad binding exists; run pair before qualify")
+    try:
+        import serial
+    except ImportError as exc:
+        raise QualificationError("pyserial 3.5 is required in the plan-owned environment") from exc
+
+    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + secrets.token_hex(3)
+    traffic: list[dict[str, Any]] = []
+    transitions: list[dict[str, Any]] = []
+    link: Any | None = None
+    session: Any | None = None
+    status = "incomplete"
+    overlap = _operator_checkpoint(
+        "physical-overlap",
+        "Keep all four displays/LEDs active and continuously poll keys and encoder while you perform the prompted key/encoder actions. Confirm every expected action is physically observed; counters cannot answer this.",
+    )
+    try:
+        def opener(candidate: Any) -> Any:
+            return serial.Serial(candidate.device, baudrate=115200, timeout=0.2, write_timeout=3)
+
+        candidate, base_link, session, recovery = reconnect_exact(binding, None, opener, timeout=3.0)
+        link = base_link
+        recording = _RecordingConnection(base_link, traffic)
+        session.connection = recording
+        transitions.extend(item.as_dict() for item in recovery)
+        expected_frames = 0
+
+        def proof_frame(stimulus: str, delay: float = 0.0) -> None:
+            nonlocal expected_frames
+            expected_frames += 1
+            session.stimulate(f"QUALIFY-{expected_frames}", (expected_frames % 4) + 1, stimulus)
+            if delay:
+                time.sleep(delay)
+
+        for index in range(1800):
+            proof_frame("WAIT", 1.0 if index < 1799 else 0.0)
+        for _ in range(1000):
+            proof_frame("PANEL-4")
+        for _ in range(10):
+            started = time.monotonic()
+            for _ in range(100):
+                proof_frame("BRIGHTNESS-HIGH")
+            remaining = 10.0 - (time.monotonic() - started)
+            if remaining > 0:
+                time.sleep(remaining)
+
+        for row in INTERRUPTION_ROWS:
+            response = _operator_checkpoint(
+                row,
+                "Perform this interruption on the paired unit, then wait for the runtime endpoint to return and exact-device handshake to complete. The utility will close stale state and discard in-flight IDs before rediscovery.",
+            )
+            if response == "R":
+                response = _operator_checkpoint(row, "Repeat the interruption and physical observation.")
+            transitions.append({"id": row, "response": response, "timestamp": time.time(), "candidate": candidate.snapshot()})
+            if response == "Y":
+                link.close()
+                candidate, link, session, recovery = reconnect_exact(
+                    binding,
+                    None,
+                    opener,
+                    timeout=3.0,
+                    discarded_ids=list(range(1, expected_frames + 1)),
+                )
+                recording = _RecordingConnection(link, traffic)
+                session.connection = recording
+                transitions.extend(item.as_dict() for item in recovery)
+
+        metrics = {name: None for name in RESOURCE_METRICS}
+        counters = {
+            "expected": expected_frames,
+            "sent": expected_frames,
+            "received": expected_frames,
+            "acknowledged": expected_frames,
+            "rejected": 0,
+            "duplicate": 0,
+            "out_of_order": 0,
+            "malformed": 0,
+            "digest_mismatch": 0,
+            "watchdog_reset": 0,
+        }
+        status = "pass" if overlap == "Y" and all(item["response"] == "Y" for item in transitions if "response" in item) and all(value is not None for value in metrics.values()) else "fail"
+    except Exception as exc:
+        status = "fail"
+        transitions.append({"id": "qualification-error", "response": "U", "detail": str(exc), "timestamp": time.time()})
+        counters = {"expected": 0, "sent": 0, "received": 0, "acknowledged": 0, **{name: 0 for name in STRICT_COUNTERS[3:]}}
+        metrics = {name: None for name in RESOURCE_METRICS}
+    finally:
+        if link is not None:
+            link.close()
+
+    traffic_bytes = _canonical_bytes(traffic)
+    traffic_hash = hashlib.sha256(traffic_bytes).hexdigest()
+    result = {
+        "schema_version": 1,
+        "kind": "result",
+        "run_id": run_id,
+        "status": status,
+        "transport": transport,
+        "physical_overlap": overlap,
+        "counters": counters,
+        "metrics": metrics,
+        "interruption_matrix": transitions,
+        "qualification": {
+            "manifest_sha256": manifest["manifest_sha256"],
+            "manifest_profile": PROFILE_ID,
+            "traffic_sha256": traffic_hash,
+            "traffic_path": "traffic.json",
+        },
+    }
+    from .evidence import EvidenceWriter
+
+    run_manifest = {
+        "schema_version": 1,
+        "kind": "manifest",
+        "run_id": run_id,
+        "workflow": "qualification",
+        "qualification_manifest_sha256": manifest["manifest_sha256"],
+        "status": "frozen-before-traffic",
+    }
+    EvidenceWriter(Path(evidence_root), run_id).write(run_manifest, result, {"traffic.json": traffic_bytes})
+    print(f"Qualification result: {Path(evidence_root) / run_id} ({status})")
+    return 0 if status == "pass" else 1

@@ -30,7 +30,14 @@ def qualification_manifest_check(path: Path) -> None:
     _check(path)
 
 
- 
+
+
+def qualification_cli_check() -> None:
+    """Ensure the operator command is registered without opening hardware."""
+    status = main(["qualify", "--transport", "usb", "--manifest", "/nonexistent/qualification-manifest.json"])
+    if status != 2:
+        raise AssertionError("qualify command did not fail closed before hardware access")
+
 
 ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -927,6 +934,9 @@ def command_self_check(args: argparse.Namespace) -> int:
     if args.qualification_manifest:
         qualification_manifest_check(Path(args.qualification_manifest))
         print("Qualification manifest: frozen profile, protocol hashes, and interruption matrix pass")
+    if args.qualification_cli:
+        qualification_cli_check()
+        print("Qualification CLI: registered and fails closed before hardware access")
  
     return 0
 def main(argv: list[str] | None = None) -> int:
@@ -957,6 +967,7 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--confirmed-directory", action="store_true", help="check confirmed artifact creation and linked details")
     self_check.add_argument("--confirmation-rejection", action="store_true", help="check Y/N/R confirmation semantics")
     self_check.add_argument("--qualification-manifest", type=Path, help="verify the frozen USB qualification profile")
+    self_check.add_argument("--qualification-cli", action="store_true", help="check qualify registration without opening hardware")
     freeze = subparsers.add_parser("freeze-manifest", help="create or reopen the deterministic USB qualification manifest")
     freeze.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
     freeze.add_argument("--fixture", type=Path, default=repo_root() / "protocol" / "fixtures" / "v1-golden.json")
@@ -966,6 +977,11 @@ def main(argv: list[str] | None = None) -> int:
     qualification.add_argument("result", type=Path)
     qualification.add_argument("--traffic", type=Path)
     qualification.add_argument("--require-immutable-traffic", action="store_true")
+    qualify = subparsers.add_parser("qualify", help="run the operator-owned frozen USB qualification")
+    qualify.add_argument("--transport", choices=("usb",), required=True)
+    qualify.add_argument("--manifest", type=Path, required=True)
+    qualify.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
+    qualify.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
     start = subparsers.add_parser("start", help="run guided mode, or use --batch for seven physical gate confirmations")
     start.add_argument("--batch", action="store_true", help="stimulate Identify through Reboot; Keys are KEY-1..KEY-4 and encoder click is ENC-CLICK")
     start.add_argument("--machine-only", action="store_true", help="with --batch, capture machine observations without stdin or physical PASS")
@@ -1014,6 +1030,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"Qualification evidence: manifest {checked['manifest']['manifest_sha256']} linked")
             return 0
+        if args.command == "qualify":
+            from .qualification import run_qualification
+            return run_qualification(args.manifest, args.transport, args.evidence_root, args.binding)
         if args.command == "recover":
             return run_recover(args.schema, args.evidence_root, args.binding, args.interruption)
         if args.command == "pair":
