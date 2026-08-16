@@ -101,7 +101,7 @@ Each task was committed atomically:
 1. **Task 1: Freeze matching production host and firmware protocol semantics** - `8c5d7d8` (`feat`)
 2. **Task 2: Author and run the concrete PlatformIO native fixture harness** - `cb17635` (`test`)
 
-**Plan metadata:** pending state/roadmap metadata commit after this summary.
+**Plan metadata:** `32d94f4` (docs: state/roadmap/summary completion); `ceb843c` (docs: corrected summary file count).
 
 ## Files Created/Modified
 
