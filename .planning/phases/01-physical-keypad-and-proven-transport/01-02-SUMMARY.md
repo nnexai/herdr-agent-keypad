@@ -110,7 +110,17 @@ The tracking-artifact commit is created after STATE.md and ROADMAP.md are update
 
 ## Deviations from Plan
 
-None - plan executed as written; checkpoint closure added only the required evidence and tracking artifacts.
+### Auto-fixed Issues
+
+**1. [Rule 1 - Tracking artifact bug] Corrected malformed progress-bar update**
+- **Found during:** GSD state update after checkpoint closure
+- **Issue:** `state.update-progress` appended the new progress value to the existing line instead of replacing it.
+- **Fix:** Restored the STATE.md progress line to the single canonical 25% value.
+- **Files modified:** `.planning/STATE.md`
+- **Verification:** STATE.md now reports `Progress: [███░░░░░░░] 25%`; ROADMAP.md marks 01-02 complete.
+- **Committed in:** `e7d4866`
+
+**Total deviations:** 1 auto-fixed (Rule 1 tracking artifact bug). No implementation scope change.
 
 ## Issues Encountered
 
