@@ -56,6 +56,17 @@ def _rows() -> tuple[Gate, ...]:
 
 
 GATES = _rows()
+def _event_evidence(machine_details: dict[str, Any]) -> str | None:
+    """Return the bounded, protocol-validated key event evidence line."""
+    event = machine_details.get("event")
+    if not isinstance(event, dict):
+        return None
+    if event.get("kind") != "key_transition":
+        return None
+    key_index = event.get("key")
+    if not isinstance(key_index, int) or isinstance(key_index, bool) or not 0 <= key_index <= 4:
+        return None
+    return f"observed event: key_transition; key index: {key_index}"
 
 
 class GuidedRun:
@@ -108,6 +119,9 @@ class GuidedRun:
             evidence.append(f"machine: {self.machine_fact.status}")
             if self.machine_fact.detail:
                 evidence.append(self.machine_fact.detail)
+        event_line = _event_evidence(self.machine_details)
+        if event_line:
+            evidence.append(event_line)
         self.ui.render_step(self.gate.name, self.step_id, self.gate_index + 1, len(GUIDED_ORDER), self.row.instruction, self.row.expected, evidence, run_suffix=self.run_suffix)
 
     def _record(self, action: str, physical_status: str, observed_value: Any = "unavailable") -> None:
@@ -220,6 +234,10 @@ def confirmation_check() -> None:
         def stimulate(self, step_id, panel, stimulus):
             return MachineFact("acknowledged", time.time(), 1)
 
+        def wait_event(self, step_id):
+            key_index = int(step_id.rsplit("-", 1)[1])
+            return {"payload": {"kind": "key_transition", "step_id": step_id, "key": key_index}}
+
     with TemporaryDirectory() as directory:
         writer = EvidenceWriter(Path(directory), "test-run")
         run = GuidedRun(FakeSession(), writer, TerminalUI(), "test-run")
@@ -235,3 +253,12 @@ def confirmation_check() -> None:
             raise AssertionError("explicit human confirmation did not pass")
         if run.history[0]["machine_status"] != "acknowledged" or run.history[0]["physical_status"] != "pass":
             raise AssertionError("machine and physical evidence were not kept distinct")
+        for _ in range(4):
+            run.stimulate()
+            run.respond(f"Y {run.step_id} {run.run_suffix}")
+        run.stimulate()
+        expected_event = "observed event: key_transition; key index: 0"
+        if expected_event not in run.ui.last_screen:
+            raise AssertionError("key event detail was not visible before confirmation")
+        if any(len(line) > 80 for line in run.ui.last_screen.splitlines()):
+            raise AssertionError("key event detail exceeded the 80-column bound")
