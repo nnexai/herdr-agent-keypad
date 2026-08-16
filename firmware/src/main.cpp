@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <TKeyboardS3Pro.h>
+#include <esp_system.h>
 
 #include <string.h>
 
@@ -46,6 +47,14 @@ String opaqueId() {
   snprintf(value, sizeof(value), "%08lx%08lx", static_cast<unsigned long>(mac >> 32),
            static_cast<unsigned long>(mac & 0xffffffffULL));
   return String(value);
+}
+String freshBootId(const String &stableDeviceId) {
+  // ESP32-S3 hardware RNG is available before the USB/session handshake and
+  // remains independent from the stable eFuse identity.
+  const uint32_t nonce = esp_random();
+  char suffix[9];
+  snprintf(suffix, sizeof(suffix), "%08lx", static_cast<unsigned long>(nonce));
+  return stableDeviceId + "-" + String(suffix);
 }
 
 void recordRejection(phase1::protocol::RejectReason reason) {
@@ -397,7 +406,7 @@ void setup() {
   physicalMap.loadVerified();
   board.begin(physicalMap);
   deviceId = opaqueId();
-  bootId = deviceId + "-" + String(millis());
+  bootId = freshBootId(deviceId);
   protocolSession.reset(bootId.c_str(), "");
   if (board.ready()) {
     board.setBrightness(80);

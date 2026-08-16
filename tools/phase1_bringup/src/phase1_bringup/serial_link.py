@@ -20,6 +20,43 @@ class SerialLinkError(RuntimeError):
         self.message = message
 
 
+RECOVERY_ACTIONS = (
+    "software-reset",
+    "normal-flash-reset",
+    "same-port-reconnect",
+    "different-port-reconnect",
+    "forced-endpoint-renumbering",
+    "host-utility-restart",
+    "reset-unplug",
+)
+
+_RECOVERY_ACTION_ALIASES = {
+    "reset": "software-reset",
+    "normal-flash-reset": "normal-flash-reset",
+    "port-move": "different-port-reconnect",
+    "endpoint-renumber": "forced-endpoint-renumbering",
+    "utility-restart": "host-utility-restart",
+}
+
+_RECOVERY_EXPECTATIONS = {
+    "software-reset": {"boot_changed": True, "session_changed": True, "endpoint": "same"},
+    "normal-flash-reset": {"boot_changed": True, "session_changed": True, "endpoint": "same"},
+    "same-port-reconnect": {"boot_changed": True, "session_changed": True, "endpoint": "same"},
+    "different-port-reconnect": {"boot_changed": True, "session_changed": True, "endpoint": "different"},
+    "forced-endpoint-renumbering": {"boot_changed": True, "session_changed": True, "endpoint": "renumbered"},
+    "host-utility-restart": {"boot_changed": False, "session_changed": True, "endpoint": "same"},
+    "reset-unplug": {"boot_changed": True, "session_changed": True, "endpoint": "same"},
+}
+
+
+def canonical_recovery_action(action: str) -> str:
+    if not isinstance(action, str):
+        raise SerialLinkError("invalid_action", "recovery action must be text")
+    canonical = _RECOVERY_ACTION_ALIASES.get(action, action)
+    if canonical not in RECOVERY_ACTIONS:
+        raise SerialLinkError("invalid_action", f"unsupported recovery action: {action}")
+    return canonical
+
 @dataclass(frozen=True)
 class RecoveryTransition:
     event_id: str
@@ -30,9 +67,12 @@ class RecoveryTransition:
     discarded_ids: tuple[int, ...]
     timestamp: float
     detail: str = ""
+    action: str | None = None
+    pre: dict[str, Any] | None = None
+    post: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "event_id": self.event_id,
             "transition": self.transition,
             "descriptor": self.descriptor,
@@ -42,6 +82,58 @@ class RecoveryTransition:
             "timestamp": self.timestamp,
             "detail": self.detail or "unavailable",
         }
+        if self.action is not None:
+            value["action"] = self.action
+        if self.pre is not None:
+            value["pre"] = self.pre
+        if self.post is not None:
+            value["post"] = self.post
+        return value
+
+
+def validate_recovery_action_event(event: Any, action: str, previous: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Validate one measured, action-specific interruption transition."""
+    action = canonical_recovery_action(action)
+    if not isinstance(event, dict):
+        raise SerialLinkError("invalid_transition", "recovery transition must be an object")
+    required = {"event_id", "action", "pre", "post", "descriptor", "discarded_ids", "detail"}
+    if not required.issubset(event) or event["action"] != action:
+        raise SerialLinkError("invalid_transition", "recovery transition action facts are incomplete")
+    pre, post = event["pre"], event["post"]
+    for label, value in (("pre", pre), ("post", post)):
+        if not isinstance(value, dict) or not isinstance(value.get("device_id"), str) or not value["device_id"]:
+            raise SerialLinkError("invalid_transition", f"{label} device identity is missing")
+        if not isinstance(value.get("boot_id"), str) or not value["boot_id"]:
+            raise SerialLinkError("invalid_transition", f"{label} boot identity is missing")
+        if not isinstance(value.get("session_id"), str) or not value["session_id"]:
+            raise SerialLinkError("invalid_transition", f"{label} session identity is missing")
+        if not isinstance(value.get("endpoint"), dict):
+            raise SerialLinkError("invalid_transition", f"{label} endpoint facts are missing")
+    if pre["device_id"] != post["device_id"]:
+        raise SerialLinkError("identity_mismatch", "recovery changed the paired device identity")
+    if previous is not None and pre["session_id"] != previous.get("session_id"):
+        raise SerialLinkError("session_mismatch", "recovery precondition does not name the active session")
+    expected = _RECOVERY_EXPECTATIONS[action]
+    if expected["boot_changed"] and pre["boot_id"] == post["boot_id"]:
+        raise SerialLinkError("boot_unchanged", f"{action} requires a fresh device boot")
+    if not expected["boot_changed"] and not pre["boot_id"] == post["boot_id"]:
+        raise SerialLinkError("boot_unexpected", f"{action} must not claim a device reboot")
+    if pre["session_id"] == post["session_id"]:
+        raise SerialLinkError("session_unchanged", f"{action} requires a fresh host session")
+    before_endpoint = pre["endpoint"]
+    after_endpoint = post["endpoint"]
+    if expected["endpoint"] == "same" and before_endpoint != after_endpoint:
+        raise SerialLinkError("endpoint_mismatch", f"{action} requires the same endpoint")
+    if expected["endpoint"] == "different" and before_endpoint == after_endpoint:
+        raise SerialLinkError("endpoint_mismatch", f"{action} requires a different endpoint")
+    if expected["endpoint"] == "renumbered" and before_endpoint.get("path") == after_endpoint.get("path"):
+        raise SerialLinkError("endpoint_mismatch", f"{action} requires endpoint renumbering")
+    discarded = event["discarded_ids"]
+    if not isinstance(discarded, list) or not discarded or any(not isinstance(item, int) or item < 0 for item in discarded):
+        raise SerialLinkError("discarded_ids_missing", "uncertain in-flight IDs must be explicitly discarded")
+    if not isinstance(event["descriptor"], dict) or event["descriptor"].get("device_id") not in {pre["device_id"], post["device_id"]}:
+        raise SerialLinkError("identity_mismatch", "descriptor is not bound to the paired opaque identity")
+    return event
 
 
 @dataclass
@@ -170,6 +262,8 @@ def serial_reconnect_check() -> None:
             self.pid = 0x1001
             self.serial_number = serial_number
             self.location = "1-1:1.0"
+
+
             self.manufacturer = "Espressif"
             self.product = "USB JTAG/serial debug unit"
             self.interface = "00"
@@ -251,6 +345,62 @@ def serial_reconnect_check() -> None:
             raise AssertionError("read exception did not close the stale descriptor")
     else:
         raise AssertionError("read exception was accepted")
+def recovery_action_matrix_check() -> None:
+    """Exercise every named D-12 action and its distinct transition invariant."""
+    base = {
+        "event_id": "recovery-test",
+        "descriptor": {"device_id": "opaque-device-1", "path": "/dev/ttyACM0"},
+        "discarded_ids": [1, 2],
+        "detail": "measured",
+    }
+    for action in RECOVERY_ACTIONS:
+        expectation = _RECOVERY_EXPECTATIONS[action]
+        pre_endpoint = {"path": "/dev/ttyACM0", "location": "1-1:1.0"}
+        post_endpoint = dict(pre_endpoint)
+        if expectation["endpoint"] == "different":
+            post_endpoint["path"] = "/dev/ttyACM1"
+        elif expectation["endpoint"] == "renumbered":
+            post_endpoint["path"] = "/dev/ttyACM2"
+        event = {
+            **base,
+            "action": action,
+            "pre": {
+                "device_id": "opaque-device-1",
+                "boot_id": "boot-before" if expectation["boot_changed"] else "boot-stable",
+                "session_id": "session-before",
+                "endpoint": pre_endpoint,
+            },
+            "post": {
+                "device_id": "opaque-device-1",
+                "boot_id": "boot-after" if expectation["boot_changed"] else "boot-stable",
+                "session_id": "session-after",
+                "endpoint": post_endpoint,
+            },
+        }
+        validate_recovery_action_event(event, action)
+        for field, replacement in (
+            ("action", "software-reset" if action != "software-reset" else "reset-unplug"),
+            ("discarded_ids", []),
+        ):
+            invalid = dict(event, **{field: replacement})
+            try:
+                validate_recovery_action_event(invalid, action)
+            except SerialLinkError:
+                pass
+            else:
+                raise AssertionError(f"{action} accepted invalid {field} facts")
+    same_port = {
+        **base,
+        "action": "different-port-reconnect",
+        "pre": {"device_id": "opaque-device-1", "boot_id": "a", "session_id": "s1", "endpoint": {"path": "/dev/ttyACM0"}},
+        "post": {"device_id": "opaque-device-1", "boot_id": "b", "session_id": "s2", "endpoint": {"path": "/dev/ttyACM0"}},
+    }
+    try:
+        validate_recovery_action_event(same_port, "different-port-reconnect")
+    except SerialLinkError:
+        pass
+    else:
+        raise AssertionError("different-port action accepted unchanged endpoint")
 
 
 def udev_rule_check(path: Any) -> None:

@@ -111,7 +111,7 @@ RECOVERY_TOUR_STEPS = (
     RecoveryTourStep("reset", "Device reset", "Reset the keypad through its normal reset path.", "Confirm the delivered keypad returned to WAIT and its runtime endpoint reappeared."),
     RecoveryTourStep("normal-flash-reset", "Normal flash/reset", "Flash or reset the current firmware over the same measured USB cable.", "Confirm the delivered keypad returned to WAIT without choosing a transient /dev/tty* node."),
     RecoveryTourStep("port-move", "USB port move", "Unplug the keypad and reconnect it to another USB port.", "Confirm the same delivered keypad returned; do not select a port manually."),
-    RecoveryTourStep("endpoint-renumber", "Endpoint renumber", "If another ACM device is available, connect it to force endpoint renumbering; otherwise use U.", "Confirm exact identity still wins; ambiguity or mismatch must fail closed.", True),
+    RecoveryTourStep("endpoint-renumber", "Endpoint renumber", "Connect another ACM device to force endpoint renumbering; capture the measured endpoint transition.", "Confirm exact identity still wins; ambiguity or mismatch must fail closed.", False),
     RecoveryTourStep("utility-restart", "Utility restart", "Exit this tour at the restart checkpoint, then rerun it with the printed --resume command.", "Confirm a fresh utility process establishes a fresh device session and does not replay uncertain work."),
 )
 
@@ -119,8 +119,8 @@ RECOVERY_TOUR_STEPS = (
 def recovery_tour_check() -> None:
     if tuple(step.key for step in RECOVERY_TOUR_STEPS) != ("reset", "normal-flash-reset", "port-move", "endpoint-renumber", "utility-restart"):
         raise AssertionError("D-12 recovery tour order changed")
-    if not RECOVERY_TOUR_STEPS[3].allow_unavailable:
-        raise AssertionError("endpoint renumber must support explicit unavailable")
+    if any(step.allow_unavailable for step in RECOVERY_TOUR_STEPS):
+        raise AssertionError("required D-12 recovery steps must not permit unavailable")
 
 @dataclass(frozen=True)
 class BatchObservation:
@@ -174,6 +174,8 @@ class BatchRun:
         event = observation.machine_details.get("event")
         if isinstance(event, dict) and isinstance(event.get("key"), int):
             return f"{detail}; observed key index: {event['key']}"
+        if isinstance(event, dict) and isinstance(event.get("direction"), str):
+            return f"{detail}; observed encoder: {event['direction']}"
         return detail
     def _render(self, status: str = "stimulating") -> None:
         if self.machine_only and status == "awaiting-confirmation":
@@ -203,25 +205,37 @@ class BatchRun:
             else:
                 fact = self.session.stimulate(row.step_id, row.panel, row.stimulus)
             details: dict[str, Any] = {}
-            if row.physical_kind in {"key", "encoder_click"}:
+            if row.physical_kind in {"key", "encoder", "encoder_click"}:
                 event = self.session.wait_event(row.step_id)
                 payload = event.get("payload") if isinstance(event, dict) else None
                 if not isinstance(payload, dict) or payload.get("step_id") != row.step_id:
-                    raise RuntimeError(f"validated key event did not match {row.step_id}")
-                if payload.get("kind") != "key_transition":
-                    raise RuntimeError(f"validated key event kind is invalid for {row.step_id}")
-                key_index = payload.get("key")
-                expected_raw = _expected_raw_key(row)
-                if (
-                    not isinstance(key_index, int)
-                    or isinstance(key_index, bool)
-                    or not 0 <= key_index <= 4
-                    or key_index != expected_raw
-                ):
-                    raise RuntimeError(
-                        f"validated key event index {key_index!r} did not match raw index {expected_raw} for {row.step_id}"
-                    )
-                details["event"] = {"kind": "key_transition", "step_id": row.step_id, "key": key_index}
+                    raise RuntimeError(f"validated input event did not match {row.step_id}")
+                if row.physical_kind == "encoder":
+                    expected_direction = "cw" if row.stimulus == "ENC-CW" else "ccw"
+                    if payload.get("kind") != "encoder_transition" or payload.get("direction") != expected_direction:
+                        raise RuntimeError(
+                            f"validated encoder event {payload!r} did not match {expected_direction} for {row.step_id}"
+                        )
+                    details["event"] = {
+                        "kind": "encoder_transition",
+                        "step_id": row.step_id,
+                        "direction": expected_direction,
+                    }
+                else:
+                    if payload.get("kind") != "key_transition":
+                        raise RuntimeError(f"validated key event kind is invalid for {row.step_id}")
+                    key_index = payload.get("key")
+                    expected_raw = _expected_raw_key(row)
+                    if (
+                        not isinstance(key_index, int)
+                        or isinstance(key_index, bool)
+                        or not 0 <= key_index <= 4
+                        or key_index != expected_raw
+                    ):
+                        raise RuntimeError(
+                            f"validated key event index {key_index!r} did not match raw index {expected_raw} for {row.step_id}"
+                        )
+                    details["event"] = {"kind": "key_transition", "step_id": row.step_id, "key": key_index}
             elif self.dwell_seconds:
                 time.sleep(self.dwell_seconds)
             observed_value: Any = details if details else "unavailable"
@@ -372,8 +386,8 @@ class GuidedRun:
         self.stable = False
         self.machine_fact: MachineFact | None = None
         self.machine_details: dict[str, Any] = {}
-        self.response: str | None = None
         self.history: list[dict[str, Any]] = []
+        self.failed_terminal = False
 
     @property
     def gate(self) -> Gate:
@@ -433,7 +447,8 @@ class GuidedRun:
         """Send only a fixed stimulus; ACK is retained as machine evidence, not PASS."""
         if not self.started or self.row is None:
             raise RuntimeError("no physical row is active")
-        self.ui.begin_operation(self.row.stimulus)
+        if self.failed_terminal:
+            raise RuntimeError("failed physical observation is terminal; enter typed R to restimulate")
         if self.session is None:
             raise RuntimeError("keypad session is unavailable")
         if self.step_id == "IDENTIFY":
@@ -466,6 +481,17 @@ class GuidedRun:
         parsed = parse_response(text, self.step_id, self.run_suffix)
         if parsed is None:
             raise ValueError(f"Enter alone cannot confirm; type Y {self.step_id} {self.run_suffix}, N {self.step_id} {self.run_suffix}, or R {self.step_id} {self.run_suffix}.")
+        if self.failed_terminal:
+            if parsed.action != "R":
+                raise RuntimeError("failed observation is terminal; explicit R is required before a fresh stimulus")
+            self._record("R", "repeated", "unavailable")
+            self.failed_terminal = False
+            self.response = "R"
+            self.machine_fact = None
+            self.machine_details = {}
+            self.stable = False
+            self.ui.add_history(f"{self.step_id}: repeat requested with fresh stimulus required")
+            return "repeat"
         if not self.stable:
             raise RuntimeError("confirmation disabled until stable machine evidence exists")
         if parsed.action == "R":
@@ -478,7 +504,9 @@ class GuidedRun:
         if parsed.action == "N":
             self._record("N", "failed", "unavailable")
             self.response = "N"
-            self.ui.render_step(self.gate.name, self.step_id, self.gate_index + 1, len(GUIDED_ORDER), self.row.instruction, self.row.expected, ["machine: acknowledged", "physical: failed"], "fail", self.run_suffix)
+            self.failed_terminal = True
+            self.stable = False
+            self.ui.render_step(self.gate.name, self.step_id, self.gate_index + 1, len(GUIDED_ORDER), self.row.instruction, self.row.expected, ["machine: acknowledged", "physical: failed; type R to restimulate"], "fail", self.run_suffix)
             return "fail"
         if self.machine_fact.status != "acknowledged":
             raise RuntimeError("physical PASS requires an acknowledged machine fact")
@@ -486,25 +514,26 @@ class GuidedRun:
         self.response = "Y"
         self._advance()
         return "pass"
-
     def _advance(self) -> None:
         self.ui.add_history(f"{self.step_id}: PASS")
         self.row_index += 1
         self.machine_fact = None
         self.machine_details = {}
         self.response = None
+        self.failed_terminal = False
         self.stable = False
         if self.row_index >= len(self.gate.rows):
             self.gate_index += 1
             self.row_index = 0
         self._render_not_started_or_current()
-
     def result(self) -> dict[str, Any]:
+        from .evidence import _derived_physical_status
+        status = _derived_physical_status(self.history) if self.history else "incomplete"
         return {
             "schema_version": 1,
             "kind": "result",
             "run_id": self.run_id,
-            "status": "pass" if self.complete_physical_gates else "incomplete",
+            "status": status,
             "physical_map": {"rows": list(self.history), "guided_order": list(GUIDED_ORDER)},
             "machine_facts": {"last": self.machine_fact.status if self.machine_fact else "unavailable"},
         }
@@ -532,6 +561,10 @@ def confirmation_check() -> None:
             return MachineFact("acknowledged", time.time(), 1)
 
         def wait_event(self, step_id):
+            if step_id == "ENCODER-CW":
+                return {"payload": {"kind": "encoder_transition", "step_id": step_id, "direction": "cw"}}
+            if step_id == "ENCODER-CCW":
+                return {"payload": {"kind": "encoder_transition", "step_id": step_id, "direction": "ccw"}}
             raw_key = 4 if step_id == "ENCODER-CLICK" else int(step_id.rsplit("-", 1)[1]) - 1
             return {"payload": {"kind": "key_transition", "step_id": step_id, "key": raw_key}}
 
@@ -593,6 +626,10 @@ def batch_key_event_check() -> None:
             return MachineFact("acknowledged", time.time(), 1)
 
         def wait_event(self, step_id):
+            if step_id == "ENCODER-CW":
+                return {"payload": {"kind": "encoder_transition", "step_id": step_id, "direction": "cw"}}
+            if step_id == "ENCODER-CCW":
+                return {"payload": {"kind": "encoder_transition", "step_id": step_id, "direction": "ccw"}}
             raw_key = 4 if step_id == "ENCODER-CLICK" else int(step_id.rsplit("-", 1)[1]) - 1
             return {"payload": {"kind": "key_transition", "step_id": step_id, "key": raw_key}}
 
@@ -609,7 +646,10 @@ def batch_key_event_check() -> None:
             raise AssertionError("raw key indices were not retained in key evidence")
 
         click_observations = run.stimulate_gate()
-        click_event = click_observations[-1].machine_details.get("event", {})
+        encoder_events = [item.machine_details.get("event", {}) for item in click_observations]
+        if [event.get("direction") for event in encoder_events[:2]] != ["cw", "ccw"]:
+            raise AssertionError("encoder direction events were not compared against the requested signals")
+        click_event = encoder_events[-1]
         if click_event.get("key") != 4:
             raise AssertionError("ENC-CLICK did not validate raw key index 4")
         if "key index: 4" not in run.ui.last_screen:

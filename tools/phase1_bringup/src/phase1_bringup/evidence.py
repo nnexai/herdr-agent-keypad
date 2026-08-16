@@ -519,6 +519,52 @@ MACHINE_BATCH_GATES = ("IDENTIFY", "DISPLAYS", "KEYS", "ENCODER", "LEDS", "BRIGH
 MACHINE_BATCH_GATE_NAMES = {gate.title() if gate != "LEDS" else "LEDs" for gate in MACHINE_BATCH_GATES}
 
 
+def _canonical_physical_steps() -> tuple[tuple[str, str], ...]:
+    from .guide import GATES
+    return tuple((row.step_id, gate.name) for gate in GATES[:7] for row in gate.rows)
+
+
+def _safe_contained_file(path: Path, root: Path, label: str) -> Path:
+    root = root.resolve()
+    candidate = Path(path)
+    resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+    cursor = resolved
+    while cursor != root:
+        if cursor.is_symlink():
+            raise EvidenceError(f"{label} has a symlink ancestor")
+        if cursor.parent == cursor:
+            raise EvidenceError(f"{label} escapes its root")
+        cursor = cursor.parent
+    if resolved != root and root not in resolved.parents:
+        raise EvidenceError(f"{label} escapes its root")
+    if not resolved.exists():
+        raise EvidenceError(f"{label} does not exist")
+    if not resolved.is_file() and not resolved.is_dir():
+        raise EvidenceError(f"{label} is not a regular path")
+    return resolved
+
+
+def _derived_physical_status(rows: list[dict[str, Any]]) -> str:
+    canonical = _canonical_physical_steps()
+    by_step: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        if not row.get("replaces"):
+            by_step.setdefault(row["step_id"], []).append(row)
+    if tuple((step, entries[0].get("gate")) for step, entries in by_step.items()) != canonical:
+        return "incomplete"
+    if set(by_step) != {step for step, _ in canonical}:
+        return "incomplete"
+    finals = {step: entries[-1] for step, entries in by_step.items()}
+    if any(
+        row.get("human_response") != "Y"
+        or row.get("physical_status") != "pass"
+        or row.get("machine_status") != "acknowledged"
+        for row in finals.values()
+    ):
+        return "fail"
+    return "pass"
+
+
 def _validate_machine_observation(observation: Any, expected_run_id: str) -> dict[str, Any]:
     if not isinstance(observation, dict):
         raise EvidenceError("machine observation must be an object")
@@ -558,7 +604,12 @@ def _validate_physical_row(row: Any, expected_run_id: str | None = None) -> dict
         raise EvidenceError("physical row observed_value must use literal unavailable")
     if not isinstance(row["timestamp"], (int, float)):
         raise EvidenceError("physical row timestamp is invalid")
-    if row["human_response"] == "Y" and row["physical_status"] == "pass" and row["machine_status"] != "acknowledged":
+    if row.get("replaces"):
+        if row.get("replacement_token") != "REPLACE":
+            raise EvidenceError("replacement row requires a typed REPLACE token")
+        if row["human_response"] != "Y" or row["physical_status"] != "pass":
+            raise EvidenceError("replacement row must be a fresh passing observation")
+    elif row["human_response"] == "Y" and row["physical_status"] == "pass" and row["machine_status"] != "acknowledged":
         raise EvidenceError("physical PASS requires a current acknowledged machine fact")
     return row
 
@@ -579,9 +630,13 @@ def _validate_physical_map(result: dict[str, Any], require_rows: bool = True) ->
     guided_order = physical_map.get("guided_order")
     if guided_order is not None and (not isinstance(guided_order, list) or guided_order != ["Identify", "Displays", "Keys", "Encoder", "LEDs", "Brightness", "Reboot", "Pair", "Recover", "Traffic", "Selection"]):
         raise EvidenceError("physical_map guided order is not the fixed eleven-gate sequence")
+    derived = _derived_physical_status(rows)
+    if result.get("status") == "pass" and derived != "pass":
+        raise EvidenceError("physical PASS is not derived from the complete canonical history")
+    if result.get("status") == "pass" and len({row["step_id"] for row in rows if not row.get("replaces")}) != 30:
+        raise EvidenceError("physical PASS requires exactly 30 canonical observations")
 
-
-def _validate_recovery(result: dict[str, Any], require_events: bool = False) -> None:
+def _validate_recovery(result: dict[str, Any], require_events: bool = False, action_specific: bool = False) -> None:
     events = result.get("recovery")
     if events is None:
         if require_events:
@@ -590,8 +645,10 @@ def _validate_recovery(result: dict[str, Any], require_events: bool = False) -> 
     if not isinstance(events, list) or (require_events and not events):
         raise EvidenceError("recovery evidence must be a non-empty list")
     seen: set[str] = set()
-    required = {"event_id", "transition", "descriptor", "boot_id", "session_id", "discarded_ids", "timestamp", "detail"}
     for event in events:
+        required = {"event_id", "transition", "descriptor", "boot_id", "session_id", "discarded_ids", "timestamp", "detail"}
+        if action_specific:
+            required |= {"action", "pre", "post"}
         if not isinstance(event, dict) or not required.issubset(event):
             raise EvidenceError("recovery event is incomplete")
         if event["event_id"] in seen or not isinstance(event["event_id"], str) or not event["event_id"]:
@@ -601,6 +658,12 @@ def _validate_recovery(result: dict[str, Any], require_events: bool = False) -> 
             raise EvidenceError("recovery descriptor/session is invalid")
         if not isinstance(event["discarded_ids"], list) or any(not isinstance(item, int) for item in event["discarded_ids"]):
             raise EvidenceError("recovery discarded IDs are invalid")
+        if action_specific:
+            from .serial_link import validate_recovery_action_event
+            try:
+                validate_recovery_action_event(event, event["action"])
+            except Exception as exc:
+                raise EvidenceError(str(exc)) from exc
 
 class EvidenceWriter:
     """Write one immutable manifest/result pair and verify it after reopening.
@@ -695,9 +758,12 @@ class EvidenceWriter:
                 if relative.is_absolute() or ".." in relative.parts or not isinstance(content, bytes):
                     raise EvidenceError("extra evidence files must be relative byte payloads")
                 _atomic_bytes(self.directory / relative, content)
-            manifest_hash = _sha256(self.directory / "manifest.json")
-            result_hash = _sha256(self.directory / "result.json")
-            checksums = f"{manifest_hash}  manifest.json\n{result_hash}  result.json\n".encode("ascii")
+            files = sorted(
+                path.relative_to(self.directory)
+                for path in self.directory.rglob("*")
+                if path.is_file() and path.name != "SHA256SUMS"
+            )
+            checksums = "".join(f"{_sha256(self.directory / name)}  {name.as_posix()}\n" for name in files).encode("ascii")
             _atomic_bytes(self.directory / "SHA256SUMS", checksums)
             self.verify()
             return self.directory
@@ -720,20 +786,28 @@ class EvidenceWriter:
             raise EvidenceError("evidence run_id mismatch")
         if "physical_map" in result:
             _validate_physical_map(result, require_rows=result.get("status") not in {"fail", "incomplete"})
-        _validate_recovery(result)
         expected: dict[str, str] = {}
         for line in sums_path.read_text(encoding="ascii").splitlines():
-            parts = line.split()
-            if len(parts) != 2 or parts[1] not in {"manifest.json", "result.json"}:
+            parts = line.split(maxsplit=1)
+            if len(parts) != 2 or len(parts[0]) != 64:
                 raise EvidenceError("invalid SHA256SUMS entry")
-            expected[parts[1]] = parts[0]
-        if set(expected) != {"manifest.json", "result.json"}:
-            raise EvidenceError("SHA256SUMS must contain exactly manifest.json and result.json")
-        for name in expected:
+            relative = Path(parts[1])
+            if relative.is_absolute() or ".." in relative.parts or relative.name == "SHA256SUMS":
+                raise EvidenceError("SHA256SUMS contains an unsafe path")
+            expected[relative.as_posix()] = parts[0]
+        actual_files = {
+            path.relative_to(self.directory).as_posix()
+            for path in self.directory.rglob("*")
+            if path.is_file() and path.name != "SHA256SUMS"
+        }
+        if set(expected) != actual_files or not {"manifest.json", "result.json"}.issubset(expected):
+            raise EvidenceError("SHA256SUMS must cover every evidence file exactly once")
+        for name, digest in expected.items():
             actual = _sha256(self.directory / name)
-            if actual != expected[name]:
+            if actual != digest:
                 raise EvidenceError(f"hash mismatch for {name}")
         return {"manifest": manifest, "result": result}
+
 
 
 def self_check_roundtrip(root: Path) -> Path:
@@ -748,7 +822,6 @@ def self_check_roundtrip(root: Path) -> Path:
     EvidenceWriter(root, run_id).verify()
     return path
 
-
 def physical_schema_check() -> None:
     """Check schema and replacement invariants without creating physical evidence."""
     with tempfile.TemporaryDirectory() as directory:
@@ -757,8 +830,8 @@ def physical_schema_check() -> None:
         writer.record_row(row)
         replacement = dict(row, row_id="schema-check:2", observed_value={"device": "observed"})
         writer.replace_row(row["row_id"], replacement, "REPLACE")
-        manifest = {"schema_version": 1, "kind": "manifest", "run_id": "schema-check", "status": "pass"}
-        result = {"schema_version": 1, "kind": "result", "run_id": "schema-check", "status": "pass", "physical_map": {"rows": writer._rows, "guided_order": ["Identify", "Displays", "Keys", "Encoder", "LEDs", "Brightness", "Reboot", "Pair", "Recover", "Traffic", "Selection"]}}
+        manifest = {"schema_version": 1, "kind": "manifest", "run_id": "schema-check", "status": "incomplete"}
+        result = {"schema_version": 1, "kind": "result", "run_id": "schema-check", "status": "incomplete", "physical_map": {"rows": writer._rows, "guided_order": ["Identify", "Displays", "Keys", "Encoder", "LEDs", "Brightness", "Reboot", "Pair", "Recover", "Traffic", "Selection"]}}
         writer.finalize(manifest, result)
         checked = EvidenceWriter(Path(directory), "schema-check").verify()["result"]["physical_map"]["rows"]
         if len(checked) != 2 or checked[1].get("replaces") != row["row_id"]:
@@ -807,19 +880,49 @@ def verify_machine_run(path: Path) -> dict[str, Any]:
     observations = result.get("machine_observations")
     if not isinstance(observations, list) or not observations:
         raise EvidenceError("machine-only artifact has no machine observations")
+    expected_steps = _canonical_physical_steps()
+    observed_steps = [(item.get("step_id"), item.get("gate")) for item in observations]
+    if len(observations) != 30 or observed_steps != list(expected_steps):
+        raise EvidenceError("machine-only artifact must contain exactly 30 canonical observations in order")
+    if any(item.get("machine_status") != "acknowledged" for item in observations):
+        raise EvidenceError("machine-only artifact contains a failed machine observation")
     seen: set[str] = set()
-    gates: set[str] = set()
     for observation in observations:
         checked_observation = _validate_machine_observation(observation, str(result["run_id"]))
         if checked_observation["row_id"] in seen:
             raise EvidenceError("machine observation row ids must be unique")
         seen.add(checked_observation["row_id"])
-        gates.add(str(checked_observation["gate"]).upper())
-    if gates != {name.upper() for name in MACHINE_BATCH_GATE_NAMES}:
-        raise EvidenceError("machine-only artifact does not cover all seven machine gates")
     return checked
 
-def verify_physical_evidence(path: Path, require_physical_map: bool = False, require_recovery: bool = False) -> Path:
+
+def _validate_reopened_machine_source(result: dict[str, Any], candidate: Path) -> dict[str, Any]:
+    linkage = result.get("source_machine")
+    if not isinstance(linkage, dict):
+        raise EvidenceError("physical PASS requires reopened machine source linkage")
+    root = candidate.parent.resolve()
+    source_path = _safe_contained_file(Path(str(linkage.get("path", ""))), root, "source machine run")
+    source_dir = source_path
+    checked = verify_machine_run(source_dir)
+    source_files = {
+        "manifest_sha256": _sha256(source_dir / "manifest.json"),
+        "result_sha256": _sha256(source_dir / "result.json"),
+        "checksums_sha256": _sha256(source_dir / "SHA256SUMS"),
+    }
+    for key, value in source_files.items():
+        if linkage.get(key) != value:
+            raise EvidenceError(f"source machine {key} mismatch")
+    if linkage.get("run_id") != checked["result"].get("run_id"):
+        raise EvidenceError("source machine run identity mismatch")
+    return checked
+
+def verify_physical_evidence(
+    path: Path,
+    require_physical_map: bool = False,
+    require_recovery: bool = False,
+    *,
+    action_specific: bool = False,
+    reopened_machine_source: bool = False,
+) -> Path:
     """Reopen a concrete immutable run and require selected evidence classes."""
     candidate = Path(path)
     if candidate.is_file() and candidate.name == "result.json":
@@ -831,8 +934,53 @@ def verify_physical_evidence(path: Path, require_physical_map: bool = False, req
         raise EvidenceError("evidence target must be a concrete run directory")
     writer = EvidenceWriter(candidate.parent, candidate.name)
     checked = writer.verify()
+    result = checked["result"]
     if require_physical_map:
-        _validate_physical_map(checked["result"])
+        _validate_physical_map(result)
+    if reopened_machine_source or result.get("status") == "pass":
+        _validate_reopened_machine_source(result, candidate)
+
     if require_recovery:
-        _validate_recovery(checked["result"], require_events=True)
+        _validate_recovery(result, require_events=True, action_specific=action_specific)
     return candidate
+
+def verify_physical_lock(path: Path) -> dict[str, Any]:
+    lock = _validate_json_object(Path(path), "physical-proof-lock")
+    if lock.get("kind") != "physical-proof-lock" or lock.get("status") != "pass":
+        raise EvidenceError("physical proof lock schema/status is invalid")
+    evidence_root = Path(path).resolve().parent.parent
+    confirmed = _safe_contained_file(Path(str(lock.get("confirmed_path", ""))), evidence_root, "confirmed physical run")
+    source = _safe_contained_file(Path(str(lock.get("source_path", ""))), evidence_root, "source machine run")
+    if not confirmed.is_dir() or not source.is_dir():
+        raise EvidenceError("physical proof lock paths must name contained run directories")
+    checked = verify_physical_evidence(confirmed, require_physical_map=True, reopened_machine_source=True)
+    if lock.get("confirmed_result_sha256") != _sha256(confirmed / "result.json"):
+        raise EvidenceError("physical proof lock result hash mismatch")
+    if lock.get("source_result_sha256") != _sha256(source / "result.json"):
+        raise EvidenceError("physical proof lock source hash mismatch")
+    if lock.get("row_count") != 30:
+        raise EvidenceError("physical proof lock canonical row count is invalid")
+    return {"lock": lock, "confirmed": checked}
+
+
+def verify_recovery_lock(path: Path) -> dict[str, Any]:
+    lock = _validate_json_object(Path(path), "recovery-proof-lock")
+    if lock.get("kind") != "recovery-proof-lock" or lock.get("status") != "pass":
+        raise EvidenceError("recovery proof lock is incomplete or ineligible")
+    from .serial_link import RECOVERY_ACTIONS, validate_recovery_action_event
+    actions = lock.get("actions")
+    if not isinstance(actions, list) or len(actions) != len(RECOVERY_ACTIONS):
+        raise EvidenceError("recovery proof lock must contain every required action exactly once")
+    seen: set[str] = set()
+    for event in actions:
+        action = event.get("action") if isinstance(event, dict) else None
+        if action in seen or action not in RECOVERY_ACTIONS:
+            raise EvidenceError("recovery proof lock action set is not canonical")
+        try:
+            validate_recovery_action_event(event, action)
+        except Exception as exc:
+            raise EvidenceError(str(exc)) from exc
+        seen.add(action)
+    if seen != set(RECOVERY_ACTIONS):
+        raise EvidenceError("recovery proof lock action matrix is incomplete")
+    return lock

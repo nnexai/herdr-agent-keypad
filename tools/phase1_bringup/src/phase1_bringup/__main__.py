@@ -16,11 +16,11 @@ from pathlib import Path
 from typing import Any
 
 from .discovery import discovery_check
-from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, archive_phase1, build_selected, parse_group_responses, resolve_qualification_pointer, select_transport, selection_self_check, self_check_roundtrip, verify_archive_lock, verify_build_lock, verify_machine_run, verify_physical_evidence, verify_qualification_lock, verify_selection_lock
+from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, _sha256, archive_phase1, build_selected, parse_group_responses, resolve_qualification_pointer, select_transport, selection_self_check, self_check_roundtrip, verify_archive_lock, verify_build_lock, verify_machine_run, verify_physical_evidence, verify_physical_lock, verify_recovery_lock, verify_qualification_lock, verify_selection_lock
 from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, RECOVERY_TOUR_STEPS, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check, recovery_tour_check, recovery_ui_check
 from .pairing import pairing_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, protocol_bootstrap_check, protocol_golden_check, validate_frame
-from .serial_link import reconnect_exact, serial_reconnect_check, udev_rule_check
+from .serial_link import RECOVERY_ACTIONS, canonical_recovery_action, reconnect_exact, recovery_action_matrix_check, serial_reconnect_check, udev_rule_check, validate_recovery_action_event
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
  
  
@@ -351,6 +351,50 @@ def run_recover(schema_path: Path, evidence_root: Path, binding_path: Path, inte
     finally:
         link.close()
 
+_RESUME_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+_TOUR_STATE_KEYS = {"schema_version", "kind", "tour_id", "workflow", "expected_steps", "restart_ready"}
+
+
+def _safe_tour_id(value: str) -> str:
+    if not isinstance(value, str) or not _RESUME_ID.fullmatch(value) or value in {".", ".."}:
+        raise ValueError("recovery tour resume ID must be one bounded path component")
+    return value
+
+
+def _tour_state_path(tour_root: Path, tour_id: str) -> Path:
+    tour_id = _safe_tour_id(tour_id)
+    root = tour_root.resolve()
+    if root.is_symlink():
+        raise ValueError("recovery tour root must not be a symlink")
+    path = root / f"{tour_id}.state.json"
+    if path.parent != root:
+        raise ValueError("recovery tour state escaped its root")
+    return path
+
+
+def _write_tour_state(path: Path, state: dict[str, Any]) -> None:
+    if set(state) != _TOUR_STATE_KEYS or state.get("schema_version") != 1 or state.get("kind") != "recovery-tour-state":
+        raise ValueError("recovery tour state schema is closed")
+    temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}")
+    temporary.write_text(json.dumps(state, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _derive_tour_index(tour_root: Path, tour_id: str) -> int:
+    step_root = (tour_root / tour_id).resolve()
+    if step_root.exists() and step_root.is_symlink():
+        raise ValueError("recovery tour step root must not be a symlink")
+    for index, step in enumerate(RECOVERY_TOUR_STEPS):
+        artifact = step_root / f"{tour_id}-step-{index + 1:02d}-{step.key}"
+        if not artifact.exists():
+            return index
+        verify_physical_evidence(artifact, require_recovery=True)
+        checked = json.loads((artifact / "result.json").read_text(encoding="utf-8"))
+        if checked.get("tour_id") != tour_id or checked.get("step") != step.key or checked.get("human_response") != "Y" or checked.get("status") != "pass":
+            return index
+    return len(RECOVERY_TOUR_STEPS)
+
+
 def run_recovery_tour(schema_path: Path, evidence_root: Path, binding_path: Path, resume: str | None = None) -> int:
     """Run the operator-owned D-12 tour one explicit response at a time."""
     environment = dependency_gate()
@@ -362,32 +406,42 @@ def run_recovery_tour(schema_path: Path, evidence_root: Path, binding_path: Path
     tour_root = Path(evidence_root) / "recovery-tours"
     tour_root.mkdir(parents=True, exist_ok=True)
     if resume is None:
-        tour_id = "tour-" + _run_id()
-        state = {"tour_id": tour_id, "current_index": 0, "restart_ready": False}
+        tour_id = _safe_tour_id("tour-" + _run_id())
+        state = {
+            "schema_version": 1,
+            "kind": "recovery-tour-state",
+            "tour_id": tour_id,
+            "workflow": "recovery-tour",
+            "expected_steps": [step.key for step in RECOVERY_TOUR_STEPS],
+            "restart_ready": False,
+        }
     else:
-        tour_id = resume
-        state_path = tour_root / f"{tour_id}.state.json"
+        tour_id = _safe_tour_id(resume)
+        state_path = _tour_state_path(tour_root, tour_id)
         try:
             state = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"recovery tour resume state is unavailable: {exc}") from exc
-        if state.get("tour_id") != tour_id:
-            raise ValueError("recovery tour resume identity mismatch")
-    state_path = tour_root / f"{tour_id}.state.json"
-    state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+        if set(state) != _TOUR_STATE_KEYS or state.get("tour_id") != tour_id or state.get("expected_steps") != [step.key for step in RECOVERY_TOUR_STEPS]:
+            raise ValueError("recovery tour state schema or identity mismatch")
+    state_path = _tour_state_path(tour_root, tour_id)
+    _write_tour_state(state_path, state)
     binding = PairingStore(binding_path).load()
     if binding is None:
         raise PairingError("unpaired", "No paired keypad binding exists; run the physical pairing gate first.")
-
     def opener(candidate: Any) -> Any:
         return serial.Serial(candidate.device, 115200, timeout=0.5)
 
-    while int(state["current_index"]) < len(RECOVERY_TOUR_STEPS):
-        index = int(state["current_index"])
+    while True:
+        index = _derive_tour_index(tour_root, tour_id)
+        if index >= len(RECOVERY_TOUR_STEPS):
+            state_path.unlink(missing_ok=True)
+            print(f"Recovery tour complete: {tour_id}. All required steps have verified immutable evidence.")
+            return 0
         step = RECOVERY_TOUR_STEPS[index]
         if step.key == "utility-restart" and not state.get("restart_ready"):
             state["restart_ready"] = True
-            state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+            _write_tour_state(state_path, state)
             print(f"Recovery tour {tour_id} is paused at the utility-restart checkpoint.")
             print("Exit this process, then rerun exactly:")
             print(f"tools/phase1_bringup/.venv/bin/python -m phase1_bringup recover-tour --resume {tour_id} --schema {schema_path} --evidence-root {evidence_root}")
@@ -463,14 +517,10 @@ def run_recovery_tour(schema_path: Path, evidence_root: Path, binding_path: Path
         path = writer.write(manifest, result)
         print(f"Immutable step evidence: {path}")
         if result["status"] != "pass" and response != "U":
-            state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+            _write_tour_state(state_path, state)
             return 1
-        state["current_index"] = index + 1
         state["restart_ready"] = False
-        state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
-    state_path.unlink(missing_ok=True)
-    print(f"Recovery tour complete: {tour_id}. All available steps have machine recovery and explicit operator confirmation.")
-    return 0
+        _write_tour_state(state_path, state)
 
 def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -> int:
     environment = dependency_gate()
@@ -709,7 +759,7 @@ def run_confirm_batch(machine_run_dir: Path, groups: str) -> int:
             "source_machine_run": run_id,
         }
         confirmations.append(confirmation)
-        for index, observation in enumerate(gate_observations, start=1):
+        for observation in gate_observations:
             observed_value = observation.get("observed_value", "unavailable")
             if observed_value is None:
                 observed_value = "unavailable"
@@ -735,12 +785,25 @@ def run_confirm_batch(machine_run_dir: Path, groups: str) -> int:
             )
     writer.record_rows(rows)
     status = "pass" if all(responses[gate] == "Y" for gate in MACHINE_BATCH_GATES) else "fail" if any(responses[gate] == "N" for gate in MACHINE_BATCH_GATES) else "incomplete"
+    source_dir = Path(machine_run_dir).resolve()
+    evidence_root = Path(machine_run_dir).resolve().parent
+    if source_dir.parent != evidence_root:
+        raise EvidenceError("source machine run must be a sibling under the evidence root")
+    source_relative = source_dir.name
+    source_machine = {
+        "path": source_relative,
+        "run_id": run_id,
+        "manifest_sha256": _sha256(source_dir / "manifest.json"),
+        "result_sha256": _sha256(source_dir / "result.json"),
+        "checksums_sha256": _sha256(source_dir / "SHA256SUMS"),
+    }
     confirmed_manifest = {
         "schema_version": 1,
         "kind": "manifest",
         "run_id": confirmed_id,
         "status": status,
         "workflow": "batch-confirmed",
+        "source_machine": source_machine,
         "source_machine_run": run_id,
         "source_machine_checksum": _source_checksum(machine_run_dir),
         "group_confirmations": confirmations,
@@ -752,6 +815,7 @@ def run_confirm_batch(machine_run_dir: Path, groups: str) -> int:
         "run_id": confirmed_id,
         "status": status,
         "mode": "batch-confirmed",
+        "source_machine": source_machine,
         "source_machine_run": run_id,
         "physical_confirmation": True,
         "group_confirmations": confirmations,
@@ -933,6 +997,69 @@ def group_parser_check() -> None:
         raise AssertionError("mismatched run suffix was accepted")
 
 
+def recovery_resume_integrity_check() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        for value in ("../escape", "a/b", "", "."):
+            try:
+                _safe_tour_id(value)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("unsafe recovery resume ID was accepted")
+        forged = {
+            "schema_version": 1,
+            "kind": "recovery-tour-state",
+            "tour_id": "tour-safe",
+            "workflow": "recovery-tour",
+            "expected_steps": [step.key for step in RECOVERY_TOUR_STEPS],
+            "restart_ready": False,
+            "current_index": len(RECOVERY_TOUR_STEPS),
+        }
+        try:
+            _write_tour_state(root / "tour-safe.state.json", forged)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("current_index injection was accepted")
+
+
+def recovery_required_no_unavailable_check() -> None:
+    if any(step.allow_unavailable for step in RECOVERY_TOUR_STEPS):
+        raise AssertionError("required D-12 tour contains an unavailable response")
+    for action in RECOVERY_ACTIONS:
+        if action not in RECOVERY_ACTIONS:
+            raise AssertionError("recovery action matrix is incomplete")
+
+
+def physical_confirmation_adversarial_check() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = _sample_machine_run(root, "physical-source")
+        groups = ",".join(f"{gate.upper()}=Y" for gate in BATCH_GATE_ORDER)
+        if run_confirm_batch(source, groups) != 0:
+            raise AssertionError("canonical physical confirmation did not pass")
+        confirmed = next(root.glob("confirmed-*"))
+        verify_physical_evidence(confirmed, require_physical_map=True, reopened_machine_source=True)
+        data = json.loads((confirmed / "result.json").read_text(encoding="utf-8"))
+        data["status"] = "pass"
+        data["physical_map"]["rows"] = data["physical_map"]["rows"][:1]
+        (confirmed / "result.json").write_text(json.dumps(data), encoding="utf-8")
+        try:
+            verify_physical_evidence(confirmed, require_physical_map=True)
+        except EvidenceError:
+            pass
+        else:
+            raise AssertionError("one-row physical PASS was accepted")
+
+
+def board_readiness_check() -> None:
+    source = Path(repo_root() / "firmware" / "src" / "main.cpp").read_text(encoding="utf-8")
+    if 'sendError("board_not_ready"' not in source or "if (!board.ready())" not in source:
+        raise AssertionError("firmware does not reject hardware probes before board readiness")
+
+
+
 def confirmed_directory_check() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
@@ -993,6 +1120,7 @@ def confirmation_rejection_check() -> None:
                 raise AssertionError("group R did not preserve incomplete/repeat semantics without physical PASS")
         if source_bytes != {name: (source / name).read_bytes() for name in source_bytes}:
             raise AssertionError("confirm-batch mutated the immutable machine artifact")
+
 
 def command_self_check(args: argparse.Namespace) -> int:
     if args.environment:
@@ -1098,6 +1226,22 @@ def command_self_check(args: argparse.Namespace) -> int:
         verify_build_lock(args.firmware_composition_lock)
         print("Firmware composition: selected-usb contains exactly one adapter and no Wi-Fi artifact")
  
+    if args.recovery_action_matrix:
+        recovery_action_matrix_check()
+        print("Recovery action matrix: seven typed interruption transitions reject label-only replay")
+    if args.recovery_resume_integrity:
+        recovery_resume_integrity_check()
+        print("Recovery resume integrity: bounded IDs, closed state, and derived progress pass")
+    if args.recovery_required_no_unavailable:
+        recovery_required_no_unavailable_check()
+        print("Recovery required rows: unavailable outcomes cannot qualify")
+    if args.physical_confirmation_adversarial:
+        physical_confirmation_adversarial_check()
+        print("Physical confirmation adversarial cases: incomplete/copy/ACK-only PASS rejected")
+    if args.board_readiness:
+        board_readiness_check()
+        print("Board readiness: hardware probes fail closed before initialization")
+
     return 0
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="phase1_bringup")
@@ -1118,6 +1262,11 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--guided-order", action="store_true")
     self_check.add_argument("--evidence-schema", action="store_true")
     self_check.add_argument("--physical-confirmation", action="store_true")
+    self_check.add_argument("--recovery-action-matrix", action="store_true")
+    self_check.add_argument("--recovery-resume-integrity", action="store_true")
+    self_check.add_argument("--recovery-required-no-unavailable", action="store_true")
+    self_check.add_argument("--physical-confirmation-adversarial", action="store_true")
+    self_check.add_argument("--board-readiness", action="store_true")
     self_check.add_argument("--batch-order", action="store_true", help="check fixed physical batch gate order and row counts")
     self_check.add_argument("--batch-parser", action="store_true", help="check explicit gate/run-bound group responses")
     self_check.add_argument("--batch-key-events", action="store_true", help="check KEY-1..KEY-4 raw indices 0..3 and ENC-CLICK raw index 4")
@@ -1186,6 +1335,10 @@ def main(argv: list[str] | None = None) -> int:
         choices=(
             "physical-map",
             "recovery",
+            "action-specific",
+            "hash-bound-resume",
+            "canonical-history",
+            "reopened-machine-source",
             "strict-traffic",
             "immutable-linkage",
             "complete-interruption-matrix",
@@ -1206,7 +1359,7 @@ def main(argv: list[str] | None = None) -> int:
     recover.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
     recover.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
     recover.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
-    recover.add_argument("--interruption", choices=("reset", "normal-flash-reset", "port-move", "endpoint-renumber", "utility-restart"), required=True)
+    recover.add_argument("--interruption", choices=RECOVERY_ACTIONS + tuple(sorted(set(("reset", "port-move", "endpoint-renumber", "utility-restart")))), required=True)
     tour = subparsers.add_parser("recover-tour", help="operator-run D-12 recovery tour with immutable step evidence")
     tour.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
     tour.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
@@ -1268,8 +1421,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "pair":
             return run_pair(args.schema, args.evidence_root, args.binding)
         if args.command == "verify-evidence":
-            requirements = set(args.require or ())
             kind = json.loads(args.path.read_text(encoding="utf-8")).get("kind")
+            if kind == "physical-proof-lock":
+                checked = verify_physical_lock(args.path)
+                print(f"Evidence verified: physical proof lock {args.path} ({checked['lock']['confirmed_result_sha256']})")
+                return 0
+            if kind == "recovery-proof-lock":
+                lock = verify_recovery_lock(args.path)
+                print(f"Evidence verified: recovery proof lock {args.path}")
+                return 0
             if kind == "selection-lock":
                 lock = verify_selection_lock(args.path)
                 print(f"Evidence verified: selection lock {args.path} ({lock['result_sha256']})")
@@ -1283,7 +1443,13 @@ def main(argv: list[str] | None = None) -> int:
                 lock = verify_qualification_lock(args.path, requirements)
                 print(f"Evidence verified: qualification lock {args.path} ({lock['result_sha256']})")
             else:
-                path = verify_physical_evidence(args.path, require_physical_map="physical-map" in requirements, require_recovery="recovery" in requirements)
+                path = verify_physical_evidence(
+                    args.path,
+                    require_physical_map="physical-map" in requirements or "canonical-history" in requirements,
+                    require_recovery="recovery" in requirements,
+                    action_specific="action-specific" in requirements or "hash-bound-resume" in requirements,
+                    reopened_machine_source="reopened-machine-source" in requirements,
+                )
                 print(f"Evidence verified: {path}")
             return 0
         if args.command == "confirm-batch":
