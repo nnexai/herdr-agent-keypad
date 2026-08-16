@@ -408,8 +408,30 @@ def run_qualification(
         recording = _RecordingConnection(base_link, traffic, phase="preflight")
         session.connection = recording
         transitions.extend(item.as_dict() for item in recovery)
-        for panel in range(1, 5):
-            session.stimulate(f"PREFLIGHT-{panel}", panel, "BRIGHTNESS-HIGH")
+        cue_stimuli = (
+            *(f"PANEL-{panel}" for panel in range(1, 5)),
+            *(f"LED-{led}" for led in range(1, 14)),
+            "BRIGHTNESS-LOW",
+            "BRIGHTNESS-MEDIUM",
+            "BRIGHTNESS-HIGH",
+            *(f"KEY-{key}" for key in range(1, 5)),
+            "ENC-CW",
+            "ENC-CCW",
+            "ENC-CLICK",
+            "BRIGHTNESS-MEDIUM",
+        )
+        for index, stimulus in enumerate(cue_stimuli, 1):
+            session.stimulate(f"PREFLIGHT-{index}", ((index - 1) % 4) + 1, stimulus)
+        cue_response = _operator_checkpoint(
+            "preflight-cues",
+            "Observe the bounded preflight cue sweep: each display panel, LED range 1-13, low/medium/high brightness, KEY-1..KEY-4, encoder clockwise/counter-clockwise, and encoder click. Confirm every cue is physically observed; answer N if any cue is absent.",
+        )
+        if cue_response == "N":
+            raise QualificationError("preflight cue observation was rejected by the operator")
+        if cue_response == "U":
+            cue_reason = input("Explain why preflight cues are unavailable (required): ").strip()
+            if not cue_reason:
+                raise QualificationError("preflight cue U requires a reason")
         session.request("metrics", {"request": "reset"}, {"metrics_ack"})
         recording.phase = "traffic"
         overlap = _operator_checkpoint(

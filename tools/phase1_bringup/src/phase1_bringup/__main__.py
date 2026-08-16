@@ -73,9 +73,13 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
     original_load = PairingStore.load
     original_reconnect = qualification_module.reconnect_exact
     original_checkpoint = qualification_module._operator_checkpoint
+    checkpoint_labels: list[str] = []
     PairingStore.load = lambda _self: object()
     qualification_module.reconnect_exact = fake_reconnect
-    qualification_module._operator_checkpoint = lambda _label, _instruction: "N"
+    def fake_checkpoint(label: str, _instruction: str) -> str:
+        checkpoint_labels.append(label)
+        return "Y" if label == "preflight-cues" else "N"
+    qualification_module._operator_checkpoint = fake_checkpoint
     try:
         with tempfile.TemporaryDirectory() as directory:
             evidence_root = Path(directory)
@@ -95,6 +99,12 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
             if any(result.get("counters", {}).get(name) != 0 for name in ("sent", "received", "acknowledged")):
                 raise AssertionError("preflight traffic contaminated post-reset strict counters")
             traffic = json.loads(traffic_paths[0].read_text(encoding="utf-8"))
+            if checkpoint_labels != ["preflight-cues", "physical-overlap"]:
+                raise AssertionError("physical-overlap prompt ordering changed")
+            cue_bytes = b"".join(bytes.fromhex(item["bytes"]) for item in traffic if item.get("phase") == "preflight")
+            for cue in (b"PANEL-1", b"LED-13", b"BRIGHTNESS-LOW", b"KEY-4", b"ENC-CW", b"ENC-CLICK"):
+                if cue not in cue_bytes:
+                    raise AssertionError(f"missing preflight cue {cue!r}")
             if result.get("status") != "fail" or result.get("physical_overlap") != "N":
                 raise AssertionError("overlap N was not recorded as a non-pass result")
             if not any(item.get("phase") == "preflight" and item.get("direction") == "host_to_device" for item in traffic):
