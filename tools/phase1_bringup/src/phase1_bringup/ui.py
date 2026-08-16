@@ -46,6 +46,16 @@ def parse_response(text: str, step_id: str, run_suffix: str | None = None) -> Re
     return Response(tokens[0], step_id, tokens[2] if len(tokens) == 3 else None)
 
 
+def parse_batch_response(text: str, gate_name: str, run_suffix: str) -> Response | None:
+    """Parse one explicit, run-bound response for a complete gate."""
+    tokens = text.strip().upper().split()
+    if len(tokens) != 3 or tokens[0] not in {"Y", "N", "R"}:
+        return None
+    if tokens[1] != gate_name.upper() or tokens[2] != run_suffix.upper():
+        return None
+    return Response(tokens[0], gate_name, tokens[2])
+
+
 class TerminalUI:
     """An 80x24 minimum, non-ambiguous terminal surface."""
 
@@ -141,6 +151,41 @@ class TerminalUI:
         lines.extend(("Response:", prompt))
         if self.confirmation_enabled:
             lines.append(f"Type Y {step_id} {run_suffix}, N {step_id} {run_suffix}, or R {step_id} {run_suffix}.")
+        return self._emit(lines)
+
+    def render_batch_gate(
+        self,
+        gate_name: str,
+        gate_number: int,
+        total_gates: int,
+        rows: Iterable[tuple[str, str, str]],
+        run_suffix: str,
+        status: str = "stimulating",
+    ) -> str:
+        """Render a bounded gate summary and one group confirmation prompt."""
+        lines = [
+            "Phase 1 bring-up (batch)",
+            f"{gate_name}  |  gate {gate_number} of {total_gates}  |  run ID ••••{run_suffix}",
+            f"{self.operation_name} ({self.elapsed:.1f}s)",
+            "-" * min(self.width, 80),
+            f"GATE [{gate_name.upper()}] — {status.upper()}",
+            "Each row is stimulated in order; inspect the keypad now.",
+            "Rows:",
+        ]
+        for step_id, row_status, detail in rows:
+            lines.append(f"  {step_id}: {row_status}; {detail}")
+        if status == "awaiting-confirmation":
+            lines.extend(
+                (
+                    "Group response (one response for this gate):",
+                    f"Type Y {gate_name.upper()} {run_suffix}, N {gate_name.upper()} {run_suffix},",
+                    f"or R {gate_name.upper()} {run_suffix}.",
+                )
+            )
+        elif status == "repeat":
+            lines.append(REPEAT_COPY)
+        elif status == "fail":
+            lines.append(FAIL_COPY)
         return self._emit(lines)
 
     def render_not_started(self, gate_name: str, step_number: int, total_steps: int, run_suffix: str) -> str:

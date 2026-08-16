@@ -9,7 +9,7 @@ from typing import Any
 
 from .evidence import EvidenceWriter
 from .protocol import MachineFact, ProtocolSession
-from .ui import AWAITING_COPY, TerminalUI, parse_response
+from .ui import AWAITING_COPY, TerminalUI, parse_batch_response, parse_response
 
 GUIDED_ORDER = ("Identify", "Displays", "Keys", "Encoder", "LEDs", "Brightness", "Reboot", "Pair", "Recover", "Traffic", "Selection")
 
@@ -56,6 +56,185 @@ def _rows() -> tuple[Gate, ...]:
 
 
 GATES = _rows()
+
+BATCH_GATE_ORDER = tuple(gate.name for gate in GATES[:7])
+BATCH_DWELL_SECONDS = 1.0
+MAX_BATCH_DWELL_SECONDS = 5.0
+
+
+@dataclass(frozen=True)
+class BatchObservation:
+    row: StimulusRow
+    machine_fact: MachineFact
+    machine_details: dict[str, Any]
+
+
+class BatchRun:
+    """Stimulate one fixed gate at a time and confirm its rows as a group."""
+
+    def __init__(
+        self,
+        session: ProtocolSession | Any | None,
+        evidence: EvidenceWriter,
+        ui: TerminalUI | None = None,
+        run_id: str | None = None,
+        dwell_seconds: float = BATCH_DWELL_SECONDS,
+    ):
+        self.session = session
+        self.evidence = evidence
+        self.ui = ui or TerminalUI()
+        self.run_id = run_id or (time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + secrets.token_hex(3))
+        self.run_suffix = self.run_id[-6:]
+        self.gate_index = 0
+        self.pending: list[BatchObservation] = []
+        self.history: list[dict[str, Any]] = []
+        self.started = False
+        self.stable = False
+        self.stopped = False
+        self.response: str | None = None
+        self.dwell_seconds = min(MAX_BATCH_DWELL_SECONDS, max(0.0, float(dwell_seconds)))
+
+    @property
+    def gate(self) -> Gate:
+        return GATES[self.gate_index]
+
+    @property
+    def complete_physical_gates(self) -> bool:
+        return self.gate_index >= len(BATCH_GATE_ORDER)
+
+    def start(self) -> None:
+        self.started = True
+        self.ui.start(self.run_suffix)
+
+    def _row_detail(self, observation: BatchObservation) -> str:
+        detail = f"machine: {observation.machine_fact.status}"
+        event = observation.machine_details.get("event")
+        if isinstance(event, dict) and isinstance(event.get("key"), int):
+            return f"{detail}; observed key index: {event['key']}"
+        return detail
+
+    def _render(self, status: str = "stimulating") -> None:
+        self.ui.render_batch_gate(
+            self.gate.name,
+            self.gate_index + 1,
+            len(BATCH_GATE_ORDER),
+            tuple((observation.row.step_id, "stable", self._row_detail(observation)) for observation in self.pending),
+            self.run_suffix,
+            status,
+        )
+
+    def stimulate_gate(self) -> tuple[BatchObservation, ...]:
+        """Stimulate every row in order, retaining bounded machine details."""
+        if not self.started or self.complete_physical_gates or self.stopped:
+            raise RuntimeError("no physical batch gate is active")
+        if self.session is None:
+            raise RuntimeError("keypad session is unavailable")
+        self.pending = []
+        self.stable = False
+        self.ui.begin_operation(f"{self.gate.name} batch")
+        self._render()
+        for row in self.gate.rows:
+            if row.step_id == "IDENTIFY":
+                fact = self.session.hello()
+            else:
+                fact = self.session.stimulate(row.step_id, row.panel, row.stimulus)
+            details: dict[str, Any] = {}
+            if row.physical_kind == "key":
+                event = self.session.wait_event(row.step_id)
+                payload = event.get("payload") if isinstance(event, dict) else None
+                if not isinstance(payload, dict) or payload.get("step_id") != row.step_id:
+                    raise RuntimeError(f"validated key event did not match {row.step_id}")
+                key_index = payload.get("key")
+                if not isinstance(key_index, int) or isinstance(key_index, bool) or not 0 <= key_index <= 4:
+                    raise RuntimeError(f"validated key event index is invalid for {row.step_id}")
+                details["event"] = {"kind": "key_transition", "step_id": row.step_id, "key": key_index}
+            elif self.dwell_seconds:
+                time.sleep(self.dwell_seconds)
+            self.pending.append(BatchObservation(row, fact, details))
+            self._render()
+        self.stable = True
+        self.ui.stable_result()
+        self._render("awaiting-confirmation")
+        return tuple(self.pending)
+
+    def _row_record(self, observation: BatchObservation, action: str, physical_status: str, ordinal: int) -> dict[str, Any]:
+        fact = observation.machine_fact
+        machine_details: dict[str, Any] = {"status": fact.status}
+        if fact.detail:
+            machine_details["detail"] = fact.detail[:128]
+        if observation.machine_details.get("event"):
+            event = dict(observation.machine_details["event"])
+            event["step_id"] = str(event["step_id"])[:64]
+            machine_details["event"] = event
+        return {
+            "row_id": f"{self.run_id}:{len(self.history) + ordinal + 1}",
+            "run_id": self.run_id,
+            "step_id": observation.row.step_id,
+            "gate": self.gate.name,
+            "machine_status": fact.status,
+            "machine_reply_seq": fact.reply_seq,
+            "human_response": action,
+            "physical_status": physical_status,
+            "observed_value": machine_details,
+            "timestamp": time.time(),
+        }
+
+    def respond(self, text: str) -> str:
+        """Finalize every pending row from one explicit gate/run-bound response."""
+        if not self.started or not self.pending:
+            raise RuntimeError("no confirmable physical batch gate is active")
+        parsed = parse_batch_response(text, self.gate.name, self.run_suffix)
+        if parsed is None:
+            raise ValueError(
+                f"Type Y {self.gate.name.upper()} {self.run_suffix}, "
+                f"N {self.gate.name.upper()} {self.run_suffix}, or "
+                f"R {self.gate.name.upper()} {self.run_suffix}."
+            )
+        if not self.stable:
+            raise RuntimeError("group confirmation disabled until every row has stable machine evidence")
+        if parsed.action == "Y" and any(item.machine_fact.status != "acknowledged" for item in self.pending):
+            raise ValueError("group PASS requires acknowledged machine evidence for every row; use N or R")
+        rows = [
+            self._row_record(item, parsed.action, {"Y": "pass", "N": "failed", "R": "repeated"}[parsed.action], ordinal)
+            for ordinal, item in enumerate(self.pending)
+        ]
+        self.evidence.record_rows(rows)
+        self.history.extend(rows)
+        self.response = parsed.action
+        if parsed.action == "N":
+            self.stopped = True
+            self.stable = False
+            self._render("fail")
+            return "fail"
+        if parsed.action == "R":
+            self.ui.add_history(f"{self.gate.name}: repeat preserved")
+            self.pending = []
+            self.stable = False
+            self.ui.confirmation_enabled = False
+            self._render("repeat")
+            return "repeat"
+        self.ui.add_history(f"{self.gate.name}: PASS ({len(rows)} rows)")
+        self.gate_index += 1
+        self.pending = []
+        self.stable = False
+        if self.complete_physical_gates:
+            self.ui.add_history("Physical batch gates complete; dependent gates remain not started")
+        else:
+            self.ui.render_not_started(self.gate.name, self.gate_index + 1, len(GUIDED_ORDER), self.run_suffix)
+        return "pass"
+
+    def result(self) -> dict[str, Any]:
+        status = "pass" if self.complete_physical_gates else "fail" if self.stopped else "incomplete"
+        return {
+            "schema_version": 1,
+            "kind": "result",
+            "run_id": self.run_id,
+            "status": status,
+            "mode": "batch",
+            "physical_map": {"rows": list(self.history), "guided_order": list(GUIDED_ORDER)},
+            "batch_order": list(BATCH_GATE_ORDER),
+            "completed_gates": list(BATCH_GATE_ORDER[: self.gate_index]),
+        }
 def _event_evidence(machine_details: dict[str, Any]) -> str | None:
     """Return the bounded, protocol-validated key event evidence line."""
     event = machine_details.get("event")
@@ -262,3 +441,76 @@ def confirmation_check() -> None:
             raise AssertionError("key event detail was not visible before confirmation")
         if any(len(line) > 80 for line in run.ui.last_screen.splitlines()):
             raise AssertionError("key event detail exceeded the 80-column bound")
+
+
+def batch_order_check() -> None:
+    if BATCH_GATE_ORDER != ("Identify", "Displays", "Keys", "Encoder", "LEDs", "Brightness", "Reboot"):
+        raise AssertionError("batch gates must stop after Reboot")
+    counts = tuple(len(gate.rows) for gate in GATES[:7])
+    if counts != (1, 4, 5, 3, 14, 3, 1):
+        raise AssertionError(f"batch row counts changed: {counts}")
+    if any(gate.rows for gate in GATES[7:]):
+        raise AssertionError("dependent gates must remain unstarted")
+
+
+def batch_parser_check() -> None:
+    from .ui import parse_batch_response
+
+    if parse_batch_response("Y DISPLAYS ABC123", "Displays", "ABC123") is None:
+        raise AssertionError("valid batch group response was rejected")
+    for text in ("Y DISPLAYS", "Y KEYS ABC123", "Y DISPLAYS WRONG", "Y DISPLAYS ABC123 extra"):
+        if parse_batch_response(text, "Displays", "ABC123") is not None:
+            raise AssertionError(f"invalid batch group response was accepted: {text}")
+
+
+def batch_key_event_check() -> None:
+    from tempfile import TemporaryDirectory
+    from .evidence import EvidenceWriter
+
+    class FakeSession:
+        def hello(self):
+            return MachineFact("acknowledged", time.time(), 1)
+
+        def stimulate(self, step_id, panel, stimulus):
+            return MachineFact("acknowledged", time.time(), 1)
+
+        def wait_event(self, step_id):
+            return {"payload": {"kind": "key_transition", "step_id": step_id, "key": int(step_id.rsplit("-", 1)[1])}}
+
+    with TemporaryDirectory() as directory:
+        run = BatchRun(FakeSession(), EvidenceWriter(Path(directory), "batch-keys"), TerminalUI(), "batch-keys", dwell_seconds=0)
+        run.start()
+        run.gate_index = 2
+        observations = run.stimulate_gate()
+        if [item.machine_details["event"]["key"] for item in observations] != [0, 1, 2, 3, 4]:
+            raise AssertionError("observed key indices were not retained in batch order")
+        if "key index: 4" not in run.ui.last_screen:
+            raise AssertionError("observed key index was not visible in bounded batch screen")
+        if run.respond(f"Y KEYS {run.run_suffix}") != "pass":
+            raise AssertionError("key gate group confirmation did not pass")
+        if [row["observed_value"]["event"]["key"] for row in run.history] != [0, 1, 2, 3, 4]:
+            raise AssertionError("observed key indices were not retained in evidence")
+
+
+def batch_no_ack_check() -> None:
+    from tempfile import TemporaryDirectory
+    from .evidence import EvidenceWriter
+
+    class RejectingSession:
+        def hello(self):
+            return MachineFact("rejected", time.time(), 1, "device rejected probe")
+
+    with TemporaryDirectory() as directory:
+        run = BatchRun(RejectingSession(), EvidenceWriter(Path(directory), "batch-no-ack"), TerminalUI(), "batch-no-ack", dwell_seconds=0)
+        run.start()
+        run.stimulate_gate()
+        try:
+            run.respond(f"Y IDENTIFY {run.run_suffix}")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("ACK-only or rejected group PASS was accepted")
+        if run.history:
+            raise AssertionError("failed group PASS wrote physical evidence")
+        if run.respond(f"N IDENTIFY {run.run_suffix}") != "fail" or run.history[0]["physical_status"] != "failed":
+            raise AssertionError("group N did not preserve the failed machine attempt")

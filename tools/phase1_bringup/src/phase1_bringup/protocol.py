@@ -66,8 +66,9 @@ def validate_frame(frame: Any) -> dict[str, Any]:
         if not isinstance(payload["accepted"], bool) or not isinstance(payload["step_id"], str) or not payload["step_id"]:
             raise ValueError("probe_ack fields are invalid")
     if frame["type"] == "event":
-        if payload["kind"] != "key_transition" or not isinstance(payload["step_id"], str):
-            raise ValueError("event kind or step_id is invalid")
+        if payload["kind"] != "key_transition":
+            raise ValueError("event kind is invalid")
+        _require_string(payload["step_id"], "event step_id")
         if not _is_int(payload["key"]) or not 0 <= payload["key"] <= 4:
             raise ValueError("event key is invalid")
     if frame["type"] == "error" and any(not isinstance(payload[name], str) or not payload[name] for name in ("code", "detail")):

@@ -131,14 +131,21 @@ class EvidenceWriter:
         self._finalized = False
 
     def record_row(self, row: dict[str, Any]) -> None:
+        self.record_rows([row])
+
+    def record_rows(self, rows: list[dict[str, Any]]) -> None:
+        """Append a complete group after validating every row."""
         if self._finalized:
             raise EvidenceError("immutable evidence is already finalized")
-        candidate = copy.deepcopy(row)
-        _validate_physical_row(candidate, self.run_id)
-        if candidate["row_id"] in self._row_ids:
-            raise EvidenceError("physical row id already exists")
-        self._rows.append(candidate)
-        self._row_ids.add(candidate["row_id"])
+        candidates = [copy.deepcopy(row) for row in rows]
+        candidate_ids: set[str] = set()
+        for candidate in candidates:
+            _validate_physical_row(candidate, self.run_id)
+            if candidate["row_id"] in self._row_ids or candidate["row_id"] in candidate_ids:
+                raise EvidenceError("physical row id already exists")
+            candidate_ids.add(candidate["row_id"])
+        self._rows.extend(candidates)
+        self._row_ids.update(candidate_ids)
 
     def replace_row(self, old_row_id: str, replacement: dict[str, Any], typed_confirmation: str) -> None:
         if typed_confirmation != "REPLACE":
