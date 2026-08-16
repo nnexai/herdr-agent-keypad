@@ -399,6 +399,8 @@ def run_qualification(
     metrics_query_error: str | None = None
     overlap = "U"
     overlap_reason: str | None = "not confirmed"
+    cue_response = "U"
+    cue_reason: str | None = "not confirmed"
     try:
         def opener(candidate: Any) -> Any:
             return serial.Serial(candidate.device, baudrate=115200, timeout=0.2, write_timeout=3)
@@ -541,6 +543,8 @@ def run_qualification(
         blockers.append("metrics_query_error:" + metrics_query_error)
     if run_error:
         blockers.append("qualification_error:" + run_error)
+    if cue_response != "Y":
+        blockers.append("preflight_cues_not_confirmed")
     row_observations = [item for item in transitions if "response" in item]
     rows_ok = {item.get("id") for item in row_observations} == set(INTERRUPTION_ROWS) and all(item.get("response") == "Y" or (item.get("response") == "U" and item.get("reason")) for item in row_observations)
     strict_ok = device_metrics is not None and all(counters.get(name) == 0 for name in STRICT_COUNTERS[3:])
@@ -563,7 +567,7 @@ def run_qualification(
         "strict_failure_counters_available": device_metrics is not None,
         "resource_metrics_available": device_metrics is not None,
         "qualification_blockers": blockers,
-        "metrics": metrics,
+        "preflight_cues": {"response": cue_response, "reason": cue_reason},
         "interruption_matrix": transitions,
         "counter_scope": "post-reset qualification traffic only",
         "qualification": {
