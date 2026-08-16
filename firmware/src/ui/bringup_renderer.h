@@ -169,8 +169,8 @@ class BringupRenderer {
         instruction = "ROTATE";
         break;
       case BringupState::Click:
-        label = "CLICK";
-        glyph = "ENC";
+        label = "ENC CLICK";
+        glyph = "ENC CLICK";
         instruction = "PRESS";
         break;
       case BringupState::Brightness:
@@ -212,7 +212,10 @@ class BringupRenderer {
     frame(display, accent);
     text(display, label, 8, 8, accent);
     display.setTextColor(glyph_color, TFT_BLACK);
-    display.setTextSize(request.state == BringupState::Map || request.state == BringupState::Pair ? 2 : 3);
+    display.setTextSize(request.state == BringupState::Map || request.state == BringupState::Pair ||
+                                request.state == BringupState::Click
+                            ? 2
+                            : 3);
     if (request.state == BringupState::Map) {
       // Keep the bounded panel identifier in its own row below the arrow cue.
       // A single draw prevents the PANEL text and number from colliding.
@@ -221,11 +224,15 @@ class BringupRenderer {
       display.drawString(panel_label, 22, 72);
     } else if (request.state == BringupState::Press) {
       char key_label[8];
-      snprintf(key_label, sizeof(key_label), "KEY-%u", static_cast<unsigned>(request.expected_key));
+      snprintf(key_label, sizeof(key_label), "KEY-%u",
+               static_cast<unsigned>(request.expected_key) + 1U);
       display.setTextSize(2);
       display.drawString(key_label, 34, 48);
     } else {
-      display.drawString(glyph, request.state == BringupState::Pair ? 36 : 48, 48);
+      display.drawString(glyph, request.state == BringupState::Pair
+                                   ? 36
+                                   : request.state == BringupState::Click ? 12 : 48,
+                         48);
     }
 
     if (request.state == BringupState::Brightness) {

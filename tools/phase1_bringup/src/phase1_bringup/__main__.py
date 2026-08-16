@@ -391,13 +391,22 @@ def firmware_contract_check(path: Path) -> None:
     if missing:
         raise RuntimeError(f"firmware contract is missing required contract tokens: {', '.join(missing)}")
     stimulus_source = path.parents[1] / "main.cpp"
-    if 'parseSingleIndex(stimulus, "LED-", 13, value)' not in stimulus_source.read_text(encoding="utf-8"):
-        raise RuntimeError("firmware stimulus contract must accept LED-13")
+    stimulus_text = stimulus_source.read_text(encoding="utf-8")
+    required_stimulus = (
+        'parseSingleIndex(stimulus, "LED-", 13, value)',
+        'parseSingleIndex(stimulus, "KEY-", 4, value) && value >= 1',
+        'expectedKey = static_cast<uint8_t>(value - 1)',
+        'board.key(4).wasPressed()',
+        'reportKeyTransition(4)',
+    )
+    missing_stimulus = [token for token in required_stimulus if token not in stimulus_text]
+    if missing_stimulus:
+        raise RuntimeError(f"firmware stimulus contract is missing physical key mapping tokens: {', '.join(missing_stimulus)}")
 
 
 def renderer_contract_check(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
-    tokens = ("BringupState::Wait", "BringupState::Map", "BringupState::Press", "BringupState::TurnCw", "BringupState::TurnCcw", "BringupState::Click", "BringupState::Brightness", "BringupState::Pair", "BringupState::Pass", "BringupState::Fail", "BringupState::LinkLost", "kSafeInset = 4", "kPanelCount = 4", "display.fillScreen(TFT_BLACK)", "drawWait")
+    tokens = ("BringupState::Wait", "BringupState::Map", "BringupState::Press", "BringupState::TurnCw", "BringupState::TurnCcw", "BringupState::Click", "BringupState::Brightness", "BringupState::Pair", "BringupState::Pass", "BringupState::Fail", "BringupState::LinkLost", "kSafeInset = 4", "kPanelCount = 4", "display.fillScreen(TFT_BLACK)", "drawWait", "ENC CLICK", "static_cast<unsigned>(request.expected_key) + 1U")
     missing = [token for token in tokens if token not in text]
     if missing:
         raise RuntimeError(f"device render contract is missing required contract tokens: {', '.join(missing)}")
@@ -424,18 +433,29 @@ def ui_check() -> None:
 def _sample_machine_run(root: Path, run_id: str = "machine-self-check", rejected_gate: str | None = None) -> Path:
     writer = EvidenceWriter(root, run_id)
     observations = []
-    for index, gate in enumerate(BATCH_GATE_ORDER, start=1):
-        observation = {
-            "row_id": f"{run_id}:machine:{index}",
-            "run_id": run_id,
-            "step_id": gate.upper(),
-            "gate": gate,
-            "machine_status": "rejected" if gate == rejected_gate else "acknowledged",
-            "machine_reply_seq": index,
-            "observed_value": {"event": {"kind": "key_transition", "key": 2}} if gate == "Keys" else "unavailable",
-            "timestamp": time.time(),
-        }
-        observations.append(observation)
+    ordinal = 0
+    for gate in BATCH_GATE_ORDER:
+        gate_rows = next(item.rows for item in GATES if item.name == gate)
+        for row in gate_rows:
+            ordinal += 1
+            observed_value: Any = "unavailable"
+            if row.physical_kind in {"key", "encoder_click"}:
+                raw_key = 4 if row.physical_kind == "encoder_click" else int(row.step_id.rsplit("-", 1)[1]) - 1
+                observed_value = {
+                    "event": {"kind": "key_transition", "step_id": row.step_id, "key": raw_key}
+                }
+            observations.append(
+                {
+                    "row_id": f"{run_id}:machine:{ordinal}",
+                    "run_id": run_id,
+                    "step_id": row.step_id,
+                    "gate": gate,
+                    "machine_status": "rejected" if gate == rejected_gate else "acknowledged",
+                    "machine_reply_seq": ordinal,
+                    "observed_value": observed_value,
+                    "timestamp": time.time(),
+                }
+            )
     result = {
         "schema_version": 1,
         "kind": "result",
@@ -478,7 +498,8 @@ def machine_only_no_stdin_check() -> None:
             return self._fact()
 
         def wait_event(self, step_id: str) -> dict[str, Any]:
-            return {"payload": {"step_id": step_id, "key": int(step_id[-1])}}
+            raw_key = 4 if step_id == "ENCODER-CLICK" else int(step_id.rsplit("-", 1)[1]) - 1
+            return {"payload": {"kind": "key_transition", "step_id": step_id, "key": raw_key}}
 
     with tempfile.TemporaryDirectory() as directory:
         emitted = io.StringIO()
@@ -542,6 +563,14 @@ def confirmed_directory_check() -> None:
             raise AssertionError("confirmed rows lost group confirmation metadata")
         if not all(row.get("machine_observation") for row in rows):
             raise AssertionError("confirmed rows lost machine observation details")
+        if len(rows) != 30:
+            raise AssertionError("confirm-batch physical row count must be 30 (four keys plus encoder click)")
+        key_rows = [row for row in rows if row["gate"] == "Keys"]
+        if [row["observed_value"]["event"]["key"] for row in key_rows] != [0, 1, 2, 3]:
+            raise AssertionError("confirm-batch changed KEY-1..KEY-4 raw index evidence")
+        click_rows = [row for row in rows if row["step_id"] == "ENCODER-CLICK"]
+        if len(click_rows) != 1 or click_rows[0]["observed_value"]["event"]["key"] != 4:
+            raise AssertionError("confirm-batch lost ENC-CLICK raw index 4 evidence")
 
 
 def confirmation_rejection_check() -> None:
@@ -619,7 +648,7 @@ def command_self_check(args: argparse.Namespace) -> int:
         print("Batch parser: explicit gate/run-bound Y/N/R accepted; mismatches rejected")
     if args.batch_key_events:
         batch_key_event_check()
-        print("Batch key events: observed key indices retained and shown")
+        print("Batch key events: KEY-1..KEY-4 map to raw indices 0..3; ENC-CLICK validates raw index 4")
     if args.batch_no_ack_pass:
         batch_no_ack_check()
         print("Batch confirmation: ACK-only group PASS rejected")
@@ -654,15 +683,15 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--physical-confirmation", action="store_true")
     self_check.add_argument("--batch-order", action="store_true", help="check fixed physical batch gate order and row counts")
     self_check.add_argument("--batch-parser", action="store_true", help="check explicit gate/run-bound group responses")
-    self_check.add_argument("--batch-key-events", action="store_true", help="check observed key indices survive batch stimulation")
+    self_check.add_argument("--batch-key-events", action="store_true", help="check KEY-1..KEY-4 raw indices 0..3 and ENC-CLICK raw index 4")
     self_check.add_argument("--batch-no-ack-pass", action="store_true", help="check ACK-only group PASS is rejected")
     self_check.add_argument("--machine-only-no-stdin", action="store_true", help="check machine-only capture has no stdin path")
     self_check.add_argument("--machine-artifact", action="store_true", help="check machine-only artifact semantics and verification")
     self_check.add_argument("--group-parser", action="store_true", help="check exact group parsing and mismatch rejection")
     self_check.add_argument("--confirmed-directory", action="store_true", help="check confirmed artifact creation and linked details")
     self_check.add_argument("--confirmation-rejection", action="store_true", help="check Y/N/R confirmation semantics")
-    start = subparsers.add_parser("start", help="run guided mode, or use --batch for seven gate confirmations")
-    start.add_argument("--batch", action="store_true", help="stimulate Identify through Reboot and confirm once per gate")
+    start = subparsers.add_parser("start", help="run guided mode, or use --batch for seven physical gate confirmations")
+    start.add_argument("--batch", action="store_true", help="stimulate Identify through Reboot; Keys are KEY-1..KEY-4 and encoder click is ENC-CLICK")
     start.add_argument("--machine-only", action="store_true", help="with --batch, capture machine observations without stdin or physical PASS")
     start.add_argument("--dwell", type=float, default=1.0, help="bounded visible dwell seconds for non-key batch rows (max 5)")
     start.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")

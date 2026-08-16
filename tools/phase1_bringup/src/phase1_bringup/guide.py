@@ -35,11 +35,11 @@ def _rows() -> tuple[Gate, ...]:
     return (
         Gate("Identify", (StimulusRow("IDENTIFY", "WAIT", 1, "Confirm the connected delivered keypad and visible identity facts.", "A bounded hello is acknowledged; physical identity remains unavailable until observed.", "identity"),)),
         Gate("Displays", tuple(StimulusRow(f"DISPLAY-{panel}", f"PANEL-{panel}", panel, f"Observe display {panel}: position, upright orientation, and requested color.", "The numbered panel is visible, upright from the agreed desk view, and the requested color is correct.", "display") for panel in range(1, 5))),
-        Gate("Keys", tuple(StimulusRow(f"KEY-{key}", f"KEY-{key}", (key % 4) + 1, f"Press the physical key associated with the current display mapping for key {key}.", "Only the intended physical key produces the matching event.", "key") for key in range(5))),
+        Gate("Keys", tuple(StimulusRow(f"KEY-{key}", f"KEY-{key}", key, f"Press physical KEY-{key}; validate its raw library key index {key - 1}.", "Only the intended physical key produces the matching raw key event.", "key") for key in range(1, 5))),
         Gate("Encoder", (
             StimulusRow("ENCODER-CW", "ENC-CW", 1, "Turn the encoder clockwise by the prompted detent count.", "Clockwise movement is observed in the requested direction.", "encoder"),
             StimulusRow("ENCODER-CCW", "ENC-CCW", 1, "Turn the encoder counter-clockwise by the prompted detent count.", "Counter-clockwise movement is observed in the requested direction.", "encoder"),
-            StimulusRow("ENCODER-CLICK", "ENC-CLICK", 1, "Click the encoder once.", "The physical encoder click is observed.", "encoder"),
+            StimulusRow("ENCODER-CLICK", "ENC-CLICK", 1, "Click the encoder once; validate raw library key index 4 (BOOT0-safe observation only).", "The physical encoder click produces the matching raw key event without triggering reset.", "encoder_click"),
         )),
         Gate("LEDs", tuple(StimulusRow(f"LED-{led}", f"LED-{led}", 1, f"Observe library LED {led} at the requested bounded color and brightness.", "The intended physical LED illuminates without assuming its position.", "led") for led in range(14))),
         Gate("Brightness", (
@@ -56,6 +56,13 @@ def _rows() -> tuple[Gate, ...]:
 
 
 GATES = _rows()
+
+def _expected_raw_key(row: StimulusRow) -> int:
+    if row.physical_kind == "key":
+        return int(row.step_id.rsplit("-", 1)[1]) - 1
+    if row.physical_kind == "encoder_click":
+        return 4
+    raise RuntimeError(f"row {row.step_id} does not have a key event")
 
 BATCH_GATE_ORDER = tuple(gate.name for gate in GATES[:7])
 BATCH_DWELL_SECONDS = 1.0
@@ -143,14 +150,24 @@ class BatchRun:
             else:
                 fact = self.session.stimulate(row.step_id, row.panel, row.stimulus)
             details: dict[str, Any] = {}
-            if row.physical_kind == "key":
+            if row.physical_kind in {"key", "encoder_click"}:
                 event = self.session.wait_event(row.step_id)
                 payload = event.get("payload") if isinstance(event, dict) else None
                 if not isinstance(payload, dict) or payload.get("step_id") != row.step_id:
                     raise RuntimeError(f"validated key event did not match {row.step_id}")
+                if payload.get("kind") != "key_transition":
+                    raise RuntimeError(f"validated key event kind is invalid for {row.step_id}")
                 key_index = payload.get("key")
-                if not isinstance(key_index, int) or isinstance(key_index, bool) or not 0 <= key_index <= 4:
-                    raise RuntimeError(f"validated key event index is invalid for {row.step_id}")
+                expected_raw = _expected_raw_key(row)
+                if (
+                    not isinstance(key_index, int)
+                    or isinstance(key_index, bool)
+                    or not 0 <= key_index <= 4
+                    or key_index != expected_raw
+                ):
+                    raise RuntimeError(
+                        f"validated key event index {key_index!r} did not match raw index {expected_raw} for {row.step_id}"
+                    )
                 details["event"] = {"kind": "key_transition", "step_id": row.step_id, "key": key_index}
             elif self.dwell_seconds:
                 time.sleep(self.dwell_seconds)
@@ -370,9 +387,18 @@ class GuidedRun:
             fact = self.session.hello()
         else:
             fact = self.session.stimulate(self.step_id, self.row.panel, self.row.stimulus)
-            if self.row.physical_kind == "key" and hasattr(self.session, "wait_event"):
+            if self.row.physical_kind in {"key", "encoder_click"} and hasattr(self.session, "wait_event"):
                 event = self.session.wait_event(self.step_id)
-                self.machine_details = {"event": event["payload"]}
+                payload = event.get("payload") if isinstance(event, dict) else None
+                expected_raw = _expected_raw_key(self.row)
+                if (
+                    not isinstance(payload, dict)
+                    or payload.get("kind") != "key_transition"
+                    or payload.get("step_id") != self.step_id
+                    or payload.get("key") != expected_raw
+                ):
+                    raise RuntimeError(f"validated key event did not match raw index {expected_raw} for {self.step_id}")
+                self.machine_details = {"event": payload}
         self.machine_fact = fact
         self.stable = fact.status == "acknowledged"
         if self.stable:
@@ -453,8 +479,8 @@ def confirmation_check() -> None:
             return MachineFact("acknowledged", time.time(), 1)
 
         def wait_event(self, step_id):
-            key_index = int(step_id.rsplit("-", 1)[1])
-            return {"payload": {"kind": "key_transition", "step_id": step_id, "key": key_index}}
+            raw_key = 4 if step_id == "ENCODER-CLICK" else int(step_id.rsplit("-", 1)[1]) - 1
+            return {"payload": {"kind": "key_transition", "step_id": step_id, "key": raw_key}}
 
     with TemporaryDirectory() as directory:
         writer = EvidenceWriter(Path(directory), "test-run")
@@ -486,7 +512,7 @@ def batch_order_check() -> None:
     if BATCH_GATE_ORDER != ("Identify", "Displays", "Keys", "Encoder", "LEDs", "Brightness", "Reboot"):
         raise AssertionError("batch gates must stop after Reboot")
     counts = tuple(len(gate.rows) for gate in GATES[:7])
-    if counts != (1, 4, 5, 3, 14, 3, 1):
+    if counts != (1, 4, 4, 3, 14, 3, 1):
         raise AssertionError(f"batch row counts changed: {counts}")
     if any(gate.rows for gate in GATES[7:]):
         raise AssertionError("dependent gates must remain unstarted")
@@ -514,21 +540,29 @@ def batch_key_event_check() -> None:
             return MachineFact("acknowledged", time.time(), 1)
 
         def wait_event(self, step_id):
-            return {"payload": {"kind": "key_transition", "step_id": step_id, "key": int(step_id.rsplit("-", 1)[1])}}
+            raw_key = 4 if step_id == "ENCODER-CLICK" else int(step_id.rsplit("-", 1)[1]) - 1
+            return {"payload": {"kind": "key_transition", "step_id": step_id, "key": raw_key}}
 
     with TemporaryDirectory() as directory:
         run = BatchRun(FakeSession(), EvidenceWriter(Path(directory), "batch-keys"), TerminalUI(), "batch-keys", dwell_seconds=0)
         run.start()
         run.gate_index = 2
         observations = run.stimulate_gate()
-        if [item.machine_details["event"]["key"] for item in observations] != [0, 1, 2, 3, 4]:
-            raise AssertionError("observed key indices were not retained in batch order")
-        if "key index: 4" not in run.ui.last_screen:
-            raise AssertionError("observed key index was not visible in bounded batch screen")
+        if [item.machine_details["event"]["key"] for item in observations] != [0, 1, 2, 3]:
+            raise AssertionError("operator KEY-1..KEY-4 did not retain raw key indices 0..3")
         if run.respond(f"Y KEYS {run.run_suffix}") != "pass":
             raise AssertionError("key gate group confirmation did not pass")
-        if [row["observed_value"]["event"]["key"] for row in run.history] != [0, 1, 2, 3, 4]:
-            raise AssertionError("observed key indices were not retained in evidence")
+        if [row["observed_value"]["event"]["key"] for row in run.history] != [0, 1, 2, 3]:
+            raise AssertionError("raw key indices were not retained in key evidence")
+
+        click_observations = run.stimulate_gate()
+        click_event = click_observations[-1].machine_details.get("event", {})
+        if click_event.get("key") != 4:
+            raise AssertionError("ENC-CLICK did not validate raw key index 4")
+        if "key index: 4" not in run.ui.last_screen:
+            raise AssertionError("raw encoder click key index was not visible in bounded batch screen")
+        if run.respond(f"Y ENCODER {run.run_suffix}") != "pass":
+            raise AssertionError("encoder group confirmation did not pass")
 
 
 def batch_no_ack_check() -> None:

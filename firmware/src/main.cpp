@@ -128,7 +128,7 @@ StimulusKind classifyStimulus(const char *stimulus, uint8_t &value) {
   if (parseSingleIndex(stimulus, "PANEL-", 4, value) && value >= 1) {
     return StimulusKind::Map;
   }
-  if (parseSingleIndex(stimulus, "KEY-", 4, value)) {
+  if (parseSingleIndex(stimulus, "KEY-", 4, value) && value >= 1) {
     return StimulusKind::Key;
   }
   if (strcmp(stimulus, "ENC-CW") == 0) {
@@ -188,7 +188,8 @@ bool applyStimulus(const char *stimulus, uint8_t &panel) {
       render(BringupState::Map, panel);
       return true;
     case StimulusKind::Key:
-      expectedKey = value;
+      // Operator KEY-1..KEY-4 map to raw library key indices 0..3.
+      expectedKey = static_cast<uint8_t>(value - 1);
       armedInput = ArmedInput::Key;
       render(BringupState::Press, panel);
       return true;
@@ -201,6 +202,9 @@ bool applyStimulus(const char *stimulus, uint8_t &panel) {
       render(BringupState::TurnCcw, panel);
       return true;
     case StimulusKind::EncoderClick:
+      // The encoder click is the fifth raw library input (key index 4).
+      // It is observed only; never interpret it as BOOT0/reset.
+      expectedKey = 4;
       armedInput = ArmedInput::EncoderClick;
       render(BringupState::Click, panel);
       return true;
@@ -321,37 +325,34 @@ void readFrames() {
   }
 }
 
+void reportKeyTransition(uint8_t rawKey) {
+  JsonDocument event;
+  event["kind"] = "key_transition";
+  event["step_id"] = activeStep;
+  event["key"] = rawKey;
+  sendFrame("event", 0, event.as<JsonObjectConst>());
+}
+
 void reportInput() {
   if (armedInput == ArmedInput::None || activeStep.isEmpty()) {
     return;
   }
   if (armedInput == ArmedInput::Key) {
-    for (uint8_t key = 0; key < 5; ++key) {
-      if (board.key(key).wasPressed()) {
-        JsonDocument event;
-        event["kind"] = "key_transition";
-        event["step_id"] = activeStep;
-        event["key"] = key;
-        sendFrame("event", 0, event.as<JsonObjectConst>());
-        armedInput = ArmedInput::None;
-        return;
-      }
+    if (board.key(expectedKey).wasPressed()) {
+      reportKeyTransition(expectedKey);
+      armedInput = ArmedInput::None;
     }
     return;
   }
 
-  // Encoder direction and click are deliberately only detected locally.  The
-  // v1 tracer schema has no encoder event type, and fabricating a key index
-  // would turn machine acknowledgement into an unapproved physical map.
+  // Encoder direction is intentionally only detected locally.  The encoder
+  // click is a validated transition from raw library key index 4; it is
+  // observed as input only and can never invoke BOOT0/reset.
   if (armedInput == ArmedInput::Encoder && board.encoderDelta() != 0) {
     armedInput = ArmedInput::None;
-  } else if (armedInput == ArmedInput::EncoderClick) {
-    for (uint8_t key = 0; key < 5; ++key) {
-      if (board.key(key).wasPressed()) {
-        armedInput = ArmedInput::None;
-        return;
-      }
-    }
+  } else if (armedInput == ArmedInput::EncoderClick && board.key(4).wasPressed()) {
+    reportKeyTransition(4);
+    armedInput = ArmedInput::None;
   }
 }
 }  // namespace
