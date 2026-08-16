@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: executing
-stopped_at: Completed 01-09-PLAN.md
-last_updated: "2026-08-16T22:24:33.585Z"
+stopped_at: Completed 01-10-PLAN.md
+last_updated: "2026-08-16T22:59:24.714Z"
 last_activity: 2026-08-16
 last_activity_desc: Exact paired keypad passed frozen USB qualification; result, traffic, pointer, and eligibility lock verified.
 progress:
   total_phases: 2
   completed_phases: 0
   total_plans: 13
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 ## Current Position
 
 Phase: 01 (physical-keypad-and-proven-transport) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-08-16 — Phase 01 execution started
 
-Progress: [███████░░░] 69%
+Progress: [████████░░] 77%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [███████░░░] 69%
 | Phase 01 P04 | execution-window | 2 tasks | 9 files |
 | Phase 01 P05 | execution-window | 2 tasks | 10 files |
 | Phase 01 P09 | execution window | 3 tasks | 12 files |
+| Phase 01 P10 | 133 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: 01-09: Every complete firmware input line is admitted through the consolidated FrameCodec/ProtocolSession path before typed dispatch.
 - [Phase ?]: 01-09: Protocol queue high-water reports bounded pending frame units and explicit completion restores capacity.
 - [Phase ?]: 01-09: Board readiness and PhysicalMap lookups fail closed without raw-index fallback.
+- [Phase ?]: Keep supported Python range >=3.11,<3.15 with hash-locked pyserial/jsonschema dependencies; do not require an older interpreter.
+- [Phase ?]: Classify non-string frame discriminants as unknown_type before membership checks for host/native parity.
+- [Phase ?]: Reject duplicate JSON keys and over-limit nesting before dispatch.
 
 ### Pending Todos
 
@@ -109,6 +113,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-16T22:24:33.574Z
-Stopped at: Completed 01-09-PLAN.md
+Last session: 2026-08-16T22:59:24.704Z
+Stopped at: Completed 01-10-PLAN.md
 Resume file: None
