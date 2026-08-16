@@ -29,16 +29,16 @@ Herdr Agent Keypad reaches its first usable release through four vertical, real-
   3. After reset, unplug, or link interruption, the same physical unit re-establishes the selected link without requiring an unrecorded port or board assumption.
   4. The user can see measured evidence that USB is suitable for v1, or the specific measured failure that selected the single Wi-Fi fallback instead.
 
-**Plans:** 8 plans
+**Plans:** 2/8 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Prove the production walking-skeleton USB tracer, pinned src-layout host environment, and real atomic evidence write/reopen verification.
+- [x] 01-01-PLAN.md — Prove the production walking-skeleton USB tracer, pinned src-layout host environment, and real atomic evidence write/reopen verification.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Expand firmware into the complete bounded Pro-only physical stimulus and renderer surface.
+- [x] 01-02-PLAN.md — Expand firmware into the complete bounded Pro-only physical stimulus and renderer surface.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -138,7 +138,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Physical Keypad and Proven Transport | 0/8 | Planned | - |
+| 1. Physical Keypad and Proven Transport | 2/8 | In Progress|  |
 | 2. Authoritative Agent Projection and Exact Focus | 0/TBD | Not started | - |
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |

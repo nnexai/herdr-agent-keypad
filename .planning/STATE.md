@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: executing
-stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-08-16T07:54:12.566Z"
+stopped_at: Completed 01-02-PLAN.md after explicit delivered-unit physical approval
+last_updated: "2026-08-16T09:02:49.342Z"
 last_activity: 2026-08-16
 last_activity_desc: Initial vertical-MVP roadmap created with 26/26 v1 requirements mapped.
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 8
-  completed_plans: 0
+  completed_plans: 2
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 ## Current Position
 
 Phase: 01 (physical-keypad-and-proven-transport) — EXECUTING
-Plan: 1 of 8 complete; next is 2 of 8
-Status: Plan 01-01 complete; Phase 01 Wave 2 is ready
-Last activity: 2026-08-16 — Real PANEL-1/key-0 USB tracer run completed
+Plan: 2 of 8
+Status: Ready to execute
+Last activity: 2026-08-16 — Phase 01 execution started
 
-Progress: [█░░░░░░░░░] 12.5%
+Progress: [█░░░░░░░░░] 12.[███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -49,10 +49,16 @@ Progress: [█░░░░░░░░░] 12.5%
 | 01 | 1 | 8 | 14 min |
 
 **Recent Trend:**
+
 - Last 5 plans: 01-01 (14 min)
 - Trend: Initial execution
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P02 | 3 min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -65,6 +71,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 2]: Native Herdr focus may change seen/manual-unread state; keypad focus cannot settle, dismiss, reply, approve, or invoke arbitrary actions.
 - [Phase 3]: Codex credentials and interpretation stay on the host; absent values remain unavailable and source freshness is independent.
 - [Phase 4]: Release acceptance requires real hardware, installed accounts, and visible recovery rather than mock-only evidence.
+- [Phase ?]: Plan 01-02 preserves the Pro-only adapter and fixed renderer as the implementation boundary; no checkpoint workaround was needed.
+- [Phase ?]: Plan 01-02 records only the user's explicit delivered-unit proof scope and does not infer physical facts beyond that evidence.
 
 ### Pending Todos
 
@@ -85,6 +93,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-16T08:35:00Z
-Stopped at: Plan 01-01 complete after real PANEL-1/key-0 USB CDC tracer evidence; ready to advance to Wave 2.
-Resume file: None; Python 3.11 remains an explicit reproducibility concern.
+Last session: 2026-08-16T09:02:49.333Z
+Stopped at: Completed 01-02-PLAN.md after explicit delivered-unit physical approval
+Resume file: None
