@@ -1,123 +1,94 @@
 {
   "version": "1.0",
-  "timestamp": "2026-08-16T05:08:36.392Z",
-  "phase": null,
-  "phase_name": "project-initialization",
-  "phase_dir": null,
-  "plan": null,
-  "task": 6,
-  "total_tasks": 9,
+  "timestamp": "2026-08-16T08:17:45.511Z",
+  "phase": "01",
+  "phase_name": "physical-keypad-and-proven-transport",
+  "phase_dir": ".planning/phases/01-physical-keypad-and-proven-transport",
+  "plan": 1,
+  "task": 1,
+  "total_tasks": 2,
   "status": "paused",
   "completed_tasks": [
     {
       "id": 1,
-      "name": "Deep questioning and project definition",
-      "status": "done"
+      "name": "Prove one panel-key USB round trip end to end",
+      "status": "in_progress",
+      "progress": "Tracer implementation and build preparation are committed; physical flash and panel/key observation remain.",
+      "commits": ["3912fc6", "c5d8a32"]
     },
     {
       "id": 2,
-      "name": "Create project context",
-      "status": "done",
-      "commit": "1dc7e13"
-    },
-    {
-      "id": 3,
-      "name": "Configure workflow and custom model routing",
-      "status": "done",
-      "commit": "558990f"
-    },
-    {
-      "id": 4,
-      "name": "Bake project model and effort routing into local Codex agent definitions",
-      "status": "done",
-      "progress": "All 34 GSD role definitions match the committed project routing config"
-    },
-    {
-      "id": 5,
-      "name": "Check for nested repositories",
-      "status": "done",
-      "progress": "No nested repositories detected"
+      "name": "Lock the reproducible host environment and evidence verifier",
+      "status": "not_started"
     }
   ],
   "remaining_tasks": [
     {
-      "id": 6,
-      "name": "Choose whether to run project ecosystem research",
-      "status": "not_started"
+      "id": 1,
+      "name": "Flash tracer, run guided physical observation, and finish Task 1",
+      "status": "blocked"
     },
     {
-      "id": 7,
-      "name": "Define and approve v1 requirements",
-      "status": "not_started"
-    },
-    {
-      "id": 8,
-      "name": "Choose vertical MVP or horizontal project structure",
-      "status": "not_started"
-    },
-    {
-      "id": 9,
-      "name": "Create, review, and commit roadmap and state artifacts",
+      "id": 2,
+      "name": "Run Task 2 and create 01-01-SUMMARY.md",
       "status": "not_started"
     }
   ],
-  "blockers": [],
+  "blockers": [
+    {
+      "description": "The board's serial node is owned by root:dialout and the current user is not a member of dialout; PlatformIO upload failed with Permission denied on /dev/ttyACM0.",
+      "type": "human_action",
+      "workaround": "Run sudo usermod -aG dialout $USER, then log out/in or run newgrp dialout; verify read/write access before uploading."
+    },
+    {
+      "description": "Physical PANEL-1 stimulus and matching key confirmation are still required; firmware acknowledgements cannot establish physical evidence.",
+      "type": "human_action",
+      "workaround": "After upload, run phase1_bringup start and confirm Y PANEL-1 only when the visible panel/key correspondence is physically correct."
+    },
+    {
+      "description": "The plan requires exact Python 3.11 evidence; the available project environment is Python 3.14.7 with pyserial 3.5.",
+      "type": "technical",
+      "workaround": "Keep the 3.14 result recorded as non-equivalent until Python 3.11 is installed and the environment gate is rerun."
+    }
+  ],
   "async_jobs": [],
   "human_actions_pending": [
     {
-      "action": "Choose Research first or Skip research",
-      "context": "The gsd-new-project workflow is paused at its Step 6 research gate before any research or requirements artifacts are created",
+      "action": "Refresh the login/session after adding nnex to dialout and verify /dev/ttyACM0 is readable and writable.",
+      "context": "The exact board bootloader node is /dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_8C:BF:EA:0D:CB:FC-if00 -> /dev/ttyACM0.",
+      "blocking": true
+    },
+    {
+      "action": "Flash the tracer, run the host start command, and confirm the physical PANEL-1/key mapping.",
+      "context": "Use the project venv's pio and Python commands; do not treat the existing HID endpoint or firmware ACK as physical proof.",
       "blocking": true
     }
   ],
   "decisions": [
     {
-      "decision": "Build a personal-first physical agent inbox for the connected LILYGO T-Keyboard S3 Pro",
-      "rationale": "The immediate need is glanceable awareness of agents requiring attention and one-key switching",
-      "phase": null
+      "decision": "Use USB CDC as the Phase 1 transport candidate.",
+      "rationale": "The connected board enumerates as Espressif USB hardware and the firmware build enables native USB CDC; physical proof remains required.",
+      "phase": "01"
     },
     {
-      "decision": "Mirror the installed herdr-agent-inbox ordering exactly",
-      "rationale": "Herdr already provides the user's preferred blocked, unseen, working, idle, and settled semantics",
-      "phase": null
-    },
-    {
-      "decision": "Use one to three dynamic display keys for inbox agents and reserve the fourth for Codex limits",
-      "rationale": "This fits the four-key hardware while prioritizing the inbox and retaining useful ambient capacity data",
-      "phase": null
-    },
-    {
-      "decision": "An agent key only focuses the corresponding herdr agent",
-      "rationale": "Deeper interaction stays inside the agent; selection must not silently settle or mutate inbox state",
-      "phase": null
-    },
-    {
-      "decision": "Keep the encoder secondary and defer general macros",
-      "rationale": "The encoder requires multiple uncomfortable interactions and macros would dilute the initial inbox loop",
-      "phase": null
-    },
-    {
-      "decision": "Research transport with a preference for USB",
-      "rationale": "The device already needs wired power, but the supported and reliable data path has not yet been proven",
-      "phase": null
-    },
-    {
-      "decision": "Require physical end-to-end operation for v1",
-      "rationale": "The real connected device, herdr focus action, live inbox data, and Codex limits must work together",
-      "phase": null
-    },
-    {
-      "decision": "Use project-specific Sol and Luna routing",
-      "rationale": "Sol provides judgment for planning and review; cheaper Luna performs guided research and execution",
-      "phase": null
+      "decision": "Use the project-owned tools/phase1_bringup/.venv for host commands.",
+      "rationale": "The venv resolves pyserial 3.5 and keeps the guided utility invocation reproducible.",
+      "phase": "01"
     }
   ],
   "uncommitted_files": [
-    {
-      "path": ".codex/",
-      "context": "The entire project-local GSD installation is untracked. During this session, its 34 agent TOMLs were baked to match .planning/config.json. Do not commit the whole directory accidentally without explicit scope."
-    }
+    ".planning/STATE.md",
+    ".planning/config.json",
+    ".planning/.continue-here.md (deleted in pre-existing working tree)",
+    ".planning/HANDOFF.json (recreated by this pause)",
+    ".codex/ (untracked pre-existing workflow files)",
+    ".omp/ (untracked pre-existing integration files)",
+    ".pi/ (untracked pre-existing workflow files)",
+    ".pio/ (generated PlatformIO build/cache files)",
+    "artifacts/ (generated evidence/self-check output)",
+    "tools/phase1_bringup/src/phase1_bringup.egg-info/ (generated install metadata)",
+    "tools/phase1_bringup/src/phase1_bringup/__pycache__/ (generated Python cache)"
   ],
-  "next_action": "Resume gsd-new-project at Step 6 and ask the user to choose Research first or Skip research; if research is chosen, spawn the four configured Luna/high project researchers.",
-  "context_notes": "No phase, requirements, roadmap, state, or research files exist yet. PROJECT.md and config.json are committed. The physical device is connected. A fresh Codex process should reload the updated project-local agent TOMLs before subagent dispatch."
+  "next_action": "After restarting or running newgrp dialout, verify id and test -r/-w /dev/ttyACM0, then flash using the stable /dev/serial/by-id path with tools/phase1_bringup/.venv/bin/pio run -e t-keyboard-s3-pro -t upload --upload-port <stable-path>.",
+  "context_notes": "Plan 01-01 is paused at the designed human-action checkpoint. Linux sees the board as USB HID in runtime and as USB JTAG serial in bootloader. PlatformIO source-root issue was fixed in c5d8a32 and the build passes. Do not resume later waves until this plan has a physical tracer result and its final summary."
 }
