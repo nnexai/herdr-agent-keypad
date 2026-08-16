@@ -275,6 +275,62 @@ def _receive_event(connection: Any, session_id: str, step_id: str) -> dict[str, 
     raise TimeoutError("timed out waiting for matching physical key transition")
 
 
+def _contract_text(path: Path, label: str) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise RuntimeError(f"{label} is not readable: {path}") from exc
+
+
+def _require_contract_tokens(text: str, tokens: tuple[str, ...], label: str) -> None:
+    missing = [token for token in tokens if token not in text]
+    if missing:
+        raise RuntimeError(f"{label} is missing required contract tokens: {', '.join(missing)}")
+
+
+def firmware_contract_check(path: Path) -> None:
+    text = _contract_text(path, "firmware contract")
+    _require_contract_tokens(
+        text,
+        (
+            "DisplayMapping",
+            "KeyMapping",
+            "EncoderMapping",
+            "LedMapping",
+            "BrightnessObservation",
+            "PhysicalMap",
+            "ObservationState::Unavailable",
+            "human_confirmed",
+        ),
+        "firmware contract",
+    )
+
+
+def renderer_contract_check(path: Path) -> None:
+    text = _contract_text(path, "device render contract")
+    _require_contract_tokens(
+        text,
+        (
+            "BringupState::Wait",
+            "BringupState::Map",
+            "BringupState::Press",
+            "BringupState::TurnCw",
+            "BringupState::TurnCcw",
+            "BringupState::Click",
+            "BringupState::Brightness",
+            "BringupState::Pair",
+            "BringupState::Pass",
+            "BringupState::Fail",
+            "BringupState::LinkLost",
+            "kSafeInset = 4",
+            "kPanelCount = 4",
+            "display.fillScreen(TFT_BLACK)",
+            "drawWait",
+        ),
+        "device render contract",
+    )
+
+
 def command_self_check(args: argparse.Namespace) -> int:
     if args.environment:
         environment = dependency_gate()
@@ -285,6 +341,12 @@ def command_self_check(args: argparse.Namespace) -> int:
         base = new_frame("probe", "boot", "session", 1, {"step_id": "PANEL-1", "panel": 1, "stimulus": "1 ^ CYAN"})
         if decode_frame(encode_frame(base)) != base:
             raise RuntimeError("frame round trip mismatch")
+    if args.firmware_contract:
+        firmware_contract_check(Path(args.firmware_contract))
+        print("Firmware contract: physical map fields remain unapproved")
+    if args.device_render_contract:
+        renderer_contract_check(Path(args.device_render_contract))
+        print("Device render contract: fixed states and sequential 4 px panels present")
     if args.evidence_roundtrip:
         path = self_check_roundtrip(Path(args.evidence_roundtrip))
         print(f"Evidence round trip: verified {path.name}")
@@ -297,6 +359,8 @@ def main(argv: list[str] | None = None) -> int:
     self_check = subparsers.add_parser("self-check")
     self_check.add_argument("--environment", action="store_true")
     self_check.add_argument("--schema", type=Path)
+    self_check.add_argument("--firmware-contract", type=Path)
+    self_check.add_argument("--device-render-contract", type=Path)
     self_check.add_argument("--evidence-roundtrip", type=Path)
     start = subparsers.add_parser("start")
     start.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
