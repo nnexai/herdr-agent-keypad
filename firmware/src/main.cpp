@@ -325,7 +325,6 @@ void readFrames() {
     uint8_t byte = 0;
     if (usbLink.read(&byte, 1) != 1) break;
     if (byte == '\n') {
-      proofMetrics.recordReceived();
       phase1::protocol::Result admission;
       if (frameOverflow) {
         admission = protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame), kMaxLineBytes + 1);
@@ -333,6 +332,7 @@ void readFrames() {
         inputFrame[frameLength] = '\n';
         admission = protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame), frameLength + 1);
       }
+      proofMetrics.recordReceived();
       dispatchAdmission(admission);
       frameLength = 0;
       frameOverflow = false;
