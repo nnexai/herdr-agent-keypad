@@ -153,7 +153,6 @@ class EvidenceWriter:
         candidate["replacement_token"] = "REPLACE"
         self._rows.append(candidate)
         self._row_ids.add(candidate["row_id"])
-
     def finalize(self, manifest: dict[str, Any], result: dict[str, Any]) -> Path:
         if self._finalized:
             raise EvidenceError("evidence directory already finalized")
@@ -162,7 +161,7 @@ class EvidenceWriter:
         if not isinstance(physical_map, dict):
             raise EvidenceError("physical_map must be an object")
         physical_map.setdefault("rows", copy.deepcopy(self._rows))
-        _validate_physical_map(final_result)
+        _validate_physical_map(final_result, require_rows=final_result.get("status") not in {"fail", "incomplete"})
         path = self.write(manifest, final_result)
         self._finalized = True
         return path
@@ -199,7 +198,7 @@ class EvidenceWriter:
         if manifest.get("run_id") != self.run_id or result.get("run_id") != self.run_id:
             raise EvidenceError("evidence run_id mismatch")
         if "physical_map" in result:
-            _validate_physical_map(result)
+            _validate_physical_map(result, require_rows=result.get("status") not in {"fail", "incomplete"})
         expected: dict[str, str] = {}
         for line in sums_path.read_text(encoding="ascii").splitlines():
             parts = line.split()
