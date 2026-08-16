@@ -5,6 +5,7 @@ import argparse
 import inspect
 import io
 import json
+import os
 import re
 import secrets
 import sys
@@ -169,6 +170,7 @@ def run_recover(schema_path: Path, evidence_root: Path, binding_path: Path, inte
             "recovery": [transition.as_dict() for transition in transitions],
             "device": {"device_id": binding.device_id, "device_suffix": binding.device_id[-4:], "boot_id": session.device.get("device_boot_id", "unavailable"), "session_id": session.session_id},
             "interruption": interruption,
+            "runtime_privilege": "root" if os.geteuid() == 0 else "ordinary-user",
         }
         manifest = {
             "schema_version": 1,
@@ -183,6 +185,7 @@ def run_recover(schema_path: Path, evidence_root: Path, binding_path: Path, inte
             "interruption": interruption,
             "in_scope": ["reset", "normal-flash-reset", "port-move", "endpoint-renumber", "utility-restart"],
             "excluded": ["host-reboot", "suspend-resume", "cross-component-product-resync"],
+            "runtime_privilege": "root" if os.geteuid() == 0 else "ordinary-user",
         }
         path = writer.write(manifest, result)
         print(f"New session established for exact paired keypad: {session.session_id}")
