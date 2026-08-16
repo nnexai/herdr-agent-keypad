@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: executing
-stopped_at: Completed 01-04-PLAN.md after exact pairing and operator-run D-12 recovery tour
-last_updated: "2026-08-16T14:12:50.714Z"
+stopped_at: Completed 01-05-PLAN.md after host/firmware golden parity and native fixture harness
+last_updated: "2026-08-16T14:31:24.390Z"
 last_activity: 2026-08-16
 last_activity_desc: Initial vertical-MVP roadmap created with 26/26 v1 requirements mapped.
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 8
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 ## Current Position
 
 Phase: 01 (physical-keypad-and-proven-transport) — EXECUTING
-Plan: 4 of 8
+Plan: 5 of 8
 Status: Ready to execute
 Last activity: 2026-08-16 — Phase 01 execution started
 
-Progress: [█████░░░░░] 50%
+Progress: [██████░░░░] 63%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [█████░░░░░] 50%
 | Phase 01 P02 | 3 min | 2 tasks | 5 files |
 | Phase 01 P03 | closeout | 2 tasks | 7 files |
 | Phase 01 P04 | execution-window | 2 tasks | 9 files |
+| Phase 01 P05 | execution-window | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -81,6 +82,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 1]: Pairing trusts only the exact fresh physical challenge plus application hello device_id; USB descriptors and transient paths remain discovery-only.
 - [Phase 1]: Every D-12 interruption creates a fresh session and discards uncertain IDs; endpoint renumbering is explicitly unavailable rather than passed.
 - [Phase 1]: Operator-run recovery tour owns physical Y/N/R/U confirmation and utility restart resumes from an immutable checkpoint.
+- [Phase ?]: Plan 01-05 froze a closed v1 envelope at 4096 bytes including LF with canonical FNV-1a-64 payload digest and typed rejection codes.
+- [Phase ?]: Plan 01-05 consolidated firmware FrameCodec and ProtocolSession with fresh reset/discard, sequence/deduplication, and bounded queue semantics.
 
 ### Pending Todos
 
@@ -101,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-16T14:12:44.661Z
-Stopped at: Completed 01-04-PLAN.md after exact pairing and operator-run D-12 recovery tour
+Last session: 2026-08-16T14:31:24.380Z
+Stopped at: Completed 01-05-PLAN.md after host/firmware golden parity and native fixture harness
 Resume file: None
