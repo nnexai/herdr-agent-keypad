@@ -35,6 +35,7 @@ class BringupRenderer {
   static constexpr uint8_t kSafeInset = 4;
   static constexpr uint8_t kPanelCount = 4;
   static constexpr uint8_t kChallengeMax = 8;
+  static constexpr uint8_t kLowestProofBrightness = 10;
 
   void render(BoardAdapter& board, const RenderRequest& request) const {
     const uint8_t active = (request.active_panel >= 1 && request.active_panel <= kPanelCount)
@@ -94,6 +95,48 @@ class BringupRenderer {
   static void drawWait(Display& display) {
     text(display, "WAIT", 8, 8, TFT_DARKGREY);
     text(display, "IDLE", 48, 56, TFT_DARKGREY);
+  }
+
+  static void drawCue(Display& display, BringupState state, uint16_t color) {
+    // Geometry repeats the state meaning so a color-blind or low-brightness
+    // observation does not depend on the accent color.
+    switch (state) {
+      case BringupState::Map:
+        display.drawLine(64, 38, 64, 56, color);
+        display.drawLine(64, 56, 56, 48, color);
+        display.drawLine(64, 56, 72, 48, color);
+        break;
+      case BringupState::TurnCw:
+        display.drawLine(52, 58, 76, 58, color);
+        display.drawLine(76, 58, 68, 50, color);
+        display.drawLine(76, 58, 68, 66, color);
+        break;
+      case BringupState::TurnCcw:
+        display.drawLine(76, 58, 52, 58, color);
+        display.drawLine(52, 58, 60, 50, color);
+        display.drawLine(52, 58, 60, 66, color);
+        break;
+      case BringupState::Pass:
+        display.drawLine(48, 60, 60, 72, color);
+        display.drawLine(60, 72, 82, 46, color);
+        break;
+      case BringupState::Fail:
+        display.drawLine(52, 48, 76, 72, color);
+        display.drawLine(76, 48, 52, 72, color);
+        break;
+      case BringupState::LinkLost:
+        display.drawLine(50, 54, 60, 44, color);
+        display.drawLine(68, 72, 78, 62, color);
+        display.drawLine(58, 62, 70, 50, color);
+        break;
+      case BringupState::Press:
+      case BringupState::Click:
+      case BringupState::Brightness:
+      case BringupState::Pair:
+      case BringupState::Wait:
+      default:
+        break;
+    }
   }
 
   static void drawActive(Display& display, const RenderRequest& request) {
@@ -192,6 +235,7 @@ class BringupRenderer {
         text(display, "INVALID", 44, 72, TFT_RED);
       }
     }
+    drawCue(display, request.state, glyph_color);
 
     text(display, instruction, 8, 108, TFT_WHITE);
   }
