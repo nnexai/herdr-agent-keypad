@@ -56,10 +56,18 @@ class SerialLink:
     def write(self, data: bytes) -> None:
         if self.closed:
             raise SerialLinkError("closed", "serial link is closed")
-        if not isinstance(data, bytes) or len(data) > self.max_line_bytes:
+        if not isinstance(data, bytes) or not data or len(data) > self.max_line_bytes:
             raise SerialLinkError("line_too_long", "outbound frame exceeds the bounded line size")
+        offset = 0
         try:
-            self.connection.write(data)
+            while offset < len(data):
+                count = self.connection.write(data[offset:])
+                if not isinstance(count, int) or count <= 0 or count > len(data) - offset:
+                    raise SerialLinkError("short_write", "serial write did not accept the complete frame")
+                offset += count
+        except SerialLinkError:
+            self.close()
+            raise
         except Exception as exc:
             self.close()
             raise SerialLinkError("write", "serial write failed; stale descriptor closed") from exc
@@ -68,9 +76,10 @@ class SerialLink:
         if self.closed:
             raise SerialLinkError("closed", "serial link is closed")
         try:
-            line = self.connection.readline(self.max_line_bytes + 1)
-        except TypeError:
-            line = self.connection.readline()
+            try:
+                line = self.connection.readline(self.max_line_bytes + 1)
+            except TypeError:
+                line = self.connection.readline()
         except Exception as exc:
             self.close()
             raise SerialLinkError("read", "serial read failed; stale descriptor closed") from exc
@@ -171,13 +180,14 @@ def serial_reconnect_check() -> None:
             self.writes: list[bytes] = []
             self.lines = [encode_frame(new_frame("hello_ack", boot_id, "ignored", 1, {"accepted": True, "protocol": 1, "device_id": device_id, "firmware": "phase1-bringup"}, 1))]
 
-        def write(self, data: bytes) -> None:
+        def write(self, data: bytes) -> int:
             self.writes.append(data)
             import json
             frame = json.loads(data)
             response = json.loads(self.lines[0])
             response["session_id"] = frame["session_id"]
             self.lines[0] = (json.dumps(response, separators=(",", ":")) + "\n").encode()
+            return len(data)
 
         def readline(self, *_args: Any) -> bytes:
             return self.lines.pop(0) if self.lines else b""
@@ -202,6 +212,45 @@ def serial_reconnect_check() -> None:
     link.close()
     if not opened[0].closed:
         raise AssertionError("stale descriptor was not closed")
+    class ShortConnection:
+        def __init__(self):
+            self.closed = False
+
+        def write(self, data: bytes) -> int:
+            return max(0, len(data) - 1)
+
+        def close(self) -> None:
+            self.closed = True
+
+    short = ShortConnection()
+    try:
+        SerialLink(short).write(b"abcd")
+    except SerialLinkError as exc:
+        if exc.code != "short_write" or not short.closed:
+            raise AssertionError("short write did not close the stale descriptor")
+    else:
+        raise AssertionError("short write was accepted")
+
+    class FailingReadConnection:
+        def __init__(self):
+            self.closed = False
+
+        def readline(self, *_args: Any) -> bytes:
+            if _args:
+                raise TypeError("legacy readline signature")
+            raise OSError("descriptor failed")
+
+        def close(self) -> None:
+            self.closed = True
+
+    failing = FailingReadConnection()
+    try:
+        SerialLink(failing).readline()
+    except SerialLinkError as exc:
+        if exc.code != "read" or not failing.closed:
+            raise AssertionError("read exception did not close the stale descriptor")
+    else:
+        raise AssertionError("read exception was accepted")
 
 
 def udev_rule_check(path: Any) -> None:

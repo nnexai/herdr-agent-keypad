@@ -5,8 +5,9 @@
 
 #include <esp_heap_caps.h>
 
-// Fixed-width measurements at the protocol/link boundary.  This type contains
-// no transport or protocol policy; callers decide when a byte/event occurred.
+// Fixed-width measurements at the protocol/link boundary. Protocol queue
+// counters are measured in pending frames; transport bytes are intentionally
+// not mixed into queue_high_water.
 struct ProofMetrics {
   uint32_t sent = 0;
   uint32_t received = 0;
@@ -20,7 +21,7 @@ struct ProofMetrics {
   uint32_t minimum_free_heap = UINT32_MAX;
   uint32_t largest_free_block = UINT32_MAX;
   uint32_t parser_high_water = 0;
-  uint32_t queue_high_water = 0;
+  uint32_t queue_high_water = 0;  // pending protocol frames, never transport bytes
   uint32_t max_display_flush_us = 0;
   uint32_t max_key_poll_gap_us = 0;
 
@@ -49,8 +50,10 @@ struct ProofMetrics {
   void observeParser(size_t bytes) {
     if (bytes > parser_high_water) parser_high_water = static_cast<uint32_t>(bytes);
   }
-  void observeQueue(size_t bytes) {
-    if (bytes > queue_high_water) queue_high_water = static_cast<uint32_t>(bytes);
+  void observeQueue(size_t frames) {
+    constexpr size_t kProtocolQueueCapacity = 16;
+    if (frames > kProtocolQueueCapacity) frames = kProtocolQueueCapacity;
+    if (frames > queue_high_water) queue_high_water = static_cast<uint32_t>(frames);
   }
   void observeDisplayFlush(uint32_t elapsed_us) {
     if (elapsed_us > max_display_flush_us) max_display_flush_us = elapsed_us;

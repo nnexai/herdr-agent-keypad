@@ -18,8 +18,17 @@ size_t UsbCdcLink::read(uint8_t *destination, size_t capacity) {
 }
 
 size_t UsbCdcLink::write(const uint8_t *source, size_t length) {
-  if (source == nullptr || length == 0) return 0;
-  return Serial.write(source, length);
+  if (source == nullptr || length == 0 || !connected()) return 0;
+  size_t written = 0;
+  while (written < length) {
+    const size_t count = Serial.write(source + written, length - written);
+    if (count == 0 || count > length - written) {
+      close();
+      return 0;
+    }
+    written += count;
+  }
+  return written;
 }
 
 bool UsbCdcLink::connected() const { return static_cast<bool>(Serial); }
