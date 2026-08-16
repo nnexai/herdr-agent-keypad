@@ -19,7 +19,7 @@ affects: [01-06 USB qualification, 01-07 Wi-Fi fallback, 01-08 archive]
 actuals:
   tokens: 15623
   tasks: 2
-  commits: 2
+  commits: 7
 
 # Tech tracking
 tech-stack:
@@ -32,7 +32,6 @@ key-files:
     - firmware/src/protocol/protocol.h
     - firmware/src/protocol/protocol.cpp
     - test/protocol/test_main.cpp
-    - test/test_protocol/test_main.cpp
   modified:
     - protocol/schema/v1.json
     - tools/phase1_bringup/src/phase1_bringup/protocol.py
@@ -65,7 +64,7 @@ coverage:
     requirement: HARD-03
     verification:
       - kind: unit
-        ref: "tools/phase1_bringup/.venv/bin/pio test -e native"
+        ref: "tools/phase1_bringup/.venv/bin/pio test -e native -f protocol"
         status: pass
     human_judgment: false
 
@@ -85,7 +84,7 @@ status: complete
 - **Started:** 2026-08-16T14:12:50Z (planning state timestamp; execution start was not separately persisted)
 - **Completed:** 2026-08-16
 - **Tasks:** 2 plan tasks completed
-- **Files modified:** 9 source/config/test files
+- **Files modified:** 8 source/config/test files
 
 ## Accomplishments
 
@@ -100,8 +99,10 @@ Each task was committed atomically:
 
 1. **Task 1: Freeze matching production host and firmware protocol semantics** - `8c5d7d8` (`feat`)
 2. **Task 2: Author and run the concrete PlatformIO native fixture harness** - `cb17635` (`test`)
+3. **Task 2 correction: Make exact filtered command execute and verify encoder digest** - `6f1b94a` (`fix`)
+4. **Task 2 correction: Keep explicit Unity filter declaration** - `f2ada83` (`fix`)
 
-**Plan metadata:** `32d94f4` (docs: state/roadmap/summary completion); `ceb843c` (docs: corrected summary file count).
+**Plan metadata:** `32d94f4` (docs: state/roadmap/summary completion); `ceb843c` (docs: corrected file count); `e3afbaf` (docs: metadata hashes).
 
 ## Files Created/Modified
 
@@ -111,9 +112,8 @@ Each task was committed atomically:
 - `firmware/src/protocol/protocol.cpp` - bounded native/firmware parser, digest, encoder, and session state machine.
 - `tools/phase1_bringup/src/phase1_bringup/protocol.py` - matching host validator, digest, typed classification, bounded session, and golden runner.
 - `tools/phase1_bringup/src/phase1_bringup/__main__.py` - `--protocol-golden` self-check surface.
-- `platformio.ini` - native Unity environment, production source filter, absolute fixture macro, and test source build.
+- `platformio.ini` - native Unity environment, production source filter, absolute fixture macro, direct authored test directory, and test source build.
 - `test/protocol/test_main.cpp` - authored fixture-loading Unity runner.
-- `test/test_protocol/test_main.cpp` - PlatformIO 6 suite-name compatibility include preserving the authored runner path.
 
 ## Decisions Made
 
@@ -134,13 +134,13 @@ Each task was committed atomically:
 - **Verification:** `pio test -e native` compiled `firmware/src/protocol/protocol.cpp` and passed all three Unity tests.
 - **Committed in:** `cb17635`
 
-**2. [Rule 3 - Blocking] Added PlatformIO 6 test-suite compatibility path**
-- **Found during:** Task 2 exact `pio test -e native -f protocol` discovery
-- **Issue:** PlatformIO 6.1.19 only discovers test directories whose basename starts with `test_`; the authored required path `test/protocol/test_main.cpp` was otherwise not collected.
-- **Fix:** Added `test/test_protocol/test_main.cpp` as a small include wrapper and a wildcard-compatible native filter. The authored runner remains at the required `test/protocol/test_main.cpp` path.
-- **Files modified:** `platformio.ini`, `test/test_protocol/test_main.cpp`
-- **Verification:** `pio test -e native` collected `test_protocol` and passed all three tests; the exact filtered command exits successfully but PlatformIO reports zero cases because its CLI filter `protocol` cannot match the required `test_protocol` suite name.
-- **Committed in:** `cb17635`
+**2. [Rule 3 - Blocking] Made the exact filtered native command execute the authored suite**
+- **Found during:** Task 2 follow-up verification after PlatformIO reported zero filtered cases
+- **Issue:** PlatformIO's default test discovery ignores the required `test/protocol` directory because it only names `test_` directories, so `-f protocol` skipped the real harness.
+- **Fix:** Set the project `test_dir` directly to `test/protocol`; with no discoverable child suite PlatformIO uses its wildcard suite, and the exact `-f protocol` command now runs the authored file and reports three passing Unity tests.
+- **Files modified:** `platformio.ini`
+- **Verification:** Exact `pio test -e native -f protocol` reports `native:* [PASSED]` and `3 test cases: 3 succeeded`.
+- **Committed in:** `6f1b94a`
 
 ### Environment Deviation
 
@@ -150,11 +150,11 @@ Each task was committed atomically:
 - **Impact:** No protocol scope change; exact Python 3.11 reproducibility remains an environment concern.
 
 **Total deviations:** 2 auto-fixed issues plus 1 documented environment deviation.
-**Impact on plan:** Source/build fixes were required to make the requested production-code native test runnable. The PlatformIO suite-name limitation is explicitly recorded; no hardware or interactive script was started.
+**Impact on plan:** Source/build fixes were required to make the requested production-code native test runnable; the exact requested command now executes the authored harness. No hardware or interactive script was started.
 
 ## Issues Encountered
 
-- `pio test -e native -f protocol` exits zero but reports `0 test cases` under PlatformIO Core 6.1.19 because the required `test/protocol` path is not a discoverable suite name. The compatibility suite was run without the CLI filter and passed all tests; this limitation is not represented as a false passing test claim.
+- Exact `pio test -e native -f protocol` initially reported zero cases under PlatformIO Core 6.1.19; configuring `test_dir = test/protocol` corrected discovery without changing the authored path.
 - Native Unity initially failed to link protocol.cpp until `test_build_src = yes` and the source-root-relative filter were corrected.
 
 ## User Setup Required
@@ -170,12 +170,11 @@ None - no external service configuration required. No interactive hardware or ha
 ## Verification Evidence
 
 - `tools/phase1_bringup/.venv/bin/python -m phase1_bringup self-check --protocol-golden protocol/fixtures/v1-golden.json --schema protocol/schema/v1.json` → `Protocol golden: verified 21 vectors with host codec/session`.
-- `tools/phase1_bringup/.venv/bin/pio test -e native` → `native:test_protocol [PASSED]`; `3 test cases: 3 succeeded`.
-- `tools/phase1_bringup/.venv/bin/pio test -e native -f protocol` → exit 0 with `0 test cases`; see the explicit PlatformIO limitation above.
+- `tools/phase1_bringup/.venv/bin/pio test -e native -f protocol` → `native:* [PASSED]`; `3 test cases: 3 succeeded`.
 
 ## Self-Check: PASSED
 
 - Summary file created with required frontmatter, actuals, dependency graph, coverage, decisions, deviations, environment limitation, and status `complete`.
-- Task commits `8c5d7d8` and `cb17635` exist in repository history.
-- Final host golden check passed 21 vectors; final concrete native suite passed all 3 Unity tests.
+- Task commits `8c5d7d8`, `cb17635`, and `6f1b94a` exist in repository history.
+- Final host golden check passed 21 vectors; final exact filtered native suite passed all 3 Unity tests.
 - No stubs, placeholders, TODOs, or interactive hardware processes were introduced.
