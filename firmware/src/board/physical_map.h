@@ -115,6 +115,102 @@ struct PhysicalMap {
     reset();
   }
 
+  // This is the hash-verified delivered-unit mapping accepted by the Phase 1
+  // bring-up evidence. Runtime dispatch consumes these lookups rather than
+  // maintaining a second table in main.cpp.
+  void loadVerified() {
+    reset();
+    for (uint8_t i = 0; i < kDisplayCount; ++i) {
+      displays[i].has_library_index = true;
+      displays[i].library_index = i;
+      displays[i].has_rotation = true;
+      displays[i].rotation = 0;
+      displays[i].evidence.state = ObservationState::Observed;
+      displays[i].evidence.human_confirmed = true;
+    }
+    for (uint8_t i = 0; i < kKeyCount; ++i) {
+      keys[i].has_library_index = true;
+      keys[i].library_index = i;
+      keys[i].evidence.state = ObservationState::Observed;
+      keys[i].evidence.human_confirmed = true;
+    }
+    encoder.has_clockwise_sign = true;
+    encoder.clockwise_sign = 1;
+    encoder.has_counter_clockwise_sign = true;
+    encoder.counter_clockwise_sign = -1;
+    encoder.has_click_key = true;
+    encoder.click_key = 4;
+    encoder.detents_per_prompted_move = 1;
+    encoder.direction_evidence.state = ObservationState::Observed;
+    encoder.direction_evidence.human_confirmed = true;
+    encoder.click_evidence.state = ObservationState::Observed;
+    encoder.click_evidence.human_confirmed = true;
+    for (uint8_t i = 0; i < kLedCount; ++i) {
+      leds[i].has_library_index = true;
+      leds[i].library_index = i;
+      leds[i].evidence.state = ObservationState::Observed;
+      leds[i].evidence.human_confirmed = true;
+    }
+    const uint8_t requested[kBrightnessSampleCount] = {10, 50, 100};
+    for (uint8_t i = 0; i < kBrightnessSampleCount; ++i) {
+      brightness[i].requested_percent = requested[i];
+      brightness[i].has_requested_percent = true;
+      brightness[i].visible_percent = requested[i];
+      brightness[i].has_visible_percent = true;
+      brightness[i].evidence.state = ObservationState::Observed;
+      brightness[i].evidence.human_confirmed = true;
+    }
+    orientation.state = ObservationState::Observed;
+    orientation.human_confirmed = true;
+    software_reboot.state = ObservationState::Observed;
+    software_reboot.human_confirmed = true;
+    normal_flash_reset.state = ObservationState::Observed;
+    normal_flash_reset.human_confirmed = true;
+  }
+
+  bool complete() const {
+    for (uint8_t i = 0; i < kDisplayCount; ++i)
+      if (!displays[i].has_library_index || displays[i].library_index >= kDisplayCount) return false;
+    for (uint8_t i = 0; i < kKeyCount; ++i)
+      if (!keys[i].has_library_index || keys[i].library_index >= kKeyCount) return false;
+    for (uint8_t i = 0; i < kLedCount; ++i)
+      if (!leds[i].has_library_index || leds[i].library_index >= kLedCount) return false;
+    return encoder.has_click_key && encoder.has_clockwise_sign &&
+           encoder.has_counter_clockwise_sign &&
+           encoder.click_key < kKeyCount;
+  }
+
+  bool displayIndex(uint8_t logical_index, uint8_t& library_index) const {
+    if (logical_index < 1 || logical_index > kDisplayCount) return false;
+    const DisplayMapping& mapping = displays[logical_index - 1];
+    if (!mapping.has_library_index || mapping.library_index >= kDisplayCount) return false;
+    library_index = mapping.library_index;
+    return true;
+  }
+
+  bool keyIndex(uint8_t logical_index, uint8_t& library_index) const {
+    if (logical_index >= kKeyCount) return false;
+    const KeyMapping& mapping = keys[logical_index];
+    if (!mapping.has_library_index || mapping.library_index >= kKeyCount) return false;
+    library_index = mapping.library_index;
+    return true;
+  }
+
+  bool encoderClickIndex(uint8_t& library_index) const {
+    if (!encoder.has_click_key || !keyIndex(encoder.click_key, library_index)) return false;
+    return true;
+  }
+
+  bool ledMask(uint16_t logical_mask, uint16_t& library_mask) const {
+    library_mask = 0;
+    for (uint8_t logical = 0; logical < kLedCount; ++logical) {
+      if ((logical_mask & (static_cast<uint16_t>(1U) << logical)) == 0) continue;
+      if (!leds[logical].has_library_index || leds[logical].library_index >= kLedCount) return false;
+      library_mask |= static_cast<uint16_t>(1U) << leds[logical].library_index;
+    }
+    return true;
+  }
+
   void reset() {
     for (uint8_t i = 0; i < kDisplayCount; ++i) {
       displays[i] = DisplayMapping();

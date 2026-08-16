@@ -44,12 +44,13 @@ class BringupRenderer {
                                ? request.active_panel
                                : 0;
     for (uint8_t panel = 1; panel <= kPanelCount; ++panel) {
-      Display& display = board.displayAt(panel - 1);
-      display.fillScreen(TFT_BLACK);
+      Display* display = board.displayAt(panel - 1);
+      if (display == nullptr) return;
+      display->fillScreen(TFT_BLACK);
       if (active == 0 || panel != active || request.state == BringupState::Wait) {
-        drawWait(display);
+        drawWait(*display);
       } else {
-        drawActive(display, request);
+        drawActive(*display, request);
       }
     }
   }

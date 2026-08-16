@@ -11,12 +11,16 @@
 // panel chip-selects, GPIOs, or a second debounce path.
 class BoardAdapter {
  public:
-  bool begin();
+  bool begin(const PhysicalMap& physical_map);
   void update();
+  bool ready() const { return ready_; }
 
-  Display& displayAt(uint8_t index);
+  Display* displayAt(uint8_t index);
   uint8_t screenCount() const;
-  button::ButtonSense& key(uint8_t index);
+  button::ButtonSense* key(uint8_t index);
+  bool wasPressed(uint8_t logical_index);
+  bool mapKeyLabel(uint8_t label, uint8_t& library_index) const;
+  bool mapEncoderClick(uint8_t& library_index) const;
   long encoderDelta();
   long encoderPosition() const;
 
@@ -27,4 +31,6 @@ class BoardAdapter {
 
  private:
   TKeyboardS3ProClass& board_ = TKeyboardS3Pro;
+  const PhysicalMap* physical_map_ = nullptr;
+  bool ready_ = false;
 };
