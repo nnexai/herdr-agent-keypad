@@ -64,6 +64,7 @@ struct Result {
 class FrameCodec final {
  public:
   static Result decode(const uint8_t* line, std::size_t length);
+  static Result& decode(const uint8_t* line, std::size_t length, Result& output);
   static bool encode(const Frame& frame, const char* payload_json, std::size_t payload_length,
                      char* output, std::size_t output_capacity, std::size_t& output_length);
   static uint64_t digest_payload(const char* payload_json, std::size_t payload_length);
@@ -78,6 +79,7 @@ class ProtocolSession final {
   void reset(const char* boot_id, const char* session_id);
   void prime_received(uint32_t sequence);
   Result accept(const uint8_t* line, std::size_t length, bool dispatch = true);
+  Result& accept(const uint8_t* line, std::size_t length, Result& output, bool dispatch = true);
   bool complete();
   std::size_t discard_pending();
   std::size_t pending_count() const { return pending_count_; }

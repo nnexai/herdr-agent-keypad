@@ -315,6 +315,11 @@ void FrameCodec::format_digest(uint64_t digest, char output[17]) {
 
 Result FrameCodec::decode(const uint8_t* line, std::size_t length) {
   Result result;
+  return decode(line, length, result);
+}
+
+Result& FrameCodec::decode(const uint8_t* line, std::size_t length, Result& result) {
+  result = Result{};
   result.reason = RejectReason::InvalidJson;
   if (line == nullptr || length == 0) {
     result.reason = RejectReason::EmptyLine;
@@ -530,7 +535,12 @@ void ProtocolSession::remember(uint32_t sequence) {
 }
 
 Result ProtocolSession::accept(const uint8_t* line, std::size_t length, bool dispatch) {
-  Result result = FrameCodec::decode(line, length);
+  Result result;
+  return accept(line, length, result, dispatch);
+}
+
+Result& ProtocolSession::accept(const uint8_t* line, std::size_t length, Result& result, bool dispatch) {
+  FrameCodec::decode(line, length, result);
   if (!result.accepted) return result;
 
   const bool is_hello = std::strcmp(result.frame.type, "hello") == 0;

@@ -20,7 +20,6 @@ char encodedFrame[kMaxLineBytes + 1];
 size_t frameLength = 0;
 bool frameOverflow = false;
 uint32_t txSequence = 0;
-uint32_t lastBoardUpdateAt = 0;
 uint32_t lastKeyPollAt = 0;
 String bootId;
 String deviceId;
@@ -30,6 +29,9 @@ PhysicalMap physicalMap;
 UsbCdcLink usbLink;
 ProofMetrics proofMetrics;
 phase1::protocol::ProtocolSession protocolSession("", "", phase1::protocol::kQueueCapacity);
+// Result contains the bounded payload buffer; persistent storage avoids
+// exhausting the Arduino loop task stack during frame admission.
+phase1::protocol::Result admission;
 
 // Input arming is deliberately separate from the physical map. Until a user
 // confirms the observation, the firmware only knows that an input changed.
@@ -326,12 +328,11 @@ void readFrames() {
     uint8_t byte = 0;
     if (usbLink.read(&byte, 1) != 1) break;
     if (byte == '\n') {
-      phase1::protocol::Result admission;
       if (frameOverflow) {
-        admission = protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame), kMaxLineBytes + 1);
+        protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame), kMaxLineBytes + 1, admission);
       } else {
         inputFrame[frameLength] = '\n';
-        admission = protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame), frameLength + 1);
+        protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame), frameLength + 1, admission);
       }
       proofMetrics.recordReceived();
       dispatchAdmission(admission);
@@ -408,10 +409,7 @@ void setup() {
 
 void loop() {
   const uint32_t now = micros();
-  if (lastBoardUpdateAt == 0 || now - lastBoardUpdateAt >= 50000U) {
-    board.update();
-    lastBoardUpdateAt = now;
-  }
+  board.update();
   readFrames();
   if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
   lastKeyPollAt = now;
