@@ -17,7 +17,7 @@ Herdr Agent Keypad reaches its first usable release through four vertical, real-
 
 ### Phase 1: Physical Keypad and Proven Transport
 
-**Goal:** The user can operate the delivered T-Keyboard S3 Pro through a verified physical map and a host link selected from real measurements.
+**Goal:** As a user of the delivered T-Keyboard S3 Pro, I want to operate it through a verified physical map and a host link selected from real measurements, so that later keypad behavior rests on the exact unit and a proven transport.
 **Mode:** mvp
 **Depends on:** Nothing (first phase)
 **Requirements:** HARD-01, HARD-03
@@ -29,7 +29,7 @@ Herdr Agent Keypad reaches its first usable release through four vertical, real-
   3. After reset, unplug, or link interruption, the same physical unit re-establishes the selected link without requiring an unrecorded port or board assumption.
   4. The user can see measured evidence that USB is suitable for v1, or the specific measured failure that selected the single Wi-Fi fallback instead.
 
-**Plans:** 5/8 plans executed
+**Plans:** 8/13 plans executed
 
 Plans:
 **Wave 1**
@@ -54,15 +54,35 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 01-06-PLAN.md — Freeze every researched interruption row, run USB qualification, and lock the concrete immutable result with exact manifest/hash lineage.
+- [x] 01-06-PLAN.md — Run the frozen USB qualification and emit the initial immutable eligibility lock.
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 01-07-PLAN.md — From the validated remediated-USB lock only, provision bounded station/TLS credentials and qualify a Wi-Fi-only candidate against the identical matrix with rollback and zero secret output.
+- [x] 01-07-PLAN.md — Retire the conditional Wi-Fi branch after the recorded USB pass without creating Wi-Fi credentials or source.
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 01-08-PLAN.md — Resolve and hash-select exactly selected-usb or selected-wifi, prove the unselected source/object/symbol absent, qualify the exact final binary, and archive only after its build/manifest-bound strict pass.
+- [x] 01-08-PLAN.md — Resolve, select, build, and archive the initial selected-usb composition.
+
+**Gap-closure Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 01-09-PLAN.md — Route the flashed runtime through one production codec/session, bounded queue/I/O, and fail-closed physical readiness/map.
+
+**Gap-closure Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 01-10-PLAN.md — Reproduce exact Python 3.11 and prove standards-valid schema plus adversarial host/native/runtime parity.
+
+**Gap-closure Wave 11** *(blocked on Wave 10 completion)*
+
+- [ ] 01-11-PLAN.md — Generate fresh boot/session identity and produce action-specific recovery plus non-fabricable physical proof locks.
+
+**Gap-closure Wave 12** *(blocked on Wave 11 completion)*
+
+- [ ] 01-12-PLAN.md — Run strict measured immutable USB qualification with latency, required interruption, queue, checksum, and semantic gates.
+
+**Gap-closure Wave 13** *(blocked on Wave 12 completion)*
+
+- [ ] 01-13-PLAN.md — Recompute complete selection/build/archive lineage, actual object/ELF composition, and recursive secret-free closure.
 
 **UI hint:** yes
 
