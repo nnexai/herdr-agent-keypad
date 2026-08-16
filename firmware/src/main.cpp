@@ -20,6 +20,7 @@ char encodedFrame[kMaxLineBytes + 1];
 size_t frameLength = 0;
 bool frameOverflow = false;
 uint32_t txSequence = 0;
+uint32_t lastBoardUpdateAt = 0;
 uint32_t lastKeyPollAt = 0;
 String bootId;
 String deviceId;
@@ -406,9 +407,12 @@ void setup() {
 }
 
 void loop() {
-  board.update();
-  readFrames();
   const uint32_t now = micros();
+  if (lastBoardUpdateAt == 0 || now - lastBoardUpdateAt >= 50000U) {
+    board.update();
+    lastBoardUpdateAt = now;
+  }
+  readFrames();
   if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
   lastKeyPollAt = now;
   reportInput();
