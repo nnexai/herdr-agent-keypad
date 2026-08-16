@@ -239,8 +239,10 @@ def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -
         return 1
 
 
-def _receive_line(connection: Any) -> dict[str, Any]:
+def _receive_line(connection: Any) -> dict[str, Any] | None:
     line = connection.readline()
+    if not line:
+        return None
     return decode_frame(line)
 
 
@@ -248,6 +250,8 @@ def _receive_correlated(connection: Any, session_id: str, request_seq: int, allo
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
         frame = _receive_line(connection)
+        if frame is None:
+            continue
         if frame["session_id"] != session_id:
             raise RuntimeError("session correlation mismatch")
         if frame["type"] == "error":
@@ -256,11 +260,12 @@ def _receive_correlated(connection: Any, session_id: str, request_seq: int, allo
             return frame
     raise TimeoutError("timed out waiting for correlated acknowledgement")
 
-
 def _receive_event(connection: Any, session_id: str, step_id: str) -> dict[str, Any]:
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         frame = _receive_line(connection)
+        if frame is None:
+            continue
         if frame["session_id"] != session_id:
             raise RuntimeError("session correlation mismatch")
         if frame["type"] == "event" and frame["payload"]["step_id"] == step_id:
