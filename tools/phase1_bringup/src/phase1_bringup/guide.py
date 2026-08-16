@@ -79,6 +79,7 @@ class BatchRun:
         ui: TerminalUI | None = None,
         run_id: str | None = None,
         dwell_seconds: float = BATCH_DWELL_SECONDS,
+        machine_only: bool = False,
     ):
         self.session = session
         self.evidence = evidence
@@ -88,11 +89,13 @@ class BatchRun:
         self.gate_index = 0
         self.pending: list[BatchObservation] = []
         self.history: list[dict[str, Any]] = []
+        self.machine_observations: list[dict[str, Any]] = []
         self.started = False
         self.stable = False
         self.stopped = False
         self.response: str | None = None
         self.dwell_seconds = min(MAX_BATCH_DWELL_SECONDS, max(0.0, float(dwell_seconds)))
+        self.machine_only = machine_only
 
     @property
     def gate(self) -> Gate:
@@ -112,8 +115,9 @@ class BatchRun:
         if isinstance(event, dict) and isinstance(event.get("key"), int):
             return f"{detail}; observed key index: {event['key']}"
         return detail
-
     def _render(self, status: str = "stimulating") -> None:
+        if self.machine_only and status == "awaiting-confirmation":
+            status = "machine-only"
         self.ui.render_batch_gate(
             self.gate.name,
             self.gate_index + 1,
@@ -150,12 +154,33 @@ class BatchRun:
                 details["event"] = {"kind": "key_transition", "step_id": row.step_id, "key": key_index}
             elif self.dwell_seconds:
                 time.sleep(self.dwell_seconds)
+            observed_value: Any = details if details else "unavailable"
+            self.machine_observations.append(
+                {
+                    "row_id": f"{self.run_id}:machine:{len(self.machine_observations) + 1}",
+                    "run_id": self.run_id,
+                    "step_id": row.step_id,
+                    "gate": self.gate.name,
+                    "machine_status": fact.status,
+                    "machine_reply_seq": fact.reply_seq,
+                    "observed_value": observed_value,
+                    "timestamp": time.time(),
+                }
+            )
             self.pending.append(BatchObservation(row, fact, details))
             self._render()
         self.stable = True
         self.ui.stable_result()
         self._render("awaiting-confirmation")
         return tuple(self.pending)
+
+    def advance_machine_gate(self) -> None:
+        """Advance after stable machine evidence without authorizing PASS."""
+        if not self.stable or not self.pending:
+            raise RuntimeError("machine gate has no stable observations")
+        self.gate_index += 1
+        self.pending = []
+        self.stable = False
 
     def _row_record(self, observation: BatchObservation, action: str, physical_status: str, ordinal: int) -> dict[str, Any]:
         fact = observation.machine_fact
@@ -223,6 +248,19 @@ class BatchRun:
         else:
             self.ui.render_not_started(self.gate.name, self.gate_index + 1, len(GUIDED_ORDER), self.run_suffix)
         return "pass"
+    def machine_result(self) -> dict[str, Any]:
+        status = "machine-complete" if self.complete_physical_gates else "machine-failed" if self.stopped else "machine-incomplete"
+        return {
+            "schema_version": 1,
+            "kind": "result",
+            "run_id": self.run_id,
+            "status": status,
+            "mode": "machine-only",
+            "physical_confirmation": False,
+            "machine_observations": list(self.machine_observations),
+            "batch_order": list(BATCH_GATE_ORDER),
+            "completed_gates": list(BATCH_GATE_ORDER[: self.gate_index]),
+        }
 
     def result(self) -> dict[str, Any]:
         status = "pass" if self.complete_physical_gates else "fail" if self.stopped else "incomplete"

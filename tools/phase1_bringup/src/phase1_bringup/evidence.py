@@ -68,7 +68,29 @@ _ROW_FIELDS = {"row_id", "run_id", "step_id", "gate", "machine_status", "machine
 _MACHINE_STATUSES = {"acknowledged", "observed", "rejected", "failed", "surprising", "unavailable"}
 _HUMAN_RESPONSES = {"Y", "N", "R"}
 _PHYSICAL_STATUSES = {"pass", "failed", "repeated", "unavailable", "surprising"}
+MACHINE_BATCH_GATES = ("IDENTIFY", "DISPLAYS", "KEYS", "ENCODER", "LEDS", "BRIGHTNESS", "REBOOT")
+MACHINE_BATCH_GATE_NAMES = {gate.title() if gate != "LEDS" else "LEDs" for gate in MACHINE_BATCH_GATES}
 
+
+def _validate_machine_observation(observation: Any, expected_run_id: str) -> dict[str, Any]:
+    if not isinstance(observation, dict):
+        raise EvidenceError("machine observation must be an object")
+    required = {"row_id", "run_id", "step_id", "gate", "machine_status", "machine_reply_seq", "observed_value", "timestamp"}
+    if not required.issubset(observation):
+        raise EvidenceError("machine observation is missing required fields")
+    if observation["run_id"] != expected_run_id or not isinstance(observation["row_id"], str) or not observation["row_id"]:
+        raise EvidenceError("machine observation identity is invalid")
+    if observation["gate"] not in MACHINE_BATCH_GATE_NAMES:
+        raise EvidenceError("machine observation gate is invalid")
+    if observation["machine_status"] not in _MACHINE_STATUSES:
+        raise EvidenceError("machine observation status is invalid")
+    if observation["observed_value"] is None:
+        raise EvidenceError("machine observation observed_value must use literal unavailable")
+    if not isinstance(observation["timestamp"], (int, float)):
+        raise EvidenceError("machine observation timestamp is invalid")
+    if "human_response" in observation or "physical_status" in observation:
+        raise EvidenceError("machine observation must not contain physical confirmation fields")
+    return observation
 
 def _validate_physical_row(row: Any, expected_run_id: str | None = None) -> dict[str, Any]:
     if not isinstance(row, dict) or not _ROW_FIELDS.issubset(row):
@@ -248,6 +270,61 @@ def physical_schema_check() -> None:
         checked = EvidenceWriter(Path(directory), "schema-check").verify()["result"]["physical_map"]["rows"]
         if len(checked) != 2 or checked[1].get("replaces") != row["row_id"]:
             raise AssertionError("replacement history is not linked and immutable")
+
+
+def parse_group_responses(spec: str, run_id: str) -> dict[str, str]:
+    """Parse exactly one bounded response for each machine batch gate."""
+    if not isinstance(spec, str) or not spec.strip():
+        raise EvidenceError("confirm-batch requires --groups for every machine gate")
+    run_suffix = run_id[-6:].upper()
+    parsed: dict[str, str] = {}
+    for item in spec.split(","):
+        item = item.strip()
+        if not item or "=" not in item:
+            raise EvidenceError("groups must use GATE=Y,N,R entries")
+        gate, value = (part.strip().upper() for part in item.split("=", 1))
+        if gate not in MACHINE_BATCH_GATES:
+            raise EvidenceError(f"unknown machine gate in groups: {gate}")
+        if gate in parsed:
+            raise EvidenceError(f"duplicate machine gate in groups: {gate}")
+        action, separator, supplied_suffix = value.partition("@")
+        if action not in {"Y", "N", "R"}:
+            raise EvidenceError(f"invalid group response for {gate}; use Y, N, or R")
+        if separator and supplied_suffix != run_suffix:
+            raise EvidenceError(f"run suffix mismatch for {gate}; expected {run_suffix}")
+        parsed[gate] = action
+    missing = [gate for gate in MACHINE_BATCH_GATES if gate not in parsed]
+    if missing:
+        raise EvidenceError("missing group responses: " + ", ".join(missing))
+    return parsed
+
+
+def verify_machine_run(path: Path) -> dict[str, Any]:
+    """Verify a machine-only batch artifact and reject physical claims."""
+    candidate = verify_physical_evidence(path)
+    checked = EvidenceWriter(candidate.parent, candidate.name).verify()
+    manifest = checked["manifest"]
+    result = checked["result"]
+    if manifest.get("workflow") != "batch-machine-only" or result.get("mode") != "machine-only":
+        raise EvidenceError("evidence target is not a machine-only batch run")
+    if manifest.get("run_id") != result.get("run_id") or result.get("physical_confirmation") is not False:
+        raise EvidenceError("machine-only artifact identity or physical-confirmation marker is invalid")
+    if "physical_map" in result:
+        raise EvidenceError("machine-only artifact must not contain a physical_map")
+    observations = result.get("machine_observations")
+    if not isinstance(observations, list) or not observations:
+        raise EvidenceError("machine-only artifact has no machine observations")
+    seen: set[str] = set()
+    gates: set[str] = set()
+    for observation in observations:
+        checked_observation = _validate_machine_observation(observation, str(result["run_id"]))
+        if checked_observation["row_id"] in seen:
+            raise EvidenceError("machine observation row ids must be unique")
+        seen.add(checked_observation["row_id"])
+        gates.add(str(checked_observation["gate"]).upper())
+    if gates != {name.upper() for name in MACHINE_BATCH_GATE_NAMES}:
+        raise EvidenceError("machine-only artifact does not cover all seven machine gates")
+    return checked
 
 
 def verify_physical_evidence(path: Path, require_physical_map: bool = False) -> Path:
