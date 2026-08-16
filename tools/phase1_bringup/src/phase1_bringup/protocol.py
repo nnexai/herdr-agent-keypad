@@ -287,17 +287,37 @@ class ProtocolSession:
         raise TimeoutError(f"timed out waiting for {frame_type} acknowledgement")
 
     def hello(self) -> MachineFact:
-        frame, fact = self.request("hello", {"device_id": "host", "firmware": "phase1-host", "protocol": PROTOCOL_VERSION}, {"hello_ack"})
-        payload = frame["payload"]
-        self.device = {
-            "hello_ack": payload,
-            "device_id": payload["device_id"],
-            "firmware": payload["firmware"],
-            "protocol": payload["protocol"],
-            "device_boot_id": frame["boot_id"],
-            "device_session_id": frame["session_id"],
-        }
-        return fact
+        request_seq = self.send("hello", {"device_id": "host", "firmware": "phase1-host", "protocol": PROTOCOL_VERSION})
+        deadline = time.monotonic() + self.timeout
+        while time.monotonic() < deadline:
+            line = self.connection.readline()
+            if not line:
+                continue
+            result = classify_line(line)
+            if not result.accepted:
+                raise ProtocolError(result.reason)
+            assert result.frame is not None
+            frame = result.frame
+            if frame["session_id"] != self.session_id:
+                raise ProtocolError("session_mismatch")
+            if frame["type"] == "error":
+                raise ProtocolError(frame["payload"]["code"], frame["payload"]["detail"])
+            if frame["type"] != "hello_ack" or frame["reply_to"] != request_seq:
+                raise ProtocolError("invalid_shape", "hello acknowledgement did not match the hello request")
+            self.boot_id = frame["boot_id"]
+            self.prime_received(frame["seq"])
+            payload = frame["payload"]
+            fact = MachineFact("acknowledged" if payload.get("accepted", True) else "rejected", time.time(), frame["seq"])
+            self.device = {
+                "hello_ack": payload,
+                "device_id": payload["device_id"],
+                "firmware": payload["firmware"],
+                "protocol": payload["protocol"],
+                "device_boot_id": frame["boot_id"],
+                "device_session_id": frame["session_id"],
+            }
+            return fact
+        raise TimeoutError("timed out waiting for hello acknowledgement")
 
     def stimulate(self, step_id: str, panel: int, stimulus: str) -> MachineFact:
         _, fact = self.request("probe", {"step_id": step_id, "panel": panel, "stimulus": stimulus}, {"probe_ack"})
@@ -344,3 +364,36 @@ def protocol_golden_check(fixture_path: Any, schema_path: Any) -> int:
         if result.dispatched != bool(expected.get("dispatch", False)):
             raise AssertionError(f"{vector.get('id')}: dispatch mismatch")
     return len(vectors)
+
+def protocol_bootstrap_check() -> None:
+    """Check device-boot adoption and strict post-bootstrap identity."""
+
+    class BootstrapLink:
+        def __init__(self, wrong_session: bool = False) -> None:
+            self.pending: list[bytes] = []
+            self.wrong_session = wrong_session
+
+        def write(self, data: bytes) -> int:
+            request = decode_frame(data)
+            session_id = "wrong-session" if self.wrong_session else request["session_id"]
+            payload = {"accepted": True, "device_id": "device", "firmware": "phase1-bringup", "protocol": PROTOCOL_VERSION}
+            self.pending.append(encode_frame(new_frame("hello_ack", "device-boot", session_id, 1, payload, reply_to=request["seq"])))
+            return len(data)
+
+        def readline(self) -> bytes:
+            return self.pending.pop(0) if self.pending else b""
+
+    session = ProtocolSession(BootstrapLink(), "host-nonce", "session-a", timeout=0.01)
+    session.hello()
+    if session.boot_id != "device-boot":
+        raise AssertionError("hello bootstrap did not adopt the device boot id")
+    wrong_boot = new_frame("hello_ack", "other-device", "session-a", 2, {"accepted": True, "device_id": "device", "firmware": "phase1-bringup", "protocol": PROTOCOL_VERSION}, reply_to=1)
+    if session.accept(encode_frame(wrong_boot)).reason != "boot_mismatch":
+        raise AssertionError("post-bootstrap boot identity was not strict")
+    try:
+        ProtocolSession(BootstrapLink(wrong_session=True), "host-nonce", "session-a", timeout=0.01).hello()
+    except ProtocolError as exc:
+        if exc.code != "session_mismatch":
+            raise AssertionError("wrong-session hello was rejected with the wrong code") from exc
+    else:
+        raise AssertionError("wrong-session hello acknowledgement was accepted")
