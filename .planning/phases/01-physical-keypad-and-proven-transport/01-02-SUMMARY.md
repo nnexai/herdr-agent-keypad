@@ -120,7 +120,15 @@ The tracking-artifact commit is created after STATE.md and ROADMAP.md are update
 - **Verification:** STATE.md now reports `Progress: [███░░░░░░░] 25%`; ROADMAP.md marks 01-02 complete.
 - **Committed in:** `e7d4866`
 
-**Total deviations:** 1 auto-fixed (Rule 1 tracking artifact bug). No implementation scope change.
+**2. [Rule 1 - Tracking artifact bug] Corrected phase labels on recorded decisions**
+- **Found during:** Review of STATE.md after GSD decision updates
+- **Issue:** The tracking command recorded the two plan decisions with `[Phase ?]`.
+- **Fix:** Corrected both labels to `[Phase 1]`.
+- **Files modified:** `.planning/STATE.md`
+- **Verification:** STATE.md decisions now identify Phase 1 explicitly.
+- **Committed in:** `9db6a9a`
+
+**Total deviations:** 2 auto-fixed (Rule 1 tracking artifact bugs). No implementation scope change.
 
 ## Issues Encountered
 
