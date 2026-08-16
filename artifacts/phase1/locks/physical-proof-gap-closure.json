@@ -1,0 +1,16 @@
+{
+  "board_readiness": "acknowledged",
+  "canonical_history": "derived-from-reopened-source",
+  "confirmed_path": "confirmed-20260816T133300Z-f81cd8-8b3cae",
+  "confirmed_result_sha256": "4020f163f76839c9222b34983c285280add865400bc4be6c766b80b6be3f8bdb",
+  "kind": "physical-proof-lock",
+  "row_count": 30,
+  "schema_version": 1,
+  "source_checksums_sha256": "55558be9c85a06742279683c582a6c7b2846d30dfaad61111e3454069c993028",
+  "source_manifest_sha256": "d9b7b0ed321ffe7a35b76b53726f46b098a984e0a0b2dd4bbf21fa3bfa6431f0",
+  "source_path": "20260816T133300Z-f81cd8",
+  "source_result_sha256": "3958800e9322946120d2a9cd217231b80a57532adea4308f4271cd2cb97aff99",
+  "status": "pass",
+  "transport": "usb-cdc",
+  "workflow": "physical-gap-closure"
+}
