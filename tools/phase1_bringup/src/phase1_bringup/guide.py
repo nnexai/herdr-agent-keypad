@@ -219,6 +219,7 @@ class BatchRun:
         self.stable = False
         if self.complete_physical_gates:
             self.ui.add_history("Physical batch gates complete; dependent gates remain not started")
+            self.ui.render_not_started(GUIDED_ORDER[len(BATCH_GATE_ORDER)], self.gate_index + 1, len(GUIDED_ORDER), self.run_suffix)
         else:
             self.ui.render_not_started(self.gate.name, self.gate_index + 1, len(GUIDED_ORDER), self.run_suffix)
         return "pass"
