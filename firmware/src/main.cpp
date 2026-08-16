@@ -152,7 +152,7 @@ StimulusKind classifyStimulus(const char *stimulus, uint8_t &value) {
     value = 100;
     return StimulusKind::Brightness;
   }
-  if (parseSingleIndex(stimulus, "LED-", 9, value)) {
+  if (parseSingleIndex(stimulus, "LED-", 13, value)) {
     return StimulusKind::Led;
   }
   if (strncmp(stimulus, "PAIR-", 5) == 0 && stimulus[5] != '\0') {

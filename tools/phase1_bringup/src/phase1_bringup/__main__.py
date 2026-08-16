@@ -390,6 +390,9 @@ def firmware_contract_check(path: Path) -> None:
     missing = [token for token in tokens if token not in text]
     if missing:
         raise RuntimeError(f"firmware contract is missing required contract tokens: {', '.join(missing)}")
+    stimulus_source = path.parents[1] / "main.cpp"
+    if 'parseSingleIndex(stimulus, "LED-", 13, value)' not in stimulus_source.read_text(encoding="utf-8"):
+        raise RuntimeError("firmware stimulus contract must accept LED-13")
 
 
 def renderer_contract_check(path: Path) -> None:
