@@ -545,6 +545,7 @@ def confirmation_rejection_check() -> None:
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         source = _sample_machine_run(root, rejected_gate="Keys")
+        source_bytes = {name: (source / name).read_bytes() for name in ("manifest.json", "result.json", "SHA256SUMS")}
         all_yes = ",".join(f"{gate.upper()}=Y" for gate in BATCH_GATE_ORDER)
         try:
             run_confirm_batch(source, all_yes)
@@ -553,14 +554,27 @@ def confirmation_rejection_check() -> None:
         else:
             raise AssertionError("ACK-only PASS was not rejected for a rejected machine gate")
         for action, expected in (("N", "fail"), ("R", "incomplete")):
+            before = set(root.glob("confirmed-*"))
             groups = ",".join(f"{gate.upper()}={action if gate == 'Keys' else 'Y'}" for gate in BATCH_GATE_ORDER)
             if run_confirm_batch(source, groups) == 0:
                 raise AssertionError(f"group {action} unexpectedly reported physical pass")
-            dirs = sorted(root.glob("confirmed-*"))
-            checked = json.loads((dirs[-1] / "result.json").read_text(encoding="utf-8"))
+            created = set(root.glob("confirmed-*")) - before
+            if len(created) != 1:
+                raise AssertionError(f"group {action} did not create exactly one separate confirmed artifact")
+            confirmed = created.pop()
+            checked = json.loads((confirmed / "result.json").read_text(encoding="utf-8"))
             if checked["status"] != expected:
                 raise AssertionError(f"group {action} status was not {expected}")
-
+            rows = checked["physical_map"]["rows"]
+            repeat_rows = [row for row in rows if row["gate"] == "Keys"]
+            if action == "R" and (
+                not repeat_rows
+                or any(row["human_response"] != "R" or row["physical_status"] != "repeated" for row in repeat_rows)
+                or any(row["human_response"] == "R" and row["physical_status"] == "pass" for row in rows)
+            ):
+                raise AssertionError("group R did not preserve incomplete/repeat semantics without physical PASS")
+        if source_bytes != {name: (source / name).read_bytes() for name in source_bytes}:
+            raise AssertionError("confirm-batch mutated the immutable machine artifact")
 
 def command_self_check(args: argparse.Namespace) -> int:
     if args.environment:
