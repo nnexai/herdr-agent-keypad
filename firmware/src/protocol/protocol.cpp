@@ -162,6 +162,7 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
   if (!cursor.take('{')) return RejectReason::InvalidPayload;
   uint32_t mask = 0;
   const char* payload_end = nullptr;
+  char event_kind[32] = {};
   while (true) {
     cursor.ws();
     if (cursor.take('}')) {
@@ -197,6 +198,7 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
     else if (std::strcmp(key, "rejected") == 0) bit = 1U << 23;
     else if (std::strcmp(key, "sent") == 0) bit = 1U << 24;
     else if (std::strcmp(key, "watchdog_reset") == 0) bit = 1U << 25;
+    else if (std::strcmp(key, "direction") == 0) bit = 1U << 27;
     else if (std::strcmp(key, "request") == 0) bit = 1U << 26;
     else return RejectReason::InvalidShape;
     if ((mask & bit) != 0) return RejectReason::InvalidShape;
@@ -227,14 +229,18 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
       uint32_t value = 0;
       if (!cursor.uint32(value) || value > 4) return RejectReason::InvalidShape;
     } else if (bit == (1U << 8)) {
-      char value[kMaxPayloadStringBytes + 1];
-      if (!payload_value_string(cursor, value, sizeof(value)) || std::strcmp(value, "key_transition") != 0) return RejectReason::InvalidShape;
+      if (!payload_value_string(cursor, event_kind, sizeof(event_kind)) ||
+          (std::strcmp(event_kind, "key_transition") != 0 && std::strcmp(event_kind, "encoder_transition") != 0)) return RejectReason::InvalidShape;
     } else if (bit == (1U << 9)) {
       char value[kMaxIdentifierBytes + 1];
       if (!payload_value_string(cursor, value, sizeof(value)) || !valid_identifier(value)) return RejectReason::InvalidIdentifier;
     } else if (bit == (1U << 10)) {
       char value[kMaxPayloadStringBytes + 1];
       if (!payload_value_string(cursor, value, sizeof(value)) || std::strlen(value) == 0 || std::strlen(value) > 128) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 27)) {
+      char value[kMaxPayloadStringBytes + 1];
+      if (!payload_value_string(cursor, value, sizeof(value)) ||
+          (std::strcmp(value, "cw") != 0 && std::strcmp(value, "ccw") != 0)) return RejectReason::InvalidShape;
     } else if (bit == (1U << 26)) {
       char value[kMaxPayloadStringBytes + 1];
       if (!payload_value_string(cursor, value, sizeof(value)) ||
@@ -257,7 +263,11 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
   else if (std::strcmp(type, "hello_ack") == 0) expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 3);
   else if (std::strcmp(type, "probe") == 0) expected = (1U << 4) | (1U << 5) | (1U << 6);
   else if (std::strcmp(type, "probe_ack") == 0) expected = (1U << 0) | (1U << 5);
-  else if (std::strcmp(type, "event") == 0) expected = (1U << 7) | (1U << 8) | (1U << 5);
+  else if (std::strcmp(type, "event") == 0) {
+    if (std::strcmp(event_kind, "key_transition") == 0) expected = (1U << 7) | (1U << 8) | (1U << 5);
+    else if (std::strcmp(event_kind, "encoder_transition") == 0) expected = (1U << 27) | (1U << 8) | (1U << 5);
+    else return RejectReason::InvalidShape;
+  }
   else if (std::strcmp(type, "error") == 0) expected = (1U << 9) | (1U << 10);
   else if (std::strcmp(type, "metrics") == 0) expected = (1U << 26);
   else if (std::strcmp(type, "metrics_ack") == 0) expected = (1U << 11) | (1U << 12) | (1U << 13) | (1U << 14) | (1U << 15) | (1U << 16) | (1U << 17) | (1U << 18) | (1U << 19) | (1U << 20) | (1U << 21) | (1U << 22) | (1U << 23) | (1U << 24) | (1U << 25);
@@ -337,6 +347,10 @@ Result FrameCodec::decode(const uint8_t* line, std::size_t length) {
     if (bit == (1U << 0)) {
       uint32_t value = 0;
       if (!cursor.uint32(value)) return result;
+      if (value != 1) {
+        result.reason = RejectReason::InvalidVersion;
+        return result;
+      }
       result.frame.version = static_cast<uint8_t>(value);
     } else if (bit == (1U << 1)) {
       if (!cursor.string(result.frame.type, sizeof(result.frame.type))) return result;
@@ -381,6 +395,10 @@ Result FrameCodec::decode(const uint8_t* line, std::size_t length) {
     if (cursor.take('}')) break;
     if (!cursor.take(',')) return result;
   }
+  if (cursor.p != cursor.end) {
+    result.reason = RejectReason::InvalidJson;
+    return result;
+  }
   if (fields != 0xffU) {
     result.reason = RejectReason::InvalidEnvelope;
     return result;
@@ -420,16 +438,31 @@ Result FrameCodec::decode(const uint8_t* line, std::size_t length) {
 
 bool FrameCodec::encode(const Frame& frame, const char* payload_json, std::size_t payload_length,
                         char* output, std::size_t output_capacity, std::size_t& output_length) {
-  if (output == nullptr || payload_json == nullptr || output_capacity == 0 || payload_length == 0 || payload_length >= kMaxLineBytes || !valid_identifier(frame.boot_id) || !valid_identifier(frame.session_id) || !valid_digest(frame.digest)) return false;
-  if (!digest_matches(frame.digest, payload_json, payload_length)) return false;
+  if (output == nullptr || payload_json == nullptr || output_capacity == 0 ||
+      payload_length == 0 || payload_length >= kMaxLineBytes || frame.version != 1 ||
+      frame.sequence == 0 || std::strlen(frame.type) == 0 ||
+      std::strlen(frame.type) >= sizeof(frame.type) || !valid_identifier(frame.boot_id) ||
+      !valid_identifier(frame.session_id) || !valid_digest(frame.digest) ||
+      !digest_matches(frame.digest, payload_json, payload_length)) {
+    return false;
+  }
   char reply[16] = {};
   if (frame.has_reply_to) {
+    if (frame.reply_to == 0) return false;
     std::snprintf(reply, sizeof(reply), "%lu", static_cast<unsigned long>(frame.reply_to));
   } else {
     std::strncpy(reply, "null", sizeof(reply) - 1);
   }
-  const int written = std::snprintf(output, output_capacity, "{\"boot_id\":\"%s\",\"digest\":\"%s\",\"payload\":%.*s,\"reply_to\":%s,\"seq\":%lu,\"session_id\":\"%s\",\"type\":\"%s\",\"v\":%u}\n", frame.boot_id, frame.digest, static_cast<int>(payload_length), payload_json, reply, static_cast<unsigned long>(frame.sequence), frame.session_id, frame.type, static_cast<unsigned>(frame.version));
-  if (written < 0 || static_cast<std::size_t>(written) >= output_capacity || static_cast<std::size_t>(written) > kMaxLineBytes) return false;
+  const int written = std::snprintf(
+      output, output_capacity,
+      "{\"boot_id\":\"%s\",\"digest\":\"%s\",\"payload\":%.*s,\"reply_to\":%s,\"seq\":%lu,\"session_id\":\"%s\",\"type\":\"%s\",\"v\":%u}\n",
+      frame.boot_id, frame.digest, static_cast<int>(payload_length), payload_json, reply,
+      static_cast<unsigned long>(frame.sequence), frame.session_id, frame.type,
+      static_cast<unsigned>(frame.version));
+  if (written < 0 || static_cast<std::size_t>(written) >= output_capacity ||
+      static_cast<std::size_t>(written) > kMaxLineBytes) {
+    return false;
+  }
   output_length = static_cast<std::size_t>(written);
   return true;
 }
@@ -473,15 +506,33 @@ void ProtocolSession::remember(uint32_t sequence) {
 Result ProtocolSession::accept(const uint8_t* line, std::size_t length, bool dispatch) {
   Result result = FrameCodec::decode(line, length);
   if (!result.accepted) return result;
-  if (std::strcmp(result.frame.boot_id, boot_id_) != 0) {
-    result.accepted = false;
-    result.reason = RejectReason::BootMismatch;
-    return result;
-  }
-  if (std::strcmp(result.frame.session_id, session_id_) != 0) {
-    result.accepted = false;
-    result.reason = RejectReason::SessionMismatch;
-    return result;
+
+  const bool is_hello = std::strcmp(result.frame.type, "hello") == 0;
+  const bool new_session = is_hello &&
+                           (session_id_[0] == '\0' ||
+                            std::strcmp(result.frame.session_id, session_id_) != 0);
+  if (new_session) {
+    // Hello is the sole session bootstrap.  The host's hello boot identifier
+    // is intentionally not compared with the device boot identifier; all
+    // subsequent frames must use this session and this device boot.
+    std::strncpy(session_id_, result.frame.session_id, sizeof(session_id_) - 1);
+    session_id_[sizeof(session_id_) - 1] = '\0';
+    last_received_sequence_ = 0;
+    recent_count_ = 0;
+    recent_cursor_ = 0;
+    pending_count_ = 0;
+    result.session_transition = true;
+  } else {
+    if (std::strcmp(result.frame.boot_id, boot_id_) != 0) {
+      result.accepted = false;
+      result.reason = RejectReason::BootMismatch;
+      return result;
+    }
+    if (std::strcmp(result.frame.session_id, session_id_) != 0) {
+      result.accepted = false;
+      result.reason = RejectReason::SessionMismatch;
+      return result;
+    }
   }
   if (seen(result.frame.sequence)) {
     result.accepted = false;
@@ -500,9 +551,17 @@ Result ProtocolSession::accept(const uint8_t* line, std::size_t length, bool dis
   }
   last_received_sequence_ = result.frame.sequence;
   remember(result.frame.sequence);
-  if (dispatch) ++pending_count_;
-  result.dispatched = dispatch;
+  if (dispatch) {
+    ++pending_count_;
+    result.dispatched = true;
+  }
   return result;
+}
+
+bool ProtocolSession::complete() {
+  if (pending_count_ == 0) return false;
+  --pending_count_;
+  return true;
 }
 
 std::size_t ProtocolSession::discard_pending() {

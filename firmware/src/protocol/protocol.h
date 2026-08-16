@@ -56,6 +56,7 @@ struct Frame {
 struct Result {
   bool accepted = false;
   bool dispatched = false;
+  bool session_transition = false;
   RejectReason reason = RejectReason::InvalidJson;
   Frame frame{};
 };
@@ -71,15 +72,19 @@ class FrameCodec final {
 
 class ProtocolSession final {
  public:
-  ProtocolSession(const char* boot_id, const char* session_id,
+  ProtocolSession(const char* boot_id = "", const char* session_id = "",
                   std::size_t queue_capacity = kQueueCapacity);
 
   void reset(const char* boot_id, const char* session_id);
   void prime_received(uint32_t sequence);
   Result accept(const uint8_t* line, std::size_t length, bool dispatch = true);
+  bool complete();
   std::size_t discard_pending();
   std::size_t pending_count() const { return pending_count_; }
   uint32_t last_received_sequence() const { return last_received_sequence_; }
+  bool active() const { return session_id_[0] != '\0'; }
+  const char* boot_id() const { return boot_id_; }
+  const char* session_id() const { return session_id_; }
 
  private:
   bool seen(uint32_t sequence) const;
@@ -94,5 +99,6 @@ class ProtocolSession final {
   std::size_t pending_count_ = 0;
   std::size_t queue_capacity_ = kQueueCapacity;
 };
+
 
 }  // namespace phase1::protocol

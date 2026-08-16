@@ -19,7 +19,7 @@ PAYLOAD_KEYS: dict[str, set[str]] = {
     "hello_ack": {"accepted", "device_id", "firmware", "protocol"},
     "probe": {"panel", "step_id", "stimulus"},
     "probe_ack": {"accepted", "step_id"},
-    "event": {"key", "kind", "step_id"},
+    "event": {"key", "direction", "kind", "step_id"},
     "error": {"code", "detail"},
     "metrics": {"request"},
     "metrics_ack": {"acknowledged", "digest_mismatch", "duplicate", "largest_free_block", "malformed", "max_display_flush_us", "max_key_poll_gap_us", "minimum_free_heap", "out_of_order", "parser_high_water", "queue_high_water", "received", "rejected", "sent", "watchdog_reset"},
@@ -66,8 +66,10 @@ def validate_frame(frame: Any) -> dict[str, Any]:
     required = {"v", "type", "boot_id", "session_id", "seq", "reply_to", "digest", "payload"}
     if set(frame) != required:
         raise ProtocolError("unknown_field", "frame envelope is closed")
-    if frame["v"] != PROTOCOL_VERSION:
+    if not _is_int(frame["v"]) or frame["v"] != PROTOCOL_VERSION:
         raise ProtocolError("invalid_version", "only protocol v1 is accepted")
+    if not isinstance(frame["type"], str):
+        raise ProtocolError("unknown_type", "frame type must be a string")
     if frame["type"] not in FRAME_TYPES:
         raise ProtocolError("unknown_type", "frame type is not in the closed v1 set")
     _require_string(frame["boot_id"], "boot_id")
@@ -78,12 +80,14 @@ def validate_frame(frame: Any) -> dict[str, Any]:
         raise ProtocolError("invalid_reply_to", "reply_to must be null or a positive uint32")
     if not isinstance(frame["digest"], str) or not DIGEST_PATTERN.fullmatch(frame["digest"]):
         raise ProtocolError("invalid_digest", "digest must be a lowercase 64-bit hex value")
+    frame_type = frame["type"]
     payload = frame["payload"]
     if not isinstance(payload, dict):
         raise ProtocolError("invalid_payload", "payload must be an object")
-    frame_type = frame["type"]
-    if set(payload) != PAYLOAD_KEYS[frame_type]:
+    if frame_type != "event" and set(payload) != PAYLOAD_KEYS[frame_type]:
         raise ProtocolError("invalid_shape", f"{frame_type} payload is closed")
+    if frame_type == "event" and not {"kind", "step_id"}.issubset(payload):
+        raise ProtocolError("invalid_shape", "event payload requires kind and step_id")
     if frame_type in {"hello", "hello_ack"} and payload.get("protocol") != PROTOCOL_VERSION:
         raise ProtocolError("invalid_shape", "payload protocol must be v1")
     if frame_type == "hello":
@@ -105,17 +109,27 @@ def validate_frame(frame: Any) -> dict[str, Any]:
             raise ProtocolError("invalid_shape", "probe_ack accepted must be boolean")
         _require_string(payload["step_id"], "step_id")
     elif frame_type == "event":
-        if payload["kind"] != "key_transition":
+        kind = payload.get("kind")
+        if kind == "key_transition":
+            if set(payload) != {"key", "kind", "step_id"}:
+                raise ProtocolError("invalid_shape", "key events require key, kind, and step_id")
+            _require_string(payload["step_id"], "step_id")
+            if not _is_int(payload["key"]) or not 0 <= payload["key"] <= 4:
+                raise ProtocolError("invalid_shape", "event key is invalid")
+        elif kind == "encoder_transition":
+            if set(payload) != {"direction", "kind", "step_id"}:
+                raise ProtocolError("invalid_shape", "encoder events require direction, kind, and step_id")
+            _require_string(payload["step_id"], "step_id")
+            if payload["direction"] not in {"cw", "ccw"}:
+                raise ProtocolError("invalid_shape", "encoder direction is invalid")
+        else:
             raise ProtocolError("invalid_shape", "event kind is invalid")
-        _require_string(payload["step_id"], "step_id")
-        if not _is_int(payload["key"]) or not 0 <= payload["key"] <= 4:
-            raise ProtocolError("invalid_shape", "event key is invalid")
     elif frame_type == "error":
         _require_string(payload["code"], "error code", 64)
         if not isinstance(payload["detail"], str) or not 1 <= len(payload["detail"]) <= 128:
             raise ProtocolError("invalid_shape", "error detail must be bounded")
     elif frame_type == "metrics":
-        if payload["request"] not in {"proof", "reset"}:
+        if not isinstance(payload["request"], str) or payload["request"] not in {"proof", "reset"}:
             raise ProtocolError("invalid_shape", "metrics request must be proof or reset")
     elif frame_type == "metrics_ack":
         if any(not _is_int(payload[name]) or payload[name] < 0 for name in PAYLOAD_KEYS["metrics_ack"]):
@@ -144,7 +158,7 @@ def classify_line(line: bytes) -> ProtocolResult:
         frame = json.loads(line[:-1].decode("utf-8"))
     except UnicodeDecodeError:
         return ProtocolResult(False, "invalid_utf8")
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, RecursionError):
         return ProtocolResult(False, "invalid_json")
     try:
         validated = validate_frame(frame)
@@ -225,10 +239,14 @@ class ProtocolSession:
         self._seen = [sequence] if sequence else []
 
     def send(self, frame_type: str, payload: dict[str, Any]) -> int:
-        self.next_seq += 1
-        frame = new_frame(frame_type, self.boot_id, self.session_id, self.next_seq, payload)
-        self.connection.write(encode_frame(frame))
-        return self.next_seq
+        candidate = self.next_seq + 1
+        frame = new_frame(frame_type, self.boot_id, self.session_id, candidate, payload)
+        encoded = encode_frame(frame)
+        self.connection.write(encoded)
+        # SerialLink.write returns only after all bytes are accepted. Keep
+        # durable session accounting unchanged on any short/failing write.
+        self.next_seq = candidate
+        return candidate
 
     def accept(self, line: bytes, dispatch: bool = True) -> ProtocolResult:
         result = classify_line(line)
@@ -255,6 +273,14 @@ class ProtocolSession:
             self.pending.append(frame)
         return ProtocolResult(True, "ok", frame, dispatch)
 
+    def complete(self) -> bool:
+        if not self.pending:
+            return False
+        self.pending.pop(0)
+        return True
+
+    def pending_count(self) -> int:
+        return len(self.pending)
     def discard_pending(self) -> int:
         discarded = len(self.pending)
         self.pending.clear()
@@ -323,17 +349,32 @@ class ProtocolSession:
         _, fact = self.request("probe", {"step_id": step_id, "panel": panel, "stimulus": stimulus}, {"probe_ack"})
         return fact
 
-    def wait_event(self, step_id: str, timeout: float = 60.0) -> dict[str, Any]:
+    def wait_event(
+        self,
+        step_id: str,
+        timeout: float = 60.0,
+        *,
+        expected_kind: str | None = None,
+        expected_key: int | None = None,
+        expected_direction: str | None = None,
+    ) -> dict[str, Any]:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             frame = self._receive()
             if frame is None:
                 continue
             if frame["type"] == "event" and frame["payload"]["step_id"] == step_id:
+                payload = frame["payload"]
+                if expected_kind is not None and payload.get("kind") != expected_kind:
+                    raise ProtocolError("unexpected_event", f"expected {expected_kind}, received {payload.get('kind')}")
+                if expected_key is not None and payload.get("key") != expected_key:
+                    raise ProtocolError("unexpected_event", f"expected key {expected_key}, received {payload.get('key')}")
+                if expected_direction is not None and payload.get("direction") != expected_direction:
+                    raise ProtocolError("unexpected_event", f"expected direction {expected_direction}, received {payload.get('direction')}")
                 return frame
             if frame["type"] == "error":
                 raise ProtocolError(frame["payload"]["code"], frame["payload"]["detail"])
-        raise TimeoutError("timed out waiting for matching physical key transition")
+        raise TimeoutError("timed out waiting for matching physical input transition")
 
 
 def protocol_golden_check(fixture_path: Any, schema_path: Any) -> int:
@@ -397,3 +438,34 @@ def protocol_bootstrap_check() -> None:
             raise AssertionError("wrong-session hello was rejected with the wrong code") from exc
     else:
         raise AssertionError("wrong-session hello acknowledgement was accepted")
+
+    class EventLink:
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self.pending = [encode_frame(new_frame("event", "device-boot", "session-a", 2, payload))]
+
+        def readline(self) -> bytes:
+            return self.pending.pop(0) if self.pending else b""
+
+    event_session = ProtocolSession(EventLink({"direction": "cw", "kind": "encoder_transition", "step_id": "PREFLIGHT-1"}), "device-boot", "session-a", timeout=0.01)
+    event_session.prime_received(1)
+    event_session.wait_event("PREFLIGHT-1", expected_kind="encoder_transition", expected_direction="cw")
+    mismatch_session = ProtocolSession(EventLink({"direction": "ccw", "kind": "encoder_transition", "step_id": "PREFLIGHT-1"}), "device-boot", "session-a", timeout=0.01)
+    mismatch_session.prime_received(1)
+    try:
+        mismatch_session.wait_event("PREFLIGHT-1", expected_kind="encoder_transition", expected_direction="cw")
+    except ProtocolError as exc:
+        if exc.code != "unexpected_event":
+            raise AssertionError("unexpected input direction used the wrong rejection code") from exc
+    else:
+        raise AssertionError("unexpected encoder direction was accepted")
+    malformed_base = new_frame("metrics", "device-boot", "session-a", 3, {"request": "proof"})
+    malformed_cases = (
+        ({**malformed_base, "v": True}, "invalid_version"),
+        ({**malformed_base, "type": []}, "unknown_type"),
+        ({**malformed_base, "payload": {"request": []}}, "invalid_shape"),
+    )
+    for malformed, expected in malformed_cases:
+        line = (json.dumps(malformed, separators=(",", ":")) + "\n").encode("utf-8")
+        result = classify_line(line)
+        if result.reason != expected or result.accepted:
+            raise AssertionError(f"malformed discriminant escaped typed rejection: {expected}")

@@ -142,23 +142,93 @@ void test_valid_encode_decode_and_reset(void) {
   TEST_ASSERT_EQUAL_UINT(0, session.last_received_sequence());
 }
 
-void test_queue_bound_and_discard(void) {
+void test_rejects_wide_version_and_trailing_bytes(void) {
   std::ifstream fixture(PHASE1_GOLDEN_FIXTURE);
   std::string vector;
-  std::string first;
+  std::string line;
   while (std::getline(fixture, vector)) {
-    if (vector.find("\"id\":\"valid_hello\"") != std::string::npos) {
-      TEST_ASSERT_TRUE(field_string(vector, "line", first));
+    if (vector.find("\"id\":\"valid_probe\"") != std::string::npos) {
+      TEST_ASSERT_TRUE(field_string(vector, "line", line));
       break;
     }
   }
-  ProtocolSession session("boot-a", "session-a", 1);
-  Result first_result = session.accept(reinterpret_cast<const uint8_t*>(first.data()), first.size());
-  TEST_ASSERT_TRUE(first_result.accepted);
-  Result second_result = session.accept(reinterpret_cast<const uint8_t*>(first.data()), first.size());
-  TEST_ASSERT_EQUAL_STRING("duplicate", phase1::protocol::rejection_name(second_result.reason));
-  TEST_ASSERT_EQUAL_UINT(1, session.discard_pending());
-  TEST_ASSERT_EQUAL_UINT(0, session.pending_count());
+  TEST_ASSERT_FALSE(line.empty());
+  std::string wide_version = line;
+  const std::size_t version = wide_version.rfind("\"v\":1}");
+  TEST_ASSERT_TRUE(version != std::string::npos);
+  wide_version.replace(version, 6, "\"v\":257}");
+  const Result wide = FrameCodec::decode(
+      reinterpret_cast<const uint8_t*>(wide_version.data()), wide_version.size());
+  TEST_ASSERT_FALSE(wide.accepted);
+  TEST_ASSERT_EQUAL_STRING("invalid_version", phase1::protocol::rejection_name(wide.reason));
+
+  std::string trailing = line;
+  trailing.insert(trailing.size() - 1, " garbage");
+  const Result extra = FrameCodec::decode(
+      reinterpret_cast<const uint8_t*>(trailing.data()), trailing.size());
+  TEST_ASSERT_FALSE(extra.accepted);
+  TEST_ASSERT_EQUAL_STRING("invalid_json", phase1::protocol::rejection_name(extra.reason));
+}
+
+void test_queue_bound_completion_and_bootstrap(void) {
+  std::ifstream fixture(PHASE1_GOLDEN_FIXTURE);
+  std::string vector;
+  std::string hello_line;
+  std::string probe_line;
+  while (std::getline(fixture, vector)) {
+    if (vector.find("\"id\":\"valid_hello\"") != std::string::npos) {
+      TEST_ASSERT_TRUE(field_string(vector, "line", hello_line));
+    } else if (vector.find("\"id\":\"valid_probe\"") != std::string::npos) {
+      TEST_ASSERT_TRUE(field_string(vector, "line", probe_line));
+    }
+  }
+  TEST_ASSERT_FALSE(hello_line.empty());
+  TEST_ASSERT_FALSE(probe_line.empty());
+
+  ProtocolSession bootstrap("boot-a", "", 2);
+  const Result hello = bootstrap.accept(
+      reinterpret_cast<const uint8_t*>(hello_line.data()), hello_line.size());
+  TEST_ASSERT_TRUE(hello.accepted);
+  TEST_ASSERT_TRUE(hello.session_transition);
+  TEST_ASSERT_EQUAL_UINT(1, bootstrap.pending_count());
+  TEST_ASSERT_TRUE(bootstrap.complete());
+
+  const Result probe = bootstrap.accept(
+      reinterpret_cast<const uint8_t*>(probe_line.data()), probe_line.size());
+  TEST_ASSERT_TRUE(probe.accepted);
+  TEST_ASSERT_EQUAL_UINT(1, bootstrap.pending_count());
+  TEST_ASSERT_TRUE(bootstrap.complete());
+
+  const Result decoded = FrameCodec::decode(
+      reinterpret_cast<const uint8_t*>(probe_line.data()), probe_line.size());
+  TEST_ASSERT_TRUE(decoded.accepted);
+  auto frame_for = [&](uint32_t sequence, char* output, std::size_t& length) {
+    phase1::protocol::Frame frame = decoded.frame;
+    frame.sequence = sequence;
+    TEST_ASSERT_TRUE(FrameCodec::encode(frame, frame.payload_text, frame.payload_length,
+                                        output, phase1::protocol::kMaxLineBytes + 1, length));
+  };
+  char first[phase1::protocol::kMaxLineBytes + 1] = {};
+  char second[phase1::protocol::kMaxLineBytes + 1] = {};
+  char third[phase1::protocol::kMaxLineBytes + 1] = {};
+  std::size_t first_length = 0;
+  std::size_t second_length = 0;
+  std::size_t third_length = 0;
+  frame_for(4, first, first_length);
+  frame_for(5, second, second_length);
+  frame_for(6, third, third_length);
+
+  ProtocolSession bounded("boot-a", "session-a", 2);
+  TEST_ASSERT_TRUE(bounded.accept(reinterpret_cast<const uint8_t*>(first), first_length).accepted);
+  TEST_ASSERT_TRUE(bounded.accept(reinterpret_cast<const uint8_t*>(second), second_length).accepted);
+  const Result full = bounded.accept(reinterpret_cast<const uint8_t*>(third), third_length);
+  TEST_ASSERT_FALSE(full.accepted);
+  TEST_ASSERT_EQUAL_STRING("queue_full", phase1::protocol::rejection_name(full.reason));
+  TEST_ASSERT_EQUAL_UINT(2, bounded.pending_count());
+  TEST_ASSERT_TRUE(bounded.complete());
+  const Result restored = bounded.accept(reinterpret_cast<const uint8_t*>(third), third_length);
+  TEST_ASSERT_TRUE(restored.accepted);
+  TEST_ASSERT_EQUAL_UINT(2, bounded.pending_count());
 }
 
 }  // namespace
@@ -167,6 +237,7 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_fixture_vectors);
   RUN_TEST(test_valid_encode_decode_and_reset);
-  RUN_TEST(test_queue_bound_and_discard);
+  RUN_TEST(test_rejects_wide_version_and_trailing_bytes);
+  RUN_TEST(test_queue_bound_completion_and_bootstrap);
   return UNITY_END();
 }
