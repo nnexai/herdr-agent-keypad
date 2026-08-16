@@ -193,6 +193,14 @@ StimulusKind classifyStimulus(const char *stimulus, uint8_t &value) {
     value = 100;
     return StimulusKind::Brightness;
   }
+  if (strcmp(stimulus, "LED-OFF") == 0) {
+    value = 15;
+    return StimulusKind::Led;
+  }
+  if (strcmp(stimulus, "LED-ALL") == 0) {
+    value = 14;
+    return StimulusKind::Led;
+  }
   if (parseSingleIndex(stimulus, "LED-", 13, value)) {
     return StimulusKind::Led;
   }
@@ -249,16 +257,13 @@ bool applyStimulus(const char *stimulus, uint8_t &panel) {
       armedInput = ArmedInput::EncoderClick;
       render(BringupState::Click, panel);
       return true;
-    case StimulusKind::Brightness:
-      board.setBrightness(value);
-      render(BringupState::Brightness, panel, value);
-      return true;
-    case StimulusKind::Led:
-      // LED positions remain unapproved.  This paints exactly one library LED
-      // without claiming which physical position it illuminates.
-      board.setLeds(0, 100, 32, static_cast<uint16_t>(1U << value));
+    case StimulusKind::Led: {
+      const uint16_t led_mask = value == 14 ? 0x3FFF : (value == 15 ? 0 : static_cast<uint16_t>(1U << value));
+      const uint8_t led_brightness = value == 15 ? 0 : 32;
+      board.setLeds(0, 100, led_brightness, led_mask);
       render(BringupState::Map, panel);
       return true;
+    }
     case StimulusKind::Pair:
       render(BringupState::Pair, panel, 0, stimulus + 5);
       return true;
