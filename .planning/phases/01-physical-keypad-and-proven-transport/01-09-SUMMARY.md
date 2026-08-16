@@ -119,7 +119,7 @@ status: complete
 2. **Task 1: Route one flashed hello/probe path through the frozen production session** - `00afeb4` (feat)
 3. **Task 2: Complete bounded queue and serial I/O lifecycle semantics** - `f62671c` (feat)
 
-No separate metadata commit has been created yet; the summary and planning-state updates are the remaining execution metadata.
+Metadata commit: `9a3c326` (`docs(01-09): complete production protocol gap plan`).
 
 ## Files Created/Modified
 
@@ -203,5 +203,6 @@ The selected-usb firmware and host now share the production bounded protocol/ses
 ## Self-Check: PASSED
 
 - All three task commits exist: `46e0094`, `00afeb4`, `f62671c`.
+- The metadata commit exists: `9a3c326`.
 - Focused native, selected-usb, host golden, and serial reconnect checks passed.
 - No physical/manual validation or long qualification run was performed, per assignment boundary.
