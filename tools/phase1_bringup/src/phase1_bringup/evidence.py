@@ -1,6 +1,7 @@
 """Atomic, immutable evidence persistence for the Phase 1 tracer."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -63,11 +64,60 @@ def _validate_json_object(path: Path, expected_kind: str) -> dict[str, Any]:
     return data
 
 
+_ROW_FIELDS = {"row_id", "run_id", "step_id", "gate", "machine_status", "machine_reply_seq", "human_response", "physical_status", "observed_value", "timestamp"}
+_MACHINE_STATUSES = {"acknowledged", "observed", "rejected", "failed", "surprising", "unavailable"}
+_HUMAN_RESPONSES = {"Y", "N", "R"}
+_PHYSICAL_STATUSES = {"pass", "failed", "repeated", "unavailable", "surprising"}
+
+
+def _validate_physical_row(row: Any, expected_run_id: str | None = None) -> dict[str, Any]:
+    if not isinstance(row, dict) or not _ROW_FIELDS.issubset(row):
+        raise EvidenceError("physical row is missing required evidence fields")
+    if not isinstance(row["row_id"], str) or not row["row_id"]:
+        raise EvidenceError("physical row row_id must be non-empty")
+    if expected_run_id is not None and row.get("run_id") != expected_run_id:
+        raise EvidenceError("physical row run_id mismatch")
+    if not isinstance(row["step_id"], str) or not row["step_id"] or not isinstance(row["gate"], str) or not row["gate"]:
+        raise EvidenceError("physical row step identity is invalid")
+    if row["machine_status"] not in _MACHINE_STATUSES:
+        raise EvidenceError("physical row machine_status is invalid")
+    if row["human_response"] not in _HUMAN_RESPONSES:
+        raise EvidenceError("physical row human_response is invalid")
+    if row["physical_status"] not in _PHYSICAL_STATUSES:
+        raise EvidenceError("physical row physical_status is invalid")
+    if row["observed_value"] is None:
+        raise EvidenceError("physical row observed_value must use literal unavailable")
+    if not isinstance(row["timestamp"], (int, float)):
+        raise EvidenceError("physical row timestamp is invalid")
+    if row["human_response"] == "Y" and row["physical_status"] == "pass" and row["machine_status"] != "acknowledged":
+        raise EvidenceError("physical PASS requires a current acknowledged machine fact")
+    return row
+
+
+def _validate_physical_map(result: dict[str, Any], require_rows: bool = True) -> None:
+    physical_map = result.get("physical_map")
+    if not isinstance(physical_map, dict):
+        raise EvidenceError("result is missing physical_map")
+    rows = physical_map.get("rows")
+    if not isinstance(rows, list) or (require_rows and not rows):
+        raise EvidenceError("physical_map rows must be a non-empty list")
+    seen: set[str] = set()
+    for row in rows:
+        checked = _validate_physical_row(row, result.get("run_id"))
+        if checked["row_id"] in seen:
+            raise EvidenceError("physical row ids must be unique")
+        seen.add(checked["row_id"])
+    guided_order = physical_map.get("guided_order")
+    if guided_order is not None and (not isinstance(guided_order, list) or guided_order != ["Identify", "Displays", "Keys", "Encoder", "LEDs", "Brightness", "Reboot", "Pair", "Recover", "Traffic", "Selection"]):
+        raise EvidenceError("physical_map guided order is not the fixed eleven-gate sequence")
+
+
 class EvidenceWriter:
     """Write one immutable manifest/result pair and verify it after reopening.
 
-    A target directory is never overwritten. If a write fails, the attempted
-    files and error are retained under a unique ``failed-attempt-*`` directory.
+    A target directory is never overwritten. Rows are accumulated in memory until
+    ``finalize``; each row is append-only and a typed replacement links old/new
+    records rather than modifying an existing observation.
     """
 
     def __init__(self, root: Path, run_id: str):
@@ -76,6 +126,46 @@ class EvidenceWriter:
         self.root = Path(root)
         self.run_id = run_id
         self.directory = self.root / run_id
+        self._rows: list[dict[str, Any]] = []
+        self._row_ids: set[str] = set()
+        self._finalized = False
+
+    def record_row(self, row: dict[str, Any]) -> None:
+        if self._finalized:
+            raise EvidenceError("immutable evidence is already finalized")
+        candidate = copy.deepcopy(row)
+        _validate_physical_row(candidate, self.run_id)
+        if candidate["row_id"] in self._row_ids:
+            raise EvidenceError("physical row id already exists")
+        self._rows.append(candidate)
+        self._row_ids.add(candidate["row_id"])
+
+    def replace_row(self, old_row_id: str, replacement: dict[str, Any], typed_confirmation: str) -> None:
+        if typed_confirmation != "REPLACE":
+            raise EvidenceError("typed REPLACE is required to add a replacement observation")
+        if not any(row["row_id"] == old_row_id for row in self._rows):
+            raise EvidenceError("replacement target row does not exist")
+        candidate = copy.deepcopy(replacement)
+        _validate_physical_row(candidate, self.run_id)
+        if candidate["row_id"] in self._row_ids:
+            raise EvidenceError("replacement row id already exists")
+        candidate["replaces"] = old_row_id
+        candidate["replacement_token"] = "REPLACE"
+        self._rows.append(candidate)
+        self._row_ids.add(candidate["row_id"])
+
+    def finalize(self, manifest: dict[str, Any], result: dict[str, Any]) -> Path:
+        if self._finalized:
+            raise EvidenceError("evidence directory already finalized")
+        final_result = copy.deepcopy(result)
+        physical_map = final_result.setdefault("physical_map", {})
+        if not isinstance(physical_map, dict):
+            raise EvidenceError("physical_map must be an object")
+        physical_map.setdefault("rows", copy.deepcopy(self._rows))
+        _validate_physical_map(final_result)
+        path = self.write(manifest, final_result)
+        self._finalized = True
+        return path
 
     def write(self, manifest: dict[str, Any], result: dict[str, Any]) -> Path:
         if self.directory.exists():
@@ -108,6 +198,8 @@ class EvidenceWriter:
         result = _validate_json_object(result_path, "result")
         if manifest.get("run_id") != self.run_id or result.get("run_id") != self.run_id:
             raise EvidenceError("evidence run_id mismatch")
+        if "physical_map" in result:
+            _validate_physical_map(result)
         expected: dict[str, str] = {}
         for line in sums_path.read_text(encoding="ascii").splitlines():
             parts = line.split()
@@ -129,23 +221,41 @@ def self_check_roundtrip(root: Path) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     run_id = f"self-check-{time.time_ns()}"
     writer = EvidenceWriter(root, run_id)
-    manifest = {
-        "schema_version": 1,
-        "kind": "manifest",
-        "run_id": run_id,
-        "status": "self-check",
-        "protocol": {"version": 1, "max_line_bytes_including_lf": 4096},
-        "environment": {"python": "verified", "pyserial": "3.5"},
-    }
-    result = {
-        "schema_version": 1,
-        "kind": "result",
-        "run_id": run_id,
-        "status": "pass",
-        "physical_observation": "unavailable",
-        "transport": {"type": "self-check", "acknowledged": True},
-    }
+    manifest = {"schema_version": 1, "kind": "manifest", "run_id": run_id, "status": "self-check", "protocol": {"version": 1, "max_line_bytes_including_lf": 4096}, "environment": {"python": "verified", "pyserial": "3.5"}}
+    result = {"schema_version": 1, "kind": "result", "run_id": run_id, "status": "pass", "physical_observation": "unavailable", "transport": {"type": "self-check", "acknowledged": True}}
     path = writer.write(manifest, result)
-    reopened = EvidenceWriter(root, run_id)
-    reopened.verify()
+    EvidenceWriter(root, run_id).verify()
     return path
+
+
+def physical_schema_check() -> None:
+    """Check schema and replacement invariants without creating physical evidence."""
+    with tempfile.TemporaryDirectory() as directory:
+        writer = EvidenceWriter(Path(directory), "schema-check")
+        row = {"row_id": "schema-check:1", "run_id": "schema-check", "step_id": "IDENTIFY", "gate": "Identify", "machine_status": "acknowledged", "machine_reply_seq": 1, "human_response": "Y", "physical_status": "pass", "observed_value": "unavailable", "timestamp": time.time()}
+        writer.record_row(row)
+        replacement = dict(row, row_id="schema-check:2", observed_value={"device": "observed"})
+        writer.replace_row(row["row_id"], replacement, "REPLACE")
+        manifest = {"schema_version": 1, "kind": "manifest", "run_id": "schema-check", "status": "pass"}
+        result = {"schema_version": 1, "kind": "result", "run_id": "schema-check", "status": "pass", "physical_map": {"rows": writer._rows, "guided_order": ["Identify", "Displays", "Keys", "Encoder", "LEDs", "Brightness", "Reboot", "Pair", "Recover", "Traffic", "Selection"]}}
+        writer.finalize(manifest, result)
+        checked = EvidenceWriter(Path(directory), "schema-check").verify()["result"]["physical_map"]["rows"]
+        if len(checked) != 2 or checked[1].get("replaces") != row["row_id"]:
+            raise AssertionError("replacement history is not linked and immutable")
+
+
+def verify_physical_evidence(path: Path, require_physical_map: bool = False) -> Path:
+    """Reopen a concrete immutable run and optionally require physical-map rows."""
+    candidate = Path(path)
+    if candidate.is_file() and candidate.name == "result.json":
+        candidate = candidate.parent
+    if not candidate.is_dir():
+        raise EvidenceError(f"evidence target does not exist: {path}")
+    result_path = candidate / "result.json"
+    if not result_path.is_file():
+        raise EvidenceError("evidence target must be a concrete run directory")
+    writer = EvidenceWriter(candidate.parent, candidate.name)
+    checked = writer.verify()
+    if require_physical_map:
+        _validate_physical_map(checked["result"])
+    return candidate

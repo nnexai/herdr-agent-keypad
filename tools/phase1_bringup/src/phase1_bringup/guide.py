@@ -231,7 +231,7 @@ def confirmation_check() -> None:
             pass
         else:
             raise AssertionError("Enter alone must not confirm")
-        if run.respond("Y IDENTIFY test-run") != "pass":
+        if run.respond(f"Y IDENTIFY {run.run_suffix}") != "pass":
             raise AssertionError("explicit human confirmation did not pass")
         if run.history[0]["machine_status"] != "acknowledged" or run.history[0]["physical_status"] != "pass":
             raise AssertionError("machine and physical evidence were not kept distinct")
