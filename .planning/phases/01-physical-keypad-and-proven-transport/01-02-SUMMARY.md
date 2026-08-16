@@ -129,3 +129,9 @@ None - no external service configuration required.
 ---
 *Phase: 01-physical-keypad-and-proven-transport*
 *Completed: 2026-08-16*
+
+## Self-Check: PASSED
+
+- Summary file exists.
+- Implementation commits `3f1d47a` and `54a97cb` exist.
+- Summary commit `2c1de10` and tracking commit `f6f6c7e` exist.
