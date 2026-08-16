@@ -396,6 +396,7 @@ Result FrameCodec::decode(const uint8_t* line, std::size_t length) {
 bool FrameCodec::encode(const Frame& frame, const char* payload_json, std::size_t payload_length,
                         char* output, std::size_t output_capacity, std::size_t& output_length) {
   if (output == nullptr || payload_json == nullptr || output_capacity == 0 || payload_length == 0 || payload_length >= kMaxLineBytes || !valid_identifier(frame.boot_id) || !valid_identifier(frame.session_id) || !valid_digest(frame.digest)) return false;
+  if (!digest_matches(frame.digest, payload_json, payload_length)) return false;
   char reply[16] = {};
   if (frame.has_reply_to) {
     std::snprintf(reply, sizeof(reply), "%lu", static_cast<unsigned long>(frame.reply_to));
