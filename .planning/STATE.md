@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: executing
-stopped_at: Completed 01-02-PLAN.md after explicit delivered-unit physical approval
-last_updated: "2026-08-16T09:02:49.342Z"
+stopped_at: Completed 01-03-PLAN.md after corrected physical proof and immutable evidence closeout
+last_updated: "2026-08-16T13:38:53.945Z"
 last_activity: 2026-08-16
 last_activity_desc: Initial vertical-MVP roadmap created with 26/26 v1 requirements mapped.
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 8
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 ## Current Position
 
 Phase: 01 (physical-keypad-and-proven-transport) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-08-16 — Phase 01 execution started
 
-Progress: [███░░░░░░░] 25%
+Progress: [████░░░░░░] 38%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [███░░░░░░░] 25%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P02 | 3 min | 2 tasks | 5 files |
+| Phase 01 P03 | closeout | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 4]: Release acceptance requires real hardware, installed accounts, and visible recovery rather than mock-only evidence.
 - [Phase 1]: Plan 01-02 preserves the Pro-only adapter and fixed renderer as the implementation boundary; no checkpoint workaround was needed.
 - [Phase 1]: Plan 01-02 records only the user's explicit delivered-unit proof scope and does not infer physical facts beyond that evidence.
+- [Phase 1]: Physical input naming is KEY-1..KEY-4 with raw library indices 0..3; encoder click is raw index 4 and remains an observation-only BOOT0-safe input.
+- [Phase 1]: Machine acknowledgements never produce physical PASS; the accepted map requires explicit Y tied to the stable step and source run, with failed and replaced history immutable.
+- [Phase 1]: The centered renderer correction is included in the accepted proof; Pair, Recover, Traffic, and Selection remain later-plan work and D-04 archival remains Plan 01-08.
 
 ### Pending Todos
 
@@ -93,6 +97,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-16T09:02:49.333Z
-Stopped at: Completed 01-02-PLAN.md after explicit delivered-unit physical approval
+Last session: 2026-08-16T13:38:53.934Z
+Stopped at: Completed 01-03-PLAN.md after corrected physical proof and immutable evidence closeout
 Resume file: None
