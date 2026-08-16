@@ -6,9 +6,11 @@
 namespace phase1::protocol {
 namespace {
 
+constexpr std::size_t kMaxJsonNesting = 8;
 struct Cursor {
   const char* p;
   const char* end;
+  bool depth_exceeded = false;
 
   void ws() {
     while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) ++p;
@@ -83,13 +85,25 @@ struct Cursor {
     p += 4;
     return true;
   }
-
-  bool value() {
+  bool value(std::size_t depth = 0) {
     ws();
     if (p >= end) return false;
+    if (depth > kMaxJsonNesting) {
+      depth_exceeded = true;
+      return false;
+    }
     if (*p == '"') {
-      char ignored[kMaxPayloadStringBytes + 1];
-      return string(ignored, sizeof(ignored));
+      ++p;
+      while (p < end) {
+        if (*p == '\\') {
+          ++p;
+          if (p >= end) return false;
+          ++p;
+        } else if (*p++ == '"') {
+          return true;
+        }
+      }
+      return false;
     }
     if (*p == '{') {
       ++p;
@@ -97,7 +111,7 @@ struct Cursor {
       if (take('}')) return true;
       while (p < end) {
         char key[32];
-        if (!string(key, sizeof(key)) || !take(':') || !value()) return false;
+        if (!string(key, sizeof(key)) || !take(':') || !value(depth + 1)) return false;
         ws();
         if (take('}')) return true;
         if (!take(',')) return false;
@@ -109,7 +123,7 @@ struct Cursor {
       ws();
       if (take(']')) return true;
       while (p < end) {
-        if (!value()) return false;
+        if (!value(depth + 1)) return false;
         ws();
         if (take(']')) return true;
         if (!take(',')) return false;
@@ -201,7 +215,7 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
     else if (std::strcmp(key, "direction") == 0) bit = 1U << 27;
     else if (std::strcmp(key, "request") == 0) bit = 1U << 26;
     else return RejectReason::InvalidShape;
-    if ((mask & bit) != 0) return RejectReason::InvalidShape;
+    if ((mask & bit) != 0) return RejectReason::DuplicateKey;
     mask |= bit;
 
     if (bit == (1U << 0)) {
@@ -281,7 +295,7 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
 }  // namespace
 
 const char* rejection_name(RejectReason reason) {
-  static const char* names[] = {"ok", "empty_line", "missing_lf", "line_too_long", "invalid_utf8", "invalid_json", "unknown_field", "invalid_version", "unknown_type", "invalid_envelope", "invalid_payload", "invalid_shape", "invalid_identifier", "invalid_sequence", "invalid_reply_to", "invalid_digest", "digest_mismatch", "boot_mismatch", "session_mismatch", "out_of_order", "duplicate", "queue_full"};
+  static const char* names[] = {"ok", "empty_line", "missing_lf", "line_too_long", "invalid_utf8", "invalid_json", "unknown_field", "invalid_version", "unknown_type", "invalid_envelope", "invalid_payload", "invalid_shape", "invalid_identifier", "invalid_sequence", "invalid_reply_to", "invalid_digest", "digest_mismatch", "boot_mismatch", "session_mismatch", "out_of_order", "duplicate", "queue_full", "duplicate_key"};
   const auto index = static_cast<std::size_t>(reason);
   return index < (sizeof(names) / sizeof(names[0])) ? names[index] : "invalid_json";
 }
@@ -340,20 +354,32 @@ Result FrameCodec::decode(const uint8_t* line, std::size_t length) {
       return result;
     }
     if ((fields & bit) != 0) {
-      result.reason = RejectReason::UnknownField;
+      result.reason = RejectReason::DuplicateKey;
       return result;
     }
     fields |= bit;
     if (bit == (1U << 0)) {
       uint32_t value = 0;
-      if (!cursor.uint32(value)) return result;
+      if (!cursor.uint32(value)) {
+        result.reason = RejectReason::InvalidVersion;
+        return result;
+      }
       if (value != 1) {
         result.reason = RejectReason::InvalidVersion;
         return result;
       }
       result.frame.version = static_cast<uint8_t>(value);
     } else if (bit == (1U << 1)) {
-      if (!cursor.string(result.frame.type, sizeof(result.frame.type))) return result;
+      cursor.ws();
+      if (cursor.p >= cursor.end || *cursor.p != '"') {
+        if (!cursor.value()) result.reason = RejectReason::InvalidJson;
+        else result.reason = RejectReason::UnknownType;
+        return result;
+      }
+      if (!cursor.string(result.frame.type, sizeof(result.frame.type))) {
+        result.reason = RejectReason::UnknownType;
+        return result;
+      }
     } else if (bit == (1U << 2)) {
       if (!cursor.string(result.frame.boot_id, sizeof(result.frame.boot_id))) return result;
     } else if (bit == (1U << 3)) {
@@ -381,7 +407,7 @@ Result FrameCodec::decode(const uint8_t* line, std::size_t length) {
       cursor.ws();
       const char* payload_start = cursor.p;
       if (!cursor.value()) {
-        result.reason = RejectReason::InvalidPayload;
+        result.reason = cursor.depth_exceeded ? RejectReason::InvalidJson : RejectReason::InvalidPayload;
         return result;
       }
       const std::size_t payload_length = static_cast<std::size_t>(cursor.p - payload_start);

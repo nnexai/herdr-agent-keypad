@@ -111,7 +111,7 @@ void test_fixture_vectors(void) {
     assert_vector(line);
     ++count;
   }
-  TEST_ASSERT_EQUAL_UINT(24, count);
+  TEST_ASSERT_EQUAL_UINT(40, count);
 }
 
 void test_valid_encode_decode_and_reset(void) {

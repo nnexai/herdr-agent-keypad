@@ -36,8 +36,8 @@ enum class RejectReason : uint8_t {
   OutOfOrder,
   Duplicate,
   QueueFull,
+  DuplicateKey,
 };
-
 const char* rejection_name(RejectReason reason);
 
 struct Frame {
