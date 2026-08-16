@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: executing
-stopped_at: Completed 01-05-PLAN.md after host/firmware golden parity and native fixture harness
-last_updated: "2026-08-16T14:31:24.390Z"
+stopped_at: Completed 01-09-PLAN.md
+last_updated: "2026-08-16T22:24:33.585Z"
 last_activity: 2026-08-16
-last_activity_desc: Initial vertical-MVP roadmap created with 26/26 v1 requirements mapped.
+last_activity_desc: Exact paired keypad passed frozen USB qualification; result, traffic, pointer, and eligibility lock verified.
 progress:
-  total_phases: 1
+  total_phases: 2
   completed_phases: 0
-  total_plans: 8
-  completed_plans: 5
+  total_plans: 13
+  completed_plans: 9
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 ## Current Position
 
 Phase: 01 (physical-keypad-and-proven-transport) — EXECUTING
-Plan: 5 of 8
+Plan: 2 of 8
 Status: Ready to execute
 Last activity: 2026-08-16 — Phase 01 execution started
 
-Progress: [██████░░░░] 63%
+Progress: [███████░░░] 69%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [██████░░░░] 63%
 | Phase 01 P03 | closeout | 2 tasks | 7 files |
 | Phase 01 P04 | execution-window | 2 tasks | 9 files |
 | Phase 01 P05 | execution-window | 2 tasks | 10 files |
+| Phase 01 P09 | execution window | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -84,6 +85,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 1]: Operator-run recovery tour owns physical Y/N/R/U confirmation and utility restart resumes from an immutable checkpoint.
 - [Phase 1]: Plan 01-05 froze a closed v1 envelope at 4096 bytes including LF with canonical FNV-1a-64 payload digest and typed rejection codes.
 - [Phase 1]: Plan 01-05 consolidated firmware FrameCodec and ProtocolSession with fresh reset/discard, sequence/deduplication, and bounded queue semantics.
+- [Phase 1]: Plan 01-06 is the sole long physical qualification; later plans must consume its immutable USB eligibility lock and use only bounded targeted checks.
+- [Phase ?]: 01-09: Every complete firmware input line is admitted through the consolidated FrameCodec/ProtocolSession path before typed dispatch.
+- [Phase ?]: 01-09: Protocol queue high-water reports bounded pending frame units and explicit completion restores capacity.
+- [Phase ?]: 01-09: Board readiness and PhysicalMap lookups fail closed without raw-index fallback.
 
 ### Pending Todos
 
@@ -91,7 +96,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 1]: Plan 01-01 measured PANEL-1/key-0 and USB CDC recovery on the delivered unit; remaining full four-panel map, interruption matrix, and Python 3.11 reproducibility evidence are still required.
+- [Phase 1]: USB qualification and eligibility lock are complete; final selected-usb composition/build/archive remain in Plan 01-08.
 - [Phase 2]: Installed Herdr schema, supported order seam, stable pane identity, and exact native focus effects require mandatory research before live focus acceptance.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
@@ -104,6 +109,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-16T14:31:24.380Z
-Stopped at: Completed 01-05-PLAN.md after host/firmware golden parity and native fixture harness
+Last session: 2026-08-16T22:24:33.574Z
+Stopped at: Completed 01-09-PLAN.md
 Resume file: None
