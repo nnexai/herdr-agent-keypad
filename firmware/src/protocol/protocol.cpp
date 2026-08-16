@@ -237,7 +237,8 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
       if (!payload_value_string(cursor, value, sizeof(value)) || std::strlen(value) == 0 || std::strlen(value) > 128) return RejectReason::InvalidShape;
     } else if (bit == (1U << 26)) {
       char value[kMaxPayloadStringBytes + 1];
-      if (!payload_value_string(cursor, value, sizeof(value)) || std::strcmp(value, "proof") != 0) return RejectReason::InvalidShape;
+      if (!payload_value_string(cursor, value, sizeof(value)) ||
+          (std::strcmp(value, "proof") != 0 && std::strcmp(value, "reset") != 0)) return RejectReason::InvalidShape;
     } else if (bit >= (1U << 11) && bit <= (1U << 25)) {
       uint32_t value = 0;
       if (!cursor.uint32(value)) return RejectReason::InvalidShape;
