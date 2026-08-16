@@ -9,9 +9,9 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Physical Device
 
-- [x] **HARD-01**: The user can run the firmware on the connected LILYGO T-Keyboard S3 Pro with all four displays, their matching keys, the rotary encoder click, orientation, brightness control, reboot behavior, and the selected host link verified against a recorded physical map.
+- [ ] **HARD-01**: The user can run the firmware on the connected LILYGO T-Keyboard S3 Pro with all four displays, their matching keys, the rotary encoder click, orientation, brightness control, reboot behavior, and the selected host link verified against a recorded physical map.
 - [ ] **HARD-02**: The user sees deterministic booting, empty, stale, and offline screens; removed entries and expired Codex values never remain displayed as current data.
-- [x] **HARD-03**: The connected device and host exchange bounded, versioned messages reliably over the transport selected by physical bring-up, with USB preferred unless measured behavior disqualifies it.
+- [ ] **HARD-03**: The connected device and host exchange bounded, versioned messages reliably over the transport selected by physical bring-up, with USB preferred unless measured behavior disqualifies it.
 
 ### Agent Inbox
 
@@ -93,9 +93,9 @@ Every v1 requirement maps to exactly one roadmap phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| HARD-01 | Phase 1 | Complete |
+| HARD-01 | Phase 1 | Gaps Found |
 | HARD-02 | Phase 4 | Pending |
-| HARD-03 | Phase 1 | Complete |
+| HARD-03 | Phase 1 | Gaps Found |
 | INBX-01 | Phase 2 | Pending |
 | INBX-02 | Phase 2 | Pending |
 | INBX-03 | Phase 2 | Pending |
