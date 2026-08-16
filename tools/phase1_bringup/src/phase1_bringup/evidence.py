@@ -67,6 +67,412 @@ def verify_qualification_linkage(
             raise EvidenceError("qualification traffic hash does not match the linked immutable file")
     return {"manifest": manifest, "result": result}
 
+def resolve_qualification_pointer(pointer_path: Path, manifest_path: Path, purpose: str, output_path: Path) -> dict[str, Any]:
+    """Resolve one immutable result pointer and emit a concrete lock."""
+    pointer_path = Path(pointer_path)
+    manifest_path = Path(manifest_path)
+    output_path = Path(output_path)
+    try:
+        pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise EvidenceError(f"qualification pointer is not valid JSON: {exc}") from exc
+    if pointer.get("schema_version") != 1 or pointer.get("kind") != "qualification-pointer":
+        raise EvidenceError("qualification pointer schema/kind is invalid")
+    pointer_purpose = pointer.get("purpose")
+    if purpose == "selection-candidate":
+        if pointer_purpose != "usb-eligibility":
+            raise EvidenceError("selection candidate must resolve the frozen USB eligibility pointer")
+    elif pointer_purpose != purpose:
+        raise EvidenceError("qualification pointer purpose mismatch")
+
+    pointer_root = pointer_path.parent.resolve().parent
+    manifest = verify_qualification_manifest(manifest_path)
+    if pointer.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise EvidenceError("qualification pointer manifest hash mismatch")
+
+    def concrete_target(value: Any, field: str, root: Path = pointer_root) -> Path:
+        if not isinstance(value, str) or not value or Path(value).is_absolute():
+            raise EvidenceError(f"qualification pointer {field} must be a relative path")
+        candidate = root / value
+        if candidate.is_symlink():
+            raise EvidenceError(f"qualification pointer {field} must not be a symlink")
+        resolved = candidate.resolve()
+        if pointer_root != resolved and pointer_root not in resolved.parents:
+            raise EvidenceError(f"qualification pointer {field} escapes its root")
+        if not resolved.is_file():
+            raise EvidenceError(f"qualification pointer {field} is not a file")
+        return resolved
+
+    result_path = concrete_target(pointer.get("result_path"), "result_path")
+    if _sha256(result_path) != pointer.get("result_sha256"):
+        raise EvidenceError("qualification pointer result hash mismatch")
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    linkage = result.get("qualification")
+    if not isinstance(linkage, dict) or linkage.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise EvidenceError("qualification result manifest linkage mismatch")
+    if result.get("status") != "pass":
+        raise EvidenceError("qualification pointer target is not a strict pass")
+    traffic_path = concrete_target(linkage.get("traffic_path"), "traffic_path", result_path.parent)
+    if _sha256(traffic_path) != linkage.get("traffic_sha256"):
+        raise EvidenceError("qualification pointer traffic hash mismatch")
+
+    lock = {
+        "schema_version": 1,
+        "kind": "qualification-lock",
+        "purpose": purpose,
+        "status": "pass",
+        "transport": result.get("transport"),
+        "manifest_path": str(manifest_path.resolve()),
+        "manifest_sha256": manifest["manifest_sha256"],
+        "pointer_path": str(pointer_path.resolve()),
+        "pointer_sha256": _sha256(pointer_path),
+        "result_path": str(result_path),
+        "result_sha256": _sha256(result_path),
+        "traffic_path": str(traffic_path),
+        "traffic_sha256": linkage["traffic_sha256"],
+        "physical_overlap": result.get("physical_overlap"),
+        "source_pointer_purpose": pointer_purpose,
+        "interruption_ids": [row.get("id") for row in result.get("interruption_matrix", []) if isinstance(row, dict) and row.get("id")],
+    }
+    _atomic_bytes(output_path, _canonical_bytes(lock))
+    return lock
+
+def verify_qualification_lock(path: Path, requirements: set[str] | None = None) -> dict[str, Any]:
+    requirements = set(requirements or ())
+    try:
+        lock = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise EvidenceError(f"qualification lock is not valid JSON: {exc}") from exc
+    if lock.get("schema_version") != 1 or lock.get("kind") != "qualification-lock" or lock.get("status") != "pass":
+        raise EvidenceError("qualification lock schema/status is invalid")
+    manifest = verify_qualification_manifest(Path(lock["manifest_path"]))
+    if lock.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise EvidenceError("qualification lock manifest hash mismatch")
+    result_path = Path(lock["result_path"])
+    if _sha256(result_path) != lock.get("result_sha256"):
+        raise EvidenceError("qualification lock result hash mismatch")
+    traffic_path = Path(lock["traffic_path"])
+    if _sha256(traffic_path) != lock.get("traffic_sha256"):
+        raise EvidenceError("qualification lock traffic hash mismatch")
+    linkage = json.loads(result_path.read_text(encoding="utf-8")).get("qualification", {})
+    if linkage.get("manifest_sha256") != manifest["manifest_sha256"] or linkage.get("traffic_sha256") != lock["traffic_sha256"]:
+        raise EvidenceError("qualification lock embedded linkage mismatch")
+    if "strict-traffic" in requirements:
+        result = json.loads(result_path.read_text(encoding="utf-8"))
+        counters = result.get("counters", {})
+        if result.get("status") != "pass" or any(counters.get(k) != counters.get("expected") for k in ("sent", "received", "acknowledged")):
+            raise EvidenceError("qualification lock lacks strict traffic equality")
+        if any(counters.get(k) != 0 for k in ("digest_mismatch", "duplicate", "out_of_order", "malformed", "rejected", "watchdog_reset")):
+            raise EvidenceError("qualification lock contains strict traffic failures")
+    if "complete-interruption-matrix" in requirements:
+        required = {"software-reset", "normal-flash-reset", "same-port-reconnect", "different-port-reconnect", "forced-endpoint-renumbering", "host-utility-restart", "reset-unplug"}
+        if not required.issubset(set(lock.get("interruption_ids", []))):
+            raise EvidenceError("qualification lock interruption matrix is incomplete")
+    return lock
+
+def _load_object(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise EvidenceError(f"{label} is not valid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise EvidenceError(f"{label} must be a JSON object")
+    return value
+
+
+def _fixed_file(value: Any, label: str) -> Path:
+    if not isinstance(value, str) or not value:
+        raise EvidenceError(f"{label} path is missing")
+    path = Path(value)
+    if not path.is_absolute() or path.is_symlink() or not path.is_file():
+        raise EvidenceError(f"{label} must be an absolute, concrete, non-symlink file")
+    return path
+
+
+def select_transport(
+    manifest_path: Path,
+    candidate_lock_path: Path,
+    usb_lock_path: Path,
+    wifi_lock_path: Path | None,
+    output_path: Path,
+) -> dict[str, Any]:
+    """Select the strict USB pass without opening mutable qualification pointers."""
+    manifest = verify_qualification_manifest(manifest_path)
+    required = {"strict-traffic", "complete-interruption-matrix", "immutable-linkage"}
+    candidate = verify_qualification_lock(candidate_lock_path, required)
+    usb = verify_qualification_lock(usb_lock_path, required)
+    if candidate.get("purpose") != "selection-candidate" or candidate.get("source_pointer_purpose") != "usb-eligibility":
+        raise EvidenceError("selection candidate is not derived from the USB eligibility pointer")
+    if usb.get("purpose") != "usb-eligibility":
+        raise EvidenceError("USB lock purpose is invalid")
+    linkage_fields = ("manifest_sha256", "result_path", "result_sha256", "traffic_path", "traffic_sha256")
+    if any(candidate.get(field) != usb.get(field) for field in linkage_fields):
+        raise EvidenceError("selection candidate and USB eligibility lock do not name the same immutable proof")
+    if candidate.get("transport") != "usb" or usb.get("transport") != "usb":
+        raise EvidenceError("strict USB success is required for the selected-usb branch")
+    if candidate.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise EvidenceError("selection candidate does not match the frozen manifest")
+    if wifi_lock_path is not None and Path(wifi_lock_path).exists():
+        raise EvidenceError("Wi-Fi evidence must not exist after strict USB success")
+
+    root = Path(__file__).resolve().parents[4]
+    source_path = (root / "firmware" / "src" / "transport" / "usb_cdc.cpp").resolve()
+    if not source_path.is_file():
+        raise EvidenceError("selected USB adapter source is missing")
+    selection = {
+        "schema_version": 1,
+        "kind": "selection-lock",
+        "status": "pass",
+        "environment": "selected-usb",
+        "selected_adapter": "usb_cdc",
+        "rationale": "USB selected for v1: every frozen qualification gate passed.",
+        "manifest_path": str(Path(manifest_path).resolve()),
+        "manifest_sha256": manifest["manifest_sha256"],
+        "candidate_lock_path": str(Path(candidate_lock_path).resolve()),
+        "candidate_lock_sha256": _sha256(Path(candidate_lock_path)),
+        "usb_lock_path": str(Path(usb_lock_path).resolve()),
+        "usb_lock_sha256": _sha256(Path(usb_lock_path)),
+        "result_path": usb["result_path"],
+        "result_sha256": usb["result_sha256"],
+        "traffic_path": usb["traffic_path"],
+        "traffic_sha256": usb["traffic_sha256"],
+        "selected_source_path": str(source_path),
+        "selected_source_sha256": _sha256(source_path),
+    }
+    _atomic_bytes(Path(output_path), _canonical_bytes(selection))
+    return selection
+
+
+def verify_selection_lock(path: Path) -> dict[str, Any]:
+    selection = _load_object(path, "selection lock")
+    if (
+        selection.get("schema_version") != 1
+        or selection.get("kind") != "selection-lock"
+        or selection.get("status") != "pass"
+        or selection.get("environment") != "selected-usb"
+        or selection.get("selected_adapter") != "usb_cdc"
+    ):
+        raise EvidenceError("selection lock schema, status, or selected environment is invalid")
+    if selection.get("rationale") != "USB selected for v1: every frozen qualification gate passed.":
+        raise EvidenceError("selection rationale is not the frozen USB decision")
+    manifest_path = _fixed_file(selection.get("manifest_path"), "selection manifest")
+    manifest = verify_qualification_manifest(manifest_path)
+    if selection.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise EvidenceError("selection manifest hash mismatch")
+    candidate_path = _fixed_file(selection.get("candidate_lock_path"), "selection candidate lock")
+    usb_path = _fixed_file(selection.get("usb_lock_path"), "USB eligibility lock")
+    if _sha256(candidate_path) != selection.get("candidate_lock_sha256"):
+        raise EvidenceError("selection candidate lock hash mismatch")
+    if _sha256(usb_path) != selection.get("usb_lock_sha256"):
+        raise EvidenceError("selection USB lock hash mismatch")
+    candidate = verify_qualification_lock(candidate_path, {"strict-traffic", "complete-interruption-matrix"})
+    usb = verify_qualification_lock(usb_path, {"strict-traffic", "complete-interruption-matrix"})
+    for field in ("result_path", "result_sha256", "traffic_path", "traffic_sha256"):
+        if selection.get(field) != candidate.get(field) or selection.get(field) != usb.get(field):
+            raise EvidenceError(f"selection {field} lineage mismatch")
+    source_path = _fixed_file(selection.get("selected_source_path"), "selected adapter source")
+    if _sha256(source_path) != selection.get("selected_source_sha256"):
+        raise EvidenceError("selected adapter source hash mismatch")
+    return selection
+
+
+def selection_self_check(usb_lock_path: Path) -> None:
+    """Exercise exact-path selection, negative hashes, and USB-first asymmetry."""
+    usb_path = Path(usb_lock_path)
+    usb = verify_qualification_lock(usb_path, {"strict-traffic", "complete-interruption-matrix"})
+    if "/latest/" in usb["result_path"] or Path(usb["result_path"]).is_symlink():
+        raise EvidenceError("USB eligibility lock did not resolve a concrete immutable result")
+    with tempfile.TemporaryDirectory() as directory:
+        temporary = Path(directory)
+        broken = copy.deepcopy(usb)
+        broken["result_sha256"] = "0" * 64
+        broken_path = temporary / "broken.json"
+        _atomic_bytes(broken_path, _canonical_bytes(broken))
+        try:
+            verify_qualification_lock(broken_path)
+        except EvidenceError:
+            pass
+        else:
+            raise EvidenceError("tampered qualification hash was accepted")
+        candidate = copy.deepcopy(usb)
+        candidate["purpose"] = "selection-candidate"
+        candidate["source_pointer_purpose"] = "usb-eligibility"
+        candidate_path = temporary / "candidate.json"
+        _atomic_bytes(candidate_path, _canonical_bytes(candidate))
+        output_path = temporary / "selection.json"
+        selected = select_transport(
+            Path(usb["manifest_path"]),
+            candidate_path,
+            usb_path,
+            temporary / "absent-wifi.json",
+            output_path,
+        )
+        if selected["environment"] != "selected-usb":
+            raise EvidenceError("strict USB pass did not win asymmetric selection")
+
+
+def build_selected(selection_lock_path: Path, output_path: Path) -> dict[str, Any]:
+    """Build and hash the only adapter authorized by the selection lock."""
+    import subprocess
+
+    selection_path = Path(selection_lock_path)
+    selection = verify_selection_lock(selection_path)
+    root = Path(__file__).resolve().parents[4]
+    platformio_path = root / "platformio.ini"
+    main_path = root / "firmware" / "src" / "main.cpp"
+    source_path = Path(selection["selected_source_path"])
+    platformio = platformio_path.read_text(encoding="utf-8")
+    main = main_path.read_text(encoding="utf-8")
+    if "default_envs = selected-usb" not in platformio or "[env:selected-usb]" not in platformio:
+        raise EvidenceError("PlatformIO selected-usb environment is not the default composition")
+    if "-<transport/wifi_tls.cpp>" not in platformio:
+        raise EvidenceError("selected-usb does not explicitly exclude the Wi-Fi adapter")
+    if "UsbCdcLink usbLink;" not in main or "WifiTlsLink" in main:
+        raise EvidenceError("firmware composition does not instantiate exactly UsbCdcLink")
+    wifi_source = root / "firmware" / "src" / "transport" / "wifi_tls.cpp"
+    if wifi_source.exists():
+        raise EvidenceError("unselected Wi-Fi adapter source exists after the fallback was skipped")
+    pio = root / "tools" / "phase1_bringup" / ".venv" / "bin" / "pio"
+    completed = subprocess.run(
+        [str(pio), "run", "-e", "selected-usb"],
+        cwd=root,
+        check=False,
+        text=True,
+    )
+    if completed.returncode != 0:
+        raise EvidenceError("selected-usb PlatformIO build failed")
+    binary_path = root / ".pio" / "build" / "selected-usb" / "firmware.bin"
+    if not binary_path.is_file():
+        raise EvidenceError("selected-usb firmware binary is missing")
+    build_root = binary_path.parent
+    if any("wifi_tls" in item.name.lower() for item in build_root.rglob("*")):
+        raise EvidenceError("selected-usb build contains an unselected Wi-Fi object")
+    build_lock = {
+        "schema_version": 1,
+        "kind": "final-build-lock",
+        "status": "pass",
+        "environment": "selected-usb",
+        "selection_lock_path": str(selection_path.resolve()),
+        "selection_lock_sha256": _sha256(selection_path),
+        "manifest_sha256": selection["manifest_sha256"],
+        "selected_source_path": str(source_path),
+        "selected_source_sha256": _sha256(source_path),
+        "binary_path": str(binary_path.resolve()),
+        "binary_sha256": _sha256(binary_path),
+        "platformio_path": str(platformio_path.resolve()),
+        "platformio_sha256": _sha256(platformio_path),
+        "main_path": str(main_path.resolve()),
+        "main_sha256": _sha256(main_path),
+        "unselected_adapter": "wifi_tls",
+        "unselected_source_present": False,
+        "unselected_object_present": False,
+        "unselected_symbol_present": False,
+    }
+    _atomic_bytes(Path(output_path), _canonical_bytes(build_lock))
+    return build_lock
+
+
+def verify_build_lock(path: Path) -> dict[str, Any]:
+    lock = _load_object(path, "final build lock")
+    if (
+        lock.get("schema_version") != 1
+        or lock.get("kind") != "final-build-lock"
+        or lock.get("status") != "pass"
+        or lock.get("environment") != "selected-usb"
+    ):
+        raise EvidenceError("final build lock schema/status is invalid")
+    selection_path = _fixed_file(lock.get("selection_lock_path"), "build selection lock")
+    selection = verify_selection_lock(selection_path)
+    if _sha256(selection_path) != lock.get("selection_lock_sha256"):
+        raise EvidenceError("final build selection hash mismatch")
+    if lock.get("manifest_sha256") != selection.get("manifest_sha256"):
+        raise EvidenceError("final build manifest hash mismatch")
+    for prefix in ("selected_source", "binary", "platformio", "main"):
+        item = _fixed_file(lock.get(f"{prefix}_path"), f"build {prefix}")
+        if _sha256(item) != lock.get(f"{prefix}_sha256"):
+            raise EvidenceError(f"final build {prefix} hash mismatch")
+    if any(lock.get(field) is not False for field in ("unselected_source_present", "unselected_object_present", "unselected_symbol_present")):
+        raise EvidenceError("final build contains an unselected adapter artifact")
+    return lock
+
+
+def archive_phase1(
+    selection_lock_path: Path,
+    build_lock_path: Path,
+    qualification_lock_path: Path,
+    output_path: Path,
+) -> dict[str, Any]:
+    """Create the fixed, secret-free archive marker from immutable locks."""
+    selection_path = Path(selection_lock_path)
+    build_path = Path(build_lock_path)
+    qualification_path = Path(qualification_lock_path)
+    selection = verify_selection_lock(selection_path)
+    build = verify_build_lock(build_path)
+    qualification = verify_qualification_lock(
+        qualification_path,
+        {"strict-traffic", "complete-interruption-matrix", "immutable-linkage"},
+    )
+    if build["selection_lock_sha256"] != _sha256(selection_path):
+        raise EvidenceError("archive build does not bind the selected decision")
+    if selection["result_sha256"] != qualification["result_sha256"]:
+        raise EvidenceError("archive qualification does not bind the selected result")
+    archive = {
+        "schema_version": 1,
+        "kind": "phase1-archive-lock",
+        "status": "archived",
+        "environment": selection["environment"],
+        "selection_lock_path": str(selection_path.resolve()),
+        "selection_lock_sha256": _sha256(selection_path),
+        "build_lock_path": str(build_path.resolve()),
+        "build_lock_sha256": _sha256(build_path),
+        "qualification_lock_path": str(qualification_path.resolve()),
+        "qualification_lock_sha256": _sha256(qualification_path),
+        "manifest_sha256": selection["manifest_sha256"],
+        "result_path": selection["result_path"],
+        "result_sha256": selection["result_sha256"],
+        "traffic_path": selection["traffic_path"],
+        "traffic_sha256": selection["traffic_sha256"],
+        "binary_path": build["binary_path"],
+        "binary_sha256": build["binary_sha256"],
+    }
+    _atomic_bytes(Path(output_path), _canonical_bytes(archive))
+    return archive
+
+
+def verify_archive_lock(path: Path) -> dict[str, Any]:
+    archive = _load_object(path, "Phase 1 archive lock")
+    if (
+        archive.get("schema_version") != 1
+        or archive.get("kind") != "phase1-archive-lock"
+        or archive.get("status") != "archived"
+        or archive.get("environment") != "selected-usb"
+    ):
+        raise EvidenceError("Phase 1 archive lock schema/status is invalid")
+    selection_path = _fixed_file(archive.get("selection_lock_path"), "archive selection lock")
+    build_path = _fixed_file(archive.get("build_lock_path"), "archive build lock")
+    qualification_path = _fixed_file(archive.get("qualification_lock_path"), "archive qualification lock")
+    selection = verify_selection_lock(selection_path)
+    build = verify_build_lock(build_path)
+    qualification = verify_qualification_lock(
+        qualification_path,
+        {"strict-traffic", "complete-interruption-matrix", "immutable-linkage"},
+    )
+    for label, item in (("selection", selection_path), ("build", build_path), ("qualification", qualification_path)):
+        if _sha256(item) != archive.get(f"{label}_lock_sha256"):
+            raise EvidenceError(f"archive {label} lock hash mismatch")
+    if archive.get("manifest_sha256") != selection["manifest_sha256"]:
+        raise EvidenceError("archive manifest hash mismatch")
+    if archive.get("result_sha256") != qualification["result_sha256"]:
+        raise EvidenceError("archive result hash mismatch")
+    if archive.get("binary_sha256") != build["binary_sha256"]:
+        raise EvidenceError("archive binary hash mismatch")
+    forbidden = ("password", "passphrase", "private_key", "certificate", "ssid", "secret")
+    if any(token in key.lower() for key in archive for token in forbidden):
+        raise EvidenceError("archive contains a secret-bearing field")
+    if "/latest/" in json.dumps(archive, sort_keys=True):
+        raise EvidenceError("archive consumes mutable latest evidence")
+    return archive
+
 
 def _fsync_directory(directory: Path) -> None:
     fd = os.open(directory, os.O_RDONLY)

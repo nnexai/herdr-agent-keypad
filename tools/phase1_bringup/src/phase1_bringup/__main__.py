@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .discovery import discovery_check
-from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, parse_group_responses, self_check_roundtrip, verify_machine_run, verify_physical_evidence
+from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, archive_phase1, build_selected, parse_group_responses, resolve_qualification_pointer, select_transport, selection_self_check, self_check_roundtrip, verify_archive_lock, verify_build_lock, verify_machine_run, verify_physical_evidence, verify_qualification_lock, verify_selection_lock
 from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, RECOVERY_TOUR_STEPS, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check, recovery_tour_check, recovery_ui_check
 from .pairing import pairing_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, protocol_bootstrap_check, protocol_golden_check, validate_frame
@@ -39,13 +39,16 @@ def qualification_cli_check() -> None:
         raise AssertionError("qualify command did not fail closed before hardware access")
 
 def qualification_early_rejection_check(manifest_path: Path) -> None:
-    """Exercise overlap-N persistence with fake link/session objects only."""
+    """Exercise input-event matching, bounded smoke mode, and overlap-N persistence with fake I/O only."""
     from . import qualification as qualification_module
     from .pairing import PairingStore
 
     class FakeLink:
         def write(self, data: bytes) -> int:
             return len(data)
+
+        def readline(self) -> bytes:
+            return b"ack\n"
 
         def close(self) -> None:
             return None
@@ -59,10 +62,19 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
 
         def stimulate(self, step_id: str, panel: int, stimulus: str) -> None:
             self.connection.write(f"{step_id}:{panel}:{stimulus}\n".encode())
+            self.connection.readline()
         def request(self, frame_type: str, payload: dict[str, Any], allowed: set[str]) -> tuple[dict[str, Any], object]:
             self.connection.write(f"{frame_type}:{payload['request']}\n".encode())
+            self.connection.readline()
             names = ("acknowledged", "digest_mismatch", "duplicate", "largest_free_block", "malformed", "max_display_flush_us", "max_key_poll_gap_us", "minimum_free_heap", "out_of_order", "parser_high_water", "queue_high_water", "received", "rejected", "sent", "watchdog_reset")
             return {"payload": {name: 0 for name in names}}, object()
+        def wait_event(self, step_id: str, **expected: Any) -> dict[str, Any]:
+            payload: dict[str, Any] = {"step_id": step_id, "kind": expected["expected_kind"]}
+            if "expected_key" in expected:
+                payload["key"] = expected["expected_key"]
+            if "expected_direction" in expected:
+                payload["direction"] = expected["expected_direction"]
+            return {"payload": payload}
 
     def fake_reconnect(*_args: Any, **_kwargs: Any) -> tuple[FakeCandidate, FakeLink, FakeSession, list[Any]]:
         link = FakeLink()
@@ -78,7 +90,7 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
     qualification_module.reconnect_exact = fake_reconnect
     def fake_checkpoint(label: str, _instruction: str) -> str:
         checkpoint_labels.append(label)
-        return "Y" if label == "preflight-cues" else "N"
+        return "N"
     qualification_module._operator_checkpoint = fake_checkpoint
     try:
         with tempfile.TemporaryDirectory() as directory:
@@ -99,7 +111,7 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
             if any(result.get("counters", {}).get(name) != 0 for name in ("sent", "received", "acknowledged")):
                 raise AssertionError("preflight traffic contaminated post-reset strict counters")
             traffic = json.loads(traffic_paths[0].read_text(encoding="utf-8"))
-            if checkpoint_labels != ["preflight-cues", "physical-overlap"]:
+            if checkpoint_labels != ["preflight-cues"]:
                 raise AssertionError("physical-overlap prompt ordering changed")
             cue_bytes = b"".join(bytes.fromhex(item["bytes"]) for item in traffic if item.get("phase") == "preflight")
             for cue in (b"PANEL-1", b"LED-13", b"LED-ALL", b"LED-OFF", b"BRIGHTNESS-LOW", b"KEY-4", b"ENC-CW", b"ENC-CLICK"):
@@ -109,6 +121,21 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
                 raise AssertionError("overlap N was not recorded as a non-pass result")
             if not any(item.get("phase") == "preflight" and item.get("direction") == "host_to_device" for item in traffic):
                 raise AssertionError("physical-overlap prompt occurred before a preflight device write")
+        with tempfile.TemporaryDirectory() as directory:
+            evidence_root = Path(directory)
+            status = qualification_module.run_qualification(
+                Path(manifest_path),
+                "usb",
+                evidence_root,
+                evidence_root / "binding.json",
+                smoke_seconds=2,
+            )
+            smoke_results = list(evidence_root.glob("*/result.json"))
+            if len(smoke_results) != 1:
+                raise AssertionError("automated smoke mode did not preserve a result")
+            smoke_result = json.loads(smoke_results[0].read_text(encoding="utf-8"))
+            if status != 0 or smoke_result.get("status") != "incomplete" or smoke_result.get("smoke_status") != "pass":
+                raise AssertionError(f"automated smoke mode did not pass (exit {status}): {smoke_result}")
     finally:
         PairingStore.load = original_load
         qualification_module.reconnect_exact = original_reconnect
@@ -1036,10 +1063,16 @@ def command_self_check(args: argparse.Namespace) -> int:
         print("Qualification CLI: registered and fails closed before hardware access")
     if args.qualification_early_rejection:
         qualification_early_rejection_check(Path(args.qualification_manifest))
-        print("Qualification early rejection: preflight write precedes overlap prompt; N persists immutable failure")
+        print("Qualification early rejection: matched key/encoder events, automated smoke pass, and immutable overlap-N failure")
     if args.qualification_no_false_pass:
         qualification_no_false_pass_check(Path(args.qualification_manifest))
         print("Qualification PASS gate: unavailable firmware evidence cannot pass")
+    if args.selection_evidence_exact_path or args.selection_evidence_hash_negative or args.selection_asymmetry:
+        selection_self_check(repo_root() / "artifacts" / "phase1" / "locks" / "usb-eligibility.json")
+        print("Selection evidence: exact immutable path, hash rejection, and USB-first asymmetry pass")
+    if args.firmware_composition_lock:
+        verify_build_lock(args.firmware_composition_lock)
+        print("Firmware composition: selected-usb contains exactly one adapter and no Wi-Fi artifact")
  
     return 0
 def main(argv: list[str] | None = None) -> int:
@@ -1073,6 +1106,12 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--confirmation-rejection", action="store_true", help="check Y/N/R confirmation semantics")
     self_check.add_argument("--qualification-manifest", type=Path, help="verify the frozen USB qualification profile")
     self_check.add_argument("--qualification-cli", action="store_true", help="check qualify registration without opening hardware")
+    self_check.add_argument("--selection-evidence-exact-path", action="store_true")
+    self_check.add_argument("--selection-evidence-hash-negative", action="store_true")
+    self_check.add_argument("--selection-asymmetry", action="store_true")
+    self_check.add_argument("--firmware-composition-lock", type=Path)
+    self_check.add_argument("--exactly-one-adapter", action="store_true")
+    self_check.add_argument("--unselected-source-object-symbol-absent", action="store_true")
     freeze = subparsers.add_parser("freeze-manifest", help="create or reopen the deterministic USB qualification manifest")
     freeze.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
     freeze.add_argument("--fixture", type=Path, default=repo_root() / "protocol" / "fixtures" / "v1-golden.json")
@@ -1082,11 +1121,31 @@ def main(argv: list[str] | None = None) -> int:
     qualification.add_argument("result", type=Path)
     qualification.add_argument("--traffic", type=Path)
     qualification.add_argument("--require-immutable-traffic", action="store_true")
+    resolve = subparsers.add_parser("resolve-pointer", help="resolve one immutable qualification result pointer into a lock")
+    resolve.add_argument("--pointer", type=Path, required=True)
+    resolve.add_argument("--manifest", type=Path, required=True)
+    resolve.add_argument("--purpose", required=True)
+    resolve.add_argument("--output", type=Path, required=True)
+    select = subparsers.add_parser("select", help="select one transport from immutable qualification locks")
+    select.add_argument("--manifest", type=Path, required=True)
+    select.add_argument("--candidate-lock", type=Path, required=True)
+    select.add_argument("--usb-lock", type=Path, required=True)
+    select.add_argument("--wifi-lock-if-present", type=Path)
+    select.add_argument("--output", type=Path, required=True)
+    build = subparsers.add_parser("build-selected", help="build and hash exactly the selected adapter")
+    build.add_argument("--selection-lock", type=Path, required=True)
+    build.add_argument("--output", type=Path, required=True)
+    archive = subparsers.add_parser("archive", help="archive Phase 1 immutable selection and build evidence")
+    archive.add_argument("--selection-lock", type=Path, required=True)
+    archive.add_argument("--build-lock", type=Path, required=True)
+    archive.add_argument("--qualification-lock", type=Path, required=True)
+    archive.add_argument("--output", type=Path, required=True)
     qualify = subparsers.add_parser("qualify", help="run the operator-owned frozen USB qualification")
     qualify.add_argument("--transport", choices=("usb",), required=True)
     qualify.add_argument("--manifest", type=Path, required=True)
     qualify.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
     qualify.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
+    qualify.add_argument("--smoke-seconds", type=int, help="run a short non-acceptance smoke test instead of the frozen 30-minute soak")
     start = subparsers.add_parser("start", help="run guided mode, or use --batch for seven physical gate confirmations")
     start.add_argument("--batch", action="store_true", help="stimulate Identify through Reboot; Keys are KEY-1..KEY-4 and encoder click is ENC-CLICK")
     start.add_argument("--machine-only", action="store_true", help="with --batch, capture machine observations without stdin or physical PASS")
@@ -1096,7 +1155,21 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--port")
     verify = subparsers.add_parser("verify-evidence")
     verify.add_argument("path", type=Path)
-    verify.add_argument("--require", choices=("physical-map", "recovery"), default=None)
+    verify.add_argument(
+        "--require",
+        action="append",
+        choices=(
+            "physical-map",
+            "recovery",
+            "strict-traffic",
+            "immutable-linkage",
+            "complete-interruption-matrix",
+            "immutable-selection",
+            "archived-source",
+            "exact-manifest-hash",
+            "no-secret-output",
+        ),
+    )
     confirm = subparsers.add_parser("confirm-batch", help="confirm one immutable machine-only batch artifact")
     confirm.add_argument("machine_run_dir", type=Path, help="concrete machine-only run directory")
     confirm.add_argument("--groups", required=True, help="IDENTIFY=Y,DISPLAYS=Y,KEYS=Y,ENCODER=Y,LEDS=Y,BRIGHTNESS=Y,REBOOT=Y")
@@ -1137,15 +1210,56 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "qualify":
             from .qualification import run_qualification
-            return run_qualification(args.manifest, args.transport, args.evidence_root, args.binding)
+            return run_qualification(args.manifest, args.transport, args.evidence_root, args.binding, args.smoke_seconds)
+        if args.command == "resolve-pointer":
+            lock = resolve_qualification_pointer(args.pointer, args.manifest, args.purpose, args.output)
+            print(f"Qualification lock: {args.output} ({lock['result_sha256']})")
+            return 0
+        if args.command == "select":
+            selection = select_transport(
+                args.manifest,
+                args.candidate_lock,
+                args.usb_lock,
+                args.wifi_lock_if_present,
+                args.output,
+            )
+            print(selection["rationale"])
+            return 0
+        if args.command == "build-selected":
+            lock = build_selected(args.selection_lock, args.output)
+            print(f"Selected build: {lock['environment']} ({lock['binary_sha256']})")
+            return 0
+        if args.command == "archive":
+            lock = archive_phase1(
+                args.selection_lock,
+                args.build_lock,
+                args.qualification_lock,
+                args.output,
+            )
+            print(f"Phase 1 archive: {args.output} ({lock['binary_sha256']})")
+            return 0
         if args.command == "recover":
             return run_recover(args.schema, args.evidence_root, args.binding, args.interruption)
         if args.command == "pair":
             return run_pair(args.schema, args.evidence_root, args.binding)
         if args.command == "verify-evidence":
-            from .evidence import verify_physical_evidence
-            path = verify_physical_evidence(args.path, require_physical_map=args.require == "physical-map", require_recovery=args.require == "recovery")
-            print(f"Evidence verified: {path}")
+            requirements = set(args.require or ())
+            kind = json.loads(args.path.read_text(encoding="utf-8")).get("kind")
+            if kind == "selection-lock":
+                lock = verify_selection_lock(args.path)
+                print(f"Evidence verified: selection lock {args.path} ({lock['result_sha256']})")
+            elif kind == "final-build-lock":
+                lock = verify_build_lock(args.path)
+                print(f"Evidence verified: final build lock {args.path} ({lock['binary_sha256']})")
+            elif kind == "phase1-archive-lock":
+                lock = verify_archive_lock(args.path)
+                print(f"Evidence verified: Phase 1 archive {args.path} ({lock['binary_sha256']})")
+            elif requirements & {"strict-traffic", "immutable-linkage", "complete-interruption-matrix"}:
+                lock = verify_qualification_lock(args.path, requirements)
+                print(f"Evidence verified: qualification lock {args.path} ({lock['result_sha256']})")
+            else:
+                path = verify_physical_evidence(args.path, require_physical_map="physical-map" in requirements, require_recovery="recovery" in requirements)
+                print(f"Evidence verified: {path}")
             return 0
         if args.command == "confirm-batch":
             return run_confirm_batch(args.machine_run_dir, args.groups)
