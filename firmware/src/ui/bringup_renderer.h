@@ -149,7 +149,6 @@ class BringupRenderer {
     switch (request.state) {
       case BringupState::Map:
         label = "MAP";
-        glyph = "PANEL";
         instruction = "ARROW ^";
         break;
       case BringupState::Press:
@@ -212,14 +211,17 @@ class BringupRenderer {
     text(display, label, 8, 8, accent);
     display.setTextColor(glyph_color, TFT_BLACK);
     display.setTextSize(request.state == BringupState::Map || request.state == BringupState::Pair ? 2 : 3);
-    display.drawString(glyph, request.state == BringupState::Pair ? 36 : 48, 48);
-
     if (request.state == BringupState::Map) {
-      char panel_number[2] = {static_cast<char>('0' + request.active_panel), '\0'};
-      display.setTextColor(TFT_WHITE, TFT_BLACK);
-      display.setTextSize(3);
-      display.drawString(panel_number, 60, 28);
-    } else if (request.state == BringupState::Brightness) {
+      // Keep the bounded panel identifier in its own row below the arrow cue.
+      // A single draw prevents the PANEL text and number from colliding.
+      char panel_label[8];
+      snprintf(panel_label, sizeof(panel_label), "PANEL-%u", request.active_panel);
+      display.drawString(panel_label, 22, 72);
+    } else {
+      display.drawString(glyph, request.state == BringupState::Pair ? 36 : 48, 48);
+    }
+
+    if (request.state == BringupState::Brightness) {
       char percentage[8];
       snprintf(percentage, sizeof(percentage), "%u%%", request.brightness_percent);
       display.setTextColor(TFT_WHITE, TFT_BLACK);
