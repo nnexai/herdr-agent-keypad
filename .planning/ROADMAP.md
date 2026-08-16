@@ -29,7 +29,7 @@ Herdr Agent Keypad reaches its first usable release through four vertical, real-
   3. After reset, unplug, or link interruption, the same physical unit re-establishes the selected link without requiring an unrecorded port or board assumption.
   4. The user can see measured evidence that USB is suitable for v1, or the specific measured failure that selected the single Wi-Fi fallback instead.
 
-**Plans:** 3/8 plans executed
+**Plans:** 4/8 plans executed
 
 Plans:
 **Wave 1**
@@ -46,7 +46,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 01-04-PLAN.md — Pair the exact keypad and prove narrow ordinary-user fresh-session recovery across all D-12 interruptions.
+- [x] 01-04-PLAN.md — Pair the exact keypad and prove narrow ordinary-user fresh-session recovery across all D-12 interruptions.
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -138,7 +138,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Physical Keypad and Proven Transport | 3/8 | In Progress|  |
+| 1. Physical Keypad and Proven Transport | 4/8 | In Progress|  |
 | 2. Authoritative Agent Projection and Exact Focus | 0/TBD | Not started | - |
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |

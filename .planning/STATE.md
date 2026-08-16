@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: executing
-stopped_at: Completed 01-03-PLAN.md after corrected physical proof and immutable evidence closeout
-last_updated: "2026-08-16T13:38:53.945Z"
+stopped_at: Completed 01-04-PLAN.md after exact pairing and operator-run D-12 recovery tour
+last_updated: "2026-08-16T14:12:50.714Z"
 last_activity: 2026-08-16
 last_activity_desc: Initial vertical-MVP roadmap created with 26/26 v1 requirements mapped.
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 8
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 ## Current Position
 
 Phase: 01 (physical-keypad-and-proven-transport) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-08-16 — Phase 01 execution started
 
-Progress: [████░░░░░░] 38%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [████░░░░░░] 38%
 |------|----------|-------|-------|
 | Phase 01 P02 | 3 min | 2 tasks | 5 files |
 | Phase 01 P03 | closeout | 2 tasks | 7 files |
+| Phase 01 P04 | execution-window | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 1]: Physical input naming is KEY-1..KEY-4 with raw library indices 0..3; encoder click is raw index 4 and remains an observation-only BOOT0-safe input.
 - [Phase 1]: Machine acknowledgements never produce physical PASS; the accepted map requires explicit Y tied to the stable step and source run, with failed and replaced history immutable.
 - [Phase 1]: The centered renderer correction is included in the accepted proof; Pair, Recover, Traffic, and Selection remain later-plan work and D-04 archival remains Plan 01-08.
+- [Phase 1]: Pairing trusts only the exact fresh physical challenge plus application hello device_id; USB descriptors and transient paths remain discovery-only.
+- [Phase 1]: Every D-12 interruption creates a fresh session and discards uncertain IDs; endpoint renumbering is explicitly unavailable rather than passed.
+- [Phase 1]: Operator-run recovery tour owns physical Y/N/R/U confirmation and utility restart resumes from an immutable checkpoint.
 
 ### Pending Todos
 
@@ -97,6 +101,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-16T13:38:53.934Z
-Stopped at: Completed 01-03-PLAN.md after corrected physical proof and immutable evidence closeout
+Last session: 2026-08-16T14:12:44.661Z
+Stopped at: Completed 01-04-PLAN.md after exact pairing and operator-run D-12 recovery tour
 Resume file: None
