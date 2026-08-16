@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import re
 import secrets
@@ -89,7 +90,7 @@ def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -
     import serial
     from .protocol import ProtocolSession
 
-    ui = TerminalUI()
+    ui = TerminalUI(output=sys.stdout)
     selected_port = port or _discover_port()
     if selected_port is None:
         ui.show_no_keypad()
@@ -168,7 +169,8 @@ def renderer_contract_check(path: Path) -> None:
 
 
 def ui_check() -> None:
-    ui = TerminalUI(MIN_WIDTH, MIN_HEIGHT)
+    emitted = io.StringIO()
+    ui = TerminalUI(MIN_WIDTH, MIN_HEIGHT, output=emitted)
     screen = ui.show_no_keypad()
     if "No keypad detected" not in screen or any(len(line) > MIN_WIDTH for line in screen.splitlines()):
         raise AssertionError("empty state is not bounded")
@@ -177,6 +179,9 @@ def ui_check() -> None:
     screen = ui.render_step("Displays", "DISPLAY-1", 2, 11, "Observe the keypad display and its position/orientation/color from the agreed desk viewing direction.", "one stable physical observation", ["machine: acknowledged", "unavailable"], run_suffix="ABC123")
     if "DISPLAY-1" not in screen or "Observe the keypad" not in screen:
         raise AssertionError("active card did not render")
+    event_output = emitted.getvalue()
+    if "DISPLAY-1" not in event_output or "machine: acknowledged" not in event_output:
+        raise AssertionError("screen/event detail was not emitted")
     if any(len(line) > MIN_WIDTH for line in screen.splitlines()):
         raise AssertionError("host prose exceeded the 80-column bound")
 
