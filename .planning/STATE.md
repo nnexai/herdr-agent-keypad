@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 1
-current_phase_name: Physical Keypad and Proven Transport
+current_phase: 01
+current_phase_name: physical-keypad-and-proven-transport
 status: executing
 stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-08-16T07:52:17.054Z"
+last_updated: "2026-08-16T07:54:12.566Z"
 last_activity: 2026-08-16
 last_activity_desc: Initial vertical-MVP roadmap created with 26/26 v1 requirements mapped.
 progress:
@@ -23,35 +23,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-16)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 1 — Physical Keypad and Proven Transport
+**Current focus:** Phase 01 — physical-keypad-and-proven-transport
 
 ## Current Position
 
-Phase: 1 of 4 (Physical Keypad and Proven Transport)
-Plan: 0 of TBD in current phase
-Status: Ready to execute
-Last activity: 2026-08-16 — Initial vertical-MVP roadmap created with 26/26 v1 requirements mapped.
+Phase: 01 (physical-keypad-and-proven-transport) — EXECUTING
+Plan: 1 of 8 complete; next is 2 of 8
+Status: Plan 01-01 complete; Phase 01 Wave 2 is ready
+Last activity: 2026-08-16 — Real PANEL-1/key-0 USB tracer run completed
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 12.5%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0.0 hours
+- Total plans completed: 1
+- Average duration: 14 min
+- Total execution time: 0.2 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01 | 1 | 8 | 14 min |
 
 **Recent Trend:**
-
-- Last 5 plans: -
-- Trend: No execution data yet
+- Last 5 plans: 01-01 (14 min)
+- Trend: Initial execution
 
 *Updated after each plan completion*
 
@@ -73,7 +72,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 1]: Delivered hardware revision, ButtonSense artifact, physical map, USB identity/recovery, and redraw/input/resource behavior require measurement.
+- [Phase 1]: Plan 01-01 measured PANEL-1/key-0 and USB CDC recovery on the delivered unit; remaining full four-panel map, interruption matrix, and Python 3.11 reproducibility evidence are still required.
 - [Phase 2]: Installed Herdr schema, supported order seam, stable pane identity, and exact native focus effects require mandatory research before live focus acceptance.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
@@ -86,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-16T06:29:51.631Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: .planning/phases/01-physical-keypad-and-proven-transport/01-UI-SPEC.md
+Last session: 2026-08-16T08:35:00Z
+Stopped at: Plan 01-01 complete after real PANEL-1/key-0 USB CDC tracer evidence; ready to advance to Wave 2.
+Resume file: None; Python 3.11 remains an explicit reproducibility concern.
