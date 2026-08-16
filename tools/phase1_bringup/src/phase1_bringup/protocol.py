@@ -41,7 +41,7 @@ def validate_frame(frame: Any) -> dict[str, Any]:
         raise ValueError("payload must be an object")
     expected: dict[str, set[str]] = {
         "hello": {"device_id", "firmware", "protocol"},
-        "hello_ack": {"accepted", "protocol"},
+        "hello_ack": {"accepted", "protocol", "device_id", "firmware"},
         "probe": {"step_id", "panel", "stimulus"},
         "probe_ack": {"accepted", "step_id"},
         "event": {"kind", "step_id", "key"},
@@ -53,8 +53,11 @@ def validate_frame(frame: Any) -> dict[str, Any]:
         raise ValueError("payload protocol must be v1")
     if frame["type"] == "hello" and any(not isinstance(payload[name], str) or not payload[name] for name in ("device_id", "firmware")):
         raise ValueError("hello identity fields must be non-empty strings")
-    if frame["type"] == "hello_ack" and not isinstance(payload["accepted"], bool):
-        raise ValueError("hello_ack accepted must be boolean")
+    if frame["type"] == "hello_ack":
+        if not isinstance(payload["accepted"], bool):
+            raise ValueError("hello_ack accepted must be boolean")
+        if any(not isinstance(payload[name], str) or not payload[name] for name in ("device_id", "firmware")):
+            raise ValueError("hello_ack identity fields must be non-empty strings")
     if frame["type"] == "probe":
         if not isinstance(payload["step_id"], str) or not payload["step_id"]:
             raise ValueError("probe step_id must be non-empty")
@@ -137,7 +140,6 @@ class ProtocolSession:
             raise RuntimeError("out-of-order or duplicate frame received")
         self.last_received_seq = frame["seq"]
         return frame
-
     def request(self, frame_type: str, payload: dict[str, Any], allowed: Iterable[str]) -> tuple[dict[str, Any], MachineFact]:
         request_seq = self.send(frame_type, payload)
         deadline = time.monotonic() + self.timeout
@@ -156,7 +158,13 @@ class ProtocolSession:
 
     def hello(self) -> MachineFact:
         frame, fact = self.request("hello", {"device_id": "host", "firmware": "phase1-host", "protocol": PROTOCOL_VERSION}, {"hello_ack"})
-        self.device = {"hello_ack": frame["payload"], "device_id": "unavailable", "firmware": "unavailable"}
+        payload = frame["payload"]
+        self.device = {
+            "hello_ack": payload,
+            "device_id": payload["device_id"],
+            "firmware": payload["firmware"],
+            "protocol": payload["protocol"],
+        }
         return fact
 
     def stimulate(self, step_id: str, panel: int, stimulus: str) -> MachineFact:

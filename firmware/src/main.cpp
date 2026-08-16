@@ -17,6 +17,7 @@ bool frameOverflow = false;
 uint32_t txSequence = 0;
 String bootId;
 String sessionId;
+String deviceId;
 BoardAdapter board;
 BringupRenderer renderer;
 PhysicalMap physicalMap;
@@ -267,6 +268,8 @@ void handleFrame(char *line, size_t length) {
     JsonDocument reply;
     reply["accepted"] = true;
     reply["protocol"] = 1;
+    reply["device_id"] = deviceId;
+    reply["firmware"] = "phase1-bringup";
     sendFrame("hello_ack", sequence, reply.as<JsonObjectConst>());
     return;
   }
@@ -362,8 +365,8 @@ void setup() {
   const bool boardReady = board.begin();
   board.setBrightness(80);
   board.clearDisplays(TFT_BLACK);
-  bootId = opaqueId() + "-" + String(millis());
-  sessionId = "unbound";
+  deviceId = opaqueId();
+  bootId = deviceId + "-" + String(millis());
   render(boardReady ? BringupState::Wait : BringupState::LinkLost, 0);
 }
 

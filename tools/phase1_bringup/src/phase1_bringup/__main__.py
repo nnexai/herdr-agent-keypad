@@ -13,8 +13,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+from .discovery import discovery_check
 from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, parse_group_responses, self_check_roundtrip, verify_machine_run, verify_physical_evidence
-from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check
+from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check
+from .pairing import pairing_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, validate_frame
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
 
@@ -618,6 +620,13 @@ def command_self_check(args: argparse.Namespace) -> int:
         if decode_frame(encode_frame(base)) != base or validate_frame(base) != base:
             raise RuntimeError("frame round trip mismatch")
         print("Schema: v1 closed envelope; 4096-byte including-LF bound")
+    if args.discovery:
+        discovery_check()
+        print("Discovery: descriptor facts are candidate-only; zero/many/mismatch fail closed")
+    if args.pairing:
+        pairing_check()
+        pairing_ui_check()
+        print("Pairing: exact fresh challenge and physical confirmation required; old binding preserved on rejection")
     if args.firmware_contract:
         firmware_contract_check(Path(args.firmware_contract))
         print("Firmware contract: physical map fields remain unapproved")
@@ -676,6 +685,8 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--schema", type=Path)
     self_check.add_argument("--firmware-contract", type=Path)
     self_check.add_argument("--device-render-contract", type=Path)
+    self_check.add_argument("--discovery", action="store_true", help="check fail-closed measured USB candidate handling")
+    self_check.add_argument("--pairing", action="store_true", help="check exact challenge pairing and immutable binding")
     self_check.add_argument("--evidence-roundtrip", type=Path)
     self_check.add_argument("--ui", action="store_true")
     self_check.add_argument("--guided-order", action="store_true")

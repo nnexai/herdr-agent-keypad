@@ -68,6 +68,26 @@ BATCH_GATE_ORDER = tuple(gate.name for gate in GATES[:7])
 BATCH_DWELL_SECONDS = 1.0
 MAX_BATCH_DWELL_SECONDS = 5.0
 
+PAIRING_HOST_COPY = "Confirm that the keypad displays {challenge}. Type the challenge to pair this device."
+PAIRING_DEVICE_LABEL = "PAIR"
+PAIRING_SUCCESS_COPY = "Paired with the physically confirmed keypad."
+
+
+def pairing_prompt(challenge: str) -> tuple[str, str]:
+    from .pairing import challenge_valid
+
+    if not challenge_valid(challenge):
+        raise ValueError("pairing challenge must be fixed-width uppercase hexadecimal")
+    return PAIRING_HOST_COPY.format(challenge=challenge), f"{PAIRING_DEVICE_LABEL} {challenge}"
+
+
+def pairing_ui_check() -> None:
+    host, device = pairing_prompt("A1B2C3")
+    if host != "Confirm that the keypad displays A1B2C3. Type the challenge to pair this device.":
+        raise AssertionError("pairing host copy changed")
+    if device != "PAIR A1B2C3":
+        raise AssertionError("pairing device copy changed")
+
 
 @dataclass(frozen=True)
 class BatchObservation:
