@@ -71,8 +71,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 2]: Native Herdr focus may change seen/manual-unread state; keypad focus cannot settle, dismiss, reply, approve, or invoke arbitrary actions.
 - [Phase 3]: Codex credentials and interpretation stay on the host; absent values remain unavailable and source freshness is independent.
 - [Phase 4]: Release acceptance requires real hardware, installed accounts, and visible recovery rather than mock-only evidence.
-- [Phase ?]: Plan 01-02 preserves the Pro-only adapter and fixed renderer as the implementation boundary; no checkpoint workaround was needed.
-- [Phase ?]: Plan 01-02 records only the user's explicit delivered-unit proof scope and does not infer physical facts beyond that evidence.
+- [Phase 1]: Plan 01-02 preserves the Pro-only adapter and fixed renderer as the implementation boundary; no checkpoint workaround was needed.
+- [Phase 1]: Plan 01-02 records only the user's explicit delivered-unit proof scope and does not infer physical facts beyond that evidence.
 
 ### Pending Todos
 
