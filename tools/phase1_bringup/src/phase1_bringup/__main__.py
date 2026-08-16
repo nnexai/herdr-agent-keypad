@@ -88,6 +88,54 @@ def _discover_port() -> str | None:
     return candidates[0].device
 
 
+def run_pair(schema_path: Path, evidence_root: Path, binding_path: Path) -> int:
+    """Pair the single physically intended keypad by a fresh displayed challenge."""
+    environment = dependency_gate()
+    load_schema(schema_path)
+    import serial
+
+    from .discovery import enumerate_candidates
+    from .pairing import PairingError, PairingStore, new_challenge, pair_exact_candidate
+    from .protocol import ProtocolSession
+
+    run_id = _run_id()
+    writer = EvidenceWriter(evidence_root, run_id)
+    candidates = enumerate_candidates()
+    manifest: dict[str, Any] = {
+        "schema_version": 1,
+        "kind": "manifest",
+        "run_id": run_id,
+        "workflow": "pairing",
+        "protocol": {"version": PROTOCOL_VERSION, "max_line_bytes_including_lf": MAX_LINE_BYTES, "transport": "usb-cdc"},
+        "environment": {**environment, "dependency_lock": dependency_lock()},
+        "candidates": [candidate.snapshot() for candidate in candidates],
+    }
+    result: dict[str, Any] = {"schema_version": 1, "kind": "result", "run_id": run_id, "status": "fail", "pairing": {"status": "not_started"}}
+    try:
+        if len(candidates) == 0:
+            raise PairingError("zero", "No keypad detected")
+        if len(candidates) != 1:
+            raise PairingError("ambiguous", "Multiple compatible keypads detected. Disconnect other candidates and retry; no device was paired.")
+        candidate = candidates[0]
+        challenge = new_challenge()
+        with serial.Serial(candidate.device, 115200, timeout=0.5) as connection:
+            session = ProtocolSession(connection, "host-" + secrets.token_hex(6), "session-" + secrets.token_hex(6))
+            session.hello()
+            session.stimulate("PAIR", 1, "PAIR-" + challenge)
+            print("Confirm that the keypad displays " + challenge + ". Type the challenge to pair this device.")
+            typed = input("Challenge: ")
+            binding = pair_exact_candidate([candidate], {candidate.device: session.device}, challenge, typed, PairingStore(binding_path), typed == challenge)
+        result["status"] = "pass"
+        result["pairing"] = {"status": "paired", "device_id": binding.device_id, "device_suffix": binding.device_id[-4:], "protocol": binding.protocol, "firmware": binding.firmware, "challenge": challenge}
+        print("Paired with the physically confirmed keypad.")
+    except Exception as exc:
+        result["pairing"] = {"status": "rejected", "code": getattr(exc, "code", type(exc).__name__), "message": str(exc), "binding_unchanged": True}
+        print(str(exc), file=sys.stderr)
+    path = writer.write(manifest, result)
+    print(f"Pairing evidence preserved and hash-verified: {path}")
+    return 0 if result["status"] == "pass" else 1
+
+
 def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -> int:
     environment = dependency_gate()
     load_schema(schema_path)
@@ -714,10 +762,16 @@ def main(argv: list[str] | None = None) -> int:
     confirm = subparsers.add_parser("confirm-batch", help="confirm one immutable machine-only batch artifact")
     confirm.add_argument("machine_run_dir", type=Path, help="concrete machine-only run directory")
     confirm.add_argument("--groups", required=True, help="IDENTIFY=Y,DISPLAYS=Y,KEYS=Y,ENCODER=Y,LEDS=Y,BRIGHTNESS=Y,REBOOT=Y")
+    pair = subparsers.add_parser("pair", help="pair exactly one compatible keypad with a fresh physical challenge")
+    pair.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
+    pair.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
+    pair.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
     args = parser.parse_args(argv)
     try:
         if args.command == "self-check":
             return command_self_check(args)
+        if args.command == "pair":
+            return run_pair(args.schema, args.evidence_root, args.binding)
         if args.command == "verify-evidence":
             from .evidence import verify_physical_evidence
             path = verify_physical_evidence(args.path, require_physical_map=args.require == "physical-map")
