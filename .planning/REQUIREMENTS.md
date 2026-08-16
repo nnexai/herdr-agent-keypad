@@ -89,16 +89,42 @@ Deferred capabilities tracked for later releases; they are not part of the curre
 
 ## Traceability
 
-Roadmap creation assigns every v1 requirement to exactly one phase.
+Every v1 requirement maps to exactly one roadmap phase.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| HARD-01 | Phase 1 | Pending |
+| HARD-02 | Phase 4 | Pending |
+| HARD-03 | Phase 1 | Pending |
+| INBX-01 | Phase 2 | Pending |
+| INBX-02 | Phase 2 | Pending |
+| INBX-03 | Phase 2 | Pending |
+| INBX-04 | Phase 2 | Pending |
+| FOCS-01 | Phase 2 | Pending |
+| FOCS-02 | Phase 2 | Pending |
+| FOCS-03 | Phase 2 | Pending |
+| FOCS-04 | Phase 2 | Pending |
+| CODEX-01 | Phase 3 | Pending |
+| CODEX-02 | Phase 3 | Pending |
+| CODEX-03 | Phase 3 | Pending |
+| CODEX-04 | Phase 3 | Pending |
+| SYNC-01 | Phase 4 | Pending |
+| SYNC-02 | Phase 2 | Pending |
+| SYNC-03 | Phase 3 | Pending |
+| SYNC-04 | Phase 4 | Pending |
+| SAFE-01 | Phase 3 | Pending |
+| SAFE-02 | Phase 2 | Pending |
+| MENU-01 | Phase 3 | Pending |
+| MENU-02 | Phase 3 | Pending |
+| MENU-03 | Phase 3 | Pending |
+| MENU-04 | Phase 3 | Pending |
+| E2E-01 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 26 total
-- Mapped to phases: 0
-- Unmapped: 26
+- Mapped to phases: 26
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-16 after research-based v1 scoping*
+*Last updated: 2026-08-16 after initial roadmap mapping*

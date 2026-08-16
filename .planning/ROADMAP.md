@@ -1,0 +1,99 @@
+# Roadmap: Herdr Agent Keypad
+
+## Overview
+
+Herdr Agent Keypad reaches its first usable release through four vertical, real-device capabilities: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; add truthful Codex capacity plus secondary diagnostics and brightness controls; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, approves, or invokes arbitrary actions.
+
+## Phases
+
+**Phase Numbering:** Sequential integer phases are planned milestone work; decimal phases are reserved for urgent insertions.
+
+- [ ] **Phase 1: Physical Keypad and Proven Transport** - The connected unit has a verified physical map and a measured, reliable, bounded host link.
+- [ ] **Phase 2: Authoritative Agent Projection and Exact Focus** - Three keys mirror the installed inbox and focus only the exact rendered target with truthful outcomes.
+- [ ] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness.
+- [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
+
+## Phase Details
+
+### Phase 1: Physical Keypad and Proven Transport
+**Goal:** The user can operate the delivered T-Keyboard S3 Pro through a verified physical map and a host link selected from real measurements.
+**Mode:** mvp
+**Depends on:** Nothing (first phase)
+**Requirements:** HARD-01, HARD-03
+**Research flag:** Mandatory physical research must record the delivered PCB/STM32 revision, official-library and ButtonSense compatibility, display/key/encoder/LED/orientation mapping, brightness and reboot behavior, USB identity/permissions/re-enumeration, sustained framed traffic, and the evidence selecting USB or its tested Wi-Fi fallback; hybrid transport is not selected.
+**Success Criteria** (what must be TRUE):
+  1. On the connected unit, the user can identify all four displays and matching keys, open the encoder input path, change brightness, and observe correct orientation and deterministic reboot behavior against a recorded physical map.
+  2. The device and Linux host complete a bounded, versioned bidirectional message exchange over the physically selected transport.
+  3. After reset, unplug, or link interruption, the same physical unit re-establishes the selected link without requiring an unrecorded port or board assumption.
+  4. The user can see measured evidence that USB is suitable for v1, or the specific measured failure that selected the single Wi-Fi fallback instead.
+**Plans:** TBD
+
+Plans:
+- [ ] 01-01: TBD during phase planning
+
+**UI hint:** yes
+
+### Phase 2: Authoritative Agent Projection and Exact Focus
+**Goal:** The user can recognize the installed inbox's three highest entries and focus the exact displayed herdr pane with one safe physical press.
+**Mode:** mvp
+**Depends on:** Phase 1
+**Requirements:** INBX-01, INBX-02, INBX-03, INBX-04, FOCS-01, FOCS-02, FOCS-03, FOCS-04, SYNC-02, SAFE-02
+**Research flag:** Mandatory installed-Herdr research must generate and inspect the active schema, pin or establish the supported ordered-projection seam, verify identity across pane lifecycle changes, and record before/after focus behavior for seen, manual-unread, order, settled, and lifecycle state before live focus is accepted.
+**Success Criteria** (what must be TRUE):
+  1. The three agent keys show zero to three entries in exactly the installed `herdr-agent-inbox` order, with explicit empty tiles and no bridge or firmware reprioritization.
+  2. Each occupied key is distinguishable at a glance by short title, workspace or repository discriminator, Herdr-consistent color on the display and any validated supporting LEDs, plus an icon or text cue for blocked, finished/unseen, working, idle, settled, or unknown state.
+  3. Pressing an occupied key during normal operation focuses the exact pane represented by its pixels and reports success only after Herdr acknowledges that opaque identity, host epoch, and snapshot revision.
+  4. Empty, stale, vanished, incompatible, offline, or reassigned bindings reject visibly; sequential panel updates never pair one generation's pixels with another generation's action.
+  5. A keypad press can request only typed focus: documented native seen/manual-unread effects may occur, while settle, dismiss, reply, approval, and arbitrary Herdr or host actions remain impossible.
+**Plans:** TBD
+
+Plans:
+- [ ] 02-01: TBD during phase planning
+
+**UI hint:** yes
+
+### Phase 3: Truthful Codex Capacity and Device Menu
+**Goal:** The user can trust the dedicated Codex tile and inspect device health or adjust brightness without disrupting direct agent selection.
+**Mode:** mvp
+**Depends on:** Phase 2
+**Requirements:** CODEX-01, CODEX-02, CODEX-03, CODEX-04, SYNC-03, SAFE-01, MENU-01, MENU-02, MENU-03, MENU-04
+**Research flag:** Mandatory installed-Codex research must generate and inspect the active app-server schema, account authentication mode, available primary and secondary buckets, nullable fields, reset and reached-limit fields, first-read and sparse-update behavior, and an evidence-based freshness policy before the tile is declared truthful.
+**Success Criteria** (what must be TRUE):
+  1. The fourth display stays read-only and shows both primary and secondary Codex usage-window percentages, nearest relevant reset information, and reached-limit state exactly when the installed account supplies them.
+  2. Missing or null values appear unavailable rather than zero, and current, stale, unavailable, authentication-failed, and host-offline states plus observation age are visibly distinct.
+  3. Clicking the encoder opens and closes a secondary menu while all three agent keys remain direct, non-modal selection paths.
+  4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
+  5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
+**Plans:** TBD
+
+Plans:
+- [ ] 03-01: TBD during phase planning
+
+**UI hint:** yes
+
+### Phase 4: Independent Recovery and Actual-Device Acceptance
+**Goal:** The user can rely on the complete keypad workflow after real component failures, restarts, and reconnections on the actual Herdr setup.
+**Mode:** mvp
+**Depends on:** Phase 3
+**Requirements:** HARD-02, SYNC-01, SYNC-04, E2E-01
+**Research flag:** Planning must turn the selected transport and measured device behavior into physical recovery and soak thresholds; acceptance evidence must come from the connected unit and installed Herdr/Codex accounts, not mocks.
+**Success Criteria** (what must be TRUE):
+  1. Device, bridge, Herdr, Codex, and link startup or reconnection show deterministic booting, empty, stale, unavailable, or offline states until a complete authoritative four-tile snapshot arrives.
+  2. Agent keys remain disabled before that full snapshot, and disconnected or uncertain keypresses are never queued, replayed, or optimistically retried after reconnection.
+  3. Link health, inbox freshness, and Codex freshness can fail and recover independently without old entries or expired usage remaining visible as current.
+  4. On the actual connected device, a real highest-priority entry renders with correct identity/state, its key focuses that exact pane under documented native semantics, both real Codex windows render truthfully, and a real disconnect or restart visibly converges to current state.
+**Plans:** TBD
+
+Plans:
+- [ ] 04-01: TBD during phase planning
+
+**UI hint:** yes
+
+## Progress
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Physical Keypad and Proven Transport | 0/TBD | Not started | - |
+| 2. Authoritative Agent Projection and Exact Focus | 0/TBD | Not started | - |
+| 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
+| 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
