@@ -6,6 +6,7 @@ import inspect
 import io
 import json
 import os
+import platform
 import re
 import secrets
 import sys
@@ -173,9 +174,14 @@ def package_root() -> Path:
 
 
 def load_schema(path: Path) -> dict[str, Any]:
-    schema = json.loads(path.read_text(encoding="utf-8"))
+    from .protocol import _load_json
+    from jsonschema import Draft202012Validator
+
+    schema = _load_json(path.read_text(encoding="utf-8"))
     if schema.get("x-max-encoded-line-bytes-including-lf") != MAX_LINE_BYTES:
         raise ValueError("schema does not freeze the 4096-byte including-LF bound")
+    if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+        raise ValueError("schema must declare Draft 2020-12")
     if schema.get("properties", {}).get("v", {}).get("const") != PROTOCOL_VERSION:
         raise ValueError("schema does not freeze protocol v1")
     if set(schema.get("properties", {}).get("type", {}).get("enum", [])) != FRAME_TYPES:
@@ -190,18 +196,30 @@ def dependency_gate() -> dict[str, str]:
     actual_prefix = Path(sys.prefix).resolve()
     if actual_prefix != expected_venv:
         raise RuntimeError("run only from tools/phase1_bringup/.venv/bin/python")
-    if sys.version_info < (3, 11):
-        raise RuntimeError("Python 3.11 or newer is required")
+    if not ((3, 11) <= sys.version_info[:2] < (3, 15)):
+        raise RuntimeError("supported Python runtime is 3.11 through 3.14")
     try:
         import serial
+        import jsonschema
+        from importlib.metadata import version as package_version
     except ImportError as exc:
-        raise RuntimeError("pyserial 3.5 is not installed in the plan-owned environment") from exc
+        raise RuntimeError("pyserial 3.5 and jsonschema 4.25.1 are required in the plan-owned environment") from exc
     if getattr(serial, "__version__", None) != "3.5":
         raise RuntimeError("the plan-owned environment must resolve pyserial 3.5 exactly")
+    if package_version("jsonschema") != "4.25.1":
+        raise RuntimeError("the plan-owned environment must resolve jsonschema 4.25.1 exactly")
     serial_path = Path(serial.__file__).resolve()
-    if expected_venv not in serial_path.parents:
-        raise RuntimeError("pyserial resolved outside the plan-owned environment")
-    return {"python": ".".join(map(str, sys.version_info[:3])), "python_executable": str(Path(sys.executable).resolve()), "pyserial": serial.__version__, "pyserial_path": str(serial_path)}
+    jsonschema_path = Path(jsonschema.__file__).resolve()
+    if expected_venv not in serial_path.parents or expected_venv not in jsonschema_path.parents:
+        raise RuntimeError("dependencies resolved outside the plan-owned environment")
+    return {
+        "python": platform.python_version(),
+        "python_executable": str(Path(sys.executable).resolve()),
+        "pyserial": serial.__version__,
+        "jsonschema": package_version("jsonschema"),
+        "pyserial_path": str(serial_path),
+        "jsonschema_path": str(jsonschema_path),
+    }
 
 
 def dependency_lock() -> dict[str, Any]:
@@ -979,18 +997,24 @@ def confirmation_rejection_check() -> None:
 def command_self_check(args: argparse.Namespace) -> int:
     if args.environment:
         environment = dependency_gate()
-        print(f"Environment: Python {environment['python']}; pyserial {environment['pyserial']}")
+        print(
+            f"Environment: Python {environment['python']} ({environment['python_executable']}); "
+            f"pyserial {environment['pyserial']}; jsonschema {environment['jsonschema']}"
+        )
     if args.schema:
         load_schema(Path(args.schema))
+        if args.schema_draft_2020:
+            print("Schema: Draft 2020-12 meta-schema validation passed")
         protocol_bootstrap_check()
         print("Protocol bootstrap: device boot adoption and strict post-bootstrap identity pass")
         base = new_frame("probe", "boot", "session", 1, {"step_id": "PANEL-1", "panel": 1, "stimulus": "1 ^ CYAN"})
         if decode_frame(encode_frame(base)) != base or validate_frame(base) != base:
             raise RuntimeError("frame round trip mismatch")
     if args.protocol_golden:
+        if not args.schema:
+            raise ValueError("--protocol-golden requires --schema")
         count = protocol_golden_check(Path(args.protocol_golden), Path(args.schema))
-        print(f"Protocol golden: verified {count} vectors with host codec/session")
-        print("Schema: v1 closed envelope; 4096-byte including-LF bound")
+        print(f"Protocol golden: verified {count} vectors with Draft 2020-12 and host codec/session")
     if args.discovery:
         discovery_check()
         print("Discovery: descriptor facts are candidate-only; zero/many/mismatch fail closed")
@@ -1082,6 +1106,7 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--environment", action="store_true")
     self_check.add_argument("--schema", type=Path)
     self_check.add_argument("--protocol-golden", type=Path, help="run the shared host golden fixture")
+    self_check.add_argument("--schema-draft-2020", action="store_true", help="report Draft 2020-12 meta-schema validation")
     self_check.add_argument("--firmware-contract", type=Path)
     self_check.add_argument("--device-render-contract", type=Path)
     self_check.add_argument("--discovery", action="store_true", help="check fail-closed measured USB candidate handling")

@@ -7,36 +7,76 @@
   "additionalProperties": false,
   "required": ["v", "type", "boot_id", "session_id", "seq", "reply_to", "digest", "payload"],
   "properties": {
-    "v": {"const": 1},
-    "type": {"enum": ["hello", "hello_ack", "probe", "probe_ack", "event", "error", "metrics", "metrics_ack"]},
-    "boot_id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]+$"},
-    "session_id": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]+$"},
+    "v": {"type": "integer", "const": 1},
+    "type": {"type": "string", "enum": ["hello", "hello_ack", "probe", "probe_ack", "event", "error", "metrics", "metrics_ack"]},
+    "boot_id": {"$ref": "#/$defs/identifier"},
+    "session_id": {"$ref": "#/$defs/identifier"},
     "seq": {"type": "integer", "minimum": 1, "maximum": 4294967295},
     "reply_to": {"type": ["integer", "null"], "minimum": 1, "maximum": 4294967295},
     "digest": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
-    "payload": {"type": "object", "additionalProperties": false}
+    "payload": {"type": "object"}
   },
-  "allOf": [
-    {"if": {"properties": {"type": {"const": "hello"}}}, "then": {"properties": {"payload": {"required": ["device_id", "firmware", "protocol"]}}}},
-    {"if": {"properties": {"type": {"const": "hello_ack"}}}, "then": {"properties": {"payload": {"required": ["accepted", "device_id", "firmware", "protocol"]}}}},
-    {"if": {"properties": {"type": {"const": "probe"}}}, "then": {"properties": {"payload": {"required": ["panel", "step_id", "stimulus"]}}}},
-    {"if": {"properties": {"type": {"const": "probe_ack"}}}, "then": {"properties": {"payload": {"required": ["accepted", "step_id"]}}}},
-    {"if": {"properties": {"type": {"const": "event"}}}, "then": {"properties": {"payload": {"required": ["key", "kind", "step_id"]}}}},
-    {"if": {"properties": {"type": {"const": "error"}}}, "then": {"properties": {"payload": {"required": ["code", "detail"]}}}},
-    {"if": {"properties": {"type": {"const": "metrics"}}}, "then": {"properties": {"payload": {"required": ["request"]}}}},
-    {"if": {"properties": {"type": {"const": "metrics_ack"}}}, "then": {"properties": {"payload": {"required": ["acknowledged", "digest_mismatch", "duplicate", "largest_free_block", "malformed", "max_display_flush_us", "max_key_poll_gap_us", "minimum_free_heap", "out_of_order", "parser_high_water", "queue_high_water", "received", "rejected", "sent", "watchdog_reset"]}}}}
+  "oneOf": [
+    {"properties": {"type": {"const": "hello"}, "payload": {"$ref": "#/$defs/hello"}}},
+    {"properties": {"type": {"const": "hello_ack"}, "payload": {"$ref": "#/$defs/hello_ack"}}},
+    {"properties": {"type": {"const": "probe"}, "payload": {"$ref": "#/$defs/probe"}}},
+    {"properties": {"type": {"const": "probe_ack"}, "payload": {"$ref": "#/$defs/probe_ack"}}},
+    {"properties": {"type": {"const": "event"}, "payload": {"oneOf": [{"$ref": "#/$defs/key_event"}, {"$ref": "#/$defs/encoder_event"}]}}},
+    {"properties": {"type": {"const": "error"}, "payload": {"$ref": "#/$defs/error"}}},
+    {"properties": {"type": {"const": "metrics"}, "payload": {"$ref": "#/$defs/metrics"}}},
+    {"properties": {"type": {"const": "metrics_ack"}, "payload": {"$ref": "#/$defs/metrics_ack"}}}
   ],
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9._-]+$"},
+    "ascii_text_64": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[\\u0000-\\u007F]*$"},
+    "hello": {
+      "type": "object", "additionalProperties": false,
+      "required": ["device_id", "firmware", "protocol"],
+      "properties": {"device_id": {"$ref": "#/$defs/identifier"}, "firmware": {"$ref": "#/$defs/ascii_text_64"}, "protocol": {"type": "integer", "const": 1}}
+    },
+    "hello_ack": {
+      "type": "object", "additionalProperties": false,
+      "required": ["accepted", "device_id", "firmware", "protocol"],
+      "properties": {"accepted": {"type": "boolean"}, "device_id": {"$ref": "#/$defs/identifier"}, "firmware": {"$ref": "#/$defs/ascii_text_64"}, "protocol": {"type": "integer", "const": 1}}
+    },
+    "probe": {
+      "type": "object", "additionalProperties": false,
+      "required": ["panel", "step_id", "stimulus"],
+      "properties": {"panel": {"type": "integer", "minimum": 1, "maximum": 4}, "step_id": {"$ref": "#/$defs/identifier"}, "stimulus": {"$ref": "#/$defs/ascii_text_64"}}
+    },
+    "probe_ack": {
+      "type": "object", "additionalProperties": false,
+      "required": ["accepted", "step_id"],
+      "properties": {"accepted": {"type": "boolean"}, "step_id": {"$ref": "#/$defs/identifier"}}
+    },
+    "key_event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["key", "kind", "step_id"],
+      "properties": {"key": {"type": "integer", "minimum": 0, "maximum": 4}, "kind": {"const": "key_transition"}, "step_id": {"$ref": "#/$defs/identifier"}}
+    },
+    "encoder_event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["direction", "kind", "step_id"],
+      "properties": {"direction": {"enum": ["cw", "ccw"]}, "kind": {"const": "encoder_transition"}, "step_id": {"$ref": "#/$defs/identifier"}}
+    },
+    "error": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "detail"],
+      "properties": {"code": {"$ref": "#/$defs/identifier"}, "detail": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[\\u0000-\\u007F]*$"}}
+    },
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["request"], "properties": {"request": {"enum": ["proof", "reset"]}}
+    },
+    "metrics_ack": {
+      "type": "object", "additionalProperties": false,
+      "required": ["acknowledged", "digest_mismatch", "duplicate", "largest_free_block", "malformed", "max_display_flush_us", "max_key_poll_gap_us", "minimum_free_heap", "out_of_order", "parser_high_water", "queue_high_water", "received", "rejected", "sent", "watchdog_reset"],
+      "properties": {
+        "acknowledged": {"type": "integer", "minimum": 0}, "digest_mismatch": {"type": "integer", "minimum": 0}, "duplicate": {"type": "integer", "minimum": 0}, "largest_free_block": {"type": "integer", "minimum": 0}, "malformed": {"type": "integer", "minimum": 0}, "max_display_flush_us": {"type": "integer", "minimum": 0}, "max_key_poll_gap_us": {"type": "integer", "minimum": 0}, "minimum_free_heap": {"type": "integer", "minimum": 0}, "out_of_order": {"type": "integer", "minimum": 0}, "parser_high_water": {"type": "integer", "minimum": 0}, "queue_high_water": {"type": "integer", "minimum": 0}, "received": {"type": "integer", "minimum": 0}, "rejected": {"type": "integer", "minimum": 0}, "sent": {"type": "integer", "minimum": 0}, "watchdog_reset": {"type": "integer", "minimum": 0}
+      }
+    }
+  },
   "x-max-encoded-line-bytes-including-lf": 4096,
   "x-digest": {"algorithm": "fnv1a-64", "input": "canonical sorted-key payload JSON UTF-8 bytes", "encoding": "lowercase hexadecimal"},
-  "x-payload-contract": {
-    "hello": {"device_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}, "firmware": {"type": "string", "maxLength": 64}, "protocol": {"const": 1}},
-    "hello_ack": {"accepted": {"type": "boolean"}, "device_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}, "firmware": {"type": "string", "maxLength": 64}, "protocol": {"const": 1}},
-    "probe": {"panel": {"type": "integer", "minimum": 1, "maximum": 4}, "step_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}, "stimulus": {"type": "string", "minLength": 1, "maxLength": 64}},
-    "probe_ack": {"accepted": {"type": "boolean"}, "step_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}},
-    "event": {"key": {"type": "integer", "minimum": 0, "maximum": 4}, "kind": {"const": "key_transition"}, "step_id": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}},
-    "error": {"code": {"type": "string", "pattern": "^[A-Za-z0-9._-]+$"}, "detail": {"type": "string", "minLength": 1, "maxLength": 128}},
-    "metrics": {"request": {"enum": ["proof", "reset"]}},
-    "metrics_ack": {"acknowledged": {"type": "integer", "minimum": 0}, "digest_mismatch": {"type": "integer", "minimum": 0}, "duplicate": {"type": "integer", "minimum": 0}, "largest_free_block": {"type": "integer", "minimum": 0}, "malformed": {"type": "integer", "minimum": 0}, "max_display_flush_us": {"type": "integer", "minimum": 0}, "max_key_poll_gap_us": {"type": "integer", "minimum": 0}, "minimum_free_heap": {"type": "integer", "minimum": 0}, "out_of_order": {"type": "integer", "minimum": 0}, "parser_high_water": {"type": "integer", "minimum": 0}, "queue_high_water": {"type": "integer", "minimum": 0}, "received": {"type": "integer", "minimum": 0}, "rejected": {"type": "integer", "minimum": 0}, "sent": {"type": "integer", "minimum": 0}, "watchdog_reset": {"type": "integer", "minimum": 0}}
-  },
-  "x-rejection-codes": ["empty_line", "missing_lf", "line_too_long", "invalid_utf8", "invalid_json", "unknown_field", "invalid_version", "unknown_type", "invalid_envelope", "invalid_payload", "invalid_shape", "invalid_identifier", "invalid_sequence", "invalid_reply_to", "invalid_digest", "digest_mismatch", "boot_mismatch", "session_mismatch", "out_of_order", "duplicate", "queue_full"]
+  "x-rejection-codes": ["empty_line", "missing_lf", "line_too_long", "invalid_utf8", "invalid_json", "duplicate_key", "unknown_field", "invalid_version", "unknown_type", "invalid_envelope", "invalid_payload", "invalid_shape", "invalid_identifier", "invalid_sequence", "invalid_reply_to", "invalid_digest", "digest_mismatch", "boot_mismatch", "session_mismatch", "out_of_order", "duplicate", "queue_full"]
 }

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable
 
 MAX_LINE_BYTES = 4096
+MAX_JSON_NESTING = 8
 PROTOCOL_VERSION = 1
 FRAME_TYPES = {"hello", "hello_ack", "probe", "probe_ack", "event", "error", "metrics", "metrics_ack"}
 ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -24,6 +25,38 @@ PAYLOAD_KEYS: dict[str, set[str]] = {
     "metrics": {"request"},
     "metrics_ack": {"acknowledged", "digest_mismatch", "duplicate", "largest_free_block", "malformed", "max_display_flush_us", "max_key_poll_gap_us", "minimum_free_heap", "out_of_order", "parser_high_water", "queue_high_water", "received", "rejected", "sent", "watchdog_reset"},
 }
+
+class DuplicateKeyError(ValueError):
+    """Raised when a JSON object contains a duplicate member name."""
+
+
+def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise DuplicateKeyError(key)
+        result[key] = value
+    return result
+
+
+def _load_json(text: str | bytes) -> Any:
+    return json.loads(text, object_pairs_hook=_reject_duplicate_pairs)
+
+
+def _check_nesting(value: Any, depth: int = 0) -> None:
+    if depth > MAX_JSON_NESTING:
+        raise ProtocolError("invalid_json", "JSON nesting exceeds the bounded parser limit")
+    if isinstance(value, dict):
+        for child in value.values():
+            _check_nesting(child, depth + 1)
+    elif isinstance(value, list):
+        for child in value:
+            _check_nesting(child, depth + 1)
+
+
+def _require_ascii_text(value: Any, name: str, maximum: int) -> None:
+    if not isinstance(value, str) or not (1 <= len(value) <= maximum) or any(ord(char) >= 0x80 for char in value):
+        raise ProtocolError("invalid_shape", f"{name} must be bounded ASCII text")
 
 
 class ProtocolError(ValueError):
@@ -92,18 +125,17 @@ def validate_frame(frame: Any) -> dict[str, Any]:
         raise ProtocolError("invalid_shape", "payload protocol must be v1")
     if frame_type == "hello":
         _require_string(payload["device_id"], "device_id")
-        _require_string(payload["firmware"], "firmware", 64)
+        _require_ascii_text(payload["firmware"], "firmware", 64)
     elif frame_type == "hello_ack":
         if not isinstance(payload["accepted"], bool):
             raise ProtocolError("invalid_shape", "hello_ack accepted must be boolean")
         _require_string(payload["device_id"], "device_id")
-        _require_string(payload["firmware"], "firmware", 64)
+        _require_ascii_text(payload["firmware"], "firmware", 64)
     elif frame_type == "probe":
         _require_string(payload["step_id"], "step_id")
         if not _is_int(payload["panel"]) or not 1 <= payload["panel"] <= 4:
             raise ProtocolError("invalid_shape", "probe panel must be one through four")
-        if not isinstance(payload["stimulus"], str) or not 1 <= len(payload["stimulus"]) <= 64:
-            raise ProtocolError("invalid_shape", "probe stimulus must be bounded")
+        _require_ascii_text(payload["stimulus"], "probe stimulus", 64)
     elif frame_type == "probe_ack":
         if not isinstance(payload["accepted"], bool):
             raise ProtocolError("invalid_shape", "probe_ack accepted must be boolean")
@@ -126,8 +158,7 @@ def validate_frame(frame: Any) -> dict[str, Any]:
             raise ProtocolError("invalid_shape", "event kind is invalid")
     elif frame_type == "error":
         _require_string(payload["code"], "error code", 64)
-        if not isinstance(payload["detail"], str) or not 1 <= len(payload["detail"]) <= 128:
-            raise ProtocolError("invalid_shape", "error detail must be bounded")
+        _require_ascii_text(payload["detail"], "error detail", 128)
     elif frame_type == "metrics":
         if not isinstance(payload["request"], str) or payload["request"] not in {"proof", "reset"}:
             raise ProtocolError("invalid_shape", "metrics request must be proof or reset")
@@ -155,11 +186,14 @@ def classify_line(line: bytes) -> ProtocolResult:
     if not line.endswith(b"\n"):
         return ProtocolResult(False, "missing_lf")
     try:
-        frame = json.loads(line[:-1].decode("utf-8"))
+        frame = _load_json(line[:-1].decode("utf-8"))
+        _check_nesting(frame)
     except UnicodeDecodeError:
         return ProtocolResult(False, "invalid_utf8")
-    except (json.JSONDecodeError, RecursionError):
-        return ProtocolResult(False, "invalid_json")
+    except DuplicateKeyError:
+        return ProtocolResult(False, "duplicate_key")
+    except (json.JSONDecodeError, RecursionError, ProtocolError) as exc:
+        return ProtocolResult(False, getattr(exc, "code", "invalid_json"))
     try:
         validated = validate_frame(frame)
     except ProtocolError as exc:
@@ -352,13 +386,11 @@ class ProtocolSession:
     def wait_event(
         self,
         step_id: str,
-        timeout: float = 60.0,
-        *,
         expected_kind: str | None = None,
         expected_key: int | None = None,
         expected_direction: str | None = None,
     ) -> dict[str, Any]:
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             frame = self._receive()
             if frame is None:
@@ -375,16 +407,16 @@ class ProtocolSession:
             if frame["type"] == "error":
                 raise ProtocolError(frame["payload"]["code"], frame["payload"]["detail"])
         raise TimeoutError("timed out waiting for matching physical input transition")
-
-
 def protocol_golden_check(fixture_path: Any, schema_path: Any) -> int:
-    """Run every repository vector through the same host codec/session rules."""
-    fixture = json.loads(open(fixture_path, encoding="utf-8").read())
-    schema = json.loads(open(schema_path, encoding="utf-8").read())
+    """Run every vector through Draft 2020-12 and the host codec/session."""
+    from jsonschema import Draft202012Validator
+
+    fixture = _load_json(open(fixture_path, encoding="utf-8").read())
+    schema = _load_json(open(schema_path, encoding="utf-8").read())
+    Draft202012Validator.check_schema(schema)
+    validator = Draft202012Validator(schema)
     if schema.get("x-max-encoded-line-bytes-including-lf") != MAX_LINE_BYTES:
         raise AssertionError("schema bound drift")
-    if "digest" not in schema.get("required", []):
-        raise AssertionError("schema digest requirement missing")
     vectors = fixture.get("vectors")
     if not isinstance(vectors, list) or not vectors:
         raise AssertionError("golden fixture is empty")
@@ -393,10 +425,19 @@ def protocol_golden_check(fixture_path: Any, schema_path: Any) -> int:
         if line_value == "synthetic:oversized":
             line = b"x" * MAX_LINE_BYTES + b"\n"
         elif isinstance(line_value, str):
-            line = line_value.encode("ascii")
+            line = line_value.encode("utf-8")
         else:
             raise AssertionError(f"{vector.get('id')}: missing line")
         expected = vector["expected"]
+        schema_outcome = "not_evaluated"
+        try:
+            parsed = _load_json(line[:-1].decode("utf-8")) if line.endswith(b"\n") else None
+        except (UnicodeDecodeError, json.JSONDecodeError, DuplicateKeyError, RecursionError):
+            parsed = None
+        if parsed is not None:
+            schema_outcome = "valid" if validator.is_valid(parsed) else "invalid"
+        if expected.get("schema") is not None and expected["schema"] != schema_outcome:
+            raise AssertionError(f"{vector.get('id')}: schema {schema_outcome}, expected {expected['schema']}")
         session = ProtocolSession(None, vector.get("expected_boot_id", "boot-a"), vector.get("expected_session_id", "session-a"), queue_limit=4)
         session.prime_received(int(vector.get("prior_seq", 0)))
         result = session.accept(line)
@@ -405,6 +446,7 @@ def protocol_golden_check(fixture_path: Any, schema_path: Any) -> int:
         if result.dispatched != bool(expected.get("dispatch", False)):
             raise AssertionError(f"{vector.get('id')}: dispatch mismatch")
     return len(vectors)
+
 
 def protocol_bootstrap_check() -> None:
     """Check device-boot adoption and strict post-bootstrap identity."""
