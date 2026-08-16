@@ -409,7 +409,7 @@ def run_qualification(
         session.connection = recording
         transitions.extend(item.as_dict() for item in recovery)
         for panel in range(1, 5):
-            session.stimulate(f"PREFLIGHT-{panel}", panel, "PREFLIGHT-BRIGHTNESS")
+            session.stimulate(f"PREFLIGHT-{panel}", panel, "BRIGHTNESS-HIGH")
         recording.phase = "traffic"
         overlap = _operator_checkpoint(
             "physical-overlap",
