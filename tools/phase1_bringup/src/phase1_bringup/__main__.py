@@ -39,6 +39,26 @@ def qualification_cli_check() -> None:
         raise AssertionError("qualify command did not fail closed before hardware access")
 
 
+
+
+def qualification_no_false_pass_check(path: Path) -> None:
+    """Ensure a PASS cannot be claimed without firmware metrics/counters."""
+    from .qualification import load_manifest, validate_qualification_result
+
+    manifest = load_manifest(path)
+    fake_pass = {
+        "status": "pass",
+        "physical_overlap": "Y",
+        "counters": {"expected": 3800, "sent": 3800, "received": 3800, "acknowledged": 3800},
+        "metrics": {name: None for name in ("minimum_free_heap", "largest_free_block", "parser_high_water", "queue_high_water", "max_display_flush_us", "max_key_poll_gap_us")},
+        "strict_failure_counters_available": False,
+        "resource_metrics_available": False,
+    }
+    try:
+        validate_qualification_result(fake_pass, manifest)
+    except ValueError:
+        return
+    raise AssertionError("qualification validator accepted a PASS without measured firmware evidence")
 ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -937,6 +957,9 @@ def command_self_check(args: argparse.Namespace) -> int:
     if args.qualification_cli:
         qualification_cli_check()
         print("Qualification CLI: registered and fails closed before hardware access")
+    if args.qualification_no_false_pass:
+        qualification_no_false_pass_check(Path(args.qualification_manifest))
+        print("Qualification PASS gate: unavailable firmware evidence cannot pass")
  
     return 0
 def main(argv: list[str] | None = None) -> int:
@@ -963,6 +986,7 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--batch-no-ack-pass", action="store_true", help="check ACK-only group PASS is rejected")
     self_check.add_argument("--machine-only-no-stdin", action="store_true", help="check machine-only capture has no stdin path")
     self_check.add_argument("--machine-artifact", action="store_true", help="check machine-only artifact semantics and verification")
+    self_check.add_argument("--qualification-no-false-pass", action="store_true", help="reject PASS without measured firmware metrics/counters")
     self_check.add_argument("--group-parser", action="store_true", help="check exact group parsing and mismatch rejection")
     self_check.add_argument("--confirmed-directory", action="store_true", help="check confirmed artifact creation and linked details")
     self_check.add_argument("--confirmation-rejection", action="store_true", help="check Y/N/R confirmation semantics")

@@ -220,6 +220,28 @@ def qualification_manifest_check(path: Path) -> dict[str, Any]:
     return validate_manifest(load_manifest(Path(path)))
 
 
+
+
+def validate_qualification_result(result: Mapping[str, Any], manifest: Mapping[str, Any]) -> None:
+    """Reject any PASS that lacks measured strict counters or firmware metrics."""
+    validate_manifest(manifest)
+    if result.get("status") != "pass":
+        return
+    if result.get("strict_failure_counters_available") is not True or result.get("resource_metrics_available") is not True:
+        raise QualificationError("qualification PASS is forbidden without firmware strict counters and resource metrics")
+    if result.get("qualification_blockers"):
+        raise QualificationError("qualification PASS has unresolved blockers")
+    counters = result.get("counters")
+    expected = int(manifest["baseline"]["expected_snapshots"]) + int(manifest["final_maximum"]["frames_each_direction"]) + int(manifest["burst"]["frames_each_direction"]) * int(manifest["burst"]["repetitions"])
+    if not isinstance(counters, Mapping) or any(counters.get(name) != expected for name in ("expected", "sent", "received", "acknowledged")):
+        raise QualificationError("qualification PASS does not have exact expected/sent/received/acknowledged equality")
+    if any(counters.get(name) != 0 for name in STRICT_COUNTERS[3:]):
+        raise QualificationError("qualification PASS has a non-zero strict failure counter")
+    metrics = result.get("metrics")
+    if not isinstance(metrics, Mapping) or any(metrics.get(name) is None for name in RESOURCE_METRICS):
+        raise QualificationError("qualification PASS lacks complete resource/input/display metrics")
+    if result.get("physical_overlap") != "Y":
+        raise QualificationError("qualification PASS lacks explicit physical overlap confirmation")
 @dataclass
 class QualificationCounters:
     """Strict traffic counters kept independent from any concrete adapter."""
@@ -364,16 +386,24 @@ def run_qualification(
     except ImportError as exc:
         raise QualificationError("pyserial 3.5 is required in the plan-owned environment") from exc
 
-    run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + secrets.token_hex(3)
     traffic: list[dict[str, Any]] = []
     transitions: list[dict[str, Any]] = []
     link: Any | None = None
     session: Any | None = None
     status = "incomplete"
+    expected_frames = 0
+    acknowledged = 0
+    failure_counts = {name: 0 for name in STRICT_COUNTERS[3:]}
+    run_error: str | None = None
     overlap = _operator_checkpoint(
         "physical-overlap",
         "Keep all four displays/LEDs active and continuously poll keys and encoder while you perform the prompted key/encoder actions. Confirm every expected action is physically observed; counters cannot answer this.",
     )
+    overlap_reason = None
+    if overlap == "U":
+        overlap_reason = input("Explain why physical overlap is unavailable (required): ").strip()
+        if not overlap_reason:
+            raise QualificationError("physical overlap U requires a reason")
     try:
         def opener(candidate: Any) -> Any:
             return serial.Serial(candidate.device, baudrate=115200, timeout=0.2, write_timeout=3)
@@ -383,24 +413,37 @@ def run_qualification(
         recording = _RecordingConnection(base_link, traffic)
         session.connection = recording
         transitions.extend(item.as_dict() for item in recovery)
+        baseline_count = int(manifest["baseline"]["expected_snapshots"])
+        final_count = int(manifest["final_maximum"]["frames_each_direction"])
+        burst_count = int(manifest["burst"]["frames_each_direction"])
+        burst_repetitions = int(manifest["burst"]["repetitions"])
+        burst_window = float(manifest["burst"]["window_seconds"])
         expected_frames = 0
-
         def proof_frame(stimulus: str, delay: float = 0.0) -> None:
-            nonlocal expected_frames
+            nonlocal expected_frames, acknowledged
             expected_frames += 1
-            session.stimulate(f"QUALIFY-{expected_frames}", (expected_frames % 4) + 1, stimulus)
+            try:
+                session.stimulate(f"QUALIFY-{expected_frames}", (expected_frames % 4) + 1, stimulus)
+            except Exception as exc:
+                code = str(getattr(exc, "code", "rejected"))
+                if code in failure_counts:
+                    failure_counts[code] += 1
+                else:
+                    failure_counts["rejected"] += 1
+                raise
+            acknowledged += 1
             if delay:
                 time.sleep(delay)
 
-        for index in range(1800):
-            proof_frame("WAIT", 1.0 if index < 1799 else 0.0)
-        for _ in range(1000):
+        for index in range(baseline_count):
+            proof_frame("WAIT", 1.0 if index < baseline_count - 1 else 0.0)
+        for _ in range(final_count):
             proof_frame("PANEL-4")
-        for _ in range(10):
+        for _ in range(burst_repetitions):
             started = time.monotonic()
-            for _ in range(100):
+            for _ in range(burst_count):
                 proof_frame("BRIGHTNESS-HIGH")
-            remaining = 10.0 - (time.monotonic() - started)
+            remaining = burst_window - (time.monotonic() - started)
             if remaining > 0:
                 time.sleep(remaining)
 
@@ -411,7 +454,12 @@ def run_qualification(
             )
             if response == "R":
                 response = _operator_checkpoint(row, "Repeat the interruption and physical observation.")
-            transitions.append({"id": row, "response": response, "timestamp": time.time(), "candidate": candidate.snapshot()})
+            reason = None
+            if response == "U":
+                reason = input(f"Explain why {row} is unavailable (required): ").strip()
+                if not reason:
+                    raise QualificationError(f"{row} U requires a reason")
+            transitions.append({"id": row, "response": response, "reason": reason, "timestamp": time.time(), "candidate": candidate.snapshot()})
             if response == "Y":
                 link.close()
                 candidate, link, session, recovery = reconnect_exact(
@@ -425,28 +473,28 @@ def run_qualification(
                 session.connection = recording
                 transitions.extend(item.as_dict() for item in recovery)
 
-        metrics = {name: None for name in RESOURCE_METRICS}
-        counters = {
-            "expected": expected_frames,
-            "sent": expected_frames,
-            "received": expected_frames,
-            "acknowledged": expected_frames,
-            "rejected": 0,
-            "duplicate": 0,
-            "out_of_order": 0,
-            "malformed": 0,
-            "digest_mismatch": 0,
-            "watchdog_reset": 0,
-        }
-        status = "pass" if overlap == "Y" and all(item["response"] == "Y" for item in transitions if "response" in item) and all(value is not None for value in metrics.values()) else "fail"
     except Exception as exc:
         status = "fail"
-        transitions.append({"id": "qualification-error", "response": "U", "detail": str(exc), "timestamp": time.time()})
-        counters = {"expected": 0, "sent": 0, "received": 0, "acknowledged": 0, **{name: 0 for name in STRICT_COUNTERS[3:]}}
-        metrics = {name: None for name in RESOURCE_METRICS}
+        run_error = str(exc)
+        transitions.append({"id": "qualification-error", "response": "U", "reason": run_error, "timestamp": time.time()})
     finally:
         if link is not None:
             link.close()
+
+    observed_sent = sum(1 for item in traffic if item.get("direction") == "host_to_device")
+    observed_received = sum(1 for item in traffic if item.get("direction") == "device_to_host")
+    counters = {
+        "expected": expected_frames,
+        "sent": observed_sent,
+        "received": observed_received,
+        "acknowledged": acknowledged,
+        **failure_counts,
+    }
+    metrics = {name: None for name in RESOURCE_METRICS}
+    blockers = ["firmware_proof_metrics_unavailable", "firmware_strict_failure_counters_unavailable"]
+    if run_error:
+        blockers.append("qualification_error:" + run_error)
+    status = "fail"
 
     traffic_bytes = _canonical_bytes(traffic)
     traffic_hash = hashlib.sha256(traffic_bytes).hexdigest()
@@ -457,9 +505,14 @@ def run_qualification(
         "status": status,
         "transport": transport,
         "physical_overlap": overlap,
+        "physical_overlap_reason": overlap_reason,
         "counters": counters,
+        "strict_failure_counters_available": False,
+        "resource_metrics_available": False,
+        "qualification_blockers": blockers,
         "metrics": metrics,
         "interruption_matrix": transitions,
+        "qualification_blockers": blockers,
         "qualification": {
             "manifest_sha256": manifest["manifest_sha256"],
             "manifest_profile": PROFILE_ID,

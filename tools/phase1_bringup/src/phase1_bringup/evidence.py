@@ -49,6 +49,11 @@ def verify_qualification_linkage(
         raise EvidenceError(f"qualification result is not valid JSON: {exc}") from exc
     if not isinstance(result, dict):
         raise EvidenceError("qualification result must be a JSON object")
+    from .qualification import validate_qualification_result
+    try:
+        validate_qualification_result(result, manifest)
+    except ValueError as exc:
+        raise EvidenceError(str(exc)) from exc
     linkage = result.get("qualification")
     if not isinstance(linkage, dict) or linkage.get("manifest_sha256") != manifest["manifest_sha256"]:
         raise EvidenceError("qualification result does not link the frozen manifest hash")
