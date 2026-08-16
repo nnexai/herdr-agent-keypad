@@ -88,6 +88,14 @@ def pairing_ui_check() -> None:
     if device != "PAIR A1B2C3":
         raise AssertionError("pairing device copy changed")
 
+RECOVERY_SUCCESS_COPY = "New session established; uncertain pre-disconnect work was discarded."
+RECOVERY_EXCLUSIONS = ("host reboot", "suspend/resume", "cross-component product resynchronization")
+
+
+def recovery_ui_check() -> None:
+    if "discarded" not in RECOVERY_SUCCESS_COPY or len(RECOVERY_EXCLUSIONS) != 3:
+        raise AssertionError("recovery UI copy must expose discard semantics and Phase 4 exclusions")
+
 
 @dataclass(frozen=True)
 class BatchObservation:

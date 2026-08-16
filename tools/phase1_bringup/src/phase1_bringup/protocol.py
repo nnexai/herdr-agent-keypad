@@ -164,6 +164,8 @@ class ProtocolSession:
             "device_id": payload["device_id"],
             "firmware": payload["firmware"],
             "protocol": payload["protocol"],
+            "device_boot_id": frame["boot_id"],
+            "device_session_id": frame["session_id"],
         }
         return fact
 

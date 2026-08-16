@@ -1,0 +1,4 @@
+# Measured on the delivered T-Keyboard S3 Pro runtime interface.
+# Install once with administrator privileges; runtime discovery/open is unprivileged.
+# Do not broaden this rule to every ttyACM device or use the transient node as identity.
+SUBSYSTEM=="tty", ENV{ID_BUS}=="usb", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", ENV{ID_SERIAL_SHORT}=="8C:BF:EA:0D:CB:FC", ENV{ID_USB_INTERFACE_NUM}=="00", MODE="0660", GROUP="dialout", TAG+="uaccess"

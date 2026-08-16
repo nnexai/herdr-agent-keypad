@@ -134,6 +134,27 @@ def _validate_physical_map(result: dict[str, Any], require_rows: bool = True) ->
         raise EvidenceError("physical_map guided order is not the fixed eleven-gate sequence")
 
 
+def _validate_recovery(result: dict[str, Any], require_events: bool = False) -> None:
+    events = result.get("recovery")
+    if events is None:
+        if require_events:
+            raise EvidenceError("result is missing recovery evidence")
+        return
+    if not isinstance(events, list) or (require_events and not events):
+        raise EvidenceError("recovery evidence must be a non-empty list")
+    seen: set[str] = set()
+    required = {"event_id", "transition", "descriptor", "boot_id", "session_id", "discarded_ids", "timestamp", "detail"}
+    for event in events:
+        if not isinstance(event, dict) or not required.issubset(event):
+            raise EvidenceError("recovery event is incomplete")
+        if event["event_id"] in seen or not isinstance(event["event_id"], str) or not event["event_id"]:
+            raise EvidenceError("recovery event IDs must be unique")
+        seen.add(event["event_id"])
+        if not isinstance(event["descriptor"], dict) or not isinstance(event["session_id"], str):
+            raise EvidenceError("recovery descriptor/session is invalid")
+        if not isinstance(event["discarded_ids"], list) or any(not isinstance(item, int) for item in event["discarded_ids"]):
+            raise EvidenceError("recovery discarded IDs are invalid")
+
 class EvidenceWriter:
     """Write one immutable manifest/result pair and verify it after reopening.
 
@@ -150,6 +171,7 @@ class EvidenceWriter:
         self.directory = self.root / run_id
         self._rows: list[dict[str, Any]] = []
         self._row_ids: set[str] = set()
+        self._recovery: list[dict[str, Any]] = []
         self._finalized = False
 
     def record_row(self, row: dict[str, Any]) -> None:
@@ -168,6 +190,22 @@ class EvidenceWriter:
             candidate_ids.add(candidate["row_id"])
         self._rows.extend(candidates)
         self._row_ids.update(candidate_ids)
+
+    def record_recovery(self, event: dict[str, Any]) -> None:
+        if self._finalized:
+            raise EvidenceError("immutable evidence is already finalized")
+        required = {"event_id", "transition", "descriptor", "boot_id", "session_id", "discarded_ids", "timestamp", "detail"}
+        if not required.issubset(event) or not isinstance(event["event_id"], str) or not event["event_id"]:
+            raise EvidenceError("recovery event is missing required fields")
+        if not isinstance(event["descriptor"], dict) or not isinstance(event["session_id"], str):
+            raise EvidenceError("recovery event descriptor/session is invalid")
+        if not isinstance(event["discarded_ids"], list) or any(not isinstance(item, int) for item in event["discarded_ids"]):
+            raise EvidenceError("recovery discarded IDs must be a bounded integer list")
+        if not isinstance(event["timestamp"], (int, float)):
+            raise EvidenceError("recovery event timestamp is invalid")
+        if any(existing["event_id"] == event["event_id"] for existing in self._recovery):
+            raise EvidenceError("recovery event id already exists")
+        self._recovery.append(copy.deepcopy(event))
 
     def replace_row(self, old_row_id: str, replacement: dict[str, Any], typed_confirmation: str) -> None:
         if typed_confirmation != "REPLACE":
@@ -190,6 +228,8 @@ class EvidenceWriter:
         if not isinstance(physical_map, dict):
             raise EvidenceError("physical_map must be an object")
         physical_map.setdefault("rows", copy.deepcopy(self._rows))
+        if self._recovery:
+            final_result.setdefault("recovery", copy.deepcopy(self._recovery))
         _validate_physical_map(final_result, require_rows=final_result.get("status") not in {"fail", "incomplete"})
         path = self.write(manifest, final_result)
         self._finalized = True
@@ -228,6 +268,7 @@ class EvidenceWriter:
             raise EvidenceError("evidence run_id mismatch")
         if "physical_map" in result:
             _validate_physical_map(result, require_rows=result.get("status") not in {"fail", "incomplete"})
+        _validate_recovery(result)
         expected: dict[str, str] = {}
         for line in sums_path.read_text(encoding="ascii").splitlines():
             parts = line.split()
@@ -326,9 +367,8 @@ def verify_machine_run(path: Path) -> dict[str, Any]:
         raise EvidenceError("machine-only artifact does not cover all seven machine gates")
     return checked
 
-
-def verify_physical_evidence(path: Path, require_physical_map: bool = False) -> Path:
-    """Reopen a concrete immutable run and optionally require physical-map rows."""
+def verify_physical_evidence(path: Path, require_physical_map: bool = False, require_recovery: bool = False) -> Path:
+    """Reopen a concrete immutable run and require selected evidence classes."""
     candidate = Path(path)
     if candidate.is_file() and candidate.name == "result.json":
         candidate = candidate.parent
@@ -341,4 +381,6 @@ def verify_physical_evidence(path: Path, require_physical_map: bool = False) -> 
     checked = writer.verify()
     if require_physical_map:
         _validate_physical_map(checked["result"])
+    if require_recovery:
+        _validate_recovery(checked["result"], require_events=True)
     return candidate

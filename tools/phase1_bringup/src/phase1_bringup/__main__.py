@@ -15,9 +15,10 @@ from typing import Any
 
 from .discovery import discovery_check
 from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, parse_group_responses, self_check_roundtrip, verify_machine_run, verify_physical_evidence
-from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check
+from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check, recovery_ui_check
 from .pairing import pairing_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, validate_frame
+from .serial_link import reconnect_exact, serial_reconnect_check, udev_rule_check
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
 
 ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -135,6 +136,60 @@ def run_pair(schema_path: Path, evidence_root: Path, binding_path: Path) -> int:
     print(f"Pairing evidence preserved and hash-verified: {path}")
     return 0 if result["status"] == "pass" else 1
 
+
+def run_recover(schema_path: Path, evidence_root: Path, binding_path: Path, interruption: str) -> int:
+    """Perform one exact-device, fresh-session recovery without manual port selection."""
+    environment = dependency_gate()
+    load_schema(schema_path)
+    import serial
+
+    from .pairing import PairingStore, PairingError
+
+    run_id = _run_id()
+    writer = EvidenceWriter(evidence_root, run_id)
+    binding = PairingStore(binding_path).load()
+    if binding is None:
+        raise PairingError("unpaired", "No paired keypad binding exists; run the physical pairing gate first.")
+    discarded_ids = [1]
+
+    def opener(candidate: Any) -> Any:
+        return serial.Serial(candidate.device, 115200, timeout=0.5)
+
+    selected, link, session, transitions = reconnect_exact(binding, None, opener, discarded_ids=discarded_ids)
+    try:
+        for transition in transitions:
+            event = transition.as_dict()
+            event["detail"] = f"{interruption}: {event['detail']}"
+            writer.record_recovery(event)
+        result = {
+            "schema_version": 1,
+            "kind": "result",
+            "run_id": run_id,
+            "status": "pass",
+            "recovery": [transition.as_dict() for transition in transitions],
+            "device": {"device_id": binding.device_id, "device_suffix": binding.device_id[-4:], "boot_id": session.device.get("device_boot_id", "unavailable"), "session_id": session.session_id},
+            "interruption": interruption,
+        }
+        manifest = {
+            "schema_version": 1,
+            "kind": "manifest",
+            "run_id": run_id,
+            "workflow": "recovery",
+            "status": "pass",
+            "protocol": {"version": PROTOCOL_VERSION, "max_line_bytes_including_lf": MAX_LINE_BYTES, "transport": "usb-cdc"},
+            "environment": {**environment, "dependency_lock": dependency_lock()},
+            "candidate": selected.snapshot(),
+            "paired_identity": binding.device_id,
+            "interruption": interruption,
+            "in_scope": ["reset", "normal-flash-reset", "port-move", "endpoint-renumber", "utility-restart"],
+            "excluded": ["host-reboot", "suspend-resume", "cross-component-product-resync"],
+        }
+        path = writer.write(manifest, result)
+        print(f"New session established for exact paired keypad: {session.session_id}")
+        print(f"Recovery evidence preserved and hash-verified: {path}")
+        return 0
+    finally:
+        link.close()
 
 def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -> int:
     environment = dependency_gate()
@@ -675,6 +730,13 @@ def command_self_check(args: argparse.Namespace) -> int:
         pairing_check()
         pairing_ui_check()
         print("Pairing: exact fresh challenge and physical confirmation required; old binding preserved on rejection")
+    if args.serial_reconnect:
+        serial_reconnect_check()
+        recovery_ui_check()
+        print("Serial recovery: bounded I/O, stale close, exact identity, fresh session, and discarded IDs pass")
+    if args.udev_rule:
+        udev_rule_check(Path(args.udev_rule))
+        print("udev: measured VID/PID/serial/interface rule is narrow and ordinary-user scoped")
     if args.firmware_contract:
         firmware_contract_check(Path(args.firmware_contract))
         print("Firmware contract: physical map fields remain unapproved")
@@ -735,6 +797,8 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--device-render-contract", type=Path)
     self_check.add_argument("--discovery", action="store_true", help="check fail-closed measured USB candidate handling")
     self_check.add_argument("--pairing", action="store_true", help="check exact challenge pairing and immutable binding")
+    self_check.add_argument("--serial-reconnect", action="store_true", help="check fresh exact-device serial recovery")
+    self_check.add_argument("--udev-rule", type=Path, help="check measured narrow udev rule")
     self_check.add_argument("--evidence-roundtrip", type=Path)
     self_check.add_argument("--ui", action="store_true")
     self_check.add_argument("--guided-order", action="store_true")
@@ -758,7 +822,7 @@ def main(argv: list[str] | None = None) -> int:
     start.add_argument("--port")
     verify = subparsers.add_parser("verify-evidence")
     verify.add_argument("path", type=Path)
-    verify.add_argument("--require", choices=("physical-map",), default=None)
+    verify.add_argument("--require", choices=("physical-map", "recovery"), default=None)
     confirm = subparsers.add_parser("confirm-batch", help="confirm one immutable machine-only batch artifact")
     confirm.add_argument("machine_run_dir", type=Path, help="concrete machine-only run directory")
     confirm.add_argument("--groups", required=True, help="IDENTIFY=Y,DISPLAYS=Y,KEYS=Y,ENCODER=Y,LEDS=Y,BRIGHTNESS=Y,REBOOT=Y")
@@ -766,24 +830,33 @@ def main(argv: list[str] | None = None) -> int:
     pair.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
     pair.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
     pair.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
+    recover = subparsers.add_parser("recover", help="rediscover and handshake the exact paired keypad")
+    recover.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
+    recover.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
+    recover.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
+    recover.add_argument("--interruption", choices=("reset", "normal-flash-reset", "port-move", "endpoint-renumber", "utility-restart"), required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "self-check":
             return command_self_check(args)
+        if args.command == "recover":
+            return run_recover(args.schema, args.evidence_root, args.binding, args.interruption)
         if args.command == "pair":
             return run_pair(args.schema, args.evidence_root, args.binding)
         if args.command == "verify-evidence":
             from .evidence import verify_physical_evidence
-            path = verify_physical_evidence(args.path, require_physical_map=args.require == "physical-map")
+            path = verify_physical_evidence(args.path, require_physical_map=args.require == "physical-map", require_recovery=args.require == "recovery")
             print(f"Evidence verified: {path}")
             return 0
         if args.command == "confirm-batch":
             return run_confirm_batch(args.machine_run_dir, args.groups)
-        if args.machine_only and not args.batch:
-            raise ValueError("--machine-only requires --batch")
-        if args.batch and args.machine_only:
-            return run_machine_only(args.schema, args.evidence_root, args.port, args.dwell)
-        return run_batch(args.schema, args.evidence_root, args.port, args.dwell) if args.batch else run_start(args.schema, args.evidence_root, args.port)
+        if args.command == "start":
+            if args.machine_only and not args.batch:
+                raise ValueError("--machine-only requires --batch")
+            if args.batch and args.machine_only:
+                return run_machine_only(args.schema, args.evidence_root, args.port, args.dwell)
+            return run_batch(args.schema, args.evidence_root, args.port, args.dwell) if args.batch else run_start(args.schema, args.evidence_root, args.port)
+        raise ValueError(f"unknown command: {args.command}")
     except (EvidenceError, RuntimeError, ValueError, OSError, AssertionError) as exc:
         print(f"phase1_bringup: {exc}", file=sys.stderr)
         return 2
