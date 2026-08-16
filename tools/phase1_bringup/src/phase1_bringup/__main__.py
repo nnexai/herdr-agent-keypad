@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .evidence import EvidenceError, EvidenceWriter, self_check_roundtrip
-from .guide import GATES, GUIDED_ORDER, GuidedRun, confirmation_check, guided_order_check
+from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, validate_frame
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
 
@@ -151,6 +151,79 @@ def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -
         print(f"Tracer failed; evidence was preserved: {exc}", file=sys.stderr)
         return 1
 
+def run_batch(schema_path: Path, evidence_root: Path, port: str | None = None, dwell_seconds: float = 1.0) -> int:
+    """Run the seven physical gates with one explicit confirmation per gate."""
+    environment = dependency_gate()
+    load_schema(schema_path)
+    import serial
+    from .protocol import ProtocolSession
+
+    ui = TerminalUI(output=sys.stdout)
+    selected_port = port or _discover_port()
+    if selected_port is None:
+        ui.show_no_keypad()
+        return 2
+    run_id = _run_id()
+    writer = EvidenceWriter(evidence_root, run_id)
+    run = BatchRun(None, writer, ui, run_id, dwell_seconds=dwell_seconds)
+    try:
+        with serial.Serial(selected_port, 115200, timeout=0.5) as connection:
+            session = ProtocolSession(connection, "host-" + secrets.token_hex(6), "session-" + secrets.token_hex(6))
+            run.session = session
+            run.start()
+            while not run.complete_physical_gates and not run.stopped:
+                run.stimulate_gate()
+                while run.pending and not run.stopped:
+                    try:
+                        answer = input(f"Batch response {run.gate.name.upper()} {run.run_suffix} (Y/N/R): ")
+                    except EOFError as exc:
+                        raise RuntimeError("batch confirmation input ended before this gate was confirmed") from exc
+                    try:
+                        result = run.respond(answer)
+                    except ValueError as exc:
+                        print(f"Batch response rejected: {str(exc)[:160]}", file=sys.stderr)
+                        continue
+                    if result in {"pass", "fail", "repeat"}:
+                        break
+            result = run.result()
+            manifest = {
+                "schema_version": 1,
+                "kind": "manifest",
+                "run_id": run_id,
+                "status": result["status"],
+                "workflow": "batch",
+                "protocol": {"version": PROTOCOL_VERSION, "max_line_bytes_including_lf": MAX_LINE_BYTES, "transport": "usb-cdc"},
+                "environment": {**environment, "dependency_lock": dependency_lock()},
+                "device": {"port_discovery": "descriptor-only", "selected_port": "redacted", "identity": "unavailable"},
+                "guided_order": list(GUIDED_ORDER),
+                "batch_order": list(BATCH_GATE_ORDER),
+            }
+            path = writer.finalize(manifest, result)
+            print(f"Batch evidence preserved and hash-verified: {path}")
+            return 0 if result["status"] == "pass" else 1
+    except Exception as exc:
+        failure_result = run.result()
+        failure_result["status"] = "fail"
+        failure_result["error"] = {"type": type(exc).__name__, "message": str(exc)[:256]}
+        failure_manifest = {
+            "schema_version": 1,
+            "kind": "manifest",
+            "run_id": run_id,
+            "status": "fail",
+            "workflow": "batch",
+            "protocol": {"version": PROTOCOL_VERSION, "max_line_bytes_including_lf": MAX_LINE_BYTES, "transport": "usb-cdc"},
+            "environment": environment,
+            "device": {"port_discovery": "descriptor-only", "identity": "unavailable"},
+            "guided_order": list(GUIDED_ORDER),
+            "batch_order": list(BATCH_GATE_ORDER),
+        }
+        try:
+            writer.finalize(failure_manifest, failure_result)
+        except EvidenceError:
+            pass
+        print(f"Batch failed; evidence was preserved: {str(exc)[:256]}", file=sys.stderr)
+        return 1
+
 
 def firmware_contract_check(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
@@ -218,13 +291,23 @@ def command_self_check(args: argparse.Namespace) -> int:
     if args.physical_confirmation:
         confirmation_check()
         print("Physical confirmation: ACK alone rejected; explicit step/run-bound Y required")
+    if args.batch_order:
+        batch_order_check()
+        print("Batch order: " + " -> ".join(BATCH_GATE_ORDER))
+    if args.batch_parser:
+        batch_parser_check()
+        print("Batch parser: explicit gate/run-bound Y/N/R accepted; mismatches rejected")
+    if args.batch_key_events:
+        batch_key_event_check()
+        print("Batch key events: observed key indices retained and shown")
+    if args.batch_no_ack_pass:
+        batch_no_ack_check()
+        print("Batch confirmation: ACK-only group PASS rejected")
     return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="phase1_bringup")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    self_check = subparsers.add_parser("self-check")
+    self_check = subparsers.add_parser("self-check", help="run narrow protocol, UI, evidence, and batch checks")
     self_check.add_argument("--environment", action="store_true")
     self_check.add_argument("--schema", type=Path)
     self_check.add_argument("--firmware-contract", type=Path)
@@ -234,7 +317,13 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--guided-order", action="store_true")
     self_check.add_argument("--evidence-schema", action="store_true")
     self_check.add_argument("--physical-confirmation", action="store_true")
-    start = subparsers.add_parser("start")
+    self_check.add_argument("--batch-order", action="store_true", help="check fixed physical batch gate order and row counts")
+    self_check.add_argument("--batch-parser", action="store_true", help="check explicit gate/run-bound group responses")
+    self_check.add_argument("--batch-key-events", action="store_true", help="check observed key indices survive batch stimulation")
+    self_check.add_argument("--batch-no-ack-pass", action="store_true", help="check ACK-only group PASS is rejected")
+    start = subparsers.add_parser("start", help="run guided mode, or use --batch for seven gate confirmations")
+    start.add_argument("--batch", action="store_true", help="stimulate Identify through Reboot and confirm once per gate")
+    start.add_argument("--dwell", type=float, default=1.0, help="bounded visible dwell seconds for non-key batch rows (max 5)")
     start.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
     start.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
     start.add_argument("--port")
@@ -250,7 +339,7 @@ def main(argv: list[str] | None = None) -> int:
             path = verify_physical_evidence(args.path, require_physical_map=args.require == "physical-map")
             print(f"Evidence verified: {path}")
             return 0
-        return run_start(args.schema, args.evidence_root, args.port)
+        return run_batch(args.schema, args.evidence_root, args.port, args.dwell) if args.batch else run_start(args.schema, args.evidence_root, args.port)
     except (EvidenceError, RuntimeError, ValueError, OSError, AssertionError) as exc:
         print(f"phase1_bringup: {exc}", file=sys.stderr)
         return 2
