@@ -59,6 +59,10 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
 
         def stimulate(self, step_id: str, panel: int, stimulus: str) -> None:
             self.connection.write(f"{step_id}:{panel}:{stimulus}\n".encode())
+        def request(self, frame_type: str, payload: dict[str, Any], allowed: set[str]) -> tuple[dict[str, Any], object]:
+            self.connection.write(f"{frame_type}:{payload['request']}\n".encode())
+            names = ("acknowledged", "digest_mismatch", "duplicate", "largest_free_block", "malformed", "max_display_flush_us", "max_key_poll_gap_us", "minimum_free_heap", "out_of_order", "parser_high_water", "queue_high_water", "received", "rejected", "sent", "watchdog_reset")
+            return {"payload": {name: 0 for name in names}}, object()
 
     def fake_reconnect(*_args: Any, **_kwargs: Any) -> tuple[FakeCandidate, FakeLink, FakeSession, list[Any]]:
         link = FakeLink()
@@ -88,6 +92,8 @@ def qualification_early_rejection_check(manifest_path: Path) -> None:
             if len(result_paths) != 1 or len(traffic_paths) != 1:
                 raise AssertionError("overlap N did not preserve an immutable result and traffic file")
             result = json.loads(result_paths[0].read_text(encoding="utf-8"))
+            if any(result.get("counters", {}).get(name) != 0 for name in ("sent", "received", "acknowledged")):
+                raise AssertionError("preflight traffic contaminated post-reset strict counters")
             traffic = json.loads(traffic_paths[0].read_text(encoding="utf-8"))
             if result.get("status") != "fail" or result.get("physical_overlap") != "N":
                 raise AssertionError("overlap N was not recorded as a non-pass result")

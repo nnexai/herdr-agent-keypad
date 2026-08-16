@@ -42,7 +42,25 @@ String opaqueId() {
   return String(value);
 }
 
-void sendFrame(const char *type, uint32_t replyTo, JsonObjectConst payload) {
+uint64_t payloadDigest(const char *payload, size_t length) {
+  uint64_t digest = 0xcbf29ce484222325ULL;
+  for (size_t index = 0; index < length; ++index) {
+    digest ^= static_cast<uint8_t>(payload[index]);
+    digest *= 0x100000001b3ULL;
+  }
+  return digest;
+}
+
+void formatDigest(uint64_t digest, char output[17]) {
+  snprintf(output, 17, "%016llx", static_cast<unsigned long long>(digest));
+}
+
+void sendFrame(const char *type, uint32_t replyTo, JsonObjectConst payload, bool countMetrics = true) {
+  char payloadText[kMaxLineBytes + 1];
+  const size_t payloadLength = serializeJson(payload, payloadText, sizeof(payloadText) - 1);
+  if (payloadLength + 1 > kMaxLineBytes) return;
+  char digest[17];
+  formatDigest(payloadDigest(payloadText, payloadLength), digest);
   JsonDocument doc;
   doc["v"] = 1;
   doc["type"] = type;
@@ -54,16 +72,18 @@ void sendFrame(const char *type, uint32_t replyTo, JsonObjectConst payload) {
   } else {
     doc["reply_to"] = replyTo;
   }
+  doc["digest"] = digest;
   doc["payload"] = payload;
   const size_t encoded = serializeJson(doc, frame, sizeof(frame) - 1);
-  if (encoded + 1 > kMaxLineBytes) {
-    return;
-  }
+  if (encoded + 1 > kMaxLineBytes) return;
   frame[encoded] = '\n';
   if (usbLink.write(reinterpret_cast<const uint8_t *>(frame), encoded + 1) == encoded + 1) {
-    proofMetrics.recordSent();
-    if (strcmp(type, "hello_ack") == 0 || strcmp(type, "probe_ack") == 0) {
-      proofMetrics.recordAcknowledged();
+    if (countMetrics) {
+      proofMetrics.recordSent();
+      if (strcmp(type, "hello_ack") == 0 || strcmp(type, "probe_ack") == 0 ||
+          strcmp(type, "metrics_ack") == 0) {
+        proofMetrics.recordAcknowledged();
+      }
     }
   }
 }
@@ -276,21 +296,76 @@ void handleFrame(char *line, size_t length) {
   }
   if (doc["v"] != 1 || !doc["type"].is<const char *>() || !doc["boot_id"].is<const char *>() ||
       !doc["session_id"].is<const char *>() || !doc["seq"].is<uint32_t>() ||
-      !doc["payload"].is<JsonObject>()) {
+      !doc["digest"].is<const char *>() || !doc["payload"].is<JsonObject>()) {
     sendError("invalid_envelope", "closed v1 envelope required", 0);
+    return;
+  }
+  JsonObject payload = doc["payload"].as<JsonObject>();
+  char payloadText[kMaxLineBytes + 1];
+  const size_t payloadLength = serializeJson(payload, payloadText, sizeof(payloadText) - 1);
+  char calculatedDigest[17];
+  formatDigest(payloadDigest(payloadText, payloadLength), calculatedDigest);
+  if (strcmp(doc["digest"].as<const char *>(), calculatedDigest) != 0) {
+    sendError("digest_mismatch", "payload digest does not match canonical payload", 0);
     return;
   }
   const char *type = doc["type"];
   const uint32_t sequence = doc["seq"];
-  JsonObject payload = doc["payload"].as<JsonObject>();
   if (strcmp(type, "hello") == 0) {
     sessionId = String(doc["session_id"].as<const char *>());
     JsonDocument reply;
     reply["accepted"] = true;
-    reply["protocol"] = 1;
     reply["device_id"] = deviceId;
     reply["firmware"] = "phase1-bringup";
+    reply["protocol"] = 1;
     sendFrame("hello_ack", sequence, reply.as<JsonObjectConst>());
+    return;
+  }
+  if (strcmp(type, "metrics") == 0) {
+    const char *request = payload["request"].as<const char *>();
+    if (request == nullptr || (strcmp(request, "proof") != 0 && strcmp(request, "reset") != 0)) {
+      sendError("invalid_metrics", "metrics request must be proof or reset", sequence);
+      return;
+    }
+    if (strcmp(request, "reset") == 0) {
+      JsonDocument reply;
+      reply["acknowledged"] = 0;
+      reply["digest_mismatch"] = 0;
+      reply["duplicate"] = 0;
+      reply["largest_free_block"] = 0;
+      reply["malformed"] = 0;
+      reply["max_display_flush_us"] = proofMetrics.max_display_flush_us;
+      reply["max_key_poll_gap_us"] = proofMetrics.max_key_poll_gap_us;
+      reply["minimum_free_heap"] = proofMetrics.minimum_free_heap;
+      reply["out_of_order"] = 0;
+      reply["parser_high_water"] = 0;
+      reply["queue_high_water"] = 0;
+      reply["received"] = 0;
+      reply["rejected"] = 0;
+      reply["sent"] = 0;
+      reply["watchdog_reset"] = 0;
+      sendFrame("metrics_ack", sequence, reply.as<JsonObjectConst>(), false);
+      proofMetrics.resetCounters();
+      return;
+    }
+    proofMetrics.normalizeUntouchedSamples();
+    JsonDocument reply;
+    reply["acknowledged"] = proofMetrics.acknowledged;
+    reply["digest_mismatch"] = proofMetrics.digest_mismatch;
+    reply["duplicate"] = proofMetrics.duplicate;
+    reply["largest_free_block"] = proofMetrics.largest_free_block;
+    reply["malformed"] = proofMetrics.malformed;
+    reply["max_display_flush_us"] = proofMetrics.max_display_flush_us;
+    reply["max_key_poll_gap_us"] = proofMetrics.max_key_poll_gap_us;
+    reply["minimum_free_heap"] = proofMetrics.minimum_free_heap;
+    reply["out_of_order"] = proofMetrics.out_of_order;
+    reply["parser_high_water"] = proofMetrics.parser_high_water;
+    reply["queue_high_water"] = proofMetrics.queue_high_water;
+    reply["received"] = proofMetrics.received;
+    reply["rejected"] = proofMetrics.rejected;
+    reply["sent"] = proofMetrics.sent;
+    reply["watchdog_reset"] = proofMetrics.watchdog_reset;
+    sendFrame("metrics_ack", sequence, reply.as<JsonObjectConst>(), false);
     return;
   }
   if (strcmp(type, "probe") == 0) {
@@ -320,7 +395,7 @@ void handleFrame(char *line, size_t length) {
     }
     return;
   }
-  sendError("unknown_type", "only hello and probe are accepted by tracer", sequence);
+  sendError("unknown_type", "only hello, probe, and metrics are accepted by tracer", sequence);
 }
 
 void readFrames() {
@@ -352,9 +427,9 @@ void readFrames() {
 
 void reportKeyTransition(uint8_t rawKey) {
   JsonDocument event;
+  event["key"] = rawKey;
   event["kind"] = "key_transition";
   event["step_id"] = activeStep;
-  event["key"] = rawKey;
   sendFrame("event", 0, event.as<JsonObjectConst>());
 }
 

@@ -32,6 +32,19 @@ struct ProofMetrics {
   void recordOutOfOrder() { ++out_of_order; }
   void recordMalformed() { ++malformed; ++rejected; }
   void recordDigestMismatch() { ++digest_mismatch; ++rejected; }
+  void resetCounters() {
+    sent = 0;
+    received = 0;
+    acknowledged = 0;
+    rejected = 0;
+    duplicate = 0;
+    out_of_order = 0;
+    malformed = 0;
+    digest_mismatch = 0;
+    watchdog_reset = 0;
+    parser_high_water = 0;
+    queue_high_water = 0;
+  }
 
   void observeParser(size_t bytes) {
     if (bytes > parser_high_water) parser_high_water = static_cast<uint32_t>(bytes);

@@ -10,7 +10,7 @@ from typing import Any, Iterable
 
 MAX_LINE_BYTES = 4096
 PROTOCOL_VERSION = 1
-FRAME_TYPES = {"hello", "hello_ack", "probe", "probe_ack", "event", "error"}
+FRAME_TYPES = {"hello", "hello_ack", "probe", "probe_ack", "event", "error", "metrics", "metrics_ack"}
 ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 DIGEST_PATTERN = re.compile(r"^[0-9a-f]{16}$")
 
@@ -21,6 +21,8 @@ PAYLOAD_KEYS: dict[str, set[str]] = {
     "probe_ack": {"accepted", "step_id"},
     "event": {"key", "kind", "step_id"},
     "error": {"code", "detail"},
+    "metrics": {"request"},
+    "metrics_ack": {"acknowledged", "digest_mismatch", "duplicate", "largest_free_block", "malformed", "max_display_flush_us", "max_key_poll_gap_us", "minimum_free_heap", "out_of_order", "parser_high_water", "queue_high_water", "received", "rejected", "sent", "watchdog_reset"},
 }
 
 
@@ -112,6 +114,12 @@ def validate_frame(frame: Any) -> dict[str, Any]:
         _require_string(payload["code"], "error code", 64)
         if not isinstance(payload["detail"], str) or not 1 <= len(payload["detail"]) <= 128:
             raise ProtocolError("invalid_shape", "error detail must be bounded")
+    elif frame_type == "metrics":
+        if payload["request"] not in {"proof", "reset"}:
+            raise ProtocolError("invalid_shape", "metrics request must be proof or reset")
+    elif frame_type == "metrics_ack":
+        if any(not _is_int(payload[name]) or payload[name] < 0 for name in PAYLOAD_KEYS["metrics_ack"]):
+            raise ProtocolError("invalid_shape", "metrics_ack values must be non-negative integers")
     if frame["digest"] != _payload_digest(payload):
         raise ProtocolError("digest_mismatch", "payload digest does not match canonical payload")
     return frame
