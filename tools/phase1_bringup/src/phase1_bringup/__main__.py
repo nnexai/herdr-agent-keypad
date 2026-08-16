@@ -21,6 +21,16 @@ from .pairing import pairing_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, protocol_golden_check, validate_frame
 from .serial_link import reconnect_exact, serial_reconnect_check, udev_rule_check
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
+ 
+ 
+def qualification_manifest_check(path: Path) -> None:
+    """Verify the frozen qualification manifest and profile invariants."""
+    from .qualification import qualification_manifest_check as _check
+
+    _check(path)
+
+
+ 
 
 ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -914,6 +924,10 @@ def command_self_check(args: argparse.Namespace) -> int:
     if args.confirmation_rejection:
         confirmation_rejection_check()
         print("Confirmation semantics: Y requires all acknowledgements; N/R preserve non-pass history")
+    if args.qualification_manifest:
+        qualification_manifest_check(Path(args.qualification_manifest))
+        print("Qualification manifest: frozen profile, protocol hashes, and interruption matrix pass")
+ 
     return 0
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="phase1_bringup")
@@ -942,6 +956,7 @@ def main(argv: list[str] | None = None) -> int:
     self_check.add_argument("--group-parser", action="store_true", help="check exact group parsing and mismatch rejection")
     self_check.add_argument("--confirmed-directory", action="store_true", help="check confirmed artifact creation and linked details")
     self_check.add_argument("--confirmation-rejection", action="store_true", help="check Y/N/R confirmation semantics")
+    self_check.add_argument("--qualification-manifest", type=Path, help="verify the frozen USB qualification profile")
     start = subparsers.add_parser("start", help="run guided mode, or use --batch for seven physical gate confirmations")
     start.add_argument("--batch", action="store_true", help="stimulate Identify through Reboot; Keys are KEY-1..KEY-4 and encoder click is ENC-CLICK")
     start.add_argument("--machine-only", action="store_true", help="with --batch, capture machine observations without stdin or physical PASS")
