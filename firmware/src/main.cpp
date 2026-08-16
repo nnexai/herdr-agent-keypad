@@ -14,6 +14,7 @@ namespace {
 constexpr size_t kMaxLineBytes = 4096;  // includes the trailing LF
 constexpr uint32_t kBaud = 115200;
 char frame[kMaxLineBytes + 1];
+char payloadScratch[kMaxLineBytes + 1];
 size_t frameLength = 0;
 bool frameOverflow = false;
 uint32_t txSequence = 0;
@@ -56,11 +57,10 @@ void formatDigest(uint64_t digest, char output[17]) {
 }
 
 void sendFrame(const char *type, uint32_t replyTo, JsonObjectConst payload, bool countMetrics = true) {
-  char payloadText[kMaxLineBytes + 1];
-  const size_t payloadLength = serializeJson(payload, payloadText, sizeof(payloadText) - 1);
+  const size_t payloadLength = serializeJson(payload, payloadScratch, sizeof(payloadScratch) - 1);
   if (payloadLength + 1 > kMaxLineBytes) return;
   char digest[17];
-  formatDigest(payloadDigest(payloadText, payloadLength), digest);
+  formatDigest(payloadDigest(payloadScratch, payloadLength), digest);
   JsonDocument doc;
   doc["v"] = 1;
   doc["type"] = type;
@@ -301,10 +301,9 @@ void handleFrame(char *line, size_t length) {
     return;
   }
   JsonObject payload = doc["payload"].as<JsonObject>();
-  char payloadText[kMaxLineBytes + 1];
-  const size_t payloadLength = serializeJson(payload, payloadText, sizeof(payloadText) - 1);
+  const size_t payloadLength = serializeJson(payload, payloadScratch, sizeof(payloadScratch) - 1);
   char calculatedDigest[17];
-  formatDigest(payloadDigest(payloadText, payloadLength), calculatedDigest);
+  formatDigest(payloadDigest(payloadScratch, payloadLength), calculatedDigest);
   if (strcmp(doc["digest"].as<const char *>(), calculatedDigest) != 0) {
     sendError("digest_mismatch", "payload digest does not match canonical payload", 0);
     return;
