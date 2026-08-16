@@ -19,7 +19,7 @@ affects: [phase-1 gap plans 01-10 through 01-13, phase-2 host bridge]
 actuals:
   tokens: 33000
   tasks: 3
-  commits: 3
+  commits: 7
 
 # Tech tracking
 tech-stack:
@@ -118,8 +118,9 @@ status: complete
 1. **Task 3: Fail closed on board readiness and consume one physical map** - `46e0094` (feat)
 2. **Task 1: Route one flashed hello/probe path through the frozen production session** - `00afeb4` (feat)
 3. **Task 2: Complete bounded queue and serial I/O lifecycle semantics** - `f62671c` (feat)
+Follow-up fix: `168a43b` ensures complete-line metrics are recorded only after ProtocolSession admission.
 
-Metadata commit: `9a3c326` (`docs(01-09): complete production protocol gap plan`).
+Metadata commits: `9a3c326`, `fd66b63`; `168a43b` is the admission-ordering follow-up fix.
 
 ## Files Created/Modified
 
@@ -176,9 +177,17 @@ Metadata commit: `9a3c326` (`docs(01-09): complete production protocol gap plan`
 - **Verification:** Native queue-capacity test and selected-usb build passed.
 - **Committed in:** `f62671c`
 
+**5. [Rule 1 - Bug] Moved complete-line accounting behind admission**
+- **Found during:** Final source review
+- **Issue:** `recordReceived()` ran before the production session returned, leaving a metrics side effect ahead of the admission result.
+- **Fix:** Record the line only after `ProtocolSession::accept()` returns and before typed dispatch.
+- **Files modified:** `firmware/src/main.cpp`
+- **Verification:** Selected-usb build passed.
+- **Committed in:** `168a43b`
+
 ---
 
-**Total deviations:** 4 auto-fixed (2 Rule 1, 1 Rule 2, 1 Rule 1)
+**Total deviations:** 5 auto-fixed (3 Rule 1, 1 Rule 2, 1 Rule 1)
 **Impact on plan:** All fixes directly closed identified protocol, queue, or fail-closed safety gaps; no new transport or hardware architecture was introduced.
 
 ## Issues Encountered
@@ -202,7 +211,7 @@ The selected-usb firmware and host now share the production bounded protocol/ses
 
 ## Self-Check: PASSED
 
-- All three task commits exist: `46e0094`, `00afeb4`, `f62671c`.
-- The metadata commit exists: `9a3c326`.
+- All three task commits and the follow-up fix exist: `46e0094`, `00afeb4`, `f62671c`, `168a43b`.
+- Metadata commits exist: `9a3c326`, `fd66b63`.
 - Focused native, selected-usb, host golden, and serial reconnect checks passed.
 - No physical/manual validation or long qualification run was performed, per assignment boundary.
