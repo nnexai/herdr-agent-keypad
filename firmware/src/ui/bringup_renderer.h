@@ -81,8 +81,8 @@ class BringupRenderer {
   }
 
   static void frame(Display& display, uint16_t color) {
-    display.drawRect(kSafeInset, kSafeInset, 128 - 2 * kSafeInset,
-                     128 - 2 * kSafeInset, color);
+    display.drawRoundRect(kSafeInset, kSafeInset, 128 - 2 * kSafeInset,
+                          128 - 2 * kSafeInset, 5, color);
   }
 
   static void text(Display& display, const char* label, int32_t x, int32_t y,
