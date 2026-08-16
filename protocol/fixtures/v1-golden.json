@@ -23,6 +23,8 @@
     {"id":"invalid_reply_to","line":"{\"boot_id\":\"boot-a\",\"digest\":\"2b3f348eef48992a\",\"payload\":{\"panel\":1,\"step_id\":\"PANEL-1\",\"stimulus\":\"1 ^ CYAN\"},\"reply_to\":0,\"seq\":7,\"session_id\":\"session-a\",\"type\":\"probe\",\"v\":1}\n","expected":{"outcome":"rejected","reason":"invalid_reply_to","dispatch":false}},
     {"id":"malformed_json","line":"{not-json}\n","expected":{"outcome":"rejected","reason":"invalid_json","dispatch":false}},
     {"id":"invalid_digest_text","line":"{\"boot_id\":\"boot-a\",\"digest\":\"zzzzzzzzzzzzzzzz\",\"payload\":{\"panel\":1,\"step_id\":\"PANEL-1\",\"stimulus\":\"1 ^ CYAN\"},\"reply_to\":null,\"seq\":7,\"session_id\":\"session-a\",\"type\":\"probe\",\"v\":1}\n","expected":{"outcome":"rejected","reason":"invalid_digest","dispatch":false}},
-    {"id":"oversized_preparse","line":"synthetic:oversized","expected":{"outcome":"rejected","reason":"line_too_long","dispatch":false}}
+    {"id":"oversized_preparse","line":"synthetic:oversized","expected":{"outcome":"rejected","reason":"line_too_long","dispatch":false}},
+    {"id":"valid_metrics","line":"{\"boot_id\":\"boot-a\",\"digest\":\"9e71c81426b80ad0\",\"payload\":{\"request\":\"proof\"},\"reply_to\":null,\"seq\":7,\"session_id\":\"session-a\",\"type\":\"metrics\",\"v\":1}\n","expected":{"outcome":"accepted","reason":"ok","dispatch":true},"prior_seq":6},
+    {"id":"valid_metrics_ack","line":"{\"boot_id\":\"boot-a\",\"digest\":\"2bd97b6b4bd52065\",\"payload\":{\"acknowledged\":7,\"digest_mismatch\":0,\"duplicate\":0,\"largest_free_block\":1000,\"malformed\":0,\"max_display_flush_us\":10,\"max_key_poll_gap_us\":20,\"minimum_free_heap\":2000,\"out_of_order\":0,\"parser_high_water\":30,\"queue_high_water\":4,\"received\":7,\"rejected\":0,\"sent\":7,\"watchdog_reset\":0},\"reply_to\":7,\"seq\":8,\"session_id\":\"session-a\",\"type\":\"metrics_ack\",\"v\":1}\n","expected":{"outcome":"accepted","reason":"ok","dispatch":true},"prior_seq":6}
   ]
 }

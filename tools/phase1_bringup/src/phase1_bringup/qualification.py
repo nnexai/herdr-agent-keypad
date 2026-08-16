@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from .protocol import MAX_LINE_BYTES, PROTOCOL_VERSION
+from .pairing import PairingStore
+from .serial_link import reconnect_exact
 
 PROFILE_ID = "usb-v1-product-shaped"
 MANIFEST_SCHEMA_VERSION = 1
@@ -341,19 +343,20 @@ def _operator_checkpoint(label: str, instruction: str) -> str:
 class _RecordingConnection:
     """Record immutable bytes around the existing SerialLink boundary."""
 
-    def __init__(self, link: Any, traffic: list[dict[str, Any]]) -> None:
+    def __init__(self, link: Any, traffic: list[dict[str, Any]], phase: str = "traffic") -> None:
         self.link = link
         self.traffic = traffic
+        self.phase = phase
 
     def write(self, data: bytes) -> int | None:
-        self.traffic.append({"direction": "host_to_device", "timestamp": time.time(), "bytes": data.hex()})
+        self.traffic.append({"direction": "host_to_device", "phase": self.phase, "timestamp": time.time(), "bytes": data.hex()})
         result = self.link.write(data)
         return len(data) if result is None else int(result)
 
     def readline(self) -> bytes:
         value = self.link.readline()
         if value:
-            self.traffic.append({"direction": "device_to_host", "timestamp": time.time(), "bytes": value.hex()})
+            self.traffic.append({"direction": "device_to_host", "phase": self.phase, "timestamp": time.time(), "bytes": value.hex()})
         return value
 
     def close(self) -> None:
@@ -372,12 +375,8 @@ def run_qualification(
     established exact-identity recovery helper for every reconnect and asks
     for explicit physical responses at overlap and interruption checkpoints.
     """
-    if transport != "usb":
-        raise QualificationError("phase 1 qualification accepts only --transport usb")
-    manifest = qualification_manifest_check(Path(manifest_path))
-    from .pairing import PairingStore
-    from .serial_link import reconnect_exact
 
+    manifest = qualification_manifest_check(Path(manifest_path))
     binding = PairingStore(Path(binding_path)).load()
     if binding is None:
         raise QualificationError("no exact paired keypad binding exists; run pair before qualify")
@@ -395,6 +394,8 @@ def run_qualification(
     acknowledged = 0
     failure_counts = {name: 0 for name in STRICT_COUNTERS[3:]}
     run_error: str | None = None
+    device_metrics: dict[str, int] | None = None
+    metrics_query_error: str | None = None
     overlap = _operator_checkpoint(
         "physical-overlap",
         "Keep all four displays/LEDs active and continuously poll keys and encoder while you perform the prompted key/encoder actions. Confirm every expected action is physically observed; counters cannot answer this.",
@@ -447,6 +448,14 @@ def run_qualification(
             if remaining > 0:
                 time.sleep(remaining)
 
+        recording.phase = "metrics"
+        try:
+            metrics_frame, _ = session.request("metrics", {"request": "proof"}, {"metrics_ack"})
+            device_metrics = {name: int(metrics_frame["payload"][name]) for name in RESOURCE_METRICS + STRICT_COUNTERS}
+        except Exception as exc:
+            metrics_query_error = str(exc)
+        recording.phase = "traffic"
+
         for row in INTERRUPTION_ROWS:
             response = _operator_checkpoint(
                 row,
@@ -481,20 +490,34 @@ def run_qualification(
         if link is not None:
             link.close()
 
-    observed_sent = sum(1 for item in traffic if item.get("direction") == "host_to_device")
-    observed_received = sum(1 for item in traffic if item.get("direction") == "device_to_host")
+    observed_sent = sum(1 for item in traffic if item.get("direction") == "host_to_device" and item.get("phase") == "traffic")
+    observed_received = sum(1 for item in traffic if item.get("direction") == "device_to_host" and item.get("phase") == "traffic")
+    firmware_failures = {
+        name: (device_metrics.get(name) if device_metrics is not None else None)
+        for name in STRICT_COUNTERS[3:]
+    }
     counters = {
         "expected": expected_frames,
         "sent": observed_sent,
         "received": observed_received,
         "acknowledged": acknowledged,
-        **failure_counts,
+        **firmware_failures,
     }
-    metrics = {name: None for name in RESOURCE_METRICS}
-    blockers = ["firmware_proof_metrics_unavailable", "firmware_strict_failure_counters_unavailable"]
+    metrics = {name: (device_metrics.get(name) if device_metrics is not None else None) for name in RESOURCE_METRICS}
+    blockers: list[str] = []
+    if device_metrics is None:
+        blockers.extend(["firmware_proof_metrics_unavailable", "firmware_strict_failure_counters_unavailable"])
+    if metrics_query_error:
+        blockers.append("metrics_query_error:" + metrics_query_error)
     if run_error:
         blockers.append("qualification_error:" + run_error)
-    status = "fail"
+    row_observations = [item for item in transitions if "response" in item]
+    rows_ok = {item.get("id") for item in row_observations} == set(INTERRUPTION_ROWS) and all(item.get("response") == "Y" or (item.get("response") == "U" and item.get("reason")) for item in row_observations)
+    strict_ok = device_metrics is not None and all(counters.get(name) == 0 for name in STRICT_COUNTERS[3:])
+    traffic_ok = counters["expected"] == expected_frames and counters["sent"] == expected_frames and counters["received"] == expected_frames and counters["acknowledged"] == expected_frames
+    metrics_ok = device_metrics is not None and all(metrics.get(name) is not None for name in RESOURCE_METRICS)
+    if overlap == "Y" and rows_ok and strict_ok and traffic_ok and metrics_ok and not blockers:
+        status = "pass"
 
     traffic_bytes = _canonical_bytes(traffic)
     traffic_hash = hashlib.sha256(traffic_bytes).hexdigest()
@@ -507,12 +530,11 @@ def run_qualification(
         "physical_overlap": overlap,
         "physical_overlap_reason": overlap_reason,
         "counters": counters,
-        "strict_failure_counters_available": False,
-        "resource_metrics_available": False,
+        "strict_failure_counters_available": device_metrics is not None,
+        "resource_metrics_available": device_metrics is not None,
         "qualification_blockers": blockers,
         "metrics": metrics,
         "interruption_matrix": transitions,
-        "qualification_blockers": blockers,
         "qualification": {
             "manifest_sha256": manifest["manifest_sha256"],
             "manifest_profile": PROFILE_ID,

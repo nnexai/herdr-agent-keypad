@@ -182,6 +182,22 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
     else if (std::strcmp(key, "kind") == 0) bit = 1U << 8;
     else if (std::strcmp(key, "code") == 0) bit = 1U << 9;
     else if (std::strcmp(key, "detail") == 0) bit = 1U << 10;
+    else if (std::strcmp(key, "acknowledged") == 0) bit = 1U << 11;
+    else if (std::strcmp(key, "digest_mismatch") == 0) bit = 1U << 12;
+    else if (std::strcmp(key, "duplicate") == 0) bit = 1U << 13;
+    else if (std::strcmp(key, "largest_free_block") == 0) bit = 1U << 14;
+    else if (std::strcmp(key, "malformed") == 0) bit = 1U << 15;
+    else if (std::strcmp(key, "max_display_flush_us") == 0) bit = 1U << 16;
+    else if (std::strcmp(key, "max_key_poll_gap_us") == 0) bit = 1U << 17;
+    else if (std::strcmp(key, "minimum_free_heap") == 0) bit = 1U << 18;
+    else if (std::strcmp(key, "out_of_order") == 0) bit = 1U << 19;
+    else if (std::strcmp(key, "parser_high_water") == 0) bit = 1U << 20;
+    else if (std::strcmp(key, "queue_high_water") == 0) bit = 1U << 21;
+    else if (std::strcmp(key, "received") == 0) bit = 1U << 22;
+    else if (std::strcmp(key, "rejected") == 0) bit = 1U << 23;
+    else if (std::strcmp(key, "sent") == 0) bit = 1U << 24;
+    else if (std::strcmp(key, "watchdog_reset") == 0) bit = 1U << 25;
+    else if (std::strcmp(key, "request") == 0) bit = 1U << 26;
     else return RejectReason::InvalidShape;
     if ((mask & bit) != 0) return RejectReason::InvalidShape;
     mask |= bit;
@@ -219,6 +235,12 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
     } else if (bit == (1U << 10)) {
       char value[kMaxPayloadStringBytes + 1];
       if (!payload_value_string(cursor, value, sizeof(value)) || std::strlen(value) == 0 || std::strlen(value) > 128) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 26)) {
+      char value[kMaxPayloadStringBytes + 1];
+      if (!payload_value_string(cursor, value, sizeof(value)) || std::strcmp(value, "proof") != 0) return RejectReason::InvalidShape;
+    } else if (bit >= (1U << 11) && bit <= (1U << 25)) {
+      uint32_t value = 0;
+      if (!cursor.uint32(value)) return RejectReason::InvalidShape;
     }
     cursor.ws();
     if (cursor.take('}')) {
@@ -236,6 +258,8 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
   else if (std::strcmp(type, "probe_ack") == 0) expected = (1U << 0) | (1U << 5);
   else if (std::strcmp(type, "event") == 0) expected = (1U << 7) | (1U << 8) | (1U << 5);
   else if (std::strcmp(type, "error") == 0) expected = (1U << 9) | (1U << 10);
+  else if (std::strcmp(type, "metrics") == 0) expected = (1U << 26);
+  else if (std::strcmp(type, "metrics_ack") == 0) expected = (1U << 11) | (1U << 12) | (1U << 13) | (1U << 14) | (1U << 15) | (1U << 16) | (1U << 17) | (1U << 18) | (1U << 19) | (1U << 20) | (1U << 21) | (1U << 22) | (1U << 23) | (1U << 24) | (1U << 25);
   else return RejectReason::UnknownType;
   if (mask != expected || payload_end == nullptr) return RejectReason::InvalidShape;
   frame.payload_length = static_cast<std::size_t>(payload_end - payload_start);
@@ -364,7 +388,7 @@ Result FrameCodec::decode(const uint8_t* line, std::size_t length) {
     result.reason = RejectReason::InvalidVersion;
     return result;
   }
-  if (std::strcmp(result.frame.type, "hello") != 0 && std::strcmp(result.frame.type, "hello_ack") != 0 && std::strcmp(result.frame.type, "probe") != 0 && std::strcmp(result.frame.type, "probe_ack") != 0 && std::strcmp(result.frame.type, "event") != 0 && std::strcmp(result.frame.type, "error") != 0) {
+  if (std::strcmp(result.frame.type, "hello") != 0 && std::strcmp(result.frame.type, "hello_ack") != 0 && std::strcmp(result.frame.type, "probe") != 0 && std::strcmp(result.frame.type, "probe_ack") != 0 && std::strcmp(result.frame.type, "event") != 0 && std::strcmp(result.frame.type, "error") != 0 && std::strcmp(result.frame.type, "metrics") != 0 && std::strcmp(result.frame.type, "metrics_ack") != 0) {
     result.reason = RejectReason::UnknownType;
     return result;
   }
