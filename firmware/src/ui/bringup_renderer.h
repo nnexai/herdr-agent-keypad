@@ -94,6 +94,20 @@ class BringupRenderer {
     display.drawString(label, x, y);
   }
 
+  static void centeredText(Display& display, const char* label, int32_t y) {
+    const int32_t width = display.textWidth(label);
+    const int32_t left = kSafeInset;
+    const int32_t right = 128 - kSafeInset - width;
+    int32_t x = (128 - width) / 2;
+    if (x < left) {
+      x = left;
+    }
+    if (right >= left && x > right) {
+      x = right;
+    }
+    display.drawString(label, x, y);
+  }
+
   static void drawWait(Display& display) {
     text(display, "WAIT", 8, 8, TFT_DARKGREY);
     text(display, "IDLE", 48, 56, TFT_DARKGREY);
@@ -221,18 +235,15 @@ class BringupRenderer {
       // A single draw prevents the PANEL text and number from colliding.
       char panel_label[8];
       snprintf(panel_label, sizeof(panel_label), "PANEL-%u", request.active_panel);
-      display.drawString(panel_label, 22, 72);
+      centeredText(display, panel_label, 72);
     } else if (request.state == BringupState::Press) {
       char key_label[8];
       snprintf(key_label, sizeof(key_label), "KEY-%u",
                static_cast<unsigned>(request.expected_key) + 1U);
       display.setTextSize(2);
-      display.drawString(key_label, 34, 48);
+      centeredText(display, key_label, 48);
     } else {
-      display.drawString(glyph, request.state == BringupState::Pair
-                                   ? 36
-                                   : request.state == BringupState::Click ? 12 : 48,
-                         48);
+      centeredText(display, glyph, 48);
     }
 
     if (request.state == BringupState::Brightness) {
@@ -240,13 +251,13 @@ class BringupRenderer {
       snprintf(percentage, sizeof(percentage), "%u%%", request.brightness_percent);
       display.setTextColor(TFT_WHITE, TFT_BLACK);
       display.setTextSize(2);
-      display.drawString(percentage, 48, 72);
+      centeredText(display, percentage, 72);
     } else if (request.state == BringupState::Pair) {
       char bounded_challenge[kChallengeMax + 1] = {};
       if (copyChallenge(request.challenge, bounded_challenge)) {
         display.setTextColor(TFT_CYAN, TFT_BLACK);
         display.setTextSize(2);
-        display.drawString(bounded_challenge, 24, 72);
+        centeredText(display, bounded_challenge, 72);
       } else {
         text(display, "INVALID", 44, 72, TFT_RED);
       }
