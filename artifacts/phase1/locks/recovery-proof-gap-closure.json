@@ -1,0 +1,62 @@
+{
+  "eligible": false,
+  "historical_steps": [
+    {
+      "boot_ids": ["0000fccb0deabf8c-2365"],
+      "human_response": "Y",
+      "path": "recovery-tours/tour-20260816T140523Z-9c33d6/tour-20260816T140523Z-9c33d6-step-01-reset",
+      "result_sha256": "fd8fa33eeeaff2a10ad24ed392ce734c2d307ac9d5f34e2a50be40694f1f7846",
+      "status": "pass",
+      "step": "reset"
+    },
+    {
+      "boot_ids": ["0000fccb0deabf8c-2365"],
+      "human_response": "Y",
+      "path": "recovery-tours/tour-20260816T140523Z-9c33d6/tour-20260816T140523Z-9c33d6-step-02-normal-flash-reset",
+      "result_sha256": "7c458f7f7982c3f1a87470ad324ccde4b476cb637cb1ae13de4f5c7ce478edc5",
+      "status": "pass",
+      "step": "normal-flash-reset"
+    },
+    {
+      "boot_ids": ["0000fccb0deabf8c-2365"],
+      "human_response": "Y",
+      "path": "recovery-tours/tour-20260816T140523Z-9c33d6/tour-20260816T140523Z-9c33d6-step-03-port-move",
+      "result_sha256": "1f02ad2607520ad03c5d5e4769ac6f11f887b5a0b725b2fe1f948299ac00d0fa",
+      "status": "pass",
+      "step": "port-move"
+    },
+    {
+      "boot_ids": [],
+      "human_response": "U",
+      "path": "recovery-tours/tour-20260816T140523Z-9c33d6/tour-20260816T140523Z-9c33d6-step-04-endpoint-renumber",
+      "result_sha256": "04f089fdbeea7b91b55d117e871fd32e08fa3c036e81fc9da6977bd3cb8d31d0",
+      "status": "unavailable",
+      "step": "endpoint-renumber"
+    },
+    {
+      "boot_ids": ["0000fccb0deabf8c-2365"],
+      "human_response": "Y",
+      "path": "recovery-tours/tour-20260816T140523Z-9c33d6/tour-20260816T140523Z-9c33d6-step-05-utility-restart",
+      "result_sha256": "4a4cea7455241739a01b41623693a88a1435891d4f7f060dff0acdb87da446eb",
+      "status": "pass",
+      "step": "utility-restart"
+    }
+  ],
+  "kind": "recovery-proof-lock",
+  "missing_action_facts": [
+    "pre/post boot_id per action",
+    "pre/post session_id per action",
+    "typed endpoint transition per action",
+    "action-specific precondition and operator completion",
+    "discarded uncertain IDs bound to each action",
+    "fresh endpoint-renumbering Y evidence",
+    "reset-unplug Y evidence",
+    "same-port versus different-port distinction"
+  ],
+  "reason": "Existing authoritative tour is preserved as historical evidence but cannot qualify under strict D-12 gap-closure rules: boot_id is reused across reset/flash/port/utility rows and endpoint-renumber is U.",
+  "required_actions": ["software-reset", "normal-flash-reset", "same-port-reconnect", "different-port-reconnect", "forced-endpoint-renumbering", "host-utility-restart", "reset-unplug"],
+  "schema_version": 1,
+  "status": "incomplete",
+  "tour_id": "tour-20260816T140523Z-9c33d6",
+  "workflow": "recovery-gap-closure"
+}
