@@ -97,6 +97,31 @@ def recovery_ui_check() -> None:
         raise AssertionError("recovery UI copy must expose discard semantics and Phase 4 exclusions")
 
 
+
+@dataclass(frozen=True)
+class RecoveryTourStep:
+    key: str
+    title: str
+    action: str
+    checkpoint: str
+    allow_unavailable: bool = False
+
+
+RECOVERY_TOUR_STEPS = (
+    RecoveryTourStep("reset", "Device reset", "Reset the keypad through its normal reset path.", "Confirm the delivered keypad returned to WAIT and its runtime endpoint reappeared."),
+    RecoveryTourStep("normal-flash-reset", "Normal flash/reset", "Flash or reset the current firmware over the same measured USB cable.", "Confirm the delivered keypad returned to WAIT without choosing a transient /dev/tty* node."),
+    RecoveryTourStep("port-move", "USB port move", "Unplug the keypad and reconnect it to another USB port.", "Confirm the same delivered keypad returned; do not select a port manually."),
+    RecoveryTourStep("endpoint-renumber", "Endpoint renumber", "If another ACM device is available, connect it to force endpoint renumbering; otherwise use U.", "Confirm exact identity still wins; ambiguity or mismatch must fail closed.", True),
+    RecoveryTourStep("utility-restart", "Utility restart", "Exit this tour at the restart checkpoint, then rerun it with the printed --resume command.", "Confirm a fresh utility process establishes a fresh device session and does not replay uncertain work."),
+)
+
+
+def recovery_tour_check() -> None:
+    if tuple(step.key for step in RECOVERY_TOUR_STEPS) != ("reset", "normal-flash-reset", "port-move", "endpoint-renumber", "utility-restart"):
+        raise AssertionError("D-12 recovery tour order changed")
+    if not RECOVERY_TOUR_STEPS[3].allow_unavailable:
+        raise AssertionError("endpoint renumber must support explicit unavailable")
+
 @dataclass(frozen=True)
 class BatchObservation:
     row: StimulusRow

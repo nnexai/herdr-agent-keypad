@@ -16,7 +16,7 @@ from typing import Any
 
 from .discovery import discovery_check
 from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, parse_group_responses, self_check_roundtrip, verify_machine_run, verify_physical_evidence
-from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check, recovery_ui_check
+from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, RECOVERY_TOUR_STEPS, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check, recovery_tour_check, recovery_ui_check
 from .pairing import pairing_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, validate_frame
 from .serial_link import reconnect_exact, serial_reconnect_check, udev_rule_check
@@ -193,6 +193,127 @@ def run_recover(schema_path: Path, evidence_root: Path, binding_path: Path, inte
         return 0
     finally:
         link.close()
+
+def run_recovery_tour(schema_path: Path, evidence_root: Path, binding_path: Path, resume: str | None = None) -> int:
+    """Run the operator-owned D-12 tour one explicit response at a time."""
+    environment = dependency_gate()
+    load_schema(schema_path)
+    import serial
+
+    from .pairing import PairingStore, PairingError
+
+    tour_root = Path(evidence_root) / "recovery-tours"
+    tour_root.mkdir(parents=True, exist_ok=True)
+    if resume is None:
+        tour_id = "tour-" + _run_id()
+        state = {"tour_id": tour_id, "current_index": 0, "restart_ready": False}
+    else:
+        tour_id = resume
+        state_path = tour_root / f"{tour_id}.state.json"
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"recovery tour resume state is unavailable: {exc}") from exc
+        if state.get("tour_id") != tour_id:
+            raise ValueError("recovery tour resume identity mismatch")
+    state_path = tour_root / f"{tour_id}.state.json"
+    state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+    binding = PairingStore(binding_path).load()
+    if binding is None:
+        raise PairingError("unpaired", "No paired keypad binding exists; run the physical pairing gate first.")
+
+    def opener(candidate: Any) -> Any:
+        return serial.Serial(candidate.device, 115200, timeout=0.5)
+
+    while int(state["current_index"]) < len(RECOVERY_TOUR_STEPS):
+        index = int(state["current_index"])
+        step = RECOVERY_TOUR_STEPS[index]
+        if step.key == "utility-restart" and not state.get("restart_ready"):
+            state["restart_ready"] = True
+            state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+            print(f"Recovery tour {tour_id} is paused at the utility-restart checkpoint.")
+            print("Exit this process, then rerun exactly:")
+            print(f"tools/phase1_bringup/.venv/bin/python -m phase1_bringup recover-tour --resume {tour_id} --schema {schema_path} --evidence-root {evidence_root}")
+            return 75
+        print(f"\nD-12 step {index + 1}/{len(RECOVERY_TOUR_STEPS)}: {step.title}")
+        print("Action: " + step.action)
+        print("Checkpoint: " + step.checkpoint)
+        allowed = "[Y] confirmed  [N] failed  [R] repeat"
+        if step.allow_unavailable:
+            allowed += "  [U] unavailable"
+        response = input(allowed + ": ").strip().upper()
+        valid_responses = {"Y", "N", "R"} | ({"U"} if step.allow_unavailable else set())
+        if response not in valid_responses:
+            print("Type exactly Y, N, or R" + ("; U means unavailable for this step." if step.allow_unavailable else "."))
+            continue
+        if response == "R":
+            print("Repeating this step; no result was replaced.")
+            continue
+        if response == "U" and not step.allow_unavailable:
+            print("U is only allowed for the endpoint-renumber step.")
+            continue
+
+        run_id = f"{tour_id}-step-{index + 1:02d}-{step.key}"
+        writer = EvidenceWriter(tour_root / tour_id, run_id)
+        manifest = {
+            "schema_version": 1,
+            "kind": "manifest",
+            "run_id": run_id,
+            "workflow": "recovery-tour",
+            "tour_id": tour_id,
+            "step": step.key,
+            "human_response": response,
+            "environment": {**environment, "dependency_lock": dependency_lock()},
+            "paired_identity": binding.device_id,
+            "runtime_privilege": "root" if os.geteuid() == 0 else "ordinary-user",
+            "excluded": ["host-reboot", "suspend-resume", "cross-component-product-resync"],
+        }
+        result: dict[str, Any] = {
+            "schema_version": 1,
+            "kind": "result",
+            "run_id": run_id,
+            "tour_id": tour_id,
+            "step": step.key,
+            "human_response": response,
+            "physical_pass": False,
+            "runtime_privilege": "root" if os.geteuid() == 0 else "ordinary-user",
+        }
+        if response == "U":
+            result.update({"status": "unavailable", "recovery": [], "detail": "operator marked endpoint renumber unavailable; no physical PASS claimed"})
+        elif response == "N":
+            result.update({"status": "fail", "recovery": [], "detail": "operator reported the checkpoint failed; no physical PASS claimed"})
+        else:
+            try:
+                selected, link, session, transitions = reconnect_exact(binding, None, opener, discarded_ids=[1])
+                try:
+                    events = []
+                    for transition in transitions:
+                        event = transition.as_dict()
+                        event["detail"] = f"{step.key}: {event['detail']}"
+                        writer.record_recovery(event)
+                        events.append(event)
+                    result.update({
+                        "status": "pass",
+                        "physical_pass": True,
+                        "recovery": events,
+                        "device": {"device_id": binding.device_id, "device_suffix": binding.device_id[-4:], "boot_id": session.device.get("device_boot_id", "unavailable"), "session_id": session.session_id},
+                    })
+                    manifest["candidate"] = selected.snapshot()
+                finally:
+                    link.close()
+            except Exception as exc:
+                result.update({"status": "fail", "recovery": [], "detail": f"machine recovery failed: {exc}"})
+        path = writer.write(manifest, result)
+        print(f"Immutable step evidence: {path}")
+        if result["status"] != "pass" and response != "U":
+            state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+            return 1
+        state["current_index"] = index + 1
+        state["restart_ready"] = False
+        state_path.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
+    state_path.unlink(missing_ok=True)
+    print(f"Recovery tour complete: {tour_id}. All available steps have machine recovery and explicit operator confirmation.")
+    return 0
 
 def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -> int:
     environment = dependency_gate()
@@ -736,7 +857,8 @@ def command_self_check(args: argparse.Namespace) -> int:
     if args.serial_reconnect:
         serial_reconnect_check()
         recovery_ui_check()
-        print("Serial recovery: bounded I/O, stale close, exact identity, fresh session, and discarded IDs pass")
+        recovery_tour_check()
+        print("Serial recovery: bounded I/O, stale close, exact identity, fresh session, discarded IDs, and D-12 tour pass")
     if args.udev_rule:
         udev_rule_check(Path(args.udev_rule))
         print("udev: measured VID/PID/serial/interface rule is narrow and ordinary-user scoped")
@@ -838,8 +960,15 @@ def main(argv: list[str] | None = None) -> int:
     recover.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
     recover.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
     recover.add_argument("--interruption", choices=("reset", "normal-flash-reset", "port-move", "endpoint-renumber", "utility-restart"), required=True)
+    tour = subparsers.add_parser("recover-tour", help="operator-run D-12 recovery tour with immutable step evidence")
+    tour.add_argument("--schema", type=Path, default=repo_root() / "protocol" / "schema" / "v1.json")
+    tour.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
+    tour.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
+    tour.add_argument("--resume", help="resume a tour ID printed at the utility-restart checkpoint")
     args = parser.parse_args(argv)
     try:
+        if args.command == "recover-tour":
+            return run_recovery_tour(args.schema, args.evidence_root, args.binding, args.resume)
         if args.command == "self-check":
             return command_self_check(args)
         if args.command == "recover":
