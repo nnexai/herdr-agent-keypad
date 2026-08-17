@@ -14,6 +14,7 @@ import os
 import secrets
 import sys
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -562,6 +563,8 @@ class PermanentBridge:
         self.ready_transitions = 0
         self.last_focus: dict[str, Any] | None = None
         self._deferred_focus: list[dict[str, Any]] = []
+        self._focus_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="herdr-focus")
+        self._focus_jobs: list[tuple[Future[Any], FocusIntent]] = []
         self._focus_result_grace_until = 0.0
 
 
@@ -686,7 +689,7 @@ class PermanentBridge:
                 raise
             raise V2ProtocolError("bootstrap_failed", str(exc)) from exc
 
-    def handle_frame(self, frame: Mapping[str, Any]) -> Any:
+    def _focus_intent_from_frame(self, frame: Mapping[str, Any]) -> FocusIntent | None:
         if frame.get("type") != "focus_intent":
             return None
         intent_payload = frame.get("payload")
@@ -708,8 +711,6 @@ class PermanentBridge:
             intent_payload["entry_id"],
             identity,
         )
-        # Workspace/tab identity is host-only in the bounded wire frame.
-        # Reattach it only after every device-visible identity matches.
         canonical = self.projection.binding(incoming.slot)
         if (
             canonical is not None
@@ -722,8 +723,9 @@ class PermanentBridge:
             and canonical.identity.source_revision == incoming.identity.source_revision
         ):
             incoming = canonical
-        intent = FocusIntent(intent_payload["action_id"], incoming)
-        outcome = self.focus.execute(intent)
+        return FocusIntent(intent_payload["action_id"], incoming)
+
+    def _finish_focus(self, intent: FocusIntent, outcome: Any) -> Any:
         result = _wire_focus_result(intent, outcome)
         self.last_focus = {
             "status": getattr(outcome, "status", "failed"),
@@ -735,11 +737,47 @@ class PermanentBridge:
         self.usb.send_focus_result(result.as_payload())
         self._focus_result_grace_until = time.monotonic() + FOCUS_RESULT_GRACE_SECONDS
         if outcome.status == "source_revision_changed":
-            self._publish_refresh()
+            if self._focus_jobs:
+                self._dirty = True
+            else:
+                self._publish_refresh()
         return outcome
+
+    def _execute_focus(self, intent: FocusIntent) -> Any:
+        from .focus import FocusOutcome
+        try:
+            assert self.focus is not None
+            return self.focus.execute(intent)
+        except Exception as exc:
+            return FocusOutcome("failed", intent.action_id, str(exc)[:160] or "focus worker failed")
+
+    def _drain_focus_jobs(self) -> None:
+        while self._focus_jobs and self._focus_jobs[0][0].done():
+            future, intent = self._focus_jobs.pop(0)
+            self._finish_focus(intent, future.result())
+
+    def _queue_focus_frame(self, frame: Mapping[str, Any]) -> bool:
+        intent = self._focus_intent_from_frame(frame)
+        if intent is None:
+            return False
+        capacity = max(1, int(getattr(self.usb, "pending_focus_capacity", 16)))
+        if len(self._focus_jobs) >= capacity:
+            return False
+        self._focus_jobs.append((self._focus_pool.submit(self._execute_focus, intent), intent))
+        return True
+
+    def handle_frame(self, frame: Mapping[str, Any]) -> Any:
+        intent = self._focus_intent_from_frame(frame)
+        if intent is None:
+            return None
+        outcome = self._execute_focus(intent)
+        return self._finish_focus(intent, outcome)
 
     def _refresh_if_dirty(self, now: float) -> Any:
         if not self._dirty:
+            return None
+        if self._focus_jobs:
+            self._follow_up = True
             return None
         if now < self._focus_result_grace_until:
             self._follow_up = True
@@ -790,17 +828,23 @@ class PermanentBridge:
 
     def run_once(self) -> Any:
         now = time.monotonic()
+        self._drain_focus_jobs()
         self._consume_events(now)
         if getattr(self.usb, "connected", False):
             try:
-                frame = self.usb.poll()
+                capacity = max(1, int(getattr(self.usb, "pending_focus_capacity", 16)))
+                for _ in range(capacity):
+                    if len(self._focus_jobs) >= capacity:
+                        break
+                    frame = self.usb.poll()
+                    if frame is None:
+                        break
+                    if frame.get("type") == "focus_intent":
+                        self._queue_focus_frame(frame)
             except Exception:
                 self._mark_unavailable("offline")
                 return None
-            if frame is not None:
-                outcome = self.handle_frame(frame)
-                if outcome is not None:
-                    return outcome
+        self._drain_focus_jobs()
         return self._refresh_if_dirty(now)
 
     def run(self, *, interval: float = 0.1) -> None:
