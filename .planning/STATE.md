@@ -134,6 +134,12 @@ None yet.
 |----------|------|--------|-------------|
 | v2 | Additional providers, expansion modules, broader actions, standalone service, ambient LEDs, and richer presentation/diagnostics | Deferred | Project initialization |
 
+## Quick Tasks Completed
+
+| Task | Date | Status |
+|------|------|--------|
+| Archive two design-study HTML pages in `.planning/research/` | 2026-08-17 | complete |
+
 ## Session Continuity
 
 Last session: 2026-08-17

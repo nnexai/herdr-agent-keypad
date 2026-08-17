@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herdr Agent Keypad — Designer Onboarding Packet</title>
+<style>
+:root{
+  --ink:#e8edf2; --muted:#94a3b8; --dim:#64748b; --paper:#0b0f14; --panel:#111923;
+  --panel-2:#162230; --line:#263648; --cyan:#22d3ee; --amber:#e0af68; --lime:#9ece6a;
+  --rose:#f7768e; --blue:#7dcfff; --violet:#565f89; --red:#ef4444; --white:#f8fafc;
+  --mono:"IBM Plex Mono","SFMono-Regular",Consolas,monospace; --sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.035;background-image:linear-gradient(rgba(255,255,255,.7) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.7) 1px,transparent 1px);background-size:32px 32px;mask-image:linear-gradient(to bottom,black,transparent 75%)}
+a{color:var(--cyan);text-decoration:none} a:hover{text-decoration:underline}.wrap{max-width:1440px;margin:auto;padding:0 34px}.eyebrow,.label,.mono{font-family:var(--mono);text-transform:uppercase;letter-spacing:.11em}.eyebrow{font-size:11px;color:var(--cyan);font-weight:700}.label{font-size:10px;color:var(--dim)}
+.hero{min-height:620px;padding:42px 0 70px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:1.35fr .65fr;gap:48px;align-items:end}.hero h1{font-size:clamp(46px,7vw,102px);line-height:.92;letter-spacing:-.075em;max-width:900px;margin:22px 0 28px;font-weight:800}.hero h1 em{font-style:normal;color:var(--cyan)}.hero p{max-width:690px;color:#b6c2d0;font-size:19px;margin:0}.hero-aside{border-left:1px solid var(--line);padding-left:26px;display:grid;gap:18px}.hero-aside .big{font:700 64px/1 var(--mono);color:var(--amber)}.hero-aside strong{display:block;color:var(--white)}.hero-aside span{color:var(--muted);font-size:13px}.topline{display:flex;justify-content:space-between;gap:20px;align-items:center}.stamp{font:11px var(--mono);color:var(--dim)}
+nav{position:sticky;top:0;z-index:5;background:rgba(11,15,20,.88);backdrop-filter:blur(16px);border-bottom:1px solid var(--line)}nav .navin{display:flex;gap:20px;overflow:auto;padding:13px 0;white-space:nowrap}nav a{font:11px var(--mono);color:var(--muted);text-transform:uppercase;letter-spacing:.08em}nav a:hover{color:var(--cyan);text-decoration:none}
+section{padding:92px 0;border-bottom:1px solid var(--line)}section h2{font-size:clamp(30px,4vw,54px);line-height:1;letter-spacing:-.055em;margin:10px 0 18px}section h3{font-size:20px;margin:0 0 10px;color:var(--white)}.lead{font-size:19px;color:#b6c2d0;max-width:820px}.grid{display:grid;gap:18px}.cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.card{background:linear-gradient(145deg,rgba(22,34,48,.95),rgba(17,25,35,.95));border:1px solid var(--line);padding:22px}.card p{color:var(--muted);margin:6px 0 0}.card small{color:var(--dim);font:11px var(--mono)}.rule{height:1px;background:var(--line);margin:30px 0}.note{border-left:3px solid var(--amber);padding:15px 18px;background:rgba(224,175,104,.07);color:#d6dee8}.fact{border-left-color:var(--cyan);background:rgba(34,211,238,.06)}.open{border-left-color:var(--rose);background:rgba(247,118,142,.06)}
+.badge{display:inline-flex;align-items:center;gap:7px;padding:5px 8px;border:1px solid var(--line);font:10px var(--mono);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:3px 4px 3px 0}.badge:before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.badge.fact{color:var(--cyan)}.badge.design{color:var(--amber)}.badge.open{color:var(--rose)}.badge.future{color:var(--blue)}
+.device{display:grid;grid-template-columns:1fr 1fr;gap:30px;align-items:center;margin-top:30px}.device-map{position:relative;background:#080b0f;border:1px solid #33465c;padding:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:9px;box-shadow:0 18px 50px rgba(0,0,0,.35)}.device-map:before{content:"LILYGO T-KEYBOARD S3 PRO / HOST FACE";grid-column:1/-1;font:10px var(--mono);color:var(--dim);letter-spacing:.12em}.screen{aspect-ratio:1;background:#101821;border:2px solid #43566e;display:flex;flex-direction:column;justify-content:space-between;padding:10px;min-width:0}.screen .screen-title{font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.screen .screen-state{align-self:center;font:700 10px var(--mono);color:var(--cyan)}.screen .screen-foot{font:8px var(--mono);color:var(--muted);white-space:nowrap}.keyrow{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.key{height:27px;border:1px solid #43566e;background:#1b2734;display:flex;align-items:center;justify-content:center;font:10px var(--mono);color:#bcc8d6}.encoder{height:27px;border:1px dashed var(--amber);color:var(--amber);display:flex;align-items:center;justify-content:center;font:10px var(--mono);grid-column:4}.device-list{display:grid;gap:12px}.device-list div{display:flex;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line);padding-bottom:10px}.device-list b{color:var(--white)}.device-list span{color:var(--muted);text-align:right}
+.swatches{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}.swatch{display:flex;align-items:center;gap:8px;font:11px var(--mono);color:var(--muted)}.swatch i{display:block;width:24px;height:24px;border:1px solid rgba(255,255,255,.2)}
+.table-wrap{overflow:auto;border:1px solid var(--line)}table{border-collapse:collapse;width:100%;min-width:760px}th,td{text-align:left;padding:13px 15px;border-bottom:1px solid var(--line);vertical-align:top}th{font:10px var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--cyan);background:#101923}td{color:#c2cedb}td:first-child{color:var(--white);font-weight:650}tr:last-child td{border-bottom:0}
+.status-card{min-height:180px;position:relative;overflow:hidden}.status-card:after{content:"";position:absolute;width:110px;height:110px;border-radius:50%;right:-25px;bottom:-35px;background:currentColor;opacity:.09}.status-card h3{display:flex;align-items:center;gap:10px}.dot{width:11px;height:11px;border-radius:50%;display:inline-block}.current{color:var(--lime)}.stale{color:var(--amber)}.offline,.unavailable,.rejected,.failed,.vanished{color:var(--red)}.pending{color:var(--cyan)}.focused{color:var(--lime)}.unseen{color:var(--blue)}.blocked{color:var(--rose)}.working{color:var(--amber)}.idle{color:var(--lime)}.settled,.unknown{color:var(--violet)}
+.screen-grid{display:grid;grid-template-columns:repeat(5,minmax(140px,1fr));gap:12px;margin-top:25px}.mini-screen{aspect-ratio:1;background:#101821;border:1px solid #3b526a;padding:13px;display:flex;flex-direction:column;justify-content:space-between}.mini-screen .bar{height:4px;background:var(--cyan)}.mini-screen .bigstate{align-self:center;font:700 13px var(--mono)}.mini-screen p{font-size:10px;color:var(--muted);margin:0}.mini-screen .foot{font:9px var(--mono);color:var(--muted)}
+.callout{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start;padding:20px 0;border-bottom:1px solid var(--line)}.callout:last-child{border-bottom:0}.callout .num{font:700 27px var(--mono);color:var(--amber)}.callout p{margin:0;color:#bdc9d5}.callout strong{color:var(--white)}
+.measure{font:700 28px var(--mono);color:var(--cyan)}.measure-label{font-size:12px;color:var(--muted);margin-top:5px}.code{font:12px/1.65 var(--mono);background:#080b0f;border:1px solid var(--line);padding:18px;overflow:auto;color:#c5d1df}.code .keyc{color:var(--cyan)}.code .val{color:var(--amber)}
+.footer{padding:55px 0 90px;color:var(--muted)}.footer strong{color:var(--white)}
+@media(max-width:900px){.hero{grid-template-columns:1fr;min-height:0}.hero-aside{border-left:0;border-top:1px solid var(--line);padding:22px 0 0}.device{grid-template-columns:1fr}.cols-3,.cols-4{grid-template-columns:repeat(2,minmax(0,1fr))}.screen-grid{grid-template-columns:repeat(3,minmax(110px,1fr))}}
+@media(max-width:560px){.wrap{padding:0 18px}.hero h1{font-size:54px}.cols-2,.cols-3,.cols-4{grid-template-columns:1fr}.screen-grid{grid-template-columns:repeat(2,minmax(110px,1fr))}section{padding:65px 0}.device-map{padding:10px;gap:5px}.screen{padding:6px}.keyrow{gap:5px}}
+@media(prefers-reduced-motion:no-preference){.hero h1{animation:rise .7s ease-out both}@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}}
+.raw-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:22px}.raw-panel{background:#080b0f;border:1px solid var(--line);padding:18px}.raw-panel pre{margin:0;white-space:pre-wrap;font:11px/1.65 var(--mono);color:#c5d1df}.raw-panel .k{color:var(--cyan)}.raw-panel .s{color:var(--amber)}.raw-panel .n{color:var(--lime)}
+.led-map{background:#080b0f;border:1px solid #33465c;padding:20px;margin-top:22px}.led-row{display:grid;grid-template-columns:repeat(14,1fr);gap:8px;align-items:center}.led-node{aspect-ratio:1;border-radius:50%;background:#e0af68;box-shadow:0 0 12px rgba(224,175,104,.5);display:grid;place-items:center;font:9px var(--mono);color:#111923}.led-node:nth-child(4n+1){background:#22d3ee;box-shadow:0 0 12px rgba(34,211,238,.5)}.led-node:nth-child(4n+2){background:#f7768e;box-shadow:0 0 12px rgba(247,118,142,.5)}.led-caption{font:10px var(--mono);color:var(--muted);margin-top:12px}.rough-wrap{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:22px}.rough{aspect-ratio:1;background:#0b0f14;border:1px solid #43566e;padding:9px;display:flex;flex-direction:column;overflow:hidden}.rough .rbar{height:4px;background:var(--cyan);flex:none}.rough .rtitle{font-size:10px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:7px}.rough .rdisc{font:8px var(--mono);color:var(--muted);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.rough .rglyph{flex:1;display:grid;place-items:center;font:700 26px var(--mono)}.rough .rstate{font:700 10px var(--mono);letter-spacing:.06em}.rough .rfoot{font:8px var(--mono);color:var(--muted);margin-top:8px;white-space:nowrap}.rough.current .rbar{background:var(--lime)}.rough.working .rstate,.rough.working .rglyph{color:var(--amber)}.rough.idle .rstate,.rough.idle .rglyph{color:var(--lime)}.rough.blocked .rbar,.rough.blocked .rstate,.rough.blocked .rglyph{color:var(--rose);background-color:transparent}.rough.unseen .rstate,.rough.unseen .rglyph{color:var(--blue)}.rough.pending .rbar,.rough.pending .rstate,.rough.pending .rglyph{color:var(--cyan)}.rough.focused .rbar,.rough.focused .rstate,.rough.focused .rglyph{color:var(--lime)}.rough.error .rbar,.rough.error .rstate,.rough.error .rglyph{color:var(--red)}.rough.sync .rbar{background:var(--cyan)}.rough.sync .rstate,.rough.sync .rglyph{color:var(--cyan)}
+@media(max-width:900px){.raw-grid{grid-template-columns:1fr}.rough-wrap{grid-template-columns:repeat(2,minmax(0,1fr))}.led-row{gap:5px}}
+.device-map{grid-template-columns:repeat(5,1fr)}.encoder-slot{aspect-ratio:1;background:#141b25;border:2px dashed var(--amber);display:flex;align-items:center;justify-content:center;text-align:center;font:10px var(--mono);color:var(--amber);padding:8px}.keyrow{grid-template-columns:repeat(5,1fr)}
+.face-led-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(14,1fr);gap:4px;align-items:center;padding:5px 0 8px;border-bottom:1px solid #263648}.face-led-row span{display:grid;place-items:center;min-height:18px;border-radius:50%;background:#e0af68;color:#111923;font:8px var(--mono);box-shadow:0 0 7px rgba(224,175,104,.45)}.face-led-row span:nth-child(4n+1){background:#22d3ee;box-shadow:0 0 7px rgba(34,211,238,.45)}.face-led-row span:nth-child(4n+2){background:#f7768e;box-shadow:0 0 7px rgba(247,118,142,.45)}.face-led-caption{grid-column:1/-1;font:9px var(--mono);color:var(--muted);margin-top:-3px}
+.face-physical{grid-column:1/-1;background:#0d131b;border:1px solid #263648;padding:8px 10px 10px}.face-physical-label{font:9px var(--mono);color:var(--dim);letter-spacing:.08em;margin-bottom:7px}.face-led-grid{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;align-items:center}.face-led-grid span{display:grid;place-items:center;min-height:18px;border-radius:50%;font:8px var(--mono);color:#111923}.face-top span{background:var(--amber);box-shadow:0 0 7px rgba(224,175,104,.45)}.face-top span:nth-child(odd){background:var(--cyan);box-shadow:0 0 7px rgba(34,211,238,.45)}.face-back span{background:var(--rose);box-shadow:0 0 7px rgba(247,118,142,.45)}.face-back span.blank{visibility:hidden}.face-position-labels{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;margin:4px 0;font:8px var(--mono);color:var(--muted);text-align:center}.face-position-labels span:nth-child(even){color:var(--dim)}
+@media(max-width:560px){.face-led-grid,.face-position-labels{gap:3px}.face-led-grid span{font-size:7px;min-height:15px}}
+.face-layout{grid-column:1/-1;display:grid;grid-template-columns:1.1fr .35fr 1.1fr .35fr 1.1fr .35fr 1.1fr .35fr 1.1fr;gap:6px;align-items:start}.face-layout-label,.face-layout-caption{grid-column:1/-1;font:9px var(--mono);color:var(--dim);letter-spacing:.08em}.face-layout-label{margin-bottom:1px}.face-layout-caption{letter-spacing:0;color:var(--muted);margin-top:1px}.face-led-grid.face-top,.face-led-grid.face-back{grid-template-columns:1.1fr .35fr 1.1fr .35fr 1.1fr .35fr 1.1fr .35fr 1.1fr;grid-column:1/-1}.face-led-grid.face-top{margin-bottom:1px}.face-unit{display:grid;gap:4px;min-width:0}.face-unit .screen,.face-unit .encoder-slot{width:100%}.face-unit .key{min-height:22px;font-size:9px}.back-led{display:grid;place-items:center;height:12px;color:var(--rose);font:8px var(--mono)}.back-led:before{content:"";width:8px;height:8px;border-radius:50%;background:var(--rose);box-shadow:0 0 8px rgba(247,118,142,.6)}
+</style>
+</head>
+<body>
+<header class="wrap hero" id="top">
+  <div>
+    <div class="topline"><div class="eyebrow">DESIGNER ONBOARDING / HERDR AGENT KEYPAD</div><div class="stamp">v1 product boundary · 17 AUG 2026</div></div>
+    <h1>A small instrument for <em>agent attention.</em></h1>
+    <p>This packet is a reference atlas for the keypad’s display language, physical feedback, source data, and future usage surfaces. It describes the full available design material—not only what the current firmware uses—and separates verified facts from open product space.</p>
+    <div style="margin-top:28px"><span class="badge fact">verified in product</span><span class="badge design">design latitude</span><span class="badge future">planned surface</span><span class="badge open">open question</span></div>
+  </div>
+  <aside class="hero-aside">
+    <div><div class="big">4 × 128</div><strong>four square IPS displays</strong><span>Each panel is 128 × 128 pixels. The host currently uses three for agent tiles; the fourth is reserved for Codex usage.</span></div>
+    <div><div class="big">14</div><strong>RGB LEDs, currently unassigned</strong><span>The hardware supports per-LED HSV control. Product semantics are open for design.</span></div>
+    <div><div class="big">1</div><strong>direct press to focus</strong><span>The core loop must never require the encoder or a menu.</span></div>
+  </aside>
+</header>
+<nav><div class="wrap navin"><a href="#brief">Brief</a><a href="#hardware">Hardware</a><a href="#herdr-data">Herdr data</a><a href="#agent-surface">Agent surface</a><a href="#states">States</a><a href="#renders">Renders</a><a href="#feedback">Feedback</a><a href="#leds">LEDs</a><a href="#usage">Usage surfaces</a><a href="#freedom">Design workbench</a><a href="#sources">Sources</a></div></nav>
+<main>
+<section id="brief"><div class="wrap">
+  <div class="eyebrow">01 / THE JOB</div><h2>Make the inbox legible before the user opens it.</h2>
+  <p class="lead">The keypad is a companion surface for a live Herdr inbox. It should tell the user which agents currently deserve attention, make their state recognizable at a glance, and let one physical press move the user to the exact pane represented on the tile.</p>
+  <div class="grid cols-3" style="margin-top:32px">
+    <article class="card"><small>CORE LOOP</small><h3>See → choose → arrive</h3><p>Three fixed agent surfaces show the installed inbox’s current top entries. A key press requests focus only. The actual conversation remains in Herdr.</p></article>
+    <article class="card"><small>TRUTHFULNESS</small><h3>Unknown is a state</h3><p>Stale, unavailable, offline, and missing values must not masquerade as current data. Null usage is not zero. A failed focus is not success.</p></article>
+    <article class="card"><small>BOUNDARY</small><h3>Hardware, not a tiny app</h3><p>There is no need to reproduce Herdr’s conversation UI. The keypad is a glanceable instrument: sparse, physical, immediate, and readable at 128 pixels.</p></article>
+  </div>
+  <div class="note fact" style="margin-top:22px"><strong>Design stance:</strong> You are free to reshape the visual language, hierarchy, typography, icons, motion, color relationships, and LED grammar. You are not free to change inbox order authority, direct-key selection, focus-only semantics, or the host credential boundary.</div>
+</div></section>
+
+<section id="hardware"><div class="wrap">
+  <div class="eyebrow">02 / THE OBJECT</div><h2>Know the canvas before drawing on it.</h2>
+  <p class="lead">The delivered object is a LILYGO T-Keyboard-S3 Pro host board: an ESP32-S3 display/keyboard device with a co-processor that multiplexes the panels, reads the keys, and drives the LEDs.</p>
+  <div class="device">
+    <div class="device-map">
+      <div class="face-layout">
+        <div class="face-layout-label">HOST FACE · LED ACCENTS + DISPLAY / CONTROL UNITS</div>
+        <div class="face-led-grid face-top"><span>0</span><span>2</span><span>3</span><span>5</span><span>6</span><span>8</span><span>9</span><span>11</span><span>12</span></div>
+        <div class="face-layout-caption">top row: LED0 above K1 · LED2 between K1/K2 · LED3 above K2 · LED5 between K2/K3 · LED6 above K3 · LED8 between K3/K4 · LED9 above K4 · LED11 between K4/ENC · LED12 above ENC</div>
+        <div class="face-unit" style="grid-column:1"><div class="screen"><span class="screen-title">AGENT A</span><span class="screen-state working">WORKING</span><span class="screen-foot">PRESS TO FOCUS</span></div><div class="key">KEY 1</div><div class="back-led">LED1</div></div>
+        <div class="face-unit" style="grid-column:3"><div class="screen"><span class="screen-title">AGENT B</span><span class="screen-state idle">IDLE</span><span class="screen-foot">PRESS TO FOCUS</span></div><div class="key">KEY 2</div><div class="back-led">LED4</div></div>
+        <div class="face-unit" style="grid-column:5"><div class="screen"><span class="screen-title">AGENT C</span><span class="screen-state unseen">UNSEEN</span><span class="screen-foot">PRESS TO FOCUS</span></div><div class="key">KEY 3</div><div class="back-led">LED7</div></div>
+        <div class="face-unit" style="grid-column:7"><div class="screen" style="border-color:#e0af68"><span class="screen-title">CODEX / FUTURE</span><span class="screen-state working">USAGE</span><span class="screen-foot">READ ONLY</span></div><div class="key">KEY 4</div><div class="back-led">LED10</div></div>
+        <div class="face-unit" style="grid-column:9"><div class="encoder-slot">ENCODER<br>NO SCREEN<br>+ CLICK</div><div class="key">KEY 5 / ENC</div><div class="back-led">LED13</div></div>
+        <div class="face-layout-caption">pink markers are the five backlights beneath KEY1–KEY4 and the encoder; LED indices are 0-based in firmware</div>
+      </div>
+    </div>
+    <div class="device-list">
+      <div><b>Displays</b><span>4 × GC9107 IPS, 128 × 128</span></div>
+      <div><b>Keys</b><span>5 hot-swappable keys; product slots use 3</span></div>
+      <div><b>RGB</b><span>14 × WS2812C LEDs, per-LED mask</span></div>
+      <div><b>Encoder</b><span>clockwise / counter-clockwise / click</span></div>
+      <div><b>Main MCU</b><span>ESP32-S3, 16 MB flash, 8 MB OPI PSRAM</span></div>
+      <div><b>Co-processor</b><span>STM32G030F6 over I²C</span></div>
+      <div><b>Transport</b><span>USB Serial/JTAG CDC, 115200, NDJSON</span></div>
+      <div><b>Power</b><span>wired USB; Wi-Fi is not a v1 surface</span></div>
+    </div>
+  </div>
+  <div class="grid cols-3" style="margin-top:22px">
+    <article class="card"><small>PIXEL PHYSICS</small><h3>One panel at a time</h3><p>All four panels share SPI. The board adapter selects one panel through the STM32. Multi-panel simultaneous selection is unreliable; rendering flushes sequentially.</p></article>
+    <article class="card"><small>BOUNDS</small><h3>16-bit RGB565</h3><p>The current product renderer uses one reusable 128 × 128 RGB565 composition buffer, preferred in PSRAM. A complete image is composed, then pushed once.</p></article>
+    <article class="card"><small>READABILITY</small><h3>Square, dense, close-range</h3><p>Current rendering uses a 4 px inset and small text. Design for short labels, strong hierarchy, icon + text redundancy, and no reliance on color alone.</p></article>
+  </div>
+  <div class="note open" style="margin-top:22px"><strong>Physical mapping note:</strong> firmware logic currently treats agent slot 0/1/2 as display 1/2/3 and key 0/1/2. The fourth display/key pair is reserved for the future usage surface. In the official top-side product view, the four key wells run in one row and the rotary encoder occupies the right-hand fifth position with no display of its own. The 14-pixel strip alternates above-control accents, inter-control accents, and one backlight pixel beneath each of the four keys plus the encoder.</div>
+</div></section>
+
+<section id="herdr-data"><div class="wrap">
+  <div class="eyebrow">03 / THE SOURCE, BEFORE THE BRIDGE</div><h2>Herdr exposes more than the keypad currently shows.</h2>
+  <p class="lead">This is the direct public Herdr vocabulary. The bridge deliberately reduces it to a safe device projection, but a designer should understand the richer source so proposed visuals do not accidentally confuse source facts, inbox metadata, and device feedback.</p>
+  <div class="note fact" style="margin-top:22px"><strong>Important distinction:</strong> everything in this section is available from Herdr’s public API or the installed <span class="mono">herdr-agent-inbox</span> metadata projection. It is not a promise that every field is present, fresh, or safe to put on a 128 px display.</div>
+  <h3 style="margin-top:34px">Direct <span class="mono">agent.list</span> row</h3>
+  <div class="table-wrap" style="margin-top:15px"><table><thead><tr><th>Herdr field</th><th>Shape / meaning</th><th>Designer relevance</th></tr></thead><tbody>
+    <tr><td>pane_id</td><td>Required opaque pane identity.</td><td>Exact target identity; normally keep invisible.</td></tr>
+    <tr><td>terminal_id</td><td>Required opaque terminal identity.</td><td>Distinguishes a reused pane; diagnostic-only candidate.</td></tr>
+    <tr><td>workspace_id / tab_id</td><td>Required workspace and tab identity.</td><td>Useful for grouping or a bounded workspace/tab discriminator.</td></tr>
+    <tr><td>agent_status</td><td>Herdr enum: <span class="mono">idle</span>, <span class="mono">working</span>, <span class="mono">blocked</span>, <span class="mono">done</span>, <span class="mono">unknown</span>.</td><td>Raw operational state. The installed inbox rank adds attention semantics; do not equate <span class="mono">done</span> with “no longer relevant.”</td></tr>
+    <tr><td>agent / display_agent / name</td><td>Nullable agent identity or display name.</td><td>Good fallback identity, but not necessarily the human-facing session title.</td></tr>
+    <tr><td>title</td><td>Nullable native/session title.</td><td>Preferred human-facing title when present.</td></tr>
+    <tr><td>terminal_title / terminal_title_stripped</td><td>Nullable terminal titles.</td><td>Fallback label when no native title or inbox title exists.</td></tr>
+    <tr><td>cwd / foreground_cwd</td><td>Nullable working-directory context.</td><td>Never show raw paths; derive only a bounded repository basename if needed.</td></tr>
+    <tr><td>focused</td><td>Boolean: whether Herdr currently focuses the pane.</td><td>Useful for diagnostics or subtle focus confirmation, not a replacement for keypad feedback.</td></tr>
+    <tr><td>revision</td><td>Monotonic pane/output revision.</td><td>Freshness identity, not a progress percentage.</td></tr>
+    <tr><td>state_change_seq</td><td>Monotonic state-change sequence, default 0.</td><td>Used as the tie-breaker after inbox rank.</td></tr>
+    <tr><td>interactive_ready / launch_pending</td><td>Booleans indicating readiness / launch state.</td><td>Potential diagnostic or micro-status cues; not currently projected to firmware.</td></tr>
+    <tr><td>screen_detection_skipped</td><td>Boolean indicating detection was skipped.</td><td>Potential uncertainty explanation; not a user-facing agent state yet.</td></tr>
+    <tr><td>state_labels</td><td>String map supplied by Herdr.</td><td>Possible richer labels; keep bounded and source-authored if ever exposed.</td></tr>
+    <tr><td>agent_session</td><td>Nullable object: <span class="mono">source</span>, <span class="mono">agent</span>, <span class="mono">kind</span> (id/path), <span class="mono">value</span>.</td><td>Opaque lifecycle identity. Do not expose paths or session IDs as primary UI.</td></tr>
+    <tr><td>tokens</td><td>Plugin metadata map; keys are strings, values are strings.</td><td>This is where the inbox adds attention, title, age, and flags.</td></tr>
+  </tbody></table></div>
+  <h3 style="margin-top:34px">Installed inbox metadata tokens</h3>
+  <div class="grid cols-3" style="margin-top:15px">
+    <article class="card"><small>rank</small><h3>Attention tier</h3><p><span class="mono">0</span> blocked · <span class="mono">1</span> done/unread · <span class="mono">2</span> working · <span class="mono">3</span> idle · <span class="mono">4</span> unknown · <span class="mono">5</span> settled.</p></article>
+    <article class="card"><small>title</small><h3>Inbox title</h3><p>Derived from the agent’s native title or a configured prompt-based title strategy. The daemon defaults to the first real user prompt when no native title exists; optional summarization may be configured.</p></article>
+    <article class="card"><small>age / since</small><h3>Time context</h3><p><span class="mono">age</span> is session running time. <span class="mono">since</span> is time in the current state. These are useful glance cues, but they are source text, not a device clock contract.</p></article>
+    <article class="card"><small>flag</small><h3>Attention marker</h3><p><span class="mono">⚑</span> means settled. <span class="mono">●</span> means marked unread. Missing flag means no explicit flag.</p></article>
+    <article class="card"><small>workspace tokens</small><h3>Aggregate context</h3><p>Workspace metadata can include <span class="mono">agents</span> (per-status counts such as <span class="mono">!1 ▸2 ✓1 ⚑1</span>) and <span class="mono">busy</span> (longest working stint).</p></article>
+    <article class="card"><small>sort contract</small><h3>Why order changes</h3><p>The inbox sorts literal rank ascending, then <span class="mono">state_change_seq</span> descending. A live state change can move an entry between physical tiles.</p></article>
+  </div>
+  <h3 style="margin-top:34px">Other public Herdr surfaces</h3>
+  <div class="table-wrap" style="margin-top:15px"><table><thead><tr><th>API surface</th><th>Useful direct data</th><th>Possible design use</th></tr></thead><tbody>
+    <tr><td>session.snapshot</td><td>version, protocol, workspaces, tabs, panes, layouts, agents, focused workspace/tab/pane.</td><td>Diagnostics, full-sync context, and a bounded “where am I?” signal.</td></tr>
+    <tr><td>workspace.list</td><td>workspace ID, number, label, focused flag, pane/tab counts, active tab, agent status, worktree metadata.</td><td>Workspace/repository discriminator or future grouping.</td></tr>
+    <tr><td>tab.list</td><td>tab ID, workspace ID, number, label, focused flag, pane count, agent status.</td><td>Optional tab label in diagnostics; not needed for direct selection.</td></tr>
+    <tr><td>agent.focus</td><td>Write boundary. The acknowledged result returns agent information, including identity and focused state.</td><td>Use only to confirm exact focus. Never turn it into settle/dismiss/reply.</td></tr>
+    <tr><td>events.subscribe</td><td>Lifecycle signals: workspace/tab/pane create, update, close, focus, move, exit, agent detected, and layout updated.</td><td>Invalidation / transition trigger. Events are not a replacement for a complete agent read.</td></tr>
+    <tr><td>subscription events</td><td>Optional typed signals include <span class="mono">pane.agent_status_changed</span>, <span class="mono">pane.output_matched</span>, and <span class="mono">pane.scroll_changed</span>.</td><td>Potential richer host-side behavior; keep raw output and transcripts off the device.</td></tr>
+  </tbody></table></div>
+  <div class="raw-grid">
+    <div class="raw-panel"><div class="label">representative direct row — illustrative shape</div><pre>{
+  <span class="k">"pane_id"</span>: <span class="s">"opaque-pane"</span>,
+  <span class="k">"terminal_id"</span>: <span class="s">"opaque-terminal"</span>,
+  <span class="k">"workspace_id"</span>: <span class="s">"workspace-1"</span>,
+  <span class="k">"tab_id"</span>: <span class="s">"tab-1"</span>,
+  <span class="k">"agent_status"</span>: <span class="s">"working"</span>,
+  <span class="k">"focused"</span>: <span class="n">false</span>,
+  <span class="k">"revision"</span>: <span class="n">601011</span>,
+  <span class="k">"state_change_seq"</span>: <span class="n">42</span>,
+  <span class="k">"title"</span>: <span class="s">"Implement the sync renderer"</span>,
+  <span class="k">"tokens"</span>: { <span class="k">"rank"</span>: <span class="s">"2"</span>, <span class="k">"age"</span>: <span class="s">"18m"</span>, <span class="k">"since"</span>: <span class="s">"4m"</span> }
+}</pre></div>
+    <div class="raw-panel"><div class="label">what the designer should trust</div><pre><span class="k">trust for ordering</span>  tokens.rank + state_change_seq
+<span class="k">trust for title</span>    title / tokens.title / bounded fallback
+<span class="k">trust for state</span>    agent_status + inbox rank semantics
+<span class="k">trust for focus</span>    pane_id + terminal_id + session identity
+<span class="k">trust for freshness</span> revision + event/read timing
+<span class="k">do not expose</span>      cwd, session paths, raw output, prompts
+<span class="k">do not invent</span>      priority, progress, completion, quota values</pre></div>
+  </div>
+</div></section>
+<section id="agent-surface"><div class="wrap">
+  <div class="eyebrow">04 / THE AGENT TILES</div><h2>Three slots. One authority.</h2>
+  <p class="lead">The host reads the public Herdr API and the installed inbox projection. It does not invent a priority model. The device receives three normalized entries, already ordered and bounded.</p>
+  <div class="grid cols-2" style="margin-top:30px">
+    <article class="card"><small>ORDERING — VERIFIED</small><h3>Rank first, sequence second</h3><p>Each `agent.list` row must carry the installed inbox’s literal rank token. Rows sort ascending by rank, then descending by `state_change_seq`. The first three become slots 0–2. Missing rank makes the source unavailable rather than triggering a local guess.</p></article>
+    <article class="card"><small>CONTENT — BOUNDED</small><h3>What can reach a tile</h3><p><strong>Title:</strong> up to 64 ASCII characters, with fallback from title token / terminal title / agent name. <strong>Discriminator:</strong> up to 32 ASCII characters, usually workspace label or repository basename. Long display strings are ellipsized.</p></article>
+  </div>
+  <div class="table-wrap" style="margin-top:22px"><table><thead><tr><th>Payload field</th><th>Meaning for design</th><th>What not to do</th></tr></thead><tbody>
+    <tr><td>slot</td><td>Fixed position 0, 1, or 2. It is a physical location, not a priority value.</td><td>Do not show a ranking number unless it helps the user understand location.</td></tr>
+    <tr><td>title</td><td>Human-facing agent title; bounded ASCII, possibly truncated.</td><td>Do not assume it is unique or stable forever.</td></tr>
+    <tr><td>discriminator</td><td>Workspace / repository cue, such as <span class="mono">lilygo-t3</span>.</td><td>Do not expose host paths or raw workspace internals.</td></tr>
+    <tr><td>state</td><td>One of empty, working, idle, blocked, finished, settled, unknown.</td><td>Do not reorder or reinterpret state priority on the device.</td></tr>
+    <tr><td>source revision</td><td>Opaque identity freshness for exact focus correlation.</td><td>It is not a user-facing progress counter by default.</td></tr>
+    <tr><td>pane / terminal / session identity</td><td>Exact target binding; invisible implementation detail unless a bounded diagnostic view needs it.</td><td>Never display raw identifiers as primary UI.</td></tr>
+  </tbody></table></div>
+  <div class="note fact" style="margin-top:22px"><strong>Empty slots are real states:</strong> the host always sends exactly three agent records. An empty slot is explicit, with no actionable identity. A designer can make it quiet, useful, or invitation-like, but it must never look focusable.</div>
+</div></section>
+
+<section id="states"><div class="wrap">
+  <div class="eyebrow">05 / STATE LANGUAGE</div><h2>State is information, not decoration.</h2>
+  <p class="lead">The current implementation has a state vocabulary and a color starting point. Treat this as a semantic contract plus a visual baseline—not as a final art direction.</p>
+  <div class="grid cols-3" style="margin-top:30px">
+    <article class="card status-card blocked"><h3><span class="dot" style="background:currentColor"></span>BLOCKED</h3><p>Inbox rank 0. The agent is blocked and deserves explicit attention.</p><small>Current cue: rose / cross geometry</small></article>
+    <article class="card status-card unseen"><h3><span class="dot" style="background:currentColor"></span>UNSEEN</h3><p>Herdr’s finished rank maps to the product label UNSEEN. This is a visible attention cue, not a new lifecycle.</p><small>Current cue: blue / filled dot</small></article>
+    <article class="card status-card working"><h3><span class="dot" style="background:currentColor"></span>WORKING</h3><p>The agent is actively working.</p><small>Current cue: amber / play-like triangle</small></article>
+    <article class="card status-card idle"><h3><span class="dot" style="background:currentColor"></span>IDLE</h3><p>The agent is idle. It may still be a valid focus target.</p><small>Current cue: green / ring</small></article>
+    <article class="card status-card settled"><h3><span class="dot" style="background:currentColor"></span>SETTLED</h3><p>Herdr’s settled state is shown distinctly; the keypad does not create or settle it.</p><small>Current cue: violet / corner mark</small></article>
+    <article class="card status-card unknown"><h3><span class="dot" style="background:currentColor"></span>UNKNOWN</h3><p>Unknown is honest uncertainty in the source state.</p><small>Current cue: violet / ring fallback</small></article>
+  </div>
+  <div class="rule"></div>
+  <h3>Source health states</h3>
+  <div class="grid cols-2" style="margin-top:16px">
+    <article class="card status-card current"><h3><span class="dot" style="background:currentColor"></span>CURRENT</h3><p>Complete authoritative data is available and the three tiles can be actionable.</p></article>
+    <article class="card status-card"><h3>EMPTY</h3><p>The authoritative source has no entries. Render explicit empty tiles, not stale ghosts.</p></article>
+    <article class="card status-card stale"><h3><span class="dot" style="background:currentColor"></span>STALE</h3><p>Previous data exists but is no longer safe to call current. Focus must be fenced.</p></article>
+    <article class="card status-card unavailable"><h3><span class="dot" style="background:currentColor"></span>UNAVAILABLE</h3><p>The source is incompatible, incomplete, or failed to supply a valid projection.</p></article>
+    <article class="card status-card offline"><h3><span class="dot" style="background:currentColor"></span>OFFLINE</h3><p>Host, Herdr, or transport connectivity is not available. Distinguish from stale cache.</p></article>
+  </div>
+  <div class="note design" style="margin-top:22px"><strong>Design opportunity:</strong> build a visual grammar where every state survives grayscale, low brightness, and glance distance. Color, label, icon geometry, edge treatment, and motion can reinforce one another.</div>
+</div></section>
+
+<section id="renders"><div class="wrap">
+  <div class="eyebrow">06 / CURRENT RENDER RECONSTRUCTION</div><h2>Rough renders of what exists today.</h2>
+  <p class="lead">These are not final design proposals or screenshots. They are compact reconstructions of the current firmware’s composition order so a designer can see the information hierarchy that must be replaced or deliberately retained.</p>
+  <div class="note fact" style="margin-top:22px"><strong>Current geometry:</strong> top rail around y=4; title around y=14; discriminator around y=30; state label around y=56; central state cue around (64,62); footer/action hint around y=104. The current renderer clears a shared 128 × 128 buffer, draws the whole tile, then flushes once.</div>
+  <div class="rough-wrap">
+    <div class="rough working"><div class="rbar"></div><div class="rtitle">Implement the sync renderer</div><div class="rdisc">lilygo-t3</div><div class="rglyph">▶</div><div class="rstate">WORKING</div><div class="rfoot">PRESS TO FOCUS</div></div>
+    <div class="rough idle"><div class="rbar"></div><div class="rtitle">Review the device surface</div><div class="rdisc">herdr-keypad</div><div class="rglyph">○</div><div class="rstate">IDLE</div><div class="rfoot">PRESS TO FOCUS</div></div>
+    <div class="rough unseen"><div class="rbar"></div><div class="rtitle">Finished agent session</div><div class="rdisc">workspace</div><div class="rglyph">●</div><div class="rstate">UNSEEN</div><div class="rfoot">PRESS TO FOCUS</div></div>
+    <div class="rough blocked"><div class="rbar"></div><div class="rtitle">Needs a decision</div><div class="rdisc">repo-name</div><div class="rglyph">×</div><div class="rstate">BLOCKED</div><div class="rfoot">PRESS TO FOCUS</div></div>
+    <div class="rough settled"><div class="rbar"></div><div class="rtitle">Quiet completed work</div><div class="rdisc">workspace</div><div class="rglyph">⌜</div><div class="rstate">SETTLED</div><div class="rfoot">PRESS TO FOCUS</div></div>
+    <div class="rough unknown"><div class="rbar"></div><div class="rtitle">Agent state unclear</div><div class="rdisc">NO WORKSPACE</div><div class="rglyph">?</div><div class="rstate">UNKNOWN</div><div class="rfoot">PRESS TO FOCUS</div></div>
+    <div class="rough pending"><div class="rbar"></div><div class="rtitle">Implement the sync renderer</div><div class="rdisc">lilygo-t3</div><div class="rglyph">↗</div><div class="rstate">PENDING</div><div class="rfoot">REQUEST IN FLIGHT</div></div>
+    <div class="rough focused"><div class="rbar"></div><div class="rtitle">Implement the sync renderer</div><div class="rdisc">lilygo-t3</div><div class="rglyph">✓</div><div class="rstate">FOCUSED</div><div class="rfoot">RESTORING STATE</div></div>
+    <div class="rough error"><div class="rbar"></div><div class="rtitle">Target is no longer current</div><div class="rdisc">lilygo-t3</div><div class="rglyph">×</div><div class="rstate">STALE</div><div class="rfoot">FOCUS DISABLED</div></div>
+    <div class="rough sync"><div class="rbar"></div><div class="rtitle">Generation replacement</div><div class="rdisc">all panels</div><div class="rglyph">∿</div><div class="rstate">SYNC</div><div class="rfoot">UPDATING</div></div>
+  </div>
+  <div class="grid cols-2" style="margin-top:24px">
+    <article class="card"><small>WHAT THE CODE CURRENTLY DOES</small><h3>Stable information skeleton</h3><p>Every occupied tile has a title, discriminator, state label, central geometry, and a bottom action hint. Empty tiles say <span class="mono">NO AGENT</span>. Sync uses a full-panel <span class="mono">SYNC / UPDATING</span> veil. Feedback temporarily overrides the state label with <span class="mono">PENDING</span>, <span class="mono">FOCUSED</span>, or a failure state.</p></article>
+    <article class="card"><small>WHAT YOU MAY REPLACE</small><h3>Almost everything visual</h3><p>You can replace the rail, glyphs, copy, type scale, footer, state placement, title treatment, and transition behavior. Preserve only the truthful meanings, the fixed physical slots, and the ability to understand the state without color alone.</p></article>
+  </div>
+  <div class="card" style="margin-top:18px"><small>AVAILABLE BUT NOT PRODUCT UI</small><h3>Temporary bring-up screens</h3><p>The firmware also contains a physical qualification renderer for the whole board: <span class="mono">WAIT</span>, <span class="mono">MAP</span>, <span class="mono">PRESS</span>, <span class="mono">TURN CW</span>, <span class="mono">TURN CCW</span>, <span class="mono">ENC CLICK</span>, <span class="mono">BRIGHTNESS</span>, <span class="mono">PAIR</span>, <span class="mono">PASS</span>, <span class="mono">FAIL</span>, and <span class="mono">LINK LOST</span>. These are implementation assets and physical-test vocabulary, not an accepted product information architecture. They may be useful reference material for diagnostics or recovery design.</p></div>
+</div></section>
+<section id="feedback"><div class="wrap">
+  <div class="eyebrow">07 / PRESS FEEDBACK</div><h2>A press is a tiny state machine.</h2>
+  <p class="lead">A key press never means “mark done.” It means “request focus for the exact pane represented here.” The device gives immediate local feedback, then accepts the host result only when identity and generation match.</p>
+  <div class="screen-grid">
+    <div class="mini-screen"><div class="bar" style="background:var(--cyan)"></div><div class="bigstate pending">PENDING</div><p>Request in flight.</p><div class="foot">temporary / actionable held</div></div>
+    <div class="mini-screen"><div class="bar" style="background:var(--lime)"></div><div class="bigstate focused">FOCUSED</div><p>Herdr acknowledged exact focus.</p><div class="foot">success / returns to state</div></div>
+    <div class="mini-screen"><div class="bar" style="background:var(--red)"></div><div class="bigstate rejected">REJECTED</div><p>Response did not meet the contract.</p><div class="foot">not a retry affordance</div></div>
+    <div class="mini-screen"><div class="bar" style="background:var(--red)"></div><div class="bigstate vanished">VANISHED</div><p>Target left the current source.</p><div class="foot">not focusable</div></div>
+    <div class="mini-screen"><div class="bar" style="background:var(--amber)"></div><div class="bigstate working">UNCERTAIN</div><p>Timeout or ambiguous host result.</p><div class="foot">do not claim success</div></div>
+    <div class="mini-screen"><div class="bar" style="background:var(--red)"></div><div class="bigstate offline">OFFLINE</div><p>Host/source is not current.</p><div class="foot">stale distinction required</div></div>
+    <div class="mini-screen"><div class="bar" style="background:var(--red)"></div><div class="bigstate stale">STALE</div><p>Generation changed or is old.</p><div class="foot">old identity fenced</div></div>
+    <div class="mini-screen"><div class="bar" style="background:var(--red)"></div><div class="bigstate failed">FAILED</div><p>Known operation failure.</p><div class="foot">not a success state</div></div>
+    <div class="mini-screen"><div class="bar" style="background:var(--violet)"></div><div class="bigstate">DISABLED</div><p>Syncing, empty, or unavailable.</p><div class="foot">key must not act</div></div>
+  </div>
+  <div class="grid cols-2" style="margin-top:24px">
+    <article class="card"><small>ALLOWED</small><h3>Focus-only</h3><p>The only host write is <span class="mono">agent.focus</span> for the exact displayed pane. Herdr may naturally update seen/manual-unread state as a side effect.</p></article>
+    <article class="card"><small>FORBIDDEN</small><h3>No hidden triage</h3><p>No settle, dismiss, acknowledge, clear, reply, approve, or arbitrary command. No optimistic success. No replay after reconnect.</p></article>
+  </div>
+</div></section>
+
+<section id="leds"><div class="wrap">
+  <div class="eyebrow">08 / THE LIGHT FIELD</div><h2>Fourteen lights, no assigned language yet.</h2>
+  <p class="lead">The board exposes 14 WS2812C RGB LEDs driven by the STM32 co-processor. The API supports HSV hue 0–360, saturation 0–100, brightness 0–100, and a 14-bit LED mask.</p>
+  <div class="grid cols-2" style="margin-top:30px">
+    <article class="card"><small>WHAT EXISTS</small><h3>Hardware and control</h3><p>Per-LED selection is available. Firmware has a board adapter seam for <span class="mono">setLeds(hue, saturation, brightness, ledMask)</span>. The user-facing mask convention is bit 0 = LED1 through bit 13 = LED14. The verified bring-up utility can switch all LEDs off, all on, or address individual LEDs.</p><div class="swatches"><span class="swatch"><i style="background:#22d3ee"></i>HSV paint</span><span class="swatch"><i style="background:#f7768e"></i>14-bit mask</span><span class="swatch"><i style="background:#e0af68"></i>shared rail</span></div></article>
+    <article class="card"><small>PHYSICAL MAP — AUTHORITATIVE</small><h3>Index and position are now known</h3><p>The 0-based index map below is the physical design reference. The five backlights beneath KEY1–KEY4 and the encoder are part of the same 14-pixel chain; the other nine positions are above/between the controls.</p><div class="note fact" style="margin-top:15px"><strong>Important:</strong> code-facing index 0 corresponds to hardware label LED1. Do not shift the table by one when designing mask tests.</div></article>
+  </div>
+  <div class="led-map"><div class="label">serial strip order · physical top-side placement</div><div class="led-row"><span class="led-node">0</span><span class="led-node">1</span><span class="led-node">2</span><span class="led-node">3</span><span class="led-node">4</span><span class="led-node">5</span><span class="led-node">6</span><span class="led-node">7</span><span class="led-node">8</span><span class="led-node">9</span><span class="led-node">10</span><span class="led-node">11</span><span class="led-node">12</span><span class="led-node">13</span></div><div class="led-caption">The strip alternates top-side accent positions with the backlight pixel behind each control. The encoder is the fifth button position beside screen 4 and has no display of its own.</div></div>
+  <div class="table-wrap" style="margin-top:18px"><table><thead><tr><th>Code index</th><th>Hardware label</th><th>Physical position</th><th>Design role</th></tr></thead><tbody>
+    <tr><td>0</td><td>LED1</td><td>Above key 1</td><td>Top accent / between-board light</td></tr>
+    <tr><td>1</td><td>LED2</td><td>Behind / backlight of key 1</td><td>Key 1 backlight</td></tr>
+    <tr><td>2</td><td>LED3</td><td>Above, between keys 1 and 2</td><td>Inter-key accent</td></tr>
+    <tr><td>3</td><td>LED4</td><td>Above key 2</td><td>Top accent / between-board light</td></tr>
+    <tr><td>4</td><td>LED5</td><td>Behind / backlight of key 2</td><td>Key 2 backlight</td></tr>
+    <tr><td>5</td><td>LED6</td><td>Above, between keys 2 and 3</td><td>Inter-key accent</td></tr>
+    <tr><td>6</td><td>LED7</td><td>Above key 3</td><td>Top accent / between-board light</td></tr>
+    <tr><td>7</td><td>LED8</td><td>Behind / backlight of key 3</td><td>Key 3 backlight</td></tr>
+    <tr><td>8</td><td>LED9</td><td>Above, between keys 3 and 4</td><td>Inter-key accent</td></tr>
+    <tr><td>9</td><td>LED10</td><td>Above key 4</td><td>Top accent / between-board light</td></tr>
+    <tr><td>10</td><td>LED11</td><td>Behind / backlight of key 4</td><td>Key 4 backlight</td></tr>
+    <tr><td>11</td><td>LED12</td><td>Above, between key 4 and the encoder</td><td>Key/encoder interstitial accent</td></tr>
+    <tr><td>12</td><td>LED13</td><td>Above the encoder</td><td>Encoder accent</td></tr>
+    <tr><td>13</td><td>LED14</td><td>Behind / backlight of the encoder</td><td>Encoder backlight</td></tr>
+  </tbody></table></div>
+  <div class="note fact" style="margin-top:18px"><strong>Updated physical truth:</strong> the LEDs are not one undifferentiated row above the keys. There are five control backlights, four above-control accents, four inter-control accents, and one accent above the encoder, all in one serial strip.</div>
+  <div class="table-wrap" style="margin-top:22px"><table><thead><tr><th>Possible grammar</th><th>Why it could work</th><th>Risk to resolve</th></tr></thead><tbody>
+    <tr><td>One light per agent slot</td><td>Immediate association with the three direct keys.</td><td>Fourteenth/unused LEDs need a calm role; physical mapping must be obvious.</td></tr>
+    <tr><td>Global edge / health signal</td><td>Lets displays stay quiet while the object communicates link or freshness.</td><td>Can become ambiguous if health competes with agent urgency.</td></tr>
+    <tr><td>Press pulse only</td><td>Physical confirmation without persistent attention noise.</td><td>Does not help the user find a blocked or unseen agent from across the desk.</td></tr>
+    <tr><td>Usage / Codex indicator</td><td>Extends panel 4 into the physical light field.</td><td>Quota semantics must remain truthful and independently fresh.</td></tr>
+  </tbody></table></div>
+  <div class="note" style="margin-top:22px"><strong>Power constraint:</strong> the board library warns that chained boards at full LED brightness can exceed the USB rail. Even on one host board, prefer restrained brightness, avoid high-duty persistent white, and design a graceful dim mode.</div>
+</div></section>
+
+<section id="usage"><div class="wrap">
+  <div class="eyebrow">09 / USAGE AND MENU SURFACES</div><h2>The fourth panel is a promise, not a finished screen.</h2>
+  <p class="lead">Phase 3 owns the Codex usage tile and encoder menu. The requirements are known; the layout, interaction choreography, typography, and visual hierarchy are open for you to propose.</p>
+  <div class="grid cols-2" style="margin-top:30px">
+    <article class="card"><span class="badge future">planned</span><h3>Panel 4 · Codex usage</h3><p>Dedicated, read-only surface. Show both primary and secondary subscription-window percentages whenever the installed account supplies them; nearest relevant reset; reached-limit state; and observation age.</p><div class="rule"></div><p><strong>Never infer:</strong> missing/null is unavailable, not 0%. A provider reset timestamp is not observation freshness. API-key auth is not ChatGPT subscription quota.</p></article>
+    <article class="card"><span class="badge future">planned</span><h3>Encoder menu</h3><p>Encoder click opens/closes a secondary menu. Agent keys remain direct and non-modal while the menu is open. Menu candidates: link health, Herdr health, Codex health, last full sync, last Codex observation, bounded troubleshooting IDs, firmware/protocol versions, and brightness.</p><div class="rule"></div><p><strong>Brightness:</strong> should persist independently of inbox bindings, order, identity, and focus semantics.</p></article>
+  </div>
+  <h3 style="margin-top:38px">Usage data vocabulary available to the host</h3>
+  <div class="table-wrap" style="margin-top:15px"><table><thead><tr><th>Data</th><th>Meaning</th><th>Honest rendering rule</th></tr></thead><tbody>
+    <tr><td>primary / secondary</td><td>Optional nullable rate-limit windows.</td><td>Render supplied <span class="mono">usedPercent</span>; absent/null is UNAVAILABLE.</td></tr>
+    <tr><td>resetsAt</td><td>Provider quota reset time, Unix seconds.</td><td>Show a reset countdown only when supplied. Do not use it as observation age.</td></tr>
+    <tr><td>rateLimitReachedType</td><td>Optional reason a limit was reached.</td><td>Show reached only when supplied; null is unknown, not “not reached.”</td></tr>
+    <tr><td>planType</td><td>Optional bounded plan label, e.g. prolite.</td><td>Show only when supplied; never derive from percentage.</td></tr>
+    <tr><td>credits / spend control</td><td>Optional monthly or credit details.</td><td>Keep separate from primary/secondary windows; never guess balances.</td></tr>
+    <tr><td>observation age</td><td>Bridge-owned time since a complete read succeeded.</td><td>Must remain independent from provider reset timing.</td></tr>
+    <tr><td>freshness status</td><td>current, stale, unavailable, authentication-failed, host-offline.</td><td>Each needs a visibly distinct treatment; cached values must carry stale/offline truth.</td></tr>
+  </tbody></table></div>
+  <div class="note open" style="margin-top:22px"><strong>Research caveat:</strong> the installed authenticated Codex app-server accepted <span class="mono">account/rateLimits/read</span> but did not return quota values during a bounded 90-second probe. The schema is known; real backend availability is not. Design the unavailable/auth/offline states as first-class, not as edge cases.</div>
+</div></section>
+
+<section id="freedom"><div class="wrap">
+  <div class="eyebrow">10 / DESIGN SPACE</div><h2>Choose a language. Keep the invariants.</h2>
+  <p class="lead">The current screen is a functional reference, not a mandate. The source exposes more information than the device currently uses; the visual system can be radically different if it remains legible, truthful, and fast.</p>
+  <div class="grid cols-3" style="margin-top:30px">
+    <article class="card"><small>AVAILABLE MATERIAL</small><h3>Hierarchy</h3><p>Title-first, state-first, urgency-first, edge-first, icon-first, or a spatial composition that makes the physical key relationship obvious.</p></article>
+    <article class="card"><small>AVAILABLE MATERIAL</small><h3>Expression</h3><p>Color palette, icon geometry, type scale, density, borders, texture, animation, LED choreography, and the relationship between display and light.</p></article>
+    <article class="card"><small>AVAILABLE MATERIAL</small><h3>Modes</h3><p>Calm idle, attention, transition, usage, diagnostics, and recovery surfaces can share one language or become deliberately distinct.</p></article>
+  </div>
+  <div class="grid cols-2" style="margin-top:18px">
+    <article class="card"><small>DO NOT CHANGE</small><h3>Product invariants</h3><div class="callout"><div class="num">A</div><p><strong>Direct agent keys.</strong> The three agent choices must remain one physical press away, even when the encoder menu is open.</p></div><div class="callout"><div class="num">B</div><p><strong>Installed order.</strong> The keypad mirrors Herdr’s inbox order; it does not invent or reprioritize the lifecycle.</p></div><div class="callout"><div class="num">C</div><p><strong>Focus only.</strong> A press changes pane focus. It must not settle, dismiss, reply, approve, or acknowledge.</p></div><div class="callout"><div class="num">D</div><p><strong>Truthful absence.</strong> Current, stale, unavailable, offline, and unknown must be distinguishable.</p></div></article>
+    <article class="card"><small>DESIGN REVIEW QUESTIONS</small><h3>Bring answers, not screenshots alone</h3><div class="callout"><div class="num">01</div><p>Can a user tell which physical key activates a tile in under one second?</p></div><div class="callout"><div class="num">02</div><p>Can a color-blind user distinguish blocked, working, idle, unseen, stale, and offline?</p></div><div class="callout"><div class="num">03</div><p>What does the object communicate when no data is current?</p></div><div class="callout"><div class="num">04</div><p>How do LEDs reinforce the displays without becoming a second competing dashboard?</p></div><div class="callout"><div class="num">05</div><p>What is the quietest useful state? What is the most urgent state? How far apart do they feel?</p></div></article>
+  </div>
+  <h3 style="margin-top:38px">Current visual baseline — for comparison</h3>
+  <div class="swatches"><span class="swatch"><i style="background:#0b0f14"></i>#0B0F14 background</span><span class="swatch"><i style="background:#1f2937"></i>#1F2937 secondary</span><span class="swatch"><i style="background:#22d3ee"></i>#22D3EE pending/accent</span><span class="swatch"><i style="background:#f8fafc"></i>#F8FAFC primary</span><span class="swatch"><i style="background:#cbd5e1"></i>#CBD5E1 metadata</span><span class="swatch"><i style="background:#ef4444"></i>#EF4444 failure</span><span class="swatch"><i style="background:#f7768e"></i>#F7768E blocked</span><span class="swatch"><i style="background:#7dcfff"></i>#7DCFFF unseen</span><span class="swatch"><i style="background:#e0af68"></i>#E0AF68 working</span><span class="swatch"><i style="background:#9ece6a"></i>#9ECE6A idle</span><span class="swatch"><i style="background:#565f89"></i>#565F89 settled/unknown</span></div>
+  <div class="code" style="margin-top:22px"><span class="keyc">agent tile</span> = title + discriminator + state cue + action hint
+<span class="keyc">source status</span> = current | empty | stale | unavailable | offline
+<span class="keyc">focus feedback</span> = pending → focused | rejected | stale | vanished | offline | uncertain | failed
+<span class="keyc">usage tile</span> = primary + secondary + reset + reached + observation age + health
+<span class="keyc">menu</span> = encoder-owned, secondary, never blocking agent keys</div>
+</div></section>
+
+<section id="sources"><div class="wrap">
+  <div class="eyebrow">11 / HANDOFF NOTES</div><h2>What this packet is grounded in.</h2>
+  <p class="lead">This is a design handoff, not a source-code scavenger hunt. The facts below are the contracts a visual proposal should respect.</p>
+  <div class="grid cols-2" style="margin-top:30px">
+    <article class="card"><small>LOCAL PRODUCT SOURCES</small><p><span class="mono">AGENTS.md</span> — product goal and constraints<br><span class="mono">firmware/src/app/agent_projection.cpp</span> — current tile states, feedback, colors, layout baseline<br><span class="mono">firmware/src/board/physical_map.h</span> — delivered hardware mapping and LED/key counts<br><span class="mono">firmware/src/board/board_adapter.h</span> — display, key, encoder, brightness, LED seams<br><span class="mono">host/herdr_keypad/src/herdr_keypad/projection.py</span> — ordering and normalized fields<br><span class="mono">protocol/schema/v2.json</span> — bounded device payload contract</p></article>
+    <article class="card"><small>PLANNING + HARDWARE SOURCES</small><p><span class="mono">.planning/ROADMAP.md</span> — Phase 3 usage/menu requirements<br><span class="mono">.planning/phases/03-*/03-RESEARCH.md</span> — installed Codex schema and freshness rules<br><span class="mono">artifacts/phase2/automated-acceptance.json</span> — selected-device focus behavior<br><span class="mono">artifacts/phase2.1/live-sync-smoke.json</span> — live generation and metric evidence<br><span class="mono">.planning/STATE.md</span> — phase boundary and deferred work<br><br><a href="https://github.com/Xinyuan-LilyGO/T-Keyboard-S3-Pro">LILYGO hardware README</a> — product photos and board description<br><a href="https://github.com/Xinyuan-LilyGO/T-Keyboard-S3-Pro/blob/master/project/SCH_T-Keyboard-S3-Pro_Keyboard_V1.1.pdf">Keyboard schematic</a> — LED1…LED14 serial chain and key/encoder wiring<br><a href="https://github.com/Xinyuan-LilyGO/T-Keyboard-S3-Pro-Library/blob/master/README.md">Board library README</a> — LED mask/API and display/key abstractions</p></article>
+  </div>
+  <div class="note fact" style="margin-top:22px"><strong>Packet reading rule:</strong> “verified” means the current implementation or accepted hardware evidence supports it. “planned” means the product requirement exists but the screen is not implemented. “open” means a designer should propose and test it rather than infer it from code.</div>
+</div></section>
+</main>
+<footer class="wrap footer"><strong>Herdr Agent Keypad</strong> · designer packet · prepared from the current v1 implementation boundary.<br><span class="stamp">Next design input: agent tile language, panel 4 usage composition, menu information architecture, and a restrained LED grammar.</span></footer>
+</body>
+</html>
