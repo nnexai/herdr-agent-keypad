@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 01
-current_phase_name: physical-keypad-and-proven-transport
+current_phase: 03
+current_phase_name: truthful-codex-capacity-and-device-menu
 status: ready
-stopped_at: Completed 02-03-PLAN.md (02-04 intentionally not executed)
-last_updated: "2026-08-17T09:05:06.151Z"
+stopped_at: Completed Phase 2 actual-device acceptance
+last_updated: "2026-08-17T13:20:00+02:00"
 last_activity: 2026-08-17
-last_activity_desc: Phase 01 scoped USB qualification, selection, build, and archive completed
+last_activity_desc: Phase 2 selected-USB snapshot, rendering, exact focus, and physical feedback accepted
 progress:
-  total_phases: 3
+  total_phases: 4
   completed_phases: 2
   total_plans: 18
   completed_plans: 18
@@ -23,7 +23,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-16)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 01 — physical-keypad-and-proven-transport
+**Current focus:** Phase 03 — truthful-codex-capacity-and-device-menu
 
 ## Current Position
 
@@ -105,6 +105,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Installed Herdr HEAD 78b243279b4da55150b58dc2cc3cffcdc2fd6a04 remains the only accepted ordering authority; malformed rank or identity fails closed.
 - [Phase ?]: Physical keys 0..2 are exact generation-bound focus-only actions; panel/key 4 and encoder remain unbound.
 - [Phase ?]: Firmware renders a global SYNC veil before sequential three-panel staging and commits active bindings only after all draws succeed.
+- [Phase 2]: Actual-device acceptance passed on the exact selected-USB keypad: complete snapshot acknowledgement, explicit empty rejection, exact target focus, terminal FOCUSED feedback, and authoritative state restoration are verified by commits `db323fe`, `b3f172e`, and `8a6d557`.
 
 ### Pending Todos
 
@@ -113,10 +114,8 @@ None yet.
 ### Blockers/Concerns
 
 - [Phase 1]: Complete under the current-setup scope. Endpoint renumbering and self-restarting the active qualification utility are explicitly non-applicable and remain excluded from the archived profile.
-- [Phase 2]: Installed Herdr schema, supported order seam, stable pane identity, and exact native focus effects require mandatory research before live focus acceptance.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
-- 02-04 halted at Task 3: connected selected USB endpoint did not acknowledge the v2 agent_snapshot within bounded smoke; physical three-tile/focus verification remains pending and must not be overclaimed.
 
 ## Deferred Items
 

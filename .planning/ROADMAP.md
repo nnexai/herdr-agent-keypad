@@ -9,7 +9,7 @@ Herdr Agent Keypad reaches its first usable release through four vertical, real-
 **Phase Numbering:** Sequential integer phases are planned milestone work; decimal phases are reserved for urgent insertions.
 
 - [x] **Phase 1: Physical Keypad and Proven Transport** - The connected unit has a verified physical map and a scoped, reliable, bounded USB host link.
-- [ ] **Phase 2: Authoritative Agent Projection and Exact Focus** - Three keys mirror the installed inbox and focus only the exact rendered target with truthful outcomes.
+- [x] **Phase 2: Authoritative Agent Projection and Exact Focus** - Three keys mirror the installed inbox and focus only the exact rendered target with truthful outcomes.
 - [ ] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness.
 - [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
 
@@ -102,7 +102,7 @@ Plans:
   4. Empty, stale, vanished, incompatible, offline, or reassigned bindings reject visibly; sequential panel updates never pair one generation's pixels with another generation's action.
   5. A keypad press can request only typed focus: documented native seen/manual-unread effects may occur, while settle, dismiss, reply, approval, and arbitrary Herdr or host actions remain impossible.
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 
@@ -110,7 +110,7 @@ Plans:
 - [x] 02-01-PLAN.md
 - [x] 02-02-PLAN.md
 - [x] 02-03-PLAN.md
-- [ ] 02-04-PLAN.md
+- [x] 02-04-PLAN.md
 
 - [x] 02-01: TBD during phase planning
 

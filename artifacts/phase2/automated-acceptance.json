@@ -1,27 +1,33 @@
 {
   "kind": "phase2-automated-acceptance",
   "observed": {
-    "error": "The connected keypad does not match the paired device. Reconnect the paired keypad.",
-    "focus_invoked": false,
-    "mode": "selected-usb-snapshot-ack",
-    "physical_press_observed": false,
-    "snapshot_acknowledged": false
+    "empty_position_rejected": true,
+    "error": null,
+    "focus_feedback": ["pending", "focused", "blocked"],
+    "focus_invoked": true,
+    "focused": true,
+    "mode": "selected-usb-snapshot-and-physical-focus",
+    "physical_press_observed": true,
+    "snapshot_acknowledged": true,
+    "startup_wait_idle_observed": true,
+    "target_switched": true
   },
   "schema_version": 1,
   "snapshot": {
-    "host_epoch": "host-411863-1786957551",
+    "host_epoch": "host-439613-1786964054",
     "slots": 3,
     "snapshot_revision": 3,
-    "source_status": "offline"
+    "source_status": "current"
   },
   "source": {
     "contract_sha256": "8e82dd3ecebeca84ef1f84ef39da8b54e50f4439bc0002e28fcb594d0460fb52",
     "effects_sha256": "2b6cabf0103fdd45cd57cefe4ce8911470c00cecc82960c3caf0f6e97b1a6a95",
-    "firmware_binary_sha256": "af0f9a98d0a197e9ab5615d2201609997f50488795d8a1c44dbce5ec559f0c80",
+    "firmware_binary_sha256": "8984944ecfab0a040d1850757b52f14cb40d889d18daa0f0e902d65c0b463984",
     "firmware_lock_sha256": "b82f7c0fcd0b24f317ae4da83ca85fc182f7ce26656b874193f87a4d30abce49",
     "fixture_sha256": "3f484eca9af624f8ca5e88221a265df0a7bb5e52677a33b5b143eae2c214821c",
     "herdr_version": "0.8.0",
     "plugin_revision": "78b243279b4da55150b58dc2cc3cffcdc2fd6a04",
-    "schema_sha256": "214eb9bcd0096b3ba85ef26522047b9adeac6c0e57789e0d5929f6492898b269"
+    "schema_sha256": "214eb9bcd0096b3ba85ef26522047b9adeac6c0e57789e0d5929f6492898b269",
+    "fix_commits": ["db323fe", "b3f172e", "8a6d557"]
   }
 }

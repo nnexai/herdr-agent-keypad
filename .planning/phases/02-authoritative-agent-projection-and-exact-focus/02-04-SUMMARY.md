@@ -2,7 +2,7 @@
 phase: 02-authoritative-agent-projection-and-exact-focus
 plan: 04
 subsystem: herdr-plugin-usb-integration
-status: halted
+status: complete
 tags: [herdr, plugin, usb, bridge, focus, acceptance]
 requires:
   - phase: 02-authoritative-agent-projection-and-exact-focus
@@ -65,7 +65,7 @@ completed: 2026-08-17
 
 # Phase 2 Plan 04: Permanent Herdr plugin and exact USB bridge Summary
 
-**Startup-only herdr-keypad packaging now owns one exact paired USB session and preserves the public Herdr/focus-only seams; final device acknowledgement and physical focus remain blocked at the required human checkpoint.**
+**Startup-only herdr-keypad packaging owns one exact paired USB session, restores the four-panel startup surface, acknowledges complete v2 snapshots, and focuses only the exact rendered Herdr target with correlated physical feedback.**
 
 ## Accomplishments
 
@@ -80,16 +80,17 @@ completed: 2026-08-17
 
 1. **Task 1: Start one permanent bridge over the exact paired selected-USB session** - `61a6cdf`
 2. **Task 2: Prove the complete focus-only product contract with bounded integration and actual-device smoke** - `90fca6a`, `a08bd2a`, `6292f4d`
-3. **Task 3: Verify the delivered three-tile projection and exact physical focus** - blocked at human checkpoint; no source commit
+3. **Task 3: Verify the delivered three-tile projection and exact physical focus** - `db323fe`, `b3f172e`, `8a6d557`
 
 ## Verification Evidence
 
-- `PYTHONPATH=host/herdr_keypad/src:tools/phase1_bringup/src ... -m unittest host.herdr_keypad.tests.test_protocol host.herdr_keypad.tests.test_projection host.herdr_keypad.tests.test_focus host.herdr_keypad.tests.test_integration` — **19 tests passed**.
+- `PYTHONPATH=host/herdr_keypad/src:tools/phase1_bringup/src ... -m unittest host.herdr_keypad.tests.test_protocol host.herdr_keypad.tests.test_projection host.herdr_keypad.tests.test_focus host.herdr_keypad.tests.test_integration` — **21 tests passed**.
 - `sh -n host/herdr_keypad/scripts/ensure-bridge.sh` and TOML manifest parse/restriction assertions — **passed**.
-- `tools/phase1_bringup/.venv/bin/pio run -e selected-usb` — **passed**.
-- `... -m herdr_keypad --inspect --binding /home/nnex/.config/herdr/keypad-binding.json --timeout 5` — **passed**, reporting source current, one host epoch/revision, and fixed positions 1–3.
+- `tools/phase1_bringup/.venv/bin/pio run -e selected-usb` — **passed**; image SHA-256 `8984944ecfab0a040d1850757b52f14cb40d889d18daa0f0e902d65c0b463984` was flashed and verified on the exact paired ESP32-S3.
+- `... -m herdr_keypad --inspect --binding /home/nnex/.config/herdr/keypad-binding.json --timeout 5` — **passed**, reporting source current and fixed positions 1–3.
 - `... -m herdr_keypad --smoke-ui-bounds --evidence /tmp/herdr-keypad-ui-evidence.json` — **passed** without invoking focus.
-- `... -m herdr_keypad --smoke ... --timeout 5` — **did not pass**: the connected USB endpoint timed out waiting for `agent_snapshot` acknowledgement (an earlier attempt also rejected a nonmatching application identity). `artifacts/phase2/automated-acceptance.json` records `snapshot_acknowledged: false`, `physical_press_observed: false`, and the source/schema/fixture/firmware-lock hashes; it makes no physical or focus claim.
+- `... -m herdr_keypad --smoke ... --timeout 8` — **passed**, reporting `snapshot acknowledged` for one current three-slot generation.
+- Physical acceptance — **passed**: startup WAIT/IDLE returned, empty position 2 rejected safely, occupied position 1 showed PENDING, switched to the exact target tab, showed terminal FOCUSED feedback, then restored its authoritative BLOCKED state.
 
 ## Deviations from Plan
 
@@ -111,28 +112,28 @@ completed: 2026-08-17
 - **Verification:** 19-test focused host suite and live inspect passed.
 - **Committed in:** `90fca6a`
 
-**3. [Rule 3 - Blocking] Recorded actual-device v2 acknowledgement failure without overclaiming**
-- **Found during:** Task 2 selected-device smoke
-- **Issue:** The connected endpoint did not return a v2 `snapshot_ack` within the bounded timeout; the required physical verification cannot be inferred from host tests.
-- **Fix:** Smoke evidence is written atomically with `snapshot_acknowledged: false` and bounded error metadata; no focus or physical claim is recorded.
-- **Files modified:** `artifacts/phase2/automated-acceptance.json`
-- **Verification:** Artifact reopens and contains contract/effects/schema/fixture/firmware-lock hashes.
-- **Committed in:** `a08bd2a`
+**3. [Rule 1 - Bug] Repaired the selected-USB startup, v2 acknowledgement, and stale focus rebind path**
+- **Found during:** Task 3 actual-device acceptance
+- **Issue:** Startup cleared all panels instead of rendering WAIT; HWCDC truncated valid v2 snapshots; device response digests used noncanonical payload order; the bridge used obsolete Herdr subscription parameters and never rebound an advanced AgentInfo source revision.
+- **Fix:** Restore WAIT rendering, size HWCDC RX to the protocol line bound, canonicalize device payloads, use installed typed subscriptions, and publish a complete fresh generation after an exact source-revision rejection.
+- **Files modified:** `firmware/src/main.cpp`, `firmware/src/app/agent_projection.cpp`, `firmware/src/transport/link.h`, `firmware/src/transport/usb_cdc.cpp`, `host/herdr_keypad/src/herdr_keypad/herdr.py`, `host/herdr_keypad/src/herdr_keypad/bridge.py`, `host/herdr_keypad/tests/test_integration.py`
+- **Verification:** Selected-usb build/flash, live snapshot acknowledgement, 21 host tests, raw physical focus-intent capture, accepted `agent.focus` with `focused=true`, and user-observed terminal feedback.
+- **Committed in:** `db323fe`, `b3f172e`, `8a6d557`
 
 ## Known Stubs
 
-None in the implementation. The actual-device acknowledgement is an unmet verification result, not a stub; it is tracked as the blocking human checkpoint below.
+None.
 
-## Checkpoint / Blocker
+## Human Acceptance
 
-The required Task 3 human verification cannot be marked approved in this execution: the connected USB endpoint did not acknowledge the v2 complete snapshot, so no physical pixel correspondence or focus-only physical press was attempted. Keep the paired keypad on the selected USB link, ensure the Phase 2 v2 firmware is the delivered image, then rerun the bounded smoke and complete the plan's eight physical verification steps. Do not alter the stored binding or broaden transport/actions.
+The required Task 3 physical checkpoint passed on the exact paired selected-USB keypad. The user observed restored WAIT/IDLE startup tiles, safe rejection on empty position 2, and position 1 transitioning PENDING → FOCUSED while Herdr switched to the exact target tab, then returning to the target's authoritative BLOCKED tile after the existing two-second terminal feedback hold.
 
 ## Next Phase Readiness
 
-Host packaging, exact USB selection, public Herdr bootstrap, focus-only allowlist, integration checks, selected-usb build, and bounded evidence are ready. Phase 2 remains halted until the human physical checkpoint observes snapshot acknowledgement, three-tile rendering, pending-then-exact focus, and all negative result states.
+Phase 2 is complete. Host packaging, exact USB selection, public Herdr bootstrap, typed subscriptions, complete snapshot acknowledgement, stale-generation rebind, focus-only allowlisting, and actual-device focus feedback are verified. Phase 3 may consume this projection without widening transport or action authority.
 
 ---
 *Phase: 02-authoritative-agent-projection-and-exact-focus*
 *Plan: 04*
-*Status: halted*
+*Status: complete*
 *Completed: 2026-08-17*
