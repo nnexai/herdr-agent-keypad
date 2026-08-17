@@ -63,6 +63,14 @@ class ProjectionTests(unittest.TestCase):
         self.assertEqual(fresh.entries[0].identity.pane_id, "p2")
         self.assertIsNotNone(projection.binding(0))
 
+    def test_equal_normalized_refresh_reuses_revision(self):
+        projection = InboxProjection(host_epoch="epoch")
+        rows = [row("p1", "0", 1)]
+        first = projection.refresh(rows)
+        second = projection.refresh(list(rows))
+        self.assertIs(first, second)
+        self.assertEqual(first.snapshot_revision, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

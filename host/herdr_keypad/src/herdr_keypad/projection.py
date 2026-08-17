@@ -112,7 +112,7 @@ class InboxProjection:
         self.snapshot_revision = 0
         self.current: ProjectionSnapshot | None = None
         self._last_entries: tuple[ProjectedEntry, ...] = tuple(ProjectedEntry.empty(i) for i in range(MAX_SLOTS))
-
+        self._last_projection_key: tuple[Any, ...] | None = None
     def _workspace_labels(self, workspaces: Iterable[Mapping[str, Any]]) -> dict[str, str]:
         labels: dict[str, str] = {}
         for workspace in workspaces:
@@ -185,11 +185,15 @@ class InboxProjection:
         ) + tuple(ProjectedEntry.empty(index) for index in range(len(normalized), MAX_SLOTS))
         if len(entries) != MAX_SLOTS:
             raise ProjectionUnavailable("projection did not produce fixed positions")
+        projection_key = (entries, source_status, self.plugin_revision, self.schema_version)
+        if self.current is not None and projection_key == self._last_projection_key:
+            return self.current
         self.snapshot_revision += 1
         snapshot = ProjectionSnapshot(self.host_epoch, self.snapshot_revision, source_status, entries,
                                       self.plugin_revision, self.schema_version)
         self.current = snapshot
         self._last_entries = entries
+        self._last_projection_key = projection_key
         return snapshot
 
     def bootstrap(self, client: HerdrClient, *, source_status: str = "current") -> ProjectionSnapshot:
