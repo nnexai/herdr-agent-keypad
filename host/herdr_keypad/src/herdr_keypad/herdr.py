@@ -195,7 +195,7 @@ class HerdrEventStream:
         self.reason = ""
 
     def _send_subscribe(self) -> None:
-        self._request_id = self._next_id
+        self._request_id = str(self._next_id)
         self._next_id += 1
         request = {
             "jsonrpc": "2.0",

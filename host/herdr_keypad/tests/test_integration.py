@@ -400,7 +400,7 @@ class HerdrEventContractTests(unittest.TestCase):
 
     def test_ack_plus_typed_event_admits_push_and_retains_invalidation(self):
         sock = self.Socket(
-            b'{"jsonrpc":"2.0","id":1,"result":{"subscribed":true}}\n',
+            b'{"jsonrpc":"2.0","id":"1","result":{"subscribed":true}}\n',
             b'{"event":"pane.updated","data":{"pane_id":"partial"}}\n',
         )
         stream = __import__("herdr_keypad.herdr", fromlist=["HerdrEventStream"]).HerdrEventStream(
@@ -411,7 +411,7 @@ class HerdrEventContractTests(unittest.TestCase):
         self.assertEqual(json.loads(sock.sent[0])["method"], "events.subscribe")
 
     def test_ack_only_falls_back_to_poll(self):
-        sock = self.Socket(b'{"jsonrpc":"2.0","id":1,"result":{"subscribed":true}}\n')
+        sock = self.Socket(b'{"jsonrpc":"2.0","id":"1","result":{"subscribed":true}}\n')
         stream = __import__("herdr_keypad.herdr", fromlist=["HerdrEventStream"]).HerdrEventStream(
             HerdrClient(timeout=0.1), socket_factory=lambda: sock
         )
@@ -444,7 +444,7 @@ class HerdrEventContractTests(unittest.TestCase):
             self.assertEqual(len(data["initial_generation"]["slots"]), 3)
             self.assertEqual(len(data["changed_generation"]["slots"]), 3)
             self.assertNotIn("raw", json.dumps(data).lower())
-            checksum = path.with_name(path.name + ".sha256").read_text().split()[0]
+            checksum = path.with_suffix(".sha256").read_text().split()[0]
             import hashlib
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), checksum)
 
