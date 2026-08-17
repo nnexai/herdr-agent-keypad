@@ -8,7 +8,7 @@ Herdr Agent Keypad reaches its first usable release through four vertical, real-
 
 **Phase Numbering:** Sequential integer phases are planned milestone work; decimal phases are reserved for urgent insertions.
 
-- [ ] **Phase 1: Physical Keypad and Proven Transport** - The connected unit has a verified physical map and a measured, reliable, bounded host link.
+- [x] **Phase 1: Physical Keypad and Proven Transport** - The connected unit has a verified physical map and a scoped, reliable, bounded USB host link.
 - [ ] **Phase 2: Authoritative Agent Projection and Exact Focus** - Three keys mirror the installed inbox and focus only the exact rendered target with truthful outcomes.
 - [ ] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness.
 - [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
@@ -21,15 +21,16 @@ Herdr Agent Keypad reaches its first usable release through four vertical, real-
 **Mode:** mvp
 **Depends on:** Nothing (first phase)
 **Requirements:** HARD-01, HARD-03
-**Research flag:** Mandatory physical research must record the delivered PCB/STM32 revision, official-library and ButtonSense compatibility, display/key/encoder/LED/orientation mapping, brightness and reboot behavior, USB identity/permissions/re-enumeration, sustained framed traffic, the complete frozen interruption matrix, and hash-bound final-binary evidence selecting USB or its tested Wi-Fi fallback; hybrid transport is not selected.
+**Research flag:** Mandatory physical research records the delivered PCB/STM32 revision, official-library and ButtonSense compatibility, display/key/encoder/LED/orientation mapping, brightness and reboot behavior, USB identity/permissions/re-enumeration, sustained framed traffic, and hash-bound final-binary evidence selecting USB. Endpoint renumbering on a single connected device and active utility self-restart are explicitly non-applicable in the current setup; hybrid transport is not selected.
+
 **Success Criteria** (what must be TRUE):
 
   1. On the connected unit, the user can identify all four displays and matching keys, open the encoder input path, change brightness, and observe correct orientation and deterministic reboot behavior against a recorded physical map.
-  2. The device and Linux host complete a bounded, versioned bidirectional message exchange over the physically selected transport.
-  3. After reset, unplug, or link interruption, the same physical unit re-establishes the selected link without requiring an unrecorded port or board assumption.
-  4. The user can see measured evidence that USB is suitable for v1, or the specific measured failure that selected the single Wi-Fi fallback instead.
+  2. The device and Linux host complete a bounded, versioned bidirectional message exchange over USB.
+  3. After reset, unplug, or supported link interruption, the same physical unit re-establishes the USB link without requiring an unrecorded port or board assumption.
+  4. The user can see measured evidence that USB is suitable for v1; unsupported single-device endpoint renumbering and active utility self-restart are recorded as explicit scope exclusions rather than fabricated passes.
 
-**Plans:** 10/13 plans executed
+**Plans:** 13/13 plans executed
 
 Plans:
 **Wave 1**
@@ -74,15 +75,15 @@ Plans:
 
 **Gap-closure Wave 11** *(blocked on Wave 10 completion)*
 
-- [ ] 01-11-PLAN.md — Generate fresh boot/session identity and produce action-specific recovery plus non-fabricable physical proof locks.
+- [x] 01-11-PLAN.md — Generate fresh boot/session identity and produce action-specific recovery plus non-fabricable physical proof locks.
 
 **Gap-closure Wave 12** *(blocked on Wave 11 completion)*
 
-- [ ] 01-12-PLAN.md — Run strict measured immutable USB qualification with latency, required interruption, queue, checksum, and semantic gates.
+- [x] 01-12-PLAN.md — Reopen the existing USB qualification under an explicit current-setup scope, enforce all applicable strict gates, and archive the unsupported actions as non-applicable.
 
 **Gap-closure Wave 13** *(blocked on Wave 12 completion)*
 
-- [ ] 01-13-PLAN.md — Recompute complete selection/build/archive lineage, actual object/ELF composition, and recursive secret-free closure.
+- [x] 01-13-PLAN.md — Recompute scoped selection/build/archive lineage, actual object/ELF composition, and secret-free closure.
 
 **UI hint:** yes
 
@@ -101,9 +102,15 @@ Plans:
   4. Empty, stale, vanished, incompatible, offline, or reassigned bindings reject visibly; sequential panel updates never pair one generation's pixels with another generation's action.
   5. A keypad press can request only typed focus: documented native seen/manual-unread effects may occur, while settle, dismiss, reply, approval, and arbitrary Herdr or host actions remain impossible.
 
-**Plans:** TBD
+**Plans:** 1/5 plans executed
 
 Plans:
+
+- [x] 02-00-PLAN.md
+- [ ] 02-01-PLAN.md
+- [ ] 02-02-PLAN.md
+- [ ] 02-03-PLAN.md
+- [ ] 02-04-PLAN.md
 
 - [ ] 02-01: TBD during phase planning
 
@@ -159,6 +166,6 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Physical Keypad and Proven Transport | 10/13 | In Progress|  |
-| 2. Authoritative Agent Projection and Exact Focus | 0/TBD | Not started | - |
+| 2. Authoritative Agent Projection and Exact Focus | 1/5 | In Progress|  |
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |

@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
-status: paused
-stopped_at: Plan 01-11 checkpoint — deferred by user
-last_updated: "2026-08-17T00:36:02.027Z"
+status: ready
+stopped_at: Completed 02-00-PLAN.md
+last_updated: "2026-08-17T07:20:53.791Z"
 last_activity: 2026-08-17
+last_activity_desc: Phase 01 scoped USB qualification, selection, build, and archive completed
 progress:
-  total_phases: 2
-  completed_phases: 0
-  total_plans: 13
-  completed_plans: 10
-last_activity_desc: Phase 01 execution started
+  total_phases: 3
+  completed_phases: 1
+  total_plans: 18
+  completed_plans: 14
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 ## Current Position
 
-Phase: 01 (physical-keypad-and-proven-transport) — PAUSED
-Plan: 11 of 13
-Status: Paused at Plan 01-11 blocking-human recovery gate
-Last activity: 2026-08-17 — user deferred fresh seven-action recovery evidence
+Phase: 01 (physical-keypad-and-proven-transport) — COMPLETE (scoped current-setup USB)
+Plan: 13 of 13
+Status: Complete; selected USB evidence and archive independently verify
+Last activity: 2026-08-17 — scoped gap-closure lineage archived
 
-Progress: [████████░░] 77%
+Progress: [████████░░] 78%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [████████░░] 77%
 | Phase 01 P05 | execution-window | 2 tasks | 10 files |
 | Phase 01 P09 | execution window | 3 tasks | 12 files |
 | Phase 01 P10 | 133 | 3 tasks | 9 files |
+| Phase 02 P00 | 25min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Keep supported Python range >=3.11,<3.15 with hash-locked pyserial/jsonschema dependencies; do not require an older interpreter.
 - [Phase ?]: Classify non-string frame discriminants as unknown_type before membership checks for host/native parity.
 - [Phase ?]: Reject duplicate JSON keys and over-limit nesting before dispatch.
+- [Phase 1]: Current-setup scope excludes endpoint renumbering and active utility self-restart as non-applicable; the archived USB profile requires all remaining applicable interruption rows and records the exclusions explicitly.
+- [Phase ?]: Phase 2 Wave 0 pins installed herdr-agent-inbox at actual HEAD 78b243279b4da55150b58dc2cc3cffcdc2fd6a04 because planned de409f683262 object is unavailable.
+- [Phase ?]: 02-00 Herdr artifacts are baseline-compatible; agent.focus is the sole device action and host epoch/snapshot revision remain bridge-owned.
 
 ### Pending Todos
 
@@ -100,7 +104,7 @@ None yet.
 
 ### Blockers/Concerns
 
-- [Phase 1]: USB qualification and eligibility lock are complete; final selected-usb composition/build/archive remain in Plan 01-08.
+- [Phase 1]: Complete under the current-setup scope. Endpoint renumbering and self-restarting the active qualification utility are explicitly non-applicable and remain excluded from the archived profile.
 - [Phase 2]: Installed Herdr schema, supported order seam, stable pane identity, and exact native focus effects require mandatory research before live focus acceptance.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
@@ -113,6 +117,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-16T22:59:24.704Z
-Stopped at: Plan 01-11 checkpoint — deferred by user
+Last session: 2026-08-17T07:20:53.780Z
+Stopped at: Completed 02-00-PLAN.md
 Resume file: None

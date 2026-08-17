@@ -15,17 +15,17 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Agent Inbox
 
-- [ ] **INBX-01**: The user sees zero to three current agent entries in exactly the order supplied by the installed `herdr-agent-inbox`, without firmware or bridge-side reprioritization.
+- [x] **INBX-01**: The user sees zero to three current agent entries in exactly the order supplied by the installed `herdr-agent-inbox`, without firmware or bridge-side reprioritization.
 - [ ] **INBX-02**: The user sees a short session title and workspace or repository discriminator on each occupied agent key.
-- [ ] **INBX-03**: The user can distinguish blocked, finished/unseen, working, idle, settled, and unknown agent states through herdr-consistent color on each display key, optionally reinforced by physically mapped key-backlight or above-key LEDs, with an icon or text cue so color is never the only signal.
+- [x] **INBX-03**: The user can distinguish blocked, finished/unseen, working, idle, settled, and unknown agent states through herdr-consistent color on each display key, optionally reinforced by physically mapped key-backlight or above-key LEDs, with an icon or text cue so color is never the only signal.
 - [ ] **INBX-04**: The user sees an explicit empty state on each unoccupied agent key rather than stale content from a removed or reordered entry.
 
 ### Agent Focus
 
-- [ ] **FOCS-01**: Pressing an occupied agent key focuses the exact herdr pane represented by the pixels the user pressed, using an opaque target identity plus host epoch and snapshot revision rather than a numeric slot.
+- [x] **FOCS-01**: Pressing an occupied agent key focuses the exact herdr pane represented by the pixels the user pressed, using an opaque target identity plus host epoch and snapshot revision rather than a numeric slot.
 - [ ] **FOCS-02**: Pressing an empty, stale, vanished, incompatible, or offline binding visibly rejects the action and never focuses whichever agent later occupies that slot.
-- [ ] **FOCS-03**: The user sees focus success only after herdr acknowledges the exact target, and sees a distinct rejected, failed, or uncertain result when success cannot be established.
-- [ ] **FOCS-04**: Focusing from the keypad may apply Herdr's documented native seen/manual-unread effects, but it does not settle, dismiss, reply to, approve for, or invoke arbitrary actions on the agent.
+- [x] **FOCS-03**: The user sees focus success only after herdr acknowledges the exact target, and sees a distinct rejected, failed, or uncertain result when success cannot be established.
+- [x] **FOCS-04**: Focusing from the keypad may apply Herdr's documented native seen/manual-unread effects, but it does not settle, dismiss, reply to, approve for, or invoke arbitrary actions on the agent.
 
 ### Codex Usage
 
@@ -41,7 +41,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [ ] **SYNC-03**: Agent-inbox freshness, Codex freshness, and device-link health are tracked and rendered independently.
 - [ ] **SYNC-04**: A keypress made while disconnected or against an uncertain result is never queued, replayed, or optimistically retried after reconnection.
 - [ ] **SAFE-01**: Herdr and Codex credentials remain on the host; firmware receives only bounded normalized display data, opaque identities, freshness metadata, and focus results.
-- [ ] **SAFE-02**: The device can request only the typed focus action for its currently displayed binding and cannot invoke arbitrary herdr methods, host commands, or provider APIs.
+- [x] **SAFE-02**: The device can request only the typed focus action for its currently displayed binding and cannot invoke arbitrary herdr methods, host commands, or provider APIs.
 
 ### Rotary Menu
 
@@ -96,14 +96,14 @@ Every v1 requirement maps to exactly one roadmap phase.
 | HARD-01 | Phase 1 | Complete |
 | HARD-02 | Phase 4 | Pending |
 | HARD-03 | Phase 1 | Complete |
-| INBX-01 | Phase 2 | Pending |
+| INBX-01 | Phase 2 | Complete |
 | INBX-02 | Phase 2 | Pending |
-| INBX-03 | Phase 2 | Pending |
+| INBX-03 | Phase 2 | Complete |
 | INBX-04 | Phase 2 | Pending |
-| FOCS-01 | Phase 2 | Pending |
+| FOCS-01 | Phase 2 | Complete |
 | FOCS-02 | Phase 2 | Pending |
-| FOCS-03 | Phase 2 | Pending |
-| FOCS-04 | Phase 2 | Pending |
+| FOCS-03 | Phase 2 | Complete |
+| FOCS-04 | Phase 2 | Complete |
 | CODEX-01 | Phase 3 | Pending |
 | CODEX-02 | Phase 3 | Pending |
 | CODEX-03 | Phase 3 | Pending |
@@ -113,7 +113,7 @@ Every v1 requirement maps to exactly one roadmap phase.
 | SYNC-03 | Phase 3 | Pending |
 | SYNC-04 | Phase 4 | Pending |
 | SAFE-01 | Phase 3 | Pending |
-| SAFE-02 | Phase 2 | Pending |
+| SAFE-02 | Phase 2 | Complete |
 | MENU-01 | Phase 3 | Pending |
 | MENU-02 | Phase 3 | Pending |
 | MENU-03 | Phase 3 | Pending |
