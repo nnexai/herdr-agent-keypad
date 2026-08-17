@@ -185,6 +185,43 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertNotIn("unread", [name for name, _ in fake.calls])
         self.assertNotIn("clear", [name for name, _ in fake.calls])
 
+    def test_source_revision_drift_rebinds_before_fresh_retry(self):
+        fake = FakeHerdr()
+        usb = FakeUsb()
+        bridge = PermanentBridge(HerdrClient(requester=fake.request), usb, InboxProjection(host_epoch="epoch"))
+        bridge.bootstrap()
+        stale = bridge.projection.binding(0)
+        fake.rows[0] = {**fake.rows[0], "revision": 2}
+
+        stale_payload = {
+            "action_id": "action-stale",
+            "host_epoch": stale.host_epoch,
+            "snapshot_revision": stale.snapshot_revision,
+            "slot": stale.slot,
+            "entry_id": stale.entry_id,
+            **stale.identity.as_payload(),
+        }
+        stale_outcome = bridge.handle_frame(protocol.new_v2_frame("focus_intent", "boot", "session", 1, stale_payload))
+        self.assertEqual(stale_outcome.status, "source_revision_changed")
+        self.assertEqual(usb.results[-1]["outcome"], "stale_target")
+        self.assertEqual(usb.published[-1]["snapshot_revision"], 2)
+        self.assertEqual(usb.published[-1]["agents"][0]["source_revision"], 2)
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 0)
+
+        fresh = bridge.projection.binding(0)
+        fresh_payload = {
+            "action_id": "action-fresh",
+            "host_epoch": fresh.host_epoch,
+            "snapshot_revision": fresh.snapshot_revision,
+            "slot": fresh.slot,
+            "entry_id": fresh.entry_id,
+            **fresh.identity.as_payload(),
+        }
+        fresh_outcome = bridge.handle_frame(protocol.new_v2_frame("focus_intent", "boot", "session", 2, fresh_payload))
+        self.assertEqual(fresh_outcome.status, "accepted")
+        self.assertEqual(usb.results[-1]["outcome"], "accepted")
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
+
 
 class ExactUsbSessionTests(unittest.TestCase):
     class Port:

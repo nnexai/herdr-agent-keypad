@@ -559,6 +559,22 @@ class PermanentBridge:
         except Exception:
             pass
 
+    def _publish_snapshot(self, snapshot: Any) -> Any:
+        ack = self.usb.publish_snapshot(_projection_payload(snapshot))
+        if (
+            ack.get("accepted") is not True
+            or ack.get("host_epoch") != snapshot.host_epoch
+            or ack.get("snapshot_revision") != snapshot.snapshot_revision
+        ):
+            raise V2ProtocolError("snapshot_rejected", "keypad did not acknowledge the complete generation")
+        self.ready = snapshot.source_status == "current" and not self.projection.complete_refresh_required()
+        if not self.ready:
+            raise V2ProtocolError("snapshot_unavailable", "complete current projection was not committed")
+        return snapshot
+
+    def _publish_refresh(self) -> Any:
+        return self._publish_snapshot(self.projection.bootstrap(self.client))
+
     def bootstrap(self) -> Any:
         verify_contract_inputs(self.contract_root)
         from .focus import FocusExecutor
@@ -566,13 +582,7 @@ class PermanentBridge:
         try:
             snapshot = self.projection.bootstrap(self.client)
             self.usb.connect()
-            ack = self.usb.publish_snapshot(_projection_payload(snapshot))
-            if (
-                ack.get("accepted") is not True
-                or ack.get("host_epoch") != snapshot.host_epoch
-                or ack.get("snapshot_revision") != snapshot.snapshot_revision
-            ):
-                raise V2ProtocolError("snapshot_rejected", "keypad did not acknowledge the complete generation")
+            self._publish_snapshot(snapshot)
             subscriptions = [{"type": event_type} for event_type in self.GLOBAL_EVENT_TYPES]
             status_panes = {
                 entry.identity.pane_id
@@ -585,9 +595,6 @@ class PermanentBridge:
             )
             self.client.subscribe(subscriptions=subscriptions)
             self.focus = FocusExecutor(self.client, self.projection, device_session=getattr(self.usb, "session_id", None))
-            self.ready = snapshot.source_status == "current" and not self.projection.complete_refresh_required()
-            if not self.ready:
-                raise V2ProtocolError("snapshot_unavailable", "complete current projection was not committed")
             return snapshot
         except Exception as exc:
             self._mark_unavailable("offline" if "socket" in str(exc).lower() else "unavailable")
@@ -631,6 +638,8 @@ class PermanentBridge:
         outcome = self.focus.execute(intent)
         result = _wire_focus_result(intent, outcome)
         self.usb.send_focus_result(result.as_payload())
+        if outcome.status == "source_revision_changed":
+            self._publish_refresh()
         return outcome
 
     def run_once(self) -> Any:
