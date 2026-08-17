@@ -210,6 +210,10 @@ class HerdrEventStream:
             return None
         while self.clock() < deadline:
             try:
+                remaining = min(0.05, max(0.001, deadline - self.clock()))
+                settimeout = getattr(self.sock, "settimeout", None)
+                if callable(settimeout):
+                    settimeout(remaining)
                 chunk = self.sock.recv(4096)
             except (BlockingIOError, TimeoutError, socket.timeout):
                 continue
