@@ -16,7 +16,7 @@ affects: [02-01, 02-02, 02-03, 02-04]
 actuals:
   tokens: 14300
   tasks: 3
-  commits: 3
+  commits: 4
 
 tech-stack:
   added: [Python standard library subprocess/JSON evidence runners]
@@ -95,7 +95,7 @@ status: complete
 ## Task Commits
 
 1. **Task 1: Execute the Phase 1 completion and final-contract handoff gate** - `423729b` (feat)
-2. **Task 2: Capture the complete installed-Herdr focus and identity matrix** - `03831d5` (feat)
+2. **Task 2: Capture the complete installed-Herdr focus and identity matrix** - `03831d5` (feat), refined by `9908d29` (fix)
 3. **Task 3: Release the observed identity and focus contract** - approved from machine-verified `baseline-compatible` artifacts; no separate source commit
 
 ## Files Created/Modified
