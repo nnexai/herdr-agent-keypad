@@ -6,14 +6,14 @@ current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: ready
 stopped_at: Completed 02-03-PLAN.md (02-04 intentionally not executed)
-last_updated: "2026-08-17T08:49:10.608Z"
+last_updated: "2026-08-17T09:05:06.151Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 01 scoped USB qualification, selection, build, and archive completed
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 18
-  completed_plans: 17
+  completed_plans: 18
 ---
 
 # Project State
@@ -116,6 +116,7 @@ None yet.
 - [Phase 2]: Installed Herdr schema, supported order seam, stable pane identity, and exact native focus effects require mandatory research before live focus acceptance.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
+- 02-04 halted at Task 3: connected selected USB endpoint did not acknowledge the v2 agent_snapshot within bounded smoke; physical three-tile/focus verification remains pending and must not be overclaimed.
 
 ## Deferred Items
 
