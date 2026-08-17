@@ -47,6 +47,8 @@ class Identity:
     terminal_id: str = ""
     agent_session: str | None = None
     source_revision: int = 0
+    workspace_id: str = ""
+    tab_id: str = ""
 
     def as_payload(self) -> dict[str, Any]:
         return {
