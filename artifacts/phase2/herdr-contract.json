@@ -1,0 +1,61 @@
+{
+  "acknowledgement": {
+    "bridge_owned": [
+      "host_epoch",
+      "snapshot_revision"
+    ],
+    "herdr_does_not_acknowledge": [
+      "host_epoch",
+      "snapshot_revision"
+    ],
+    "herdr_owned": [
+      "pane_id",
+      "terminal_id",
+      "agent_session",
+      "revision"
+    ]
+  },
+  "allowlist": [
+    "agent.focus"
+  ],
+  "classification": "baseline-compatible",
+  "excluded_actions": [
+    "settle",
+    "unread",
+    "clear",
+    "reply",
+    "approval",
+    "arbitrary_method"
+  ],
+  "herdr": {
+    "protocol": 19,
+    "schema_sha256": "88ff414aa996e390c2db05a37b95d28dbe4e81b98329f6ed7f7a2cc5c6ebf51a",
+    "schema_version": 1,
+    "version": "0.8.0"
+  },
+  "kind": "herdr-contract",
+  "ordering": {
+    "missing_rank": "unavailable",
+    "rank": "ascending",
+    "source": "herdr-agent-inbox",
+    "state_change_seq": "descending"
+  },
+  "plugin": {
+    "path": "/home/nnex/.config/herdr/plugins/github/herdr-agent-inbox-de409f683262",
+    "planned_revision": "de409f683262",
+    "revision": "78b243279b4da55150b58dc2cc3cffcdc2fd6a04",
+    "revision_override": "planned de409f683262 object unavailable; actual checkout HEAD is authoritative",
+    "source_sha256": {
+      "README.md": "6f892767debdc6bf1638eecbc4ad483064998e3dce300893394237db4b9a5f5e",
+      "actions.py": "463dc865ac57687c4246e2a2cd26086a1ec93f2b41324399c070e8c77dbfcd91",
+      "daemon.py": "ab8b72dc894148292ebebfebdc9c2b926b02787831bc2f7a0e1ebae931448011",
+      "inbox_tui.py": "57a15e018df77ead25981424699ecc959301fa0a44dd3d8a7effe781b4786c35"
+    }
+  },
+  "schema_version": 1,
+  "socket": {
+    "mode": "0600",
+    "owner_uid": 1000,
+    "path": "/home/nnex/.config/herdr/herdr.sock"
+  }
+}
