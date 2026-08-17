@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import secrets
 import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -405,3 +407,263 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+ 
+ 
+def _wire_focus_result(intent: FocusIntent, outcome: Any) -> FocusResult:
+    """Convert the typed host outcome to the closed firmware result vocabulary."""
+    status = getattr(outcome, "status", "failed")
+    wire_outcome = {
+        "accepted": "accepted",
+        "vanished": "vanished",
+        "not_found": "not_found",
+        "offline": "herdr_offline",
+        "uncertain": "uncertain",
+        "stale": "stale_target",
+        "wrong_epoch": "stale_target",
+        "wrong_revision": "stale_target",
+        "pane_reused": "stale_target",
+        "session_changed": "stale_target",
+        "source_revision_changed": "stale_target",
+        "empty": "rejected",
+        "rejected": "rejected",
+        "incompatible": "rejected",
+        "wrong_slot": "rejected",
+        "failed": "failed",
+    }.get(status, "failed")
+    identity = intent.binding.identity
+    return FocusResult(
+        intent.action_id,
+        wire_outcome,
+        intent.binding.host_epoch,
+        intent.binding.snapshot_revision,
+        intent.binding.slot,
+        intent.binding.entry_id,
+        identity,
+        wire_outcome == "accepted" and bool(getattr(outcome, "success", False)),
+        str(getattr(outcome, "reason", ""))[:64],
+    )
+
+
+def _projection_payload(snapshot: Any) -> dict[str, Any]:
+    """Translate the production normalized projection to the v2 wire shape."""
+    agents = []
+    for entry in snapshot.entries:
+        identity = entry.identity
+        agents.append(
+            {
+                "slot": entry.slot,
+                "entry_id": entry.entry_id,
+                "title": entry.title,
+                "discriminator": entry.discriminator,
+                "state": entry.state,
+                "pane_id": identity.pane_id if identity else "",
+                "terminal_id": identity.terminal_id if identity else "",
+                "agent_session": identity.agent_session if identity else None,
+                "source_revision": identity.source_revision if identity else 0,
+            }
+        )
+    payload = {
+        "host_epoch": snapshot.host_epoch,
+        "snapshot_revision": snapshot.snapshot_revision,
+        "source_status": snapshot.source_status,
+        "agents": agents,
+    }
+    validate_v2_payload("agent_snapshot", payload)
+    return payload
+
+
+def _sha256(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def verify_contract_inputs(root: Path | None = None) -> dict[str, Any]:
+    """Reopen the immutable Herdr contract/effects inputs before live focus."""
+    root = root or _ROOT
+    contract_path = root / "artifacts/phase2/herdr-contract.json"
+    effects_path = root / "artifacts/phase2/herdr-focus-effects.json"
+    if contract_path.is_symlink() or effects_path.is_symlink():
+        raise V2ProtocolError("contract_drift", "contract inputs must not be symlinks")
+    try:
+        contract = json.loads(contract_path.read_text(encoding="utf-8"))
+        effects = json.loads(effects_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise V2ProtocolError("contract_drift", "contract inputs are unreadable") from exc
+    if contract.get("classification") != "baseline-compatible":
+        raise V2ProtocolError("contract_drift", "Herdr contract is not baseline-compatible")
+    if contract.get("allowlist") != ["agent.focus"] or contract.get("excluded_actions") != [
+        "settle",
+        "unread",
+        "clear",
+        "reply",
+        "approval",
+        "arbitrary_method",
+    ]:
+        raise V2ProtocolError("contract_drift", "focus-only allowlist changed")
+    plugin = contract.get("plugin", {})
+    if plugin.get("revision") != "78b243279b4da55150b58dc2cc3cffcdc2fd6a04":
+        raise V2ProtocolError("contract_drift", "installed inbox revision changed")
+    if effects.get("classification") != "baseline-compatible" or not effects.get("cleanup", {}).get("complete"):
+        raise V2ProtocolError("contract_drift", "focus-effects evidence is incomplete")
+    rows = effects.get("rows")
+    if not isinstance(rows, list) or len(rows) < 8:
+        raise V2ProtocolError("contract_drift", "focus-effects matrix is incomplete")
+    return {
+        "contract": str(contract_path),
+        "contract_sha256": _sha256(contract_path),
+        "effects": str(effects_path),
+        "effects_sha256": _sha256(effects_path),
+        "herdr_version": contract.get("herdr", {}).get("version"),
+        "plugin_revision": plugin.get("revision"),
+    }
+
+
+class PermanentBridge:
+    """One host authority joining public Herdr to one exact USB session."""
+
+    EVENTS = [
+        "pane.created",
+        "pane.updated",
+        "pane.closed",
+        "pane.focused",
+        "pane.moved",
+        "pane.exited",
+        "pane.agent_detected",
+        "pane.agent_status_changed",
+        "workspace.closed",
+        "tab.closed",
+    ]
+
+    def __init__(self, client: Any, usb: Any, projection: Any, *, contract_root: Path | None = None) -> None:
+        self.client = client
+        self.usb = usb
+        self.projection = projection
+        self.contract_root = contract_root or _ROOT
+        self.ready = False
+        self.last_error = ""
+        self.focus = None
+        self._last_event_refresh = 0.0
+
+    def _mark_unavailable(self, reason: str) -> None:
+        self.last_error = reason
+        self.ready = False
+        try:
+            stale = self.projection.invalidate(reason if reason in {"offline", "unavailable"} else "stale")
+            if getattr(self.usb, "connected", False):
+                self.usb.publish_snapshot(_projection_payload(stale))
+        except Exception:
+            pass
+
+    def bootstrap(self) -> Any:
+        verify_contract_inputs(self.contract_root)
+        from .focus import FocusExecutor
+
+        try:
+            snapshot = self.projection.bootstrap(self.client)
+            self.usb.connect()
+            ack = self.usb.publish_snapshot(_projection_payload(snapshot))
+            if (
+                ack.get("accepted") is not True
+                or ack.get("host_epoch") != snapshot.host_epoch
+                or ack.get("snapshot_revision") != snapshot.snapshot_revision
+            ):
+                raise V2ProtocolError("snapshot_rejected", "keypad did not acknowledge the complete generation")
+            self.client.subscribe(events=self.EVENTS)
+            self.focus = FocusExecutor(self.client, self.projection, device_session=getattr(self.usb, "session_id", None))
+            self.ready = snapshot.source_status == "current" and not self.projection.complete_refresh_required()
+            if not self.ready:
+                raise V2ProtocolError("snapshot_unavailable", "complete current projection was not committed")
+            return snapshot
+        except Exception as exc:
+            self._mark_unavailable("offline" if "socket" in str(exc).lower() else "unavailable")
+            if isinstance(exc, V2ProtocolError):
+                raise
+            raise V2ProtocolError("bootstrap_failed", str(exc)) from exc
+
+    def handle_frame(self, frame: Mapping[str, Any]) -> Any:
+        if frame.get("type") != "focus_intent" or not self.ready or self.focus is None:
+            return None
+        intent_payload = frame.get("payload")
+        validate_v2_payload("focus_intent", intent_payload)
+        identity = Identity(
+            intent_payload["pane_id"],
+            intent_payload["terminal_id"],
+            intent_payload["agent_session"],
+            intent_payload["source_revision"],
+        )
+        incoming = Binding(
+            intent_payload["host_epoch"],
+            intent_payload["snapshot_revision"],
+            intent_payload["slot"],
+            intent_payload["entry_id"],
+            identity,
+        )
+        # Workspace/tab identity is host-only in the bounded wire frame.
+        # Reattach it only after every device-visible identity matches.
+        canonical = self.projection.binding(incoming.slot)
+        if (
+            canonical is not None
+            and canonical.host_epoch == incoming.host_epoch
+            and canonical.snapshot_revision == incoming.snapshot_revision
+            and canonical.entry_id == incoming.entry_id
+            and canonical.identity.pane_id == incoming.identity.pane_id
+            and canonical.identity.terminal_id == incoming.identity.terminal_id
+            and canonical.identity.agent_session == incoming.identity.agent_session
+            and canonical.identity.source_revision == incoming.identity.source_revision
+        ):
+            incoming = canonical
+        intent = FocusIntent(intent_payload["action_id"], incoming)
+        outcome = self.focus.execute(intent)
+        result = _wire_focus_result(intent, outcome)
+        self.usb.send_focus_result(result.as_payload())
+        return outcome
+
+    def run_once(self) -> Any:
+        if not self.ready:
+            return None
+        frame = self.usb.poll()
+        if frame is None:
+            return None
+        return self.handle_frame(frame)
+
+    def run(self, *, interval: float = 0.1) -> None:
+        from .usb import UsbSessionError
+
+        self.bootstrap()
+        try:
+            while True:
+                self.run_once()
+                time.sleep(interval)
+        except (KeyboardInterrupt, UsbSessionError):
+            self._mark_unavailable("offline")
+            self.usb.close()
+
+
+def write_acceptance_evidence(path: Path, *, contract: Mapping[str, Any], snapshot: Any, observed: Mapping[str, Any]) -> None:
+    """Write bounded evidence atomically; never include paths or credentials."""
+    record = {
+        "kind": "phase2-automated-acceptance",
+        "schema_version": 1,
+        "source": {
+            "contract_sha256": contract["contract_sha256"],
+            "effects_sha256": contract["effects_sha256"],
+            "plugin_revision": contract["plugin_revision"],
+            "herdr_version": contract["herdr_version"],
+        },
+        "snapshot": {
+            "host_epoch": snapshot.host_epoch,
+            "snapshot_revision": snapshot.snapshot_revision,
+            "source_status": snapshot.source_status,
+            "slots": len(snapshot.entries),
+        },
+        "observed": dict(observed),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
