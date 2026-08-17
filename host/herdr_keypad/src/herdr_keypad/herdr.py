@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import socket
 from dataclasses import dataclass
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 
 class HerdrError(RuntimeError):
@@ -98,8 +98,24 @@ class HerdrClient:
             raise HerdrError("workspace.list result has no workspaces array")
         return [row for row in rows if isinstance(row, Mapping)]
 
-    def subscribe(self, *, events: list[str] | None = None) -> Any:
-        return self.request("events.subscribe", {"events": events or ["*"]})
+    def subscribe(self, *, subscriptions: Sequence[Mapping[str, Any]]) -> Any:
+        if isinstance(subscriptions, (str, bytes)) or not subscriptions:
+            raise HerdrError("events.subscribe requires explicit typed subscriptions")
+        typed = []
+        for subscription in subscriptions:
+            if not isinstance(subscription, Mapping):
+                raise HerdrError("events.subscribe subscription is invalid")
+            item = dict(subscription)
+            event_type = item.get("type")
+            if (
+                not isinstance(event_type, str)
+                or not event_type
+                or event_type == "*"
+                or any(ord(char) < 0x21 or char in "\r\n" for char in event_type)
+            ):
+                raise HerdrError("events.subscribe event type is invalid")
+            typed.append(item)
+        return self.request("events.subscribe", {"subscriptions": typed})
 
     def focus(self, pane_id: str) -> Any:
         return self.request("agent.focus", {"target": pane_id})

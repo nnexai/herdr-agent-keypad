@@ -526,7 +526,7 @@ def verify_contract_inputs(root: Path | None = None) -> dict[str, Any]:
 class PermanentBridge:
     """One host authority joining public Herdr to one exact USB session."""
 
-    EVENTS = [
+    GLOBAL_EVENT_TYPES = (
         "pane.created",
         "pane.updated",
         "pane.closed",
@@ -534,10 +534,10 @@ class PermanentBridge:
         "pane.moved",
         "pane.exited",
         "pane.agent_detected",
-        "pane.agent_status_changed",
         "workspace.closed",
         "tab.closed",
-    ]
+    )
+    STATUS_EVENT_TYPE = "pane.agent_status_changed"
 
     def __init__(self, client: Any, usb: Any, projection: Any, *, contract_root: Path | None = None) -> None:
         self.client = client
@@ -573,7 +573,17 @@ class PermanentBridge:
                 or ack.get("snapshot_revision") != snapshot.snapshot_revision
             ):
                 raise V2ProtocolError("snapshot_rejected", "keypad did not acknowledge the complete generation")
-            self.client.subscribe(events=self.EVENTS)
+            subscriptions = [{"type": event_type} for event_type in self.GLOBAL_EVENT_TYPES]
+            status_panes = {
+                entry.identity.pane_id
+                for entry in snapshot.entries
+                if entry.identity is not None and entry.identity.pane_id
+            }
+            subscriptions.extend(
+                {"type": self.STATUS_EVENT_TYPE, "pane_id": pane_id}
+                for pane_id in sorted(status_panes)
+            )
+            self.client.subscribe(subscriptions=subscriptions)
             self.focus = FocusExecutor(self.client, self.projection, device_session=getattr(self.usb, "session_id", None))
             self.ready = snapshot.source_status == "current" and not self.projection.complete_refresh_required()
             if not self.ready:

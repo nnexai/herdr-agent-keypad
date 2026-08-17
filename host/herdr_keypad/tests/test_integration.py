@@ -18,7 +18,7 @@ from herdr_keypad.bridge import (
     snapshot_frame,
     verify_contract_inputs,
 )
-from herdr_keypad.herdr import HerdrClient
+from herdr_keypad.herdr import HerdrClient, HerdrError
 from herdr_keypad.projection import InboxProjection
 from herdr_keypad.usb import UsbDeviceSession
 from phase1_bringup import protocol
@@ -105,6 +105,25 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertIn("stop-for-acceptance", script)
         self.assertNotIn("pkill", script)
 
+    def test_subscribe_uses_installed_typed_public_schema(self):
+        calls = []
+        client = HerdrClient(requester=lambda method, params: calls.append((method, params)) or {"subscribed": True})
+        subscriptions = ({"type": "pane.created"}, {"type": "pane.agent_status_changed", "pane_id": "pane-1"})
+        client.subscribe(subscriptions=subscriptions)
+        self.assertEqual(
+            calls,
+            [
+                (
+                    "events.subscribe",
+                    {"subscriptions": [dict(subscription) for subscription in subscriptions]},
+                )
+            ],
+        )
+        with self.assertRaises(HerdrError):
+            client.subscribe(subscriptions=({"type": "*"},))
+        with self.assertRaises(HerdrError):
+            client.subscribe(subscriptions=())
+
     def test_two_bootstrap_triggers_have_one_host_epoch_and_one_snapshot_owner(self):
         fake = FakeHerdr()
         client = HerdrClient(requester=fake.request)
@@ -116,6 +135,16 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertEqual(first.host_epoch, second.host_epoch)
         self.assertEqual(usb.published[-1]["snapshot_revision"], 2)
         self.assertEqual([name for name, _ in fake.calls].count("events.subscribe"), 2)
+        subscribe_calls = [params for name, params in fake.calls if name == "events.subscribe"]
+        expected_subscriptions = [{"type": event_type} for event_type in PermanentBridge.GLOBAL_EVENT_TYPES]
+        expected_subscriptions.extend(
+            {"type": PermanentBridge.STATUS_EVENT_TYPE, "pane_id": pane_id}
+            for pane_id in ("pane-1", "pane-2", "pane-3")
+        )
+        self.assertEqual(
+            subscribe_calls,
+            [{"subscriptions": expected_subscriptions}] * 2,
+        )
         self.assertEqual(len(usb.published), 2)
 
     def test_contract_drift_blocks_startup_before_usb(self):
