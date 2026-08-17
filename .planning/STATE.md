@@ -5,8 +5,8 @@ milestone_name: milestone
 current_phase: 02.1
 current_phase_name: Reliable Live Synchronization, Focus, and Flicker-Free Rendering
 status: ready
-stopped_at: Completed 02.1-02-PLAN.md
-last_updated: "2026-08-17T13:35:36.443Z"
+stopped_at: "Checkpoint: 02.1-03 Task 2 human-verify"
+last_updated: "2026-08-17T13:39:22.194Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 2 selected-USB snapshot, rendering, exact focus, and physical feedback accepted
 progress:
@@ -122,6 +122,7 @@ None yet.
 - [Phase 1]: Complete under the current-setup scope. Endpoint renumbering and self-restarting the active qualification utility are explicitly non-applicable and remain excluded from the archived profile.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
+- 02.1-03 Task 2 awaits bounded physical smoke: exact paired keypad, one real Herdr change, complete-image/no-tearing observation, exact changed-generation focus, and evidence checksum.
 
 ### Roadmap Evolution
 
@@ -135,6 +136,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-17T13:35:36.429Z
-Stopped at: Completed 02.1-02-PLAN.md
-Resume file: None
+Last session: 2026-08-17T13:39:21.954Z
+Stopped at: Checkpoint: 02.1-03 Task 2 human-verify
+Resume file: 02.1-03 Task 2
