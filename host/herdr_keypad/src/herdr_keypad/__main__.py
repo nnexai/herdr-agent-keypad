@@ -9,10 +9,14 @@ import sys
 import time
 from pathlib import Path
 
-from .bridge import PermanentBridge, V2ProtocolError, verify_contract_inputs, write_acceptance_evidence, _projection_payload
-from .herdr import HerdrClient
-from .projection import InboxProjection
-from .usb import UsbDeviceSession, UsbSessionError, binding_is_stable
+from .bridge import (
+    PermanentBridge,
+    V2ProtocolError,
+    verify_contract_inputs,
+    write_acceptance_evidence,
+    write_live_sync_evidence,
+    _projection_payload,
+)
 
 ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_BINDING = Path(os.path.expanduser("~/.config/herdr/keypad-binding.json"))
@@ -98,6 +102,70 @@ def smoke_mode(args: argparse.Namespace) -> int:
     return 0
 
 
+def live_sync_smoke_mode(args: argparse.Namespace) -> int:
+    seconds = float(args.smoke_live_sync)
+    if not 5.0 <= seconds <= 30.0:
+        print("--smoke-live-sync must be bounded to 5..30 seconds", file=sys.stderr)
+        return 2
+    bridge = _bridge(args)
+    evidence = args.evidence
+    if evidence == ROOT / "artifacts/phase2/automated-acceptance.json":
+        evidence = ROOT / "artifacts/phase2.1/live-sync-smoke.json"
+    started = time.monotonic()
+    initial = None
+    changed = None
+    metrics = None
+    error = ""
+    try:
+        initial = bridge.bootstrap()
+        deadline = started + seconds
+        while time.monotonic() < deadline:
+            bridge.run_once()
+            current = bridge.projection.current
+            if (
+                current is not None
+                and initial is not None
+                and current.snapshot_revision != initial.snapshot_revision
+                and current.source_status == "current"
+                and bridge.ready
+            ):
+                changed = current
+                focus = bridge.last_focus
+                if (
+                    focus is not None
+                    and focus.get("focused") is True
+                    and focus.get("snapshot_revision") == changed.snapshot_revision
+                ):
+                    break
+            time.sleep(min(max(args.interval, 0.01), 0.1))
+        if changed is None:
+            error = "changed_generation_timeout"
+        elif bridge.last_focus is None or bridge.last_focus.get("snapshot_revision") != changed.snapshot_revision:
+            error = "changed_generation_focus_timeout"
+        else:
+            metrics = bridge.usb.request_metrics()
+            required = ("max_display_flush_us", "minimum_free_heap", "max_key_poll_gap_us", "parser_high_water", "queue_high_water")
+            if any(not isinstance(metrics.get(key), int) or metrics[key] < 0 for key in required):
+                error = "metrics_invalid"
+    except Exception as exc:
+        error = str(exc)[:160] or "live_sync_smoke_failed"
+    duration = min(seconds, max(0.0, time.monotonic() - started))
+    passed = not error and initial is not None and changed is not None and bridge.last_focus is not None and metrics is not None
+    write_live_sync_evidence(
+        evidence,
+        result="pass" if passed else "fail",
+        duration_seconds=duration,
+        initial=initial,
+        changed=changed,
+        focus=bridge.last_focus,
+        metrics=metrics,
+        bridge=bridge,
+        error=error,
+    )
+    print(f"live sync smoke {'passed' if passed else 'failed'}: {error or 'changed generation and exact focus observed'}")
+    return 0 if passed else 1
+
+
 def run_mode(args: argparse.Namespace) -> int:
     bridge = _bridge(args)
     pidfile = os.environ.get("HERDR_KEYPAD_PIDFILE")
@@ -121,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=float, default=3.0)
     parser.add_argument("--evidence", type=Path, default=ROOT / "artifacts/phase2/automated-acceptance.json")
     parser.add_argument("--interval", type=float, default=0.1)
-    parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--smoke-live-sync", type=float, metavar="SECONDS")
     parser.add_argument("--inspect", action="store_true")
     parser.add_argument("--smoke-ui-bounds", action="store_true")
     parser.add_argument("--smoke-stale-once", type=int, metavar="SECONDS")
@@ -134,6 +202,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.smoke_stale_once is not None:
         args.stale_once = True
         return acceptance_fixture(args)
+    if args.smoke_live_sync is not None:
+        return live_sync_smoke_mode(args)
     if args.smoke:
         return smoke_mode(args)
     if args.run_bridge:

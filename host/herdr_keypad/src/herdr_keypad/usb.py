@@ -179,6 +179,20 @@ class UsbDeviceSession:
             self.close()
             raise UsbSessionError("io", str(exc)) from exc
 
+    def request_metrics(self, *, reset: bool = False) -> dict[str, Any]:
+        """Read existing proof metrics without changing them by default."""
+        _link, session = self._require_open()
+        try:
+            frame, _fact = session.request(
+                "metrics",
+                {"request": "reset" if reset else "proof"},
+                {"metrics_ack"},
+            )
+            return dict(frame["payload"])
+        except (SerialLinkError, OSError, TimeoutError, ValueError) as exc:
+            self.close()
+            raise UsbSessionError("metrics", str(exc)) from exc
+
     def clear_pending_focus(self) -> None:
         self._pending_focus.clear()
 

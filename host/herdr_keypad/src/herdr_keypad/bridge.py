@@ -559,6 +559,7 @@ class PermanentBridge:
         self.invalidation_count = 0
         self.publication_count = 0
         self.ready_transitions = 0
+        self.last_focus: dict[str, Any] | None = None
 
     def _clear_pending_focus(self) -> None:
         clear = getattr(self.usb, "clear_pending_focus", None)
@@ -676,6 +677,13 @@ class PermanentBridge:
         intent = FocusIntent(intent_payload["action_id"], incoming)
         outcome = self.focus.execute(intent)
         result = _wire_focus_result(intent, outcome)
+        self.last_focus = {
+            "status": getattr(outcome, "status", "failed"),
+            "focused": bool(getattr(outcome, "success", False)),
+            "slot": intent.binding.slot,
+            "entry_id": intent.binding.entry_id,
+            "snapshot_revision": intent.binding.snapshot_revision,
+        }
         self.usb.send_focus_result(result.as_payload())
         if outcome.status == "source_revision_changed":
             self._publish_refresh()
@@ -747,6 +755,8 @@ class PermanentBridge:
     def run(self, *, interval: float = 0.1) -> None:
         from .usb import UsbSessionError
 
+
+
         self.bootstrap()
         try:
             while True:
@@ -784,3 +794,63 @@ def write_acceptance_evidence(path: Path, *, contract: Mapping[str, Any], snapsh
     temporary = path.with_name(f".{path.name}.tmp")
     temporary.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
+def write_live_sync_evidence(path: Path, *, result: str, duration_seconds: float,
+                             initial: Any, changed: Any | None, focus: Mapping[str, Any] | None,
+                             metrics: Mapping[str, Any] | None, bridge: PermanentBridge,
+                             error: str = "") -> Path:
+    """Atomically write bounded smoke facts and a separately hashed sidecar."""
+    def generation(snapshot: Any | None) -> Any:
+        if snapshot is None:
+            return None
+        return {
+            "host_epoch": snapshot.host_epoch,
+            "snapshot_revision": snapshot.snapshot_revision,
+            "source_status": snapshot.source_status,
+            "slots": [
+                {
+                    "slot": entry.slot,
+                    "entry_id": entry.entry_id,
+                    "title": entry.title,
+                    "discriminator": entry.discriminator,
+                    "state": entry.state,
+                    "pane_id": entry.identity.pane_id if entry.identity else "",
+                    "source_revision": entry.identity.source_revision if entry.identity else 0,
+                }
+                for entry in snapshot.entries
+            ],
+        }
+    safe_metrics = {}
+    if metrics is not None:
+        for key in ("max_display_flush_us", "minimum_free_heap", "max_key_poll_gap_us", "parser_high_water", "queue_high_water"):
+            value = metrics.get(key)
+            if isinstance(value, int) and value >= 0:
+                safe_metrics[key] = value
+    record = {
+        "schema_version": 1,
+        "result": result,
+        "duration_seconds": max(0.0, min(float(duration_seconds), 30.0)),
+        "initial_generation": generation(initial),
+        "changed_generation": generation(changed),
+        "focus": dict(focus or {"focused": False}),
+        "metrics": safe_metrics,
+        "counters": {
+            "invalidations": bridge.invalidation_count,
+            "publications": bridge.publication_count,
+            "ready_transitions": bridge.ready_transitions,
+            "intake_mode": bridge.intake_mode,
+        },
+    }
+    if error:
+        record["reason"] = str(error)[:160]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+    digest = _sha256(path)
+    checksum = path.with_name(path.name + ".sha256")
+    checksum_tmp = checksum.with_name(f".{checksum.name}.tmp")
+    checksum_tmp.write_text(f"{digest}  {path.name}\n", encoding="ascii")
+    os.replace(checksum_tmp, checksum)
+    if _sha256(path) != checksum.read_text(encoding="ascii").split()[0]:
+        raise V2ProtocolError("evidence_hash", "live smoke evidence checksum reopen failed")
+    return path

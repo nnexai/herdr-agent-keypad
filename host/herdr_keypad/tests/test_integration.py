@@ -17,7 +17,9 @@ from herdr_keypad.bridge import (
     make_snapshot,
     snapshot_frame,
     verify_contract_inputs,
+    write_live_sync_evidence,
 )
+from herdr_keypad.__main__ import main
 from herdr_keypad.herdr import HerdrClient, HerdrError
 from herdr_keypad.projection import InboxProjection
 from herdr_keypad.usb import UsbDeviceSession
@@ -340,4 +342,34 @@ class HerdrEventContractTests(unittest.TestCase):
         )
         self.assertEqual(stream.probe(deadline_seconds=1), "poll")
         self.assertEqual(stream.reason, "ack_without_typed_event")
+
+    def test_live_smoke_rejects_unbounded_window_before_device_access(self):
+        self.assertEqual(main(["--smoke-live-sync", "4"]), 2)
+        self.assertEqual(main(["--smoke-live-sync", "31"]), 2)
+
+    def test_live_evidence_is_redacted_atomic_and_hash_reopenable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "live-sync-smoke.json"
+            fake = SimpleNamespace(invalidation_count=1, publication_count=2, ready_transitions=3, intake_mode="poll")
+            projection = InboxProjection(host_epoch="epoch")
+            initial = projection.refresh([row("p1", "0", 1)])
+            changed = projection.refresh([row("p2", "0", 2)])
+            write_live_sync_evidence(
+                path,
+                result="pass",
+                duration_seconds=5,
+                initial=initial,
+                changed=changed,
+                focus={"focused": True, "snapshot_revision": 2},
+                metrics={"max_display_flush_us": 4, "minimum_free_heap": 5, "max_key_poll_gap_us": 6, "parser_high_water": 7, "queue_high_water": 8},
+                bridge=fake,
+            )
+            data = json.loads(path.read_text())
+            self.assertEqual(data["result"], "pass")
+            self.assertEqual(len(data["initial_generation"]["slots"]), 3)
+            self.assertEqual(len(data["changed_generation"]["slots"]), 3)
+            self.assertNotIn("raw", json.dumps(data).lower())
+            checksum = path.with_name(path.name + ".sha256").read_text().split()[0]
+            import hashlib
+            self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), checksum)
 
