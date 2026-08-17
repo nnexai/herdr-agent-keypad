@@ -657,6 +657,7 @@ def write_acceptance_evidence(path: Path, *, contract: Mapping[str, Any], snapsh
             "schema_sha256": _sha256(_ROOT / "protocol/schema/v2.json"),
             "fixture_sha256": _sha256(_ROOT / "protocol/fixtures/v2-golden.json"),
             "firmware_lock_sha256": _sha256(_ROOT / "artifacts/phase1/locks/final-build-gap-closure.json"),
+            "firmware_binary_sha256": _sha256(_ROOT / ".pio/build/selected-usb/firmware.bin"),
         },
         "snapshot": {
             "host_epoch": snapshot.host_epoch,
