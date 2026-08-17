@@ -9,7 +9,7 @@
 class Link {
  public:
   virtual ~Link() = default;
-  virtual void begin(uint32_t baud) = 0;
+  virtual void begin(uint32_t baud, size_t receive_capacity) = 0;
   virtual int available() const = 0;
   virtual size_t read(uint8_t *destination, size_t capacity) = 0;
   virtual size_t write(const uint8_t *source, size_t length) = 0;
@@ -19,7 +19,7 @@ class Link {
 
 class UsbCdcLink final : public Link {
  public:
-  void begin(uint32_t baud) override;
+  void begin(uint32_t baud, size_t receive_capacity) override;
   int available() const override;
   size_t read(uint8_t *destination, size_t capacity) override;
   size_t write(const uint8_t *source, size_t length) override;

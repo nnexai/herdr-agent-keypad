@@ -298,14 +298,14 @@ bool AgentProjection::captureFocusIntent(uint8_t key, const char* action_id, Jso
   pending_deadline_[key] = micros() + kPendingDeadlineUs;
   feedback_[key] = Feedback::Pending;
   payload["action_id"] = pending_action_text_[key];
-  payload["host_epoch"] = committed_generation_.host_epoch;
-  payload["snapshot_revision"] = committed_generation_.snapshot_revision;
-  payload["slot"] = key;
-  payload["entry_id"] = pending_[key].entry_id;
-  payload["pane_id"] = pending_[key].pane_id;
-  payload["terminal_id"] = pending_[key].terminal_id;
   if (pending_[key].has_agent_session) payload["agent_session"] = pending_[key].agent_session; else payload["agent_session"] = nullptr;
+  payload["entry_id"] = pending_[key].entry_id;
+  payload["host_epoch"] = committed_generation_.host_epoch;
+  payload["pane_id"] = pending_[key].pane_id;
+  payload["slot"] = key;
+  payload["snapshot_revision"] = committed_generation_.snapshot_revision;
   payload["source_revision"] = pending_[key].source_revision;
+  payload["terminal_id"] = pending_[key].terminal_id;
   return true;
 }
 

@@ -273,9 +273,9 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     JsonDocument reply;
     reply["accepted"] = committed;
     reply["host_epoch"] = snapshot["host_epoch"].as<const char*>();
+    reply["reason"] = committed ? "committed" : "rejected";
     reply["snapshot_revision"] = snapshot["snapshot_revision"].as<uint32_t>();
     reply["source_status"] = snapshot["source_status"].as<const char*>();
-    reply["reason"] = committed ? "committed" : "rejected";
     sendFrame("snapshot_ack", admission.frame.sequence, reply.as<JsonObjectConst>());
     completeAdmission();
     return;
@@ -444,7 +444,7 @@ void reportInput() {
 }  // namespace
 
 void setup() {
-  usbLink.begin(kBaud);
+  usbLink.begin(kBaud, sizeof(inputFrame));
   physicalMap.loadVerified();
   board.begin(physicalMap);
   deviceId = opaqueId();
@@ -452,7 +452,7 @@ void setup() {
   protocolSession.reset(bootId.c_str(), "");
   if (board.ready()) {
     board.setBrightness(80);
-    board.clearDisplays(TFT_BLACK);
+    render(BringupState::Wait, 0);
   }
   proofMetrics.sampleRuntime();
 }

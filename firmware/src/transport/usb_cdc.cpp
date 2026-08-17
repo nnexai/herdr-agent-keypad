@@ -2,7 +2,10 @@
 
 #include <Arduino.h>
 
-void UsbCdcLink::begin(uint32_t baud) { Serial.begin(baud); }
+void UsbCdcLink::begin(uint32_t baud, size_t receive_capacity) {
+  Serial.setRxBufferSize(receive_capacity);
+  Serial.begin(baud);
+}
 
 int UsbCdcLink::available() const { return Serial.available(); }
 
