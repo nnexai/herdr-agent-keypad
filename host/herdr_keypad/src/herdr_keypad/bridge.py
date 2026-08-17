@@ -785,18 +785,17 @@ class PermanentBridge:
     def run_once(self) -> Any:
         now = time.monotonic()
         self._consume_events(now)
-        refreshed = self._refresh_if_dirty(now)
-        if not getattr(self.usb, "connected", False):
-            return refreshed
-        try:
-            frame = self.usb.poll()
-        except Exception:
-            self._mark_unavailable("offline")
-            return refreshed
-        if frame is None:
-            return refreshed
-        outcome = self.handle_frame(frame)
-        return outcome if outcome is not None else refreshed
+        if getattr(self.usb, "connected", False):
+            try:
+                frame = self.usb.poll()
+            except Exception:
+                self._mark_unavailable("offline")
+                return None
+            if frame is not None:
+                outcome = self.handle_frame(frame)
+                if outcome is not None:
+                    return outcome
+        return self._refresh_if_dirty(now)
 
     def run(self, *, interval: float = 0.1) -> None:
         from .usb import UsbSessionError
@@ -893,7 +892,7 @@ def write_live_sync_evidence(path: Path, *, result: str, duration_seconds: float
     temporary.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
     digest = _sha256(path)
-    checksum = path.with_name(path.name + ".sha256")
+    checksum = path.with_suffix(".sha256")
     checksum_tmp = checksum.with_name(f".{checksum.name}.tmp")
     checksum_tmp.write_text(f"{digest}  {path.name}\n", encoding="ascii")
     os.replace(checksum_tmp, checksum)
