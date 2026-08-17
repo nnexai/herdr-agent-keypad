@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
-current_phase_name: truthful-codex-capacity-and-device-menu
+current_phase: 02.1
+current_phase_name: Reliable Live Synchronization, Focus, and Flicker-Free Rendering
 status: ready
 stopped_at: Completed Phase 2 actual-device acceptance
-last_updated: "2026-08-17T13:20:00+02:00"
+last_updated: "2026-08-17T13:08:31.164Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 2 selected-USB snapshot, rendering, exact focus, and physical feedback accepted
 progress:
   total_phases: 4
   completed_phases: 2
-  total_plans: 18
+  total_plans: 21
   completed_plans: 18
 ---
 
@@ -23,11 +23,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-16)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 03 — truthful-codex-capacity-and-device-menu
+**Current focus:** Phase 02.1 — reliable-live-synchronization-focus-and-flicker-free-renderi
 
 ## Current Position
 
-Phase: 01 (physical-keypad-and-proven-transport) — COMPLETE (scoped current-setup USB)
+Phase: 02.1 (Reliable Live Synchronization, Focus, and Flicker-Free Rendering) — PLANNED
 Plan: 13 of 13
 Status: Complete; selected USB evidence and archive independently verify
 Last activity: 2026-08-17 — scoped gap-closure lineage archived
@@ -116,6 +116,10 @@ None yet.
 - [Phase 1]: Complete under the current-setup scope. Endpoint renumbering and self-restarting the active qualification utility are explicitly non-applicable and remain excluded from the archived profile.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
+
+### Roadmap Evolution
+
+- Phase 02.1 inserted after Phase 2: Reliable Live Synchronization, Focus, and Flicker-Free Rendering (URGENT)
 
 ## Deferred Items
 
