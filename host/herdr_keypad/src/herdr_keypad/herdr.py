@@ -124,9 +124,9 @@ class HerdrClient:
 class HerdrEventStream:
     """Persistent bounded subscription stream used only for invalidation.
 
-    The stream admits ``push`` only after the same socket has returned the
-    correlated JSON-RPC subscribe response and then a typed ``{event,data}``
-    envelope.  Event bodies are never interpreted as projection rows.
+    The stream admits ``push`` after the same socket returns the correlated
+    JSON-RPC subscribe response. Typed ``{event,data}`` envelopes are consumed
+    later without inventing a polling projection source.
     """
 
     MAX_LINE_BYTES = 65_536
@@ -138,7 +138,6 @@ class HerdrEventStream:
         "pane.moved",
         "pane.exited",
         "pane.agent_detected",
-        "pane.agent_status_changed",
         "workspace.closed",
         "tab.closed",
     )
@@ -273,28 +272,8 @@ class HerdrEventStream:
                 self.mode = "poll"
                 self._close_socket()
                 return self.mode
-            line = self._readline(deadline=deadline)
-            if line is None:
-                self.reason = "ack_without_typed_event"
-                self.mode = "poll"
-                self._close_socket()
-                return self.mode
-            try:
-                event = json.loads(line)
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                self.reason = "malformed_typed_event"
-                self.mode = "poll"
-                self._close_socket()
-                return self.mode
-            typed = self._typed_event(event)
-            if typed is None:
-                self.reason = "missing_typed_lifecycle_event"
-                self.mode = "poll"
-                self._close_socket()
-                return self.mode
-            self.typed_event = typed
             self.mode = "push"
-            self.reason = "subscribe_ack_plus_typed_event"
+            self.reason = "subscribe_ack"
             return self.mode
         except (OSError, HerdrError, TimeoutError) as exc:
             self.reason = type(exc).__name__.lower()
@@ -338,8 +317,8 @@ def _contract_record(stream: HerdrEventStream, *, deadline_seconds: float) -> di
         "reason": stream.reason,
         "deadline_seconds": deadline_seconds,
         "observed": {
-            "subscribe_ack": stream.reason == "subscribe_ack_plus_typed_event",
-            "typed_event": stream.reason == "subscribe_ack_plus_typed_event",
+            "subscribe_ack": stream.reason == "subscribe_ack",
+            "typed_event": stream.typed_event is not None,
         },
         "recovery": {
             "max_reestablish_attempts": 3,
@@ -380,8 +359,8 @@ def verify_event_contract(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     data = json.loads(Path(args.path).read_text(encoding="utf-8"))
     if data.get("mode") == "push":
-        if data.get("reason") != "subscribe_ack_plus_typed_event":
-            raise SystemExit("push requires ACK plus typed event")
+        if data.get("reason") != "subscribe_ack":
+            raise SystemExit("push requires correlated subscribe ACK")
     elif data.get("mode") != "poll":
         raise SystemExit("contract mode must be push or poll")
     if data.get("recovery", {}).get("max_reestablish_attempts") != 3:

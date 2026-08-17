@@ -410,13 +410,14 @@ class HerdrEventContractTests(unittest.TestCase):
         self.assertEqual(stream.poll()["event"], "pane.updated")
         self.assertEqual(json.loads(sock.sent[0])["method"], "events.subscribe")
 
-    def test_ack_only_falls_back_to_poll(self):
+    def test_ack_only_admits_push_without_waiting_for_first_event(self):
         sock = self.Socket(b'{"jsonrpc":"2.0","id":"1","result":{"subscribed":true}}\n')
         stream = __import__("herdr_keypad.herdr", fromlist=["HerdrEventStream"]).HerdrEventStream(
             HerdrClient(timeout=0.1), socket_factory=lambda: sock
         )
-        self.assertEqual(stream.probe(deadline_seconds=1), "poll")
-        self.assertEqual(stream.reason, "ack_without_typed_event")
+        self.assertEqual(stream.probe(deadline_seconds=1), "push")
+        self.assertEqual(stream.reason, "subscribe_ack")
+        self.assertTrue(stream.active)
 
     def test_live_smoke_rejects_unbounded_window_before_device_access(self):
         self.assertEqual(main(["--smoke-live-sync", "4"]), 2)
