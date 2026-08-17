@@ -560,11 +560,47 @@ class PermanentBridge:
         self.publication_count = 0
         self.ready_transitions = 0
         self.last_focus: dict[str, Any] | None = None
+        self._deferred_focus: list[dict[str, Any]] = []
 
-    def _clear_pending_focus(self) -> None:
+
+    def _clear_usb_pending_focus(self) -> None:
         clear = getattr(self.usb, "clear_pending_focus", None)
         if callable(clear):
             clear()
+
+    def _clear_pending_focus(self) -> None:
+        self._clear_usb_pending_focus()
+        self._deferred_focus.clear()
+
+    def _focus_matches_snapshot(self, frame: Mapping[str, Any], snapshot: Any) -> bool:
+        payload = frame.get("payload")
+        return (
+            isinstance(payload, Mapping)
+            and frame.get("session_id") == getattr(self.usb, "session_id", None)
+            and payload.get("host_epoch") == snapshot.host_epoch
+            and payload.get("snapshot_revision") == snapshot.snapshot_revision
+        )
+
+    def _defer_focus(self, frame: Mapping[str, Any]) -> None:
+        snapshot = getattr(self.projection, "current", None)
+        if (
+            snapshot is None
+            or getattr(snapshot, "source_status", None) != "current"
+            or not self._focus_matches_snapshot(frame, snapshot)
+        ):
+            return
+        action_id = frame["payload"]["action_id"]
+        if any(item["payload"]["action_id"] == action_id for item in self._deferred_focus):
+            return
+        capacity = min(16, max(1, int(getattr(self.usb, "pending_focus_capacity", 16))))
+        if len(self._deferred_focus) < capacity:
+            self._deferred_focus.append(dict(frame))
+
+    def _drain_deferred_focus(self, snapshot: Any) -> None:
+        pending, self._deferred_focus = self._deferred_focus, []
+        for frame in pending:
+            if self._focus_matches_snapshot(frame, snapshot):
+                self.handle_frame(frame)
 
     def _mark_unavailable(self, reason: str) -> None:
         self.last_error = reason
@@ -581,7 +617,11 @@ class PermanentBridge:
 
     def _publish_snapshot(self, snapshot: Any) -> Any:
         self.ready = False
-        self._clear_pending_focus()
+        self._clear_usb_pending_focus()
+        self._deferred_focus = [
+            frame for frame in self._deferred_focus
+            if self._focus_matches_snapshot(frame, snapshot)
+        ]
         ack = self.usb.publish_snapshot(_projection_payload(snapshot))
         if (
             ack.get("accepted") is not True
@@ -595,6 +635,7 @@ class PermanentBridge:
             raise V2ProtocolError("snapshot_unavailable", "complete current projection was not committed")
         self.ready = True
         self.ready_transitions += 1
+        self._drain_deferred_focus(snapshot)
         return snapshot
 
     def _publish_refresh(self) -> Any:
@@ -605,6 +646,7 @@ class PermanentBridge:
         return self._publish_snapshot(snapshot)
 
     def bootstrap(self) -> Any:
+        self._clear_pending_focus()
         verify_contract_inputs(self.contract_root)
         from .focus import FocusExecutor
         try:
@@ -643,10 +685,14 @@ class PermanentBridge:
             raise V2ProtocolError("bootstrap_failed", str(exc)) from exc
 
     def handle_frame(self, frame: Mapping[str, Any]) -> Any:
-        if frame.get("type") != "focus_intent" or not self.ready or self.focus is None:
+        if frame.get("type") != "focus_intent":
             return None
         intent_payload = frame.get("payload")
         validate_v2_payload("focus_intent", intent_payload)
+        if not self.ready or self.focus is None:
+            if self.focus is not None:
+                self._defer_focus(frame)
+            return None
         identity = Identity(
             intent_payload["pane_id"],
             intent_payload["terminal_id"],

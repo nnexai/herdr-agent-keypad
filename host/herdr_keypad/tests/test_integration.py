@@ -187,6 +187,55 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertNotIn("unread", [name for name, _ in fake.calls])
         self.assertNotIn("clear", [name for name, _ in fake.calls])
 
+    def test_not_ready_focus_is_processed_once_after_matching_snapshot_ack(self):
+        fake = FakeHerdr()
+        usb = FakeUsb()
+        bridge = PermanentBridge(HerdrClient(requester=fake.request), usb, InboxProjection(host_epoch="epoch"))
+        snapshot = bridge.bootstrap()
+        binding = bridge.projection.binding(0)
+        payload = {
+            "action_id": "during-ack",
+            "host_epoch": binding.host_epoch,
+            "snapshot_revision": binding.snapshot_revision,
+            "slot": binding.slot,
+            "entry_id": binding.entry_id,
+            **binding.identity.as_payload(),
+        }
+        frame = protocol.new_v2_frame("focus_intent", "boot", usb.session_id, 1, payload)
+
+        bridge.ready = False
+        self.assertIsNone(bridge.handle_frame(frame))
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 0)
+        bridge._publish_snapshot(snapshot)
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
+        self.assertEqual(usb.results[-1]["outcome"], "accepted")
+
+        bridge._publish_snapshot(snapshot)
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
+
+    def test_not_ready_focus_is_discarded_when_snapshot_generation_changes(self):
+        fake = FakeHerdr()
+        usb = FakeUsb()
+        bridge = PermanentBridge(HerdrClient(requester=fake.request), usb, InboxProjection(host_epoch="epoch"))
+        bridge.bootstrap()
+        binding = bridge.projection.binding(0)
+        payload = {
+            "action_id": "stale-during-ack",
+            "host_epoch": binding.host_epoch,
+            "snapshot_revision": binding.snapshot_revision,
+            "slot": binding.slot,
+            "entry_id": binding.entry_id,
+            **binding.identity.as_payload(),
+        }
+        bridge.ready = False
+        bridge.handle_frame(protocol.new_v2_frame("focus_intent", "boot", usb.session_id, 1, payload))
+
+        fake.rows[0] = {**fake.rows[0], "revision": 2, "state_change_seq": 5}
+        changed = bridge.projection.bootstrap(bridge.client)
+        bridge._publish_snapshot(changed)
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 0)
+        self.assertEqual(usb.results, [])
+
     def test_revision_only_poll_reuses_generation_and_focuses_exact_target(self):
         fake = FakeHerdr()
         usb = FakeUsb()
