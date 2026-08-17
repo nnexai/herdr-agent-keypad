@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: ready
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-08-17T08:13:11.048Z"
+stopped_at: Completed 02-03-PLAN.md (02-04 intentionally not executed)
+last_updated: "2026-08-17T08:49:10.608Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 01 scoped USB qualification, selection, build, and archive completed
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 18
-  completed_plans: 15
+  completed_plans: 17
 ---
 
 # Project State
@@ -32,7 +32,7 @@ Plan: 13 of 13
 Status: Complete; selected USB evidence and archive independently verify
 Last activity: 2026-08-17 — scoped gap-closure lineage archived
 
-Progress: [████████░░] 83%
+Progress: [█████████░] 94%
 
 ## Performance Metrics
 
@@ -66,6 +66,8 @@ Progress: [████████░░] 83%
 | Phase 01 P10 | 133 | 3 tasks | 9 files |
 | Phase 02 P00 | 25min | 3 tasks | 6 files |
 | Phase 02 P01 | 180 | 2 tasks | 12 files |
+| Phase 02 P02 | 3600 | 2 tasks | 5 files |
+| Phase 02 P03 | 3600 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -100,6 +102,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: 02-00 Herdr artifacts are baseline-compatible; agent.focus is the sole device action and host epoch/snapshot revision remain bridge-owned.
 - [Phase ?]: V2 preserves the Phase 1 FrameCodec/ProtocolSession envelope and uses exactly three staged/committed slots with opaque identity plus bridge-owned host epoch and snapshot revision.
 - [Phase ?]: Only canonical key slots 0..2 emit typed focus_intent; key/panel 4 and encoder remain unbound.
+- [Phase ?]: Installed Herdr HEAD 78b243279b4da55150b58dc2cc3cffcdc2fd6a04 remains the only accepted ordering authority; malformed rank or identity fails closed.
+- [Phase ?]: Physical keys 0..2 are exact generation-bound focus-only actions; panel/key 4 and encoder remain unbound.
+- [Phase ?]: Firmware renders a global SYNC veil before sequential three-panel staging and commits active bindings only after all draws succeed.
 
 ### Pending Todos
 
@@ -120,6 +125,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-17T08:12:59.655Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-08-17T08:48:54.985Z
+Stopped at: Completed 02-03-PLAN.md (02-04 intentionally not executed)
 Resume file: None

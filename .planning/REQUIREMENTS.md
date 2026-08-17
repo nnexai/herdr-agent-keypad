@@ -16,14 +16,14 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 ### Agent Inbox
 
 - [x] **INBX-01**: The user sees zero to three current agent entries in exactly the order supplied by the installed `herdr-agent-inbox`, without firmware or bridge-side reprioritization.
-- [ ] **INBX-02**: The user sees a short session title and workspace or repository discriminator on each occupied agent key.
+- [x] **INBX-02**: The user sees a short session title and workspace or repository discriminator on each occupied agent key.
 - [x] **INBX-03**: The user can distinguish blocked, finished/unseen, working, idle, settled, and unknown agent states through herdr-consistent color on each display key, optionally reinforced by physically mapped key-backlight or above-key LEDs, with an icon or text cue so color is never the only signal.
-- [ ] **INBX-04**: The user sees an explicit empty state on each unoccupied agent key rather than stale content from a removed or reordered entry.
+- [x] **INBX-04**: The user sees an explicit empty state on each unoccupied agent key rather than stale content from a removed or reordered entry.
 
 ### Agent Focus
 
 - [x] **FOCS-01**: Pressing an occupied agent key focuses the exact herdr pane represented by the pixels the user pressed, using an opaque target identity plus host epoch and snapshot revision rather than a numeric slot.
-- [ ] **FOCS-02**: Pressing an empty, stale, vanished, incompatible, or offline binding visibly rejects the action and never focuses whichever agent later occupies that slot.
+- [x] **FOCS-02**: Pressing an empty, stale, vanished, incompatible, or offline binding visibly rejects the action and never focuses whichever agent later occupies that slot.
 - [x] **FOCS-03**: The user sees focus success only after herdr acknowledges the exact target, and sees a distinct rejected, failed, or uncertain result when success cannot be established.
 - [x] **FOCS-04**: Focusing from the keypad may apply Herdr's documented native seen/manual-unread effects, but it does not settle, dismiss, reply to, approve for, or invoke arbitrary actions on the agent.
 
@@ -37,7 +37,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 ### Synchronization and Safety
 
 - [ ] **SYNC-01**: After device, bridge, herdr, Codex, or link startup or reconnection, the user receives a complete authoritative four-tile snapshot before any agent key is enabled.
-- [ ] **SYNC-02**: The device replaces snapshots atomically so the rendered pixels and key bindings always represent one logical host epoch and revision despite sequential panel updates.
+- [x] **SYNC-02**: The device replaces snapshots atomically so the rendered pixels and key bindings always represent one logical host epoch and revision despite sequential panel updates.
 - [ ] **SYNC-03**: Agent-inbox freshness, Codex freshness, and device-link health are tracked and rendered independently.
 - [ ] **SYNC-04**: A keypress made while disconnected or against an uncertain result is never queued, replayed, or optimistically retried after reconnection.
 - [ ] **SAFE-01**: Herdr and Codex credentials remain on the host; firmware receives only bounded normalized display data, opaque identities, freshness metadata, and focus results.
@@ -97,11 +97,11 @@ Every v1 requirement maps to exactly one roadmap phase.
 | HARD-02 | Phase 4 | Pending |
 | HARD-03 | Phase 1 | Complete |
 | INBX-01 | Phase 2 | Complete |
-| INBX-02 | Phase 2 | Pending |
+| INBX-02 | Phase 2 | Complete |
 | INBX-03 | Phase 2 | Complete |
-| INBX-04 | Phase 2 | Pending |
+| INBX-04 | Phase 2 | Complete |
 | FOCS-01 | Phase 2 | Complete |
-| FOCS-02 | Phase 2 | Pending |
+| FOCS-02 | Phase 2 | Complete |
 | FOCS-03 | Phase 2 | Complete |
 | FOCS-04 | Phase 2 | Complete |
 | CODEX-01 | Phase 3 | Pending |
@@ -109,7 +109,7 @@ Every v1 requirement maps to exactly one roadmap phase.
 | CODEX-03 | Phase 3 | Pending |
 | CODEX-04 | Phase 3 | Pending |
 | SYNC-01 | Phase 4 | Pending |
-| SYNC-02 | Phase 2 | Pending |
+| SYNC-02 | Phase 2 | Complete |
 | SYNC-03 | Phase 3 | Pending |
 | SYNC-04 | Phase 4 | Pending |
 | SAFE-01 | Phase 3 | Pending |
