@@ -146,7 +146,7 @@ class InboxProjection:
         session = row.get("agent_session")
         if session is not None:
             session = _opaque(session, "agent_session")
-        entry_id = f"{workspace_id}:{pane_id}"
+        entry_id = pane_id
         identity = Identity(pane_id, terminal_id, session, int(row["revision"]), workspace_id, tab_id)
         return ProjectedEntry(-1, entry_id, title, discriminator, RANK_STATES[rank], rank, state_change_seq, identity)
 
