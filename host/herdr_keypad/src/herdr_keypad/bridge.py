@@ -34,6 +34,7 @@ V2 = 2
 SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
 AGENT_STATES = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"}
 OUTCOMES = {"accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"}
+FOCUS_RESULT_GRACE_SECONDS = 0.25
 
 
 class V2ProtocolError(ValueError):
@@ -561,6 +562,7 @@ class PermanentBridge:
         self.ready_transitions = 0
         self.last_focus: dict[str, Any] | None = None
         self._deferred_focus: list[dict[str, Any]] = []
+        self._focus_result_grace_until = 0.0
 
 
     def _clear_usb_pending_focus(self) -> None:
@@ -731,12 +733,16 @@ class PermanentBridge:
             "snapshot_revision": intent.binding.snapshot_revision,
         }
         self.usb.send_focus_result(result.as_payload())
+        self._focus_result_grace_until = time.monotonic() + FOCUS_RESULT_GRACE_SECONDS
         if outcome.status == "source_revision_changed":
             self._publish_refresh()
         return outcome
 
     def _refresh_if_dirty(self, now: float) -> Any:
         if not self._dirty:
+            return None
+        if now < self._focus_result_grace_until:
+            self._follow_up = True
             return None
         if self._refresh_active:
             self._follow_up = True
