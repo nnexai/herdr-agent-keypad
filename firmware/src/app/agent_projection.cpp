@@ -295,8 +295,10 @@ void AgentProjection::renderFeedback(BoardAdapter& board, uint8_t slot) {
 }
 
 bool AgentProjection::hasBinding(uint8_t slot) const {
+  const Feedback feedback = slot < kSlotCount ? feedback_[slot] : Feedback::Disabled;
+  const bool actionable = feedback == Feedback::Ready || feedback == Feedback::Success;
   return committed_ && !syncing_ && slot < kSlotCount && committed_generation_.tiles[slot].binding.occupied &&
-         strcmp(committed_generation_.source_status, "current") == 0 && feedback_[slot] == Feedback::Ready;
+         strcmp(committed_generation_.source_status, "current") == 0 && actionable;
 }
 
 AgentProjection::Feedback AgentProjection::feedback(uint8_t slot) const { return slot < kSlotCount ? feedback_[slot] : Feedback::Disabled; }
