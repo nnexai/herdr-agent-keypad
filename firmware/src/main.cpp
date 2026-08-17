@@ -4,6 +4,7 @@
 #include <esp_system.h>
 
 #include <string.h>
+#include <cstdio>
 
 #include "board/board_adapter.h"
 #include "board/physical_map.h"
@@ -11,6 +12,7 @@
 #include "protocol/protocol.h"
 #include "transport/link.h"
 #include "ui/bringup_renderer.h"
+#include "app/agent_projection.h"
 
 namespace {
 constexpr size_t kMaxLineBytes = phase1::protocol::kMaxLineBytes;
@@ -27,6 +29,7 @@ String deviceId;
 BoardAdapter board;
 BringupRenderer renderer;
 PhysicalMap physicalMap;
+AgentProjection agentProjection;
 UsbCdcLink usbLink;
 ProofMetrics proofMetrics;
 phase1::protocol::ProtocolSession protocolSession("", "", phase1::protocol::kQueueCapacity);
@@ -85,9 +88,10 @@ void sendFrame(const char *type, uint32_t replyTo, JsonObjectConst payload,
                bool countMetrics = true) {
   const size_t payloadLength = serializeJson(payload, payloadScratch, sizeof(payloadScratch) - 1);
   if (payloadLength == 0 || payloadLength + 1 > kMaxLineBytes || !protocolSession.active()) return;
-
   phase1::protocol::Frame outgoing;
-  outgoing.version = 1;
+
+  outgoing.version = (strcmp(type, "snapshot_ack") == 0 || strcmp(type, "focus_intent") == 0 ||
+                      strcmp(type, "focus_result") == 0 || strcmp(type, "agent_snapshot") == 0) ? 2 : 1;
   strncpy(outgoing.type, type, sizeof(outgoing.type) - 1);
   strncpy(outgoing.boot_id, bootId.c_str(), sizeof(outgoing.boot_id) - 1);
   strncpy(outgoing.session_id, protocolSession.session_id(), sizeof(outgoing.session_id) - 1);
@@ -262,6 +266,30 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     return;
   }
   const char *type = admission.frame.type;
+  if (strcmp(type, "agent_snapshot") == 0) {
+    JsonObjectConst snapshot = payload.as<JsonObjectConst>();
+    const bool staged = agentProjection.stageSnapshot(snapshot);
+    const bool committed = staged && agentProjection.commitSnapshot();
+    JsonDocument reply;
+    reply["accepted"] = committed;
+    reply["host_epoch"] = snapshot["host_epoch"].as<const char*>();
+    reply["snapshot_revision"] = snapshot["snapshot_revision"].as<uint32_t>();
+    reply["source_status"] = snapshot["source_status"].as<const char*>();
+    reply["reason"] = committed ? "committed" : "rejected";
+    sendFrame("snapshot_ack", admission.frame.sequence, reply.as<JsonObjectConst>());
+    completeAdmission();
+    return;
+  }
+  if (strcmp(type, "focus_result") == 0) {
+    agentProjection.applyFocusResult(payload.as<JsonObjectConst>());
+    completeAdmission();
+    return;
+  }
+  if (strcmp(type, "focus_intent") == 0 || strcmp(type, "snapshot_ack") == 0) {
+    sendError("invalid_direction", "device accepts snapshots and focus results only", admission.frame.sequence);
+    completeAdmission();
+    return;
+  }
   if (strcmp(type, "hello") == 0) {
     JsonDocument reply;
     reply["accepted"] = true;
@@ -376,6 +404,20 @@ void reportEncoderTransition(const char *direction) {
   sendFrame("event", 0, event.as<JsonObjectConst>());
 }
 
+void reportAgentKey() {
+  if (!agentProjection.committed() || !board.ready()) return;
+  for (uint8_t key = 0; key < AgentProjection::kSlotCount; ++key) {
+    if (!board.wasPressed(key)) continue;
+    char actionId[32] = {};
+    std::snprintf(actionId, sizeof(actionId), "device-%lu", static_cast<unsigned long>(micros()));
+    JsonDocument intent;
+    if (agentProjection.captureFocusIntent(key, actionId, intent.to<JsonObject>())) {
+      sendFrame("focus_intent", 0, intent.as<JsonObjectConst>());
+    }
+    break;
+  }
+}
+
 void reportInput() {
   if (!board.ready() || armedInput == ArmedInput::None || activeStep.isEmpty()) return;
   if (armedInput == ArmedInput::Key) {
@@ -411,7 +453,6 @@ void setup() {
   if (board.ready()) {
     board.setBrightness(80);
     board.clearDisplays(TFT_BLACK);
-    render(BringupState::Wait, 0);
   }
   proofMetrics.sampleRuntime();
 }
@@ -422,6 +463,7 @@ void loop() {
   readFrames();
   if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
   lastKeyPollAt = now;
+  reportAgentKey();
   reportInput();
   proofMetrics.sampleRuntime();
   delay(1);

@@ -291,6 +291,197 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
   if (!copy_text(frame.payload_text, sizeof(frame.payload_text), payload_start, frame.payload_length)) return RejectReason::LineTooLong;
   return RejectReason::Ok;
 }
+bool valid_opaque(const char* value, bool allow_empty = false) {
+  const std::size_t length = std::strlen(value);
+  if ((!allow_empty && length == 0) || length > kMaxIdentifierBytes) return false;
+  for (std::size_t index = 0; index < length; ++index) {
+    const unsigned char c = static_cast<unsigned char>(value[index]);
+    if (c < 0x21 || c >= 0x80) return false;
+  }
+  return true;
+}
+
+bool parse_optional_opaque(Cursor& cursor, char* output, std::size_t capacity) {
+  cursor.ws();
+  if (cursor.p < cursor.end && *cursor.p == 'n') {
+    if (!cursor.null_value()) return false;
+    output[0] = '\0';
+    return true;
+  }
+  return cursor.string(output, capacity) && valid_opaque(output);
+}
+
+bool valid_source_status(const char* value) {
+  return std::strcmp(value, "current") == 0 || std::strcmp(value, "empty") == 0 ||
+         std::strcmp(value, "stale") == 0 || std::strcmp(value, "unavailable") == 0 ||
+         std::strcmp(value, "offline") == 0;
+}
+
+bool valid_agent_state(const char* value) {
+  return std::strcmp(value, "empty") == 0 || std::strcmp(value, "working") == 0 ||
+         std::strcmp(value, "idle") == 0 || std::strcmp(value, "blocked") == 0 ||
+         std::strcmp(value, "finished") == 0 || std::strcmp(value, "settled") == 0 ||
+         std::strcmp(value, "unknown") == 0;
+}
+
+RejectReason parse_v2_agent(Cursor& cursor) {
+  if (!cursor.take('{')) return RejectReason::InvalidPayload;
+  uint32_t mask = 0;
+  uint32_t slot = 0;
+  uint32_t source_revision = 0;
+  char entry_id[kMaxIdentifierBytes + 1] = {};
+  char title[kMaxPayloadStringBytes + 1] = {};
+  char discriminator[33] = {};
+  char state[16] = {};
+  char pane_id[kMaxIdentifierBytes + 1] = {};
+  char terminal_id[kMaxIdentifierBytes + 1] = {};
+  char agent_session[kMaxIdentifierBytes + 1] = {};
+  while (true) {
+    cursor.ws();
+    if (cursor.take('}')) break;
+    char key[32] = {};
+    if (!cursor.string(key, sizeof(key)) || !cursor.take(':')) return RejectReason::InvalidJson;
+    uint32_t bit = 0;
+    if (std::strcmp(key, "slot") == 0) bit = 1U << 0;
+    else if (std::strcmp(key, "entry_id") == 0) bit = 1U << 1;
+    else if (std::strcmp(key, "title") == 0) bit = 1U << 2;
+    else if (std::strcmp(key, "discriminator") == 0) bit = 1U << 3;
+    else if (std::strcmp(key, "state") == 0) bit = 1U << 4;
+    else if (std::strcmp(key, "pane_id") == 0) bit = 1U << 5;
+    else if (std::strcmp(key, "terminal_id") == 0) bit = 1U << 6;
+    else if (std::strcmp(key, "agent_session") == 0) bit = 1U << 7;
+    else if (std::strcmp(key, "source_revision") == 0) bit = 1U << 8;
+    else return RejectReason::UnknownField;
+    if ((mask & bit) != 0) return RejectReason::DuplicateKey;
+    mask |= bit;
+    if (bit == (1U << 0)) {
+      if (!cursor.uint32(slot) || slot > 2) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 1)) {
+      if (!cursor.string(entry_id, sizeof(entry_id))) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 2)) {
+      if (!cursor.string(title, sizeof(title)) || std::strlen(title) == 0 || std::strlen(title) > 64) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 3)) {
+      if (!cursor.string(discriminator, sizeof(discriminator)) || std::strlen(discriminator) == 0 || std::strlen(discriminator) > 32) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 4)) {
+      if (!cursor.string(state, sizeof(state)) || !valid_agent_state(state)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 5)) {
+      if (!cursor.string(pane_id, sizeof(pane_id))) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 6)) {
+      if (!cursor.string(terminal_id, sizeof(terminal_id))) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 7)) {
+      if (!parse_optional_opaque(cursor, agent_session, sizeof(agent_session))) return RejectReason::InvalidIdentifier;
+    } else {
+      if (!cursor.uint32(source_revision)) return RejectReason::InvalidShape;
+    }
+    cursor.ws();
+    if (cursor.take('}')) break;
+    if (!cursor.take(',')) return RejectReason::InvalidJson;
+  }
+  if (mask != 0x1ffU) return RejectReason::InvalidShape;
+  const bool empty = std::strcmp(state, "empty") == 0;
+  if (!valid_opaque(entry_id, empty) || !valid_opaque(pane_id, empty) || !valid_opaque(terminal_id, empty) ||
+      (!empty && source_revision == 0) || (empty && source_revision != 0)) return RejectReason::InvalidIdentifier;
+  return RejectReason::Ok;
+}
+
+RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_start) {
+  if (!cursor.take('{')) return RejectReason::InvalidPayload;
+  uint32_t mask = 0;
+  uint32_t snapshot_revision = 0;
+  uint32_t slot = 0;
+  uint32_t source_revision = 0;
+  bool accepted = false;
+  bool focused = false;
+  char host_epoch[kMaxIdentifierBytes + 1] = {};
+  char source_status[16] = {};
+  char reason[kMaxPayloadStringBytes + 1] = {};
+  char action_id[kMaxIdentifierBytes + 1] = {};
+  char entry_id[kMaxIdentifierBytes + 1] = {};
+  char pane_id[kMaxIdentifierBytes + 1] = {};
+  char terminal_id[kMaxIdentifierBytes + 1] = {};
+  char agent_session[kMaxIdentifierBytes + 1] = {};
+  char outcome[24] = {};
+  while (true) {
+    cursor.ws();
+    if (cursor.take('}')) break;
+    char key[32] = {};
+    if (!cursor.string(key, sizeof(key)) || !cursor.take(':')) return RejectReason::InvalidJson;
+    uint32_t bit = 0;
+    if (std::strcmp(key, "host_epoch") == 0) bit = 1U << 0;
+    else if (std::strcmp(key, "snapshot_revision") == 0) bit = 1U << 1;
+    else if (std::strcmp(key, "source_status") == 0) bit = 1U << 2;
+    else if (std::strcmp(key, "agents") == 0) bit = 1U << 3;
+    else if (std::strcmp(key, "accepted") == 0) bit = 1U << 4;
+    else if (std::strcmp(key, "reason") == 0) bit = 1U << 5;
+    else if (std::strcmp(key, "action_id") == 0) bit = 1U << 6;
+    else if (std::strcmp(key, "outcome") == 0) bit = 1U << 7;
+    else if (std::strcmp(key, "slot") == 0) bit = 1U << 8;
+    else if (std::strcmp(key, "entry_id") == 0) bit = 1U << 9;
+    else if (std::strcmp(key, "pane_id") == 0) bit = 1U << 10;
+    else if (std::strcmp(key, "terminal_id") == 0) bit = 1U << 11;
+    else if (std::strcmp(key, "agent_session") == 0) bit = 1U << 12;
+    else if (std::strcmp(key, "source_revision") == 0) bit = 1U << 13;
+    else if (std::strcmp(key, "focused") == 0) bit = 1U << 14;
+    else return RejectReason::UnknownField;
+    if ((mask & bit) != 0) return RejectReason::DuplicateKey;
+    mask |= bit;
+    if (bit == (1U << 0)) {
+      if (!cursor.string(host_epoch, sizeof(host_epoch)) || !valid_opaque(host_epoch)) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 1)) {
+      if (!cursor.uint32(snapshot_revision) || snapshot_revision == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 2)) {
+      if (!cursor.string(source_status, sizeof(source_status)) || !valid_source_status(source_status)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 3)) {
+      if (!cursor.take('[')) return RejectReason::InvalidPayload;
+      for (uint8_t index = 0; index < 3; ++index) {
+        const RejectReason row = parse_v2_agent(cursor);
+        if (row != RejectReason::Ok) return row;
+        cursor.ws();
+        if (index < 2) {
+          if (!cursor.take(',')) return RejectReason::InvalidShape;
+        } else if (!cursor.take(']')) {
+          return RejectReason::InvalidShape;
+        }
+      }
+    } else if (bit == (1U << 4)) {
+      if (!cursor.boolean(accepted)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 5)) {
+      if (!cursor.string(reason, sizeof(reason)) || std::strlen(reason) == 0 || std::strlen(reason) > 64) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 6)) {
+      if (!cursor.string(action_id, sizeof(action_id)) || !valid_opaque(action_id)) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 7)) {
+      if (!cursor.string(outcome, sizeof(outcome))) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 8)) {
+      if (!cursor.uint32(slot) || slot > 2) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 9)) {
+      if (!cursor.string(entry_id, sizeof(entry_id)) || !valid_opaque(entry_id)) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 10)) {
+      if (!cursor.string(pane_id, sizeof(pane_id)) || !valid_opaque(pane_id)) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 11)) {
+      if (!cursor.string(terminal_id, sizeof(terminal_id)) || !valid_opaque(terminal_id)) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 12)) {
+      if (!parse_optional_opaque(cursor, agent_session, sizeof(agent_session))) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 13)) {
+      if (!cursor.uint32(source_revision) || source_revision == 0) return RejectReason::InvalidShape;
+    } else if (!cursor.boolean(focused)) {
+      return RejectReason::InvalidShape;
+    }
+    cursor.ws();
+    if (cursor.take('}')) break;
+    if (!cursor.take(',')) return RejectReason::InvalidJson;
+  }
+  uint32_t expected = 0;
+  if (std::strcmp(frame.type, "agent_snapshot") == 0) expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 3);
+  else if (std::strcmp(frame.type, "snapshot_ack") == 0) expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 4) | (1U << 5);
+  else if (std::strcmp(frame.type, "focus_intent") == 0) expected = (1U << 0) | (1U << 1) | (1U << 6) | (1U << 8) | (1U << 9) | (1U << 10) | (1U << 11) | (1U << 12) | (1U << 13);
+  else if (std::strcmp(frame.type, "focus_result") == 0) expected = (1U << 0) | (1U << 1) | (1U << 6) | (1U << 7) | (1U << 8) | (1U << 9) | (1U << 10) | (1U << 11) | (1U << 12) | (1U << 13) | (1U << 14);
+  else return RejectReason::UnknownType;
+  if (mask != expected) return RejectReason::InvalidShape;
+  if (std::strcmp(frame.type, "focus_result") == 0 && std::strcmp(outcome, "accepted") == 0 && !focused) return RejectReason::InvalidShape;
+  frame.payload_length = static_cast<std::size_t>(cursor.p - payload_start);
+  if (!copy_text(frame.payload_text, sizeof(frame.payload_text), payload_start, frame.payload_length)) return RejectReason::LineTooLong;
+  return RejectReason::Ok;
+}
 
 }  // namespace
 
@@ -369,7 +560,7 @@ Result& FrameCodec::decode(const uint8_t* line, std::size_t length, Result& resu
         result.reason = RejectReason::InvalidVersion;
         return result;
       }
-      if (value != 1) {
+      if (value != 1 && value != 2) {
         result.reason = RejectReason::InvalidVersion;
         return result;
       }
@@ -434,25 +625,33 @@ Result& FrameCodec::decode(const uint8_t* line, std::size_t length, Result& resu
     result.reason = RejectReason::InvalidEnvelope;
     return result;
   }
-  if (result.frame.version != 1) {
+  if (result.frame.version != 1 && result.frame.version != 2) {
     result.reason = RejectReason::InvalidVersion;
     return result;
   }
-  if (std::strcmp(result.frame.type, "hello") != 0 && std::strcmp(result.frame.type, "hello_ack") != 0 && std::strcmp(result.frame.type, "probe") != 0 && std::strcmp(result.frame.type, "probe_ack") != 0 && std::strcmp(result.frame.type, "event") != 0 && std::strcmp(result.frame.type, "error") != 0 && std::strcmp(result.frame.type, "metrics") != 0 && std::strcmp(result.frame.type, "metrics_ack") != 0) {
+  const bool known_v1_type = std::strcmp(result.frame.type, "hello") == 0 || std::strcmp(result.frame.type, "hello_ack") == 0 ||
+                             std::strcmp(result.frame.type, "probe") == 0 || std::strcmp(result.frame.type, "probe_ack") == 0 ||
+                             std::strcmp(result.frame.type, "event") == 0 || std::strcmp(result.frame.type, "error") == 0 ||
+                             std::strcmp(result.frame.type, "metrics") == 0 || std::strcmp(result.frame.type, "metrics_ack") == 0;
+  const bool known_v2_type = std::strcmp(result.frame.type, "agent_snapshot") == 0 || std::strcmp(result.frame.type, "snapshot_ack") == 0 ||
+                             std::strcmp(result.frame.type, "focus_intent") == 0 || std::strcmp(result.frame.type, "focus_result") == 0;
+  if (result.frame.version == 1 && !known_v1_type) {
     result.reason = RejectReason::UnknownType;
+    return result;
+  }
+  if (result.frame.version == 2 && !known_v2_type) {
+    result.reason = known_v1_type ? RejectReason::InvalidVersion : RejectReason::UnknownType;
     return result;
   }
   {
     Cursor payload_cursor{result.frame.payload_text, result.frame.payload_text + result.frame.payload_length};
-    const RejectReason payload_reason = parse_payload(payload_cursor, result.frame, result.frame.payload_text);
+    const RejectReason payload_reason = result.frame.version == 2
+                                            ? parse_v2_payload(payload_cursor, result.frame, result.frame.payload_text)
+                                            : parse_payload(payload_cursor, result.frame, result.frame.payload_text);
     if (payload_reason != RejectReason::Ok) {
       result.reason = payload_reason;
       return result;
     }
-  }
-  if (!valid_identifier(result.frame.boot_id) || !valid_identifier(result.frame.session_id)) {
-    result.reason = RejectReason::InvalidIdentifier;
-    return result;
   }
   if (!valid_digest(result.frame.digest)) {
     result.reason = RejectReason::InvalidDigest;
@@ -470,7 +669,7 @@ Result& FrameCodec::decode(const uint8_t* line, std::size_t length, Result& resu
 bool FrameCodec::encode(const Frame& frame, const char* payload_json, std::size_t payload_length,
                         char* output, std::size_t output_capacity, std::size_t& output_length) {
   if (output == nullptr || payload_json == nullptr || output_capacity == 0 ||
-      payload_length == 0 || payload_length >= kMaxLineBytes || frame.version != 1 ||
+      payload_length == 0 || payload_length >= kMaxLineBytes || (frame.version != 1 && frame.version != 2) ||
       frame.sequence == 0 || std::strlen(frame.type) == 0 ||
       std::strlen(frame.type) >= sizeof(frame.type) || !valid_identifier(frame.boot_id) ||
       !valid_identifier(frame.session_id) || !valid_digest(frame.digest) ||

@@ -194,6 +194,8 @@ def classify_line(line: bytes) -> ProtocolResult:
         return ProtocolResult(False, "duplicate_key")
     except (json.JSONDecodeError, RecursionError, ProtocolError) as exc:
         return ProtocolResult(False, getattr(exc, "code", "invalid_json"))
+    if isinstance(frame, dict) and frame.get("v") == V2_PROTOCOL_VERSION:
+        return classify_v2_line(line)
     try:
         validated = validate_frame(frame)
     except ProtocolError as exc:
@@ -227,6 +229,174 @@ def new_frame(
         "digest": _payload_digest(payload),
         "payload": payload,
     }
+V2_PROTOCOL_VERSION = 2
+V2_FRAME_TYPES = {"agent_snapshot", "snapshot_ack", "focus_intent", "focus_result"}
+V2_SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
+V2_OUTCOMES = {"accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"}
+
+
+def _v2_text(value: Any, name: str, maximum: int, *, allow_empty: bool = False) -> None:
+    if not isinstance(value, str) or len(value) > maximum or (not allow_empty and not value) or any(ord(char) >= 0x80 for char in value):
+        raise ProtocolError("invalid_shape", f"{name} must be bounded ASCII text")
+def _v2_opaque(value: Any, name: str, *, allow_empty: bool = False) -> None:
+    _v2_text(value, name, 64, allow_empty=allow_empty)
+    if value and any(char in "\r\n\t" or ord(char) < 0x21 for char in value):
+        raise ProtocolError("invalid_identifier", f"{name} contains disallowed opaque bytes")
+
+
+def _v2_uint(value: Any, name: str, *, zero: bool = False) -> None:
+    if not _is_int(value) or value < (0 if zero else 1) or value > 0xFFFFFFFF:
+        raise ProtocolError("invalid_shape", f"{name} must be a bounded uint32")
+
+
+def _v2_identity(payload: dict[str, Any], *, empty: bool = False) -> None:
+    _v2_opaque(payload["pane_id"], "pane_id", allow_empty=empty)
+    _v2_opaque(payload["terminal_id"], "terminal_id", allow_empty=empty)
+    session = payload["agent_session"]
+    if session is not None:
+        _v2_opaque(session, "agent_session")
+    _v2_uint(payload["source_revision"], "source_revision", zero=empty)
+    if not empty and (not payload["pane_id"] or not payload["terminal_id"] or payload["source_revision"] == 0):
+        raise ProtocolError("invalid_identity", "occupied identity is incomplete")
+
+
+def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
+    expected = {
+        "agent_snapshot": {"host_epoch", "snapshot_revision", "source_status", "agents"},
+        "snapshot_ack": {"accepted", "host_epoch", "snapshot_revision", "source_status", "reason"},
+        "focus_intent": {"action_id", "host_epoch", "snapshot_revision", "slot", "entry_id", "pane_id", "terminal_id", "agent_session", "source_revision"},
+        "focus_result": {"action_id", "outcome", "host_epoch", "snapshot_revision", "slot", "entry_id", "pane_id", "terminal_id", "agent_session", "source_revision", "focused"},
+    }
+    if frame_type not in expected:
+        raise ProtocolError("unknown_type", "v2 type is not in the closed product set")
+    if not isinstance(payload, dict):
+        raise ProtocolError("invalid_payload", "v2 payload must be an object")
+    if set(payload) != expected[frame_type]:
+        raise ProtocolError("unknown_field" if not set(payload).issubset(expected[frame_type]) else "invalid_shape", "v2 payload is closed")
+    _v2_opaque(payload["host_epoch"], "host_epoch")
+    _v2_uint(payload["snapshot_revision"], "snapshot_revision")
+    if frame_type in {"agent_snapshot", "snapshot_ack"}:
+        if payload["source_status"] not in V2_SOURCE_STATUSES:
+            raise ProtocolError("invalid_shape", "source_status is invalid")
+    if frame_type == "agent_snapshot":
+        agents = payload["agents"]
+        if not isinstance(agents, list) or len(agents) != 3:
+            raise ProtocolError("invalid_shape", "agent_snapshot requires exactly three slots")
+        seen: set[int] = set()
+        required = {"slot", "entry_id", "title", "discriminator", "state", "pane_id", "terminal_id", "agent_session", "source_revision"}
+        for agent in agents:
+            if not isinstance(agent, dict) or set(agent) != required:
+                raise ProtocolError("unknown_field", "agent slot is closed")
+            slot = agent["slot"]
+            if not _is_int(slot) or not 0 <= slot < 3 or slot in seen:
+                raise ProtocolError("invalid_shape", "agent slots must be unique in 0..2")
+            seen.add(slot)
+            if agent["state"] not in {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"}:
+                raise ProtocolError("invalid_shape", "agent state is invalid")
+            empty = agent["state"] == "empty"
+            _v2_opaque(agent["entry_id"], "entry_id", allow_empty=empty)
+            _v2_text(agent["title"], "title", 64)
+            _v2_text(agent["discriminator"], "discriminator", 32)
+            _v2_identity(agent, empty=empty)
+        if seen != {0, 1, 2}:
+            raise ProtocolError("invalid_shape", "agent slots must be 0, 1, and 2")
+    elif frame_type == "snapshot_ack":
+        if not isinstance(payload["accepted"], bool):
+            raise ProtocolError("invalid_shape", "snapshot_ack accepted must be boolean")
+        _v2_text(payload["reason"], "reason", 64)
+    elif frame_type == "focus_intent":
+        _v2_opaque(payload["action_id"], "action_id")
+        if not _is_int(payload["slot"]) or not 0 <= payload["slot"] < 3:
+            raise ProtocolError("invalid_shape", "focus slot must be 0..2")
+        _v2_opaque(payload["entry_id"], "entry_id")
+        _v2_identity(payload)
+    elif frame_type == "focus_result":
+        _v2_opaque(payload["action_id"], "action_id")
+        if payload["outcome"] not in V2_OUTCOMES:
+            raise ProtocolError("invalid_shape", "focus outcome is invalid")
+        if not isinstance(payload["focused"], bool):
+            raise ProtocolError("invalid_shape", "focused acknowledgement must be boolean")
+        if not _is_int(payload["slot"]) or not 0 <= payload["slot"] < 3:
+            raise ProtocolError("invalid_shape", "focus result slot must be 0..2")
+        _v2_opaque(payload["entry_id"], "entry_id")
+        _v2_identity(payload)
+    return payload
+
+
+def new_v2_frame(
+    frame_type: str,
+    boot_id: str,
+    session_id: str,
+    seq: int,
+    payload: dict[str, Any],
+    reply_to: int | None = None,
+) -> dict[str, Any]:
+    validate_v2_payload(frame_type, payload)
+    return {
+        "v": V2_PROTOCOL_VERSION,
+        "type": frame_type,
+        "boot_id": boot_id,
+        "session_id": session_id,
+        "seq": seq,
+        "reply_to": reply_to,
+        "digest": _payload_digest(payload),
+        "payload": payload,
+    }
+
+
+def validate_v2_frame(frame: Any) -> dict[str, Any]:
+    if not isinstance(frame, dict):
+        raise ProtocolError("invalid_envelope", "frame must be an object")
+    required = {"v", "type", "boot_id", "session_id", "seq", "reply_to", "digest", "payload"}
+    if set(frame) != required:
+        raise ProtocolError("unknown_field", "frame envelope is closed")
+    if not _is_int(frame["v"]) or frame["v"] != V2_PROTOCOL_VERSION:
+        raise ProtocolError("invalid_version", "only protocol v2 is accepted")
+    if frame["type"] not in V2_FRAME_TYPES:
+        raise ProtocolError("unknown_type", "frame type is not in the closed v2 set")
+    _require_string(frame["boot_id"], "boot_id")
+    _require_string(frame["session_id"], "session_id")
+    if not _is_int(frame["seq"]) or not 1 <= frame["seq"] <= 0xFFFFFFFF:
+        raise ProtocolError("invalid_sequence", "seq must be a positive uint32")
+    if frame["reply_to"] is not None and (not _is_int(frame["reply_to"]) or not 1 <= frame["reply_to"] <= 0xFFFFFFFF):
+        raise ProtocolError("invalid_reply_to", "reply_to must be null or a positive uint32")
+    if not isinstance(frame["digest"], str) or not DIGEST_PATTERN.fullmatch(frame["digest"]):
+        raise ProtocolError("invalid_digest", "digest must be a lowercase 64-bit hex value")
+    validate_v2_payload(frame["type"], frame["payload"])
+    if frame["digest"] != _payload_digest(frame["payload"]):
+        raise ProtocolError("digest_mismatch", "payload digest does not match canonical payload")
+    return frame
+
+
+def encode_v2_frame(frame: dict[str, Any]) -> bytes:
+    validate_v2_frame(frame)
+    encoded = (json.dumps(frame, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("ascii")
+    if len(encoded) > MAX_LINE_BYTES:
+        raise ProtocolError("line_too_long", "encoded frame exceeds 4096 bytes including LF")
+    return encoded
+
+
+def classify_v2_line(line: bytes) -> ProtocolResult:
+    if not line:
+        return ProtocolResult(False, "empty_line")
+    if len(line) > MAX_LINE_BYTES:
+        return ProtocolResult(False, "line_too_long")
+    if not line.endswith(b"\n"):
+        return ProtocolResult(False, "missing_lf")
+    try:
+        frame = _load_json(line[:-1].decode("utf-8"))
+        _check_nesting(frame)
+        validated = validate_v2_frame(frame)
+    except UnicodeDecodeError:
+        return ProtocolResult(False, "invalid_utf8")
+    except DuplicateKeyError:
+        return ProtocolResult(False, "duplicate_key")
+    except (json.JSONDecodeError, RecursionError):
+        return ProtocolResult(False, "invalid_json")
+    except ProtocolError as exc:
+        return ProtocolResult(False, exc.code)
+    return ProtocolResult(True, "ok", validated)
+
 
 
 @dataclass(frozen=True)
