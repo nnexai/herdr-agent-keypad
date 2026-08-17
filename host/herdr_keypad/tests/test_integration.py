@@ -187,13 +187,39 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertNotIn("unread", [name for name, _ in fake.calls])
         self.assertNotIn("clear", [name for name, _ in fake.calls])
 
-    def test_source_revision_drift_rebinds_before_fresh_retry(self):
+    def test_revision_only_poll_reuses_generation_and_focuses_exact_target(self):
+        fake = FakeHerdr()
+        usb = FakeUsb()
+        bridge = PermanentBridge(HerdrClient(requester=fake.request), usb, InboxProjection(host_epoch="epoch"))
+        initial = bridge.bootstrap()
+        binding = bridge.projection.binding(0)
+        fake.rows[0] = {**fake.rows[0], "revision": 99}
+
+        refreshed = bridge._publish_refresh()
+        self.assertIs(refreshed, initial)
+        self.assertEqual(len(usb.published), 1)
+        self.assertEqual(bridge.projection.binding(0), binding)
+
+        payload = {
+            "action_id": "revision-only",
+            "host_epoch": binding.host_epoch,
+            "snapshot_revision": binding.snapshot_revision,
+            "slot": binding.slot,
+            "entry_id": binding.entry_id,
+            **binding.identity.as_payload(),
+        }
+        outcome = bridge.handle_frame(protocol.new_v2_frame("focus_intent", "boot", "session", 1, payload))
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual(usb.results[-1]["outcome"], "accepted")
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
+
+    def test_material_projection_drift_rebinds_before_fresh_retry(self):
         fake = FakeHerdr()
         usb = FakeUsb()
         bridge = PermanentBridge(HerdrClient(requester=fake.request), usb, InboxProjection(host_epoch="epoch"))
         bridge.bootstrap()
         stale = bridge.projection.binding(0)
-        fake.rows[0] = {**fake.rows[0], "revision": 2}
+        fake.rows[0] = {**fake.rows[0], "revision": 2, "state_change_seq": 5}
 
         stale_payload = {
             "action_id": "action-stale",

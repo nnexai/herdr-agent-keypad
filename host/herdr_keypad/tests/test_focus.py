@@ -47,6 +47,20 @@ class FocusTests(unittest.TestCase):
         self.assertEqual([call[0] for call in client.calls], ["agent.list", "agent.focus"])
         self.assertEqual(client.calls[-1][1], {"target": "p1"})
 
+    def test_raw_revision_churn_focuses_but_material_projection_change_is_stale(self):
+        revision_only = row(revision=99)
+        focused = {**revision_only, "focused": True, "revision": 100}
+        client = SpyClient(rows=[revision_only], result={"type": "agent_info", "agent": focused})
+        outcome = FocusExecutor(client, self.projection).execute(self.intent)
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual([call[0] for call in client.calls], ["agent.list", "agent.focus"])
+
+        changed = {**revision_only, "state_change_seq": 5}
+        stale = SpyClient(rows=[changed])
+        outcome = FocusExecutor(stale, self.projection).execute(self.intent)
+        self.assertEqual(outcome.status, "source_revision_changed")
+        self.assertEqual([call[0] for call in stale.calls], ["agent.list"])
+
     def test_stale_and_wrong_generation_are_rejected_before_io(self):
         client = SpyClient()
         self.projection.invalidate("stale")

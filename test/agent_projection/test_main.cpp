@@ -73,10 +73,21 @@ void test_generation_replacement_clears_feedback() {
   TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Ready), static_cast<int>(projection.feedback(0)));
 }
 
+void test_snapshot_commit_keeps_visible_sync_cutout_hidden() {
+  AgentProjection projection;
+  JsonDocument document = snapshot_document(3);
+  BoardAdapter board;
+  g_sync_draw_count = 0;
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  TEST_ASSERT_EQUAL_UINT32(0, g_sync_draw_count);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_compose_then_flush_commits_generation);
   RUN_TEST(test_null_panel_fails_closed);
   RUN_TEST(test_generation_replacement_clears_feedback);
+  RUN_TEST(test_snapshot_commit_keeps_visible_sync_cutout_hidden);
   return UNITY_END();
 }

@@ -191,11 +191,6 @@ bool AgentProjection::commitSnapshot() {
 bool AgentProjection::commitSnapshot(BoardAdapter& board) {
   if (!staged_valid_ || !ensureComposition()) return false;
   disableActive(nullptr);
-  if (!renderSync(board)) {
-    staged_valid_ = false;
-    syncing_ = true;
-    return false;
-  }
   committed_generation_ = staged_;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     if (!renderTile(board, slot, staged_.tiles[slot], Feedback::Disabled)) {

@@ -63,13 +63,20 @@ class ProjectionTests(unittest.TestCase):
         self.assertEqual(fresh.entries[0].identity.pane_id, "p2")
         self.assertIsNotNone(projection.binding(0))
 
-    def test_equal_normalized_refresh_reuses_revision(self):
+    def test_raw_revision_churn_reuses_generation_but_material_change_does_not(self):
         projection = InboxProjection(host_epoch="epoch")
-        rows = [row("p1", "0", 1)]
-        first = projection.refresh(rows)
-        second = projection.refresh(list(rows))
+        initial_row = row("p1", "0", 1)
+        first = projection.refresh([initial_row])
+        revision_only = {**initial_row, "revision": 99}
+        second = projection.refresh([revision_only])
         self.assertIs(first, second)
-        self.assertEqual(first.snapshot_revision, 1)
+        self.assertEqual(second.snapshot_revision, 1)
+        self.assertEqual(second.entries[0].identity.source_revision, 1)
+
+        material_change = {**revision_only, "state_change_seq": 2}
+        third = projection.refresh([material_change])
+        self.assertIsNot(second, third)
+        self.assertEqual(third.snapshot_revision, 2)
 
 
 if __name__ == "__main__":

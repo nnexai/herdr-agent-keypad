@@ -113,6 +113,7 @@ class InboxProjection:
         self.current: ProjectionSnapshot | None = None
         self._last_entries: tuple[ProjectedEntry, ...] = tuple(ProjectedEntry.empty(i) for i in range(MAX_SLOTS))
         self._last_projection_key: tuple[Any, ...] | None = None
+        self._last_workspace_labels: dict[str, str] = {}
     def _workspace_labels(self, workspaces: Iterable[Mapping[str, Any]]) -> dict[str, str]:
         labels: dict[str, str] = {}
         for workspace in workspaces:
@@ -161,6 +162,106 @@ class InboxProjection:
         identity = Identity(pane_id, terminal_id, session, revision, workspace_id, tab_id)
         return ProjectedEntry(-1, pane_id, title, discriminator, RANK_STATES[rank], rank, state_change_seq, identity)
 
+    @staticmethod
+    def _same_logical_entry(left: ProjectedEntry, right: ProjectedEntry) -> bool:
+        if left.identity is None or right.identity is None:
+            return left == right
+        left_identity = left.identity
+        right_identity = right.identity
+        return (
+            left.slot,
+            left.entry_id,
+            left.title,
+            left.discriminator,
+            left.state,
+            left.rank,
+            left.state_change_seq,
+            left.stale,
+            left_identity.pane_id,
+            left_identity.terminal_id,
+            left_identity.agent_session,
+            left_identity.workspace_id,
+            left_identity.tab_id,
+        ) == (
+            right.slot,
+            right.entry_id,
+            right.title,
+            right.discriminator,
+            right.state,
+            right.rank,
+            right.state_change_seq,
+            right.stale,
+            right_identity.pane_id,
+            right_identity.terminal_id,
+            right_identity.agent_session,
+            right_identity.workspace_id,
+            right_identity.tab_id,
+        )
+
+    def _project_entries(
+        self, rows: Iterable[Mapping[str, Any]], labels: Mapping[str, str]
+    ) -> tuple[ProjectedEntry, ...]:
+        try:
+            normalized = [self._normalize(row, labels) for row in rows]
+        except (TypeError, ValueError) as exc:
+            raise ProjectionUnavailable("incomplete inbox bootstrap") from exc
+        normalized.sort(key=lambda entry: (entry.rank if entry.rank is not None else 99, -entry.state_change_seq))
+        normalized = normalized[:MAX_SLOTS]
+        entries = tuple(
+            ProjectedEntry(
+                index,
+                entry.entry_id,
+                entry.title,
+                entry.discriminator,
+                entry.state,
+                entry.rank,
+                entry.state_change_seq,
+                entry.identity,
+            )
+            for index, entry in enumerate(normalized)
+        ) + tuple(ProjectedEntry.empty(index) for index in range(len(normalized), MAX_SLOTS))
+        if len(entries) != MAX_SLOTS:
+            raise ProjectionUnavailable("projection did not produce fixed positions")
+        if self.current is None:
+            return entries
+
+        stabilized: list[ProjectedEntry] = []
+        for candidate, committed in zip(entries, self.current.entries):
+            if (
+                candidate.identity is not None
+                and committed.identity is not None
+                and self._same_logical_entry(candidate, committed)
+            ):
+                identity = candidate.identity
+                candidate = ProjectedEntry(
+                    candidate.slot,
+                    candidate.entry_id,
+                    candidate.title,
+                    candidate.discriminator,
+                    candidate.state,
+                    candidate.rank,
+                    candidate.state_change_seq,
+                    Identity(
+                        identity.pane_id,
+                        identity.terminal_id,
+                        identity.agent_session,
+                        committed.identity.source_revision,
+                        identity.workspace_id,
+                        identity.tab_id,
+                    ),
+                    candidate.stale,
+                )
+            stabilized.append(candidate)
+        return tuple(stabilized)
+
+    def matches_current(self, rows: Iterable[Mapping[str, Any]]) -> bool:
+        """Return whether live rows still describe the exact committed generation."""
+        if self.current is None or self.current.source_status != "current":
+            return False
+        entries = self._project_entries(list(rows), self._last_workspace_labels)
+        projection_key = (entries, "current", self.plugin_revision, self.schema_version)
+        return projection_key == self._last_projection_key
+
     def refresh(self, rows: Iterable[Mapping[str, Any]], workspaces: Iterable[Mapping[str, Any]] = (), *,
                 source_status: str = "current", plugin_revision: str | None = None,
                 schema_version: int | None = None) -> ProjectionSnapshot:
@@ -170,22 +271,10 @@ class InboxProjection:
             raise ProjectionUnavailable("incompatible plugin revision")
         if schema_version is not None and schema_version != self.schema_version:
             raise ProjectionUnavailable("incompatible Herdr schema")
-        try:
-            row_list = list(rows)
-            labels = self._workspace_labels(workspaces)
-            normalized = [self._normalize(row, labels) for row in row_list]
-        except (TypeError, ValueError) as exc:
-            raise ProjectionUnavailable("incomplete inbox bootstrap") from exc
-        normalized.sort(key=lambda entry: (entry.rank if entry.rank is not None else 99, -entry.state_change_seq))
-        normalized = normalized[:MAX_SLOTS]
-        entries = tuple(
-            ProjectedEntry(index, entry.entry_id, entry.title, entry.discriminator, entry.state,
-                           entry.rank, entry.state_change_seq, entry.identity)
-            for index, entry in enumerate(normalized)
-        ) + tuple(ProjectedEntry.empty(index) for index in range(len(normalized), MAX_SLOTS))
-        if len(entries) != MAX_SLOTS:
-            raise ProjectionUnavailable("projection did not produce fixed positions")
+        labels = self._workspace_labels(workspaces)
+        entries = self._project_entries(list(rows), labels)
         projection_key = (entries, source_status, self.plugin_revision, self.schema_version)
+        self._last_workspace_labels = dict(labels)
         if self.current is not None and projection_key == self._last_projection_key:
             return self.current
         self.snapshot_revision += 1

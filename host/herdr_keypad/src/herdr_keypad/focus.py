@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 from .bridge import Binding, FocusIntent
 from .herdr import HerdrClient, HerdrError
-from .projection import InboxProjection, _session_token
+from .projection import InboxProjection, ProjectionUnavailable, _session_token
 OUTCOME_NAMES = {
     "accepted", "empty", "stale", "offline", "incompatible", "wrong_epoch", "wrong_revision",
     "wrong_slot", "pane_reused", "session_changed", "source_revision_changed", "vanished",
@@ -68,8 +68,6 @@ class FocusExecutor:
             return "session_changed"
         if current_session != binding.identity.agent_session:
             return "session_changed"
-        if agent.get("revision") != binding.identity.source_revision:
-            return "source_revision_changed"
         return None
 
     def execute(self, intent: FocusIntent) -> FocusOutcome:
@@ -120,6 +118,12 @@ class FocusExecutor:
         mismatch = self._same_identity(agent, binding)
         if mismatch is not None:
             return self._reject(mismatch, intent, "current AgentInfo identity differs")
+        try:
+            generation_matches = self.projection.matches_current(rows)
+        except ProjectionUnavailable:
+            generation_matches = False
+        if not generation_matches:
+            return self._reject("source_revision_changed", intent, "current projection fields differ")
         try:
             response = self.client.focus(binding.identity.pane_id)
         except HerdrError as exc:

@@ -18,4 +18,13 @@ Display* BoardAdapter::displayAt(uint8_t index) { if (index >= 3 || (missing_pan
 void test_compose_then_flush_commits_generation() { AgentProjection projection; JsonDocument document = snapshot_document(1); TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>())); BoardAdapter board; TEST_ASSERT_TRUE(projection.commitSnapshot(board)); TEST_ASSERT_TRUE(projection.committed()); TEST_ASSERT_TRUE(projection.hasBinding(0)); TEST_ASSERT_FALSE(projection.hasBinding(1)); }
 void test_null_panel_fails_closed() { AgentProjection projection; JsonDocument document = snapshot_document(2); TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>())); BoardAdapter board; missing_panel = true; TEST_ASSERT_FALSE(projection.commitSnapshot(board)); TEST_ASSERT_FALSE(projection.committed()); TEST_ASSERT_FALSE(projection.hasBinding(0)); missing_panel = false; }
 void test_generation_replacement_clears_feedback() { AgentProjection projection; JsonDocument first = snapshot_document(1); JsonDocument second = snapshot_document(2); BoardAdapter board; TEST_ASSERT_TRUE(projection.stageSnapshot(first.as<JsonObjectConst>())); TEST_ASSERT_TRUE(projection.commitSnapshot(board)); TEST_ASSERT_TRUE(projection.stageSnapshot(second.as<JsonObjectConst>())); TEST_ASSERT_TRUE(projection.commitSnapshot(board)); TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Ready), static_cast<int>(projection.feedback(0))); }
-int main(int, char**) { UNITY_BEGIN(); RUN_TEST(test_compose_then_flush_commits_generation); RUN_TEST(test_null_panel_fails_closed); RUN_TEST(test_generation_replacement_clears_feedback); return UNITY_END(); }
+void test_snapshot_commit_keeps_visible_sync_cutout_hidden() {
+  AgentProjection projection;
+  JsonDocument document = snapshot_document(3);
+  BoardAdapter board;
+  g_sync_draw_count = 0;
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  TEST_ASSERT_EQUAL_UINT32(0, g_sync_draw_count);
+}
+int main(int, char**) { UNITY_BEGIN(); RUN_TEST(test_compose_then_flush_commits_generation); RUN_TEST(test_null_panel_fails_closed); RUN_TEST(test_generation_replacement_clears_feedback); RUN_TEST(test_snapshot_commit_keeps_visible_sync_cutout_hidden); return UNITY_END(); }
