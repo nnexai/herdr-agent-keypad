@@ -1,0 +1,48 @@
+{
+  "evidence": {
+    "device": {
+      "binding_path": "/home/nnex/.config/herdr/keypad-binding.json",
+      "binding_sha256": "dfc89c32966cb7f7fa0f0c98d9d9ed4086a3c31eb1c3340ef26f3ce1304f0257",
+      "device_id_suffix": "bf8c",
+      "fingerprint_sha256": "f3004b14f940ae6df27f54573159c7cbafd66e2bd59d6f99258e9fcdd4401873",
+      "firmware": "phase1-bringup",
+      "protocol": 1
+    },
+    "final_contract_hashes": {
+      ".planning/phases/01-physical-keypad-and-proven-transport/01-UI-SPEC.md": "46c0a330cb05e3e83039f5d901da6f83ccbf268aae6d3e6cd310c08d863242a4",
+      ".planning/phases/02-authoritative-agent-projection-and-exact-focus/02-UI-SPEC.md": "f7ab0ed49028e01bd2c0194dc1e4a3faa2a9b2054f01b36a110283a5297dcd9b",
+      "firmware/src/board/board_adapter.cpp": "6445c7c54938389fcf64c2a895ec9b71d7ccf6fc86c51c8fccf7423c1e60c3cb",
+      "firmware/src/board/board_adapter.h": "616809f3a8553f5eda95e9ef8feaa52a4c24dadf6db66c2e9bfa2109898a98cd",
+      "firmware/src/board/physical_map.h": "f734e1db188ce12b9dd6a56b61c5a1f83ca927bcb18073e9933501fbd2983de1",
+      "firmware/src/main.cpp": "30ce1d661e5c8455163a209cda0d23c156a1bb3520b44114af97876696479e00",
+      "firmware/src/protocol/protocol.cpp": "75650ed695a550e56d4b0ea0c4ab6ffee2e155773f8be98d7e9aebbc72115e59",
+      "firmware/src/protocol/protocol.h": "1f8e88627c22fe1050b087efea76468e16e05a378753daf16a3a14aa32ef5f61"
+    },
+    "locks": {
+      "archive": {
+        "path": "/home/nnex/dev/prj/lilygo-t3/tools/phase1_bringup/ARCHIVED",
+        "sha256": "0cde92d59fb5556d762c001216afe389e6a1a868d37d1b9d4afc6055ccf0a948"
+      },
+      "final_build": {
+        "path": "/home/nnex/dev/prj/lilygo-t3/artifacts/phase1/locks/final-build-gap-closure.json",
+        "sha256": "b82f7c0fcd0b24f317ae4da83ca85fc182f7ce26656b874193f87a4d30abce49"
+      },
+      "selection": {
+        "path": "/home/nnex/dev/prj/lilygo-t3/artifacts/phase1/locks/selection-gap-closure.json",
+        "sha256": "f45c34e1715c359fd9b8ad14e78ada235dface348a388e316e192bf2140632b1"
+      }
+    },
+    "phase1_summary": {
+      "path": "/home/nnex/dev/prj/lilygo-t3/.planning/phases/01-physical-keypad-and-proven-transport/01-13-SUMMARY.md",
+      "sha256": "584ed24b2144e61276d29ee9db89e639ec21ad84ff07fd64acb6c23d4812824e"
+    },
+    "schema_version": 1,
+    "transport": {
+      "environment": "selected-usb",
+      "selected": "usb_cdc",
+      "wifi_admitted": false
+    }
+  },
+  "kind": "phase2-phase1-handoff",
+  "schema_version": 1
+}
