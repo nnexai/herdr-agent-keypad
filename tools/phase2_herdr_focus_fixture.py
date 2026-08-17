@@ -267,6 +267,7 @@ def main() -> int:
                 new_pane = candidates[-1] if candidates else None
             if not new_pane:
                 fail("reassigned fixture pane was not created")
+            old_identity = record_identity(find_agent(snapshot(), pane_id))
             report(pane_id, "idle", 7, "3", None)
             before = snapshot()
             run("herdr", "pane", "close", pane_id)
@@ -276,9 +277,11 @@ def main() -> int:
             rows.append({"name": "vanished", "before": compact_snapshot(before, pane_id), "request": {"method": "agent.focus", "params": {"target": pane_id}}, "response": response or {"error": raw_response}, "events": diff_events(before, immediate, pane_id), "immediate": compact_snapshot(immediate, pane_id), "delayed": compact_snapshot(delayed, pane_id), "native_effect": {"focus_dispatched": False, "slot_substituted": False}})
             report(new_pane, "working", 8, "2", None)
             reassigned_before = snapshot()
+            new_identity = record_identity(find_agent(reassigned_before, new_pane))
             reassigned_response, reassigned_raw = focus(new_pane)
             reassigned_after = snapshot()
-            rows.append({"name": "reassigned", "before": compact_snapshot(reassigned_before, new_pane), "request": {"method": "agent.focus", "params": {"target": new_pane}}, "response": reassigned_response or {"error": reassigned_raw}, "events": diff_events(reassigned_before, reassigned_after, new_pane), "immediate": compact_snapshot(reassigned_after, new_pane), "delayed": compact_snapshot(reassigned_after, new_pane), "native_effect": {"old_pane_id": pane_id, "new_pane_id": new_pane, "opaque_identity_fields": {"pane_id": "changed", "terminal_id": "observed", "agent_session": "optional", "revision": "observed"}}})
+            changed_fields = [field for field in ("pane_id", "terminal_id", "agent_session", "revision") if old_identity.get(field) != new_identity.get(field)]
+            rows.append({"name": "reassigned", "before": compact_snapshot(reassigned_before, new_pane), "request": {"method": "agent.focus", "params": {"target": new_pane}}, "response": reassigned_response or {"error": reassigned_raw}, "events": diff_events(reassigned_before, reassigned_after, new_pane), "immediate": compact_snapshot(reassigned_after, new_pane), "delayed": compact_snapshot(reassigned_after, new_pane), "native_effect": {"old_pane_id": pane_id, "new_pane_id": new_pane, "old_identity": old_identity, "new_identity": new_identity, "changed_fields": changed_fields, "opaque_identity_fields": {"pane_id": "changed", "terminal_id": "compared", "agent_session": "compared", "revision": "compared"}}})
             cleanup_complete = True
         finally:
             if workspace_id:

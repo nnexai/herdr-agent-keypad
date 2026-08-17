@@ -5,7 +5,7 @@
     "disposable_state_removed": true,
     "existing_agents_changed": false,
     "original_focus_restored": true,
-    "workspace_id": "w18"
+    "workspace_id": "w1A"
   },
   "kind": "herdr-focus-effects",
   "rows": [
@@ -16,67 +16,67 @@
         "focused_tab_id": "w14:t1",
         "focused_workspace_id": "w14",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "2",
           "revision": 1,
-          "state_change_seq": 225,
+          "state_change_seq": 235,
           "status": "working",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
       "delayed": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "2",
-          "revision": 4,
-          "state_change_seq": 225,
+          "revision": 3,
+          "state_change_seq": 235,
           "status": "working",
-          "terminal_id": "term_65938f7499b2eb",
-          "title": "/t/herdr-phase2-fixture-a1b0elh1"
+          "terminal_id": "term_65939085bc362f",
+          "title": "fixture"
         }
       },
       "events": [
         {
           "event": "pane.focused",
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "previous_pane_id": "w14:p1"
         }
       ],
       "immediate": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "2",
           "revision": 1,
-          "state_change_seq": 225,
+          "state_change_seq": 235,
           "status": "working",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
@@ -88,28 +88,28 @@
       "request": {
         "method": "agent.focus",
         "params": {
-          "target": "w18:p1"
+          "target": "w1A:p1"
         }
       },
       "response": {
         "agent": {
           "agent": "fixture",
           "agent_status": "working",
-          "cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
+          "cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
           "focused": true,
-          "foreground_cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
-          "pane_id": "w18:p1",
+          "foreground_cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
+          "pane_id": "w1A:p1",
           "revision": 1,
-          "state_change_seq": 225,
-          "tab_id": "w18:t1",
-          "terminal_id": "term_65938f7499b2eb",
+          "state_change_seq": 235,
+          "tab_id": "w1A:t1",
+          "terminal_id": "term_65939085bc362f",
           "tokens": {
             "age": "0m",
             "rank": "2",
             "since": "0s",
             "title": "Phase2 {state}"
           },
-          "workspace_id": "w18"
+          "workspace_id": "w1A"
         },
         "type": "agent_info"
       }
@@ -117,70 +117,70 @@
     {
       "before": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1",
-          "w18:p1"
+          "w1A:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "3",
-          "revision": 5,
-          "state_change_seq": 226,
+          "revision": 4,
+          "state_change_seq": 236,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
       "delayed": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1",
-          "w18:p1"
+          "w1A:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "3",
-          "revision": 6,
-          "state_change_seq": 226,
+          "revision": 5,
+          "state_change_seq": 236,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
-          "title": "/t/herdr-phase2-fixture-a1b0elh1"
+          "terminal_id": "term_65939085bc362f",
+          "title": "/t/herdr-phase2-fixture-fow3gde7"
         }
       },
       "events": [
         {
           "event": "snapshot.observed",
-          "pane_id": "w18:p1"
+          "pane_id": "w1A:p1"
         }
       ],
       "immediate": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1",
-          "w18:p1"
+          "w1A:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "3",
-          "revision": 5,
-          "state_change_seq": 226,
+          "revision": 4,
+          "state_change_seq": 236,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
@@ -192,30 +192,30 @@
       "request": {
         "method": "agent.focus",
         "params": {
-          "target": "w18:p1"
+          "target": "w1A:p1"
         }
       },
       "response": {
         "agent": {
           "agent": "fixture",
           "agent_status": "idle",
-          "cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
+          "cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
           "focused": true,
-          "foreground_cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
-          "pane_id": "w18:p1",
-          "revision": 5,
-          "state_change_seq": 226,
-          "tab_id": "w18:t1",
-          "terminal_id": "term_65938f7499b2eb",
-          "terminal_title": "/t/herdr-phase2-fixture-a1b0elh1",
-          "terminal_title_stripped": "/t/herdr-phase2-fixture-a1b0elh1",
+          "foreground_cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
+          "pane_id": "w1A:p1",
+          "revision": 4,
+          "state_change_seq": 236,
+          "tab_id": "w1A:t1",
+          "terminal_id": "term_65939085bc362f",
+          "terminal_title": "/t/herdr-phase2-fixture-fow3gde7",
+          "terminal_title_stripped": "/t/herdr-phase2-fixture-fow3gde7",
           "tokens": {
             "age": "0m",
             "rank": "3",
             "since": "0s",
             "title": "Phase2 {state}"
           },
-          "workspace_id": "w18"
+          "workspace_id": "w1A"
         },
         "type": "agent_info"
       }
@@ -223,70 +223,70 @@
     {
       "before": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "0",
-          "revision": 7,
-          "state_change_seq": 227,
+          "revision": 6,
+          "state_change_seq": 237,
           "status": "blocked",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
       "delayed": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "0",
-          "revision": 8,
-          "state_change_seq": 227,
+          "revision": 7,
+          "state_change_seq": 237,
           "status": "blocked",
-          "terminal_id": "term_65938f7499b2eb",
-          "title": "/t/herdr-phase2-fixture-a1b0elh1"
+          "terminal_id": "term_65939085bc362f",
+          "title": "/t/herdr-phase2-fixture-fow3gde7"
         }
       },
       "events": [
         {
           "event": "snapshot.observed",
-          "pane_id": "w18:p1"
+          "pane_id": "w1A:p1"
         }
       ],
       "immediate": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "0",
-          "revision": 7,
-          "state_change_seq": 227,
+          "revision": 6,
+          "state_change_seq": 237,
           "status": "blocked",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
@@ -298,30 +298,30 @@
       "request": {
         "method": "agent.focus",
         "params": {
-          "target": "w18:p1"
+          "target": "w1A:p1"
         }
       },
       "response": {
         "agent": {
           "agent": "fixture",
           "agent_status": "blocked",
-          "cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
+          "cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
           "focused": true,
-          "foreground_cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
-          "pane_id": "w18:p1",
-          "revision": 7,
-          "state_change_seq": 227,
-          "tab_id": "w18:t1",
-          "terminal_id": "term_65938f7499b2eb",
-          "terminal_title": "/t/herdr-phase2-fixture-a1b0elh1",
-          "terminal_title_stripped": "/t/herdr-phase2-fixture-a1b0elh1",
+          "foreground_cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
+          "pane_id": "w1A:p1",
+          "revision": 6,
+          "state_change_seq": 237,
+          "tab_id": "w1A:t1",
+          "terminal_id": "term_65939085bc362f",
+          "terminal_title": "/t/herdr-phase2-fixture-fow3gde7",
+          "terminal_title_stripped": "/t/herdr-phase2-fixture-fow3gde7",
           "tokens": {
             "age": "0m",
             "rank": "0",
             "since": "0s",
             "title": "Phase2 {state}"
           },
-          "workspace_id": "w18"
+          "workspace_id": "w1A"
         },
         "type": "agent_info"
       }
@@ -329,70 +329,70 @@
     {
       "before": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": "\u25cf",
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "1",
-          "revision": 9,
-          "state_change_seq": 228,
+          "revision": 8,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
       "delayed": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1",
-          "w18:p1"
+          "w1A:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "3",
           "revision": 10,
-          "state_change_seq": 228,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
-          "title": "/t/herdr-phase2-fixture-a1b0elh1"
+          "terminal_id": "term_65939085bc362f",
+          "title": "/t/herdr-phase2-fixture-fow3gde7"
         }
       },
       "events": [
         {
           "event": "snapshot.observed",
-          "pane_id": "w18:p1"
+          "pane_id": "w1A:p1"
         }
       ],
       "immediate": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": "\u25cf",
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "1",
-          "revision": 9,
-          "state_change_seq": 228,
+          "revision": 8,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
@@ -404,23 +404,23 @@
       "request": {
         "method": "agent.focus",
         "params": {
-          "target": "w18:p1"
+          "target": "w1A:p1"
         }
       },
       "response": {
         "agent": {
           "agent": "fixture",
           "agent_status": "idle",
-          "cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
+          "cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
           "focused": true,
-          "foreground_cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
-          "pane_id": "w18:p1",
-          "revision": 9,
-          "state_change_seq": 228,
-          "tab_id": "w18:t1",
-          "terminal_id": "term_65938f7499b2eb",
-          "terminal_title": "/t/herdr-phase2-fixture-a1b0elh1",
-          "terminal_title_stripped": "/t/herdr-phase2-fixture-a1b0elh1",
+          "foreground_cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
+          "pane_id": "w1A:p1",
+          "revision": 8,
+          "state_change_seq": 238,
+          "tab_id": "w1A:t1",
+          "terminal_id": "term_65939085bc362f",
+          "terminal_title": "/t/herdr-phase2-fixture-fow3gde7",
+          "terminal_title_stripped": "/t/herdr-phase2-fixture-fow3gde7",
           "tokens": {
             "age": "0m",
             "flag": "\u25cf",
@@ -428,7 +428,7 @@
             "since": "0s",
             "title": "Phase2 {state}"
           },
-          "workspace_id": "w18"
+          "workspace_id": "w1A"
         },
         "type": "agent_info"
       }
@@ -436,70 +436,70 @@
     {
       "before": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": "\u25cf",
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "1",
           "revision": 11,
-          "state_change_seq": 228,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
       "delayed": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": "\u25cf",
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "1",
           "revision": 11,
-          "state_change_seq": 228,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
       "events": [
         {
           "event": "snapshot.observed",
-          "pane_id": "w18:p1"
+          "pane_id": "w1A:p1"
         }
       ],
       "immediate": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p1",
+          "w1A:p1",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": "\u25cf",
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "1",
           "revision": 11,
-          "state_change_seq": 228,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
@@ -511,23 +511,23 @@
       "request": {
         "method": "agent.focus",
         "params": {
-          "target": "w18:p1"
+          "target": "w1A:p1"
         }
       },
       "response": {
         "agent": {
           "agent": "fixture",
           "agent_status": "idle",
-          "cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
+          "cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
           "focused": true,
-          "foreground_cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
-          "pane_id": "w18:p1",
+          "foreground_cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
+          "pane_id": "w1A:p1",
           "revision": 11,
-          "state_change_seq": 228,
-          "tab_id": "w18:t1",
-          "terminal_id": "term_65938f7499b2eb",
-          "terminal_title": "/t/herdr-phase2-fixture-a1b0elh1",
-          "terminal_title_stripped": "/t/herdr-phase2-fixture-a1b0elh1",
+          "state_change_seq": 238,
+          "tab_id": "w1A:t1",
+          "terminal_id": "term_65939085bc362f",
+          "terminal_title": "/t/herdr-phase2-fixture-fow3gde7",
+          "terminal_title_stripped": "/t/herdr-phase2-fixture-fow3gde7",
           "tokens": {
             "age": "0m",
             "flag": "\u25cf",
@@ -535,7 +535,7 @@
             "since": "0s",
             "title": "Phase2 {state}"
           },
-          "workspace_id": "w18"
+          "workspace_id": "w1A"
         },
         "type": "agent_info"
       }
@@ -543,70 +543,70 @@
     {
       "before": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1",
-          "w18:p1"
+          "w1A:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": "\u2691",
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "5",
           "revision": 12,
-          "state_change_seq": 228,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
       "delayed": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1",
-          "w18:p1"
+          "w1A:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "3",
-          "revision": 13,
-          "state_change_seq": 228,
+          "revision": 14,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
-          "title": "/t/herdr-phase2-fixture-a1b0elh1"
+          "terminal_id": "term_65939085bc362f",
+          "title": "/t/herdr-phase2-fixture-fow3gde7"
         }
       },
       "events": [
         {
           "event": "snapshot.observed",
-          "pane_id": "w18:p1"
+          "pane_id": "w1A:p1"
         }
       ],
       "immediate": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1",
-          "w18:p1"
+          "w1A:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": "\u2691",
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "5",
           "revision": 12,
-          "state_change_seq": 228,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
@@ -618,23 +618,23 @@
       "request": {
         "method": "agent.focus",
         "params": {
-          "target": "w18:p1"
+          "target": "w1A:p1"
         }
       },
       "response": {
         "agent": {
           "agent": "fixture",
           "agent_status": "idle",
-          "cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
+          "cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
           "focused": true,
-          "foreground_cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
-          "pane_id": "w18:p1",
+          "foreground_cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
+          "pane_id": "w1A:p1",
           "revision": 12,
-          "state_change_seq": 228,
-          "tab_id": "w18:t1",
-          "terminal_id": "term_65938f7499b2eb",
-          "terminal_title": "/t/herdr-phase2-fixture-a1b0elh1",
-          "terminal_title_stripped": "/t/herdr-phase2-fixture-a1b0elh1",
+          "state_change_seq": 238,
+          "tab_id": "w1A:t1",
+          "terminal_id": "term_65939085bc362f",
+          "terminal_title": "/t/herdr-phase2-fixture-fow3gde7",
+          "terminal_title_stripped": "/t/herdr-phase2-fixture-fow3gde7",
           "tokens": {
             "age": "0m",
             "flag": "\u2691",
@@ -642,7 +642,7 @@
             "since": "0s",
             "title": "Phase2 {state}"
           },
-          "workspace_id": "w18"
+          "workspace_id": "w1A"
         },
         "type": "agent_info"
       }
@@ -650,30 +650,30 @@
     {
       "before": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p1",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p1",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1",
-          "w18:p1"
+          "w1A:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p1",
+          "pane_id": "w1A:p1",
           "rank": "3",
-          "revision": 14,
-          "state_change_seq": 228,
+          "revision": 15,
+          "state_change_seq": 238,
           "status": "idle",
-          "terminal_id": "term_65938f7499b2eb",
+          "terminal_id": "term_65939085bc362f",
           "title": "Phase2 {state}"
         }
       },
       "delayed": {
         "agent_count": 1,
-        "focused_pane_id": "w18:p2",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p2",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1"
         ],
@@ -691,19 +691,19 @@
       "events": [
         {
           "event": "pane.focused",
-          "pane_id": "w18:p2",
-          "previous_pane_id": "w18:p1"
+          "pane_id": "w1A:p2",
+          "previous_pane_id": "w1A:p1"
         },
         {
           "event": "pane.closed_or_exited",
-          "pane_id": "w18:p1"
+          "pane_id": "w1A:p1"
         }
       ],
       "immediate": {
         "agent_count": 1,
-        "focused_pane_id": "w18:p2",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p2",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
           "w14:p1"
         ],
@@ -726,119 +726,146 @@
       "request": {
         "method": "agent.focus",
         "params": {
-          "target": "w18:p1"
+          "target": "w1A:p1"
         }
       },
       "response": {
-        "error": "{\"error\":{\"code\":\"agent_not_found\",\"message\":\"agent target w18:p1 not found\"},\"id\":\"cli:agent:focus\"}"
+        "error": "{\"error\":{\"code\":\"agent_not_found\",\"message\":\"agent target w1A:p1 not found\"},\"id\":\"cli:agent:focus\"}"
       }
     },
     {
       "before": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p2",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p2",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p2",
+          "w1A:p2",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p2",
+          "pane_id": "w1A:p2",
           "rank": "2",
           "revision": 1,
-          "state_change_seq": 229,
+          "state_change_seq": 239,
           "status": "working",
-          "terminal_id": "term_65938f77fefb5c",
+          "terminal_id": "term_6593908923f7310",
           "title": "Phase2 {state}"
         }
       },
       "delayed": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p2",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p2",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p2",
+          "w1A:p2",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p2",
+          "pane_id": "w1A:p2",
           "rank": "2",
           "revision": 1,
-          "state_change_seq": 229,
+          "state_change_seq": 239,
           "status": "working",
-          "terminal_id": "term_65938f77fefb5c",
+          "terminal_id": "term_6593908923f7310",
           "title": "Phase2 {state}"
         }
       },
       "events": [
         {
           "event": "snapshot.observed",
-          "pane_id": "w18:p2"
+          "pane_id": "w1A:p2"
         }
       ],
       "immediate": {
         "agent_count": 2,
-        "focused_pane_id": "w18:p2",
-        "focused_tab_id": "w18:t1",
-        "focused_workspace_id": "w18",
+        "focused_pane_id": "w1A:p2",
+        "focused_tab_id": "w1A:t1",
+        "focused_workspace_id": "w1A",
         "ordered_pane_ids": [
-          "w18:p2",
+          "w1A:p2",
           "w14:p1"
         ],
         "target": {
           "agent_session": null,
           "flag": null,
-          "pane_id": "w18:p2",
+          "pane_id": "w1A:p2",
           "rank": "2",
           "revision": 1,
-          "state_change_seq": 229,
+          "state_change_seq": 239,
           "status": "working",
-          "terminal_id": "term_65938f77fefb5c",
+          "terminal_id": "term_6593908923f7310",
           "title": "Phase2 {state}"
         }
       },
       "name": "reassigned",
       "native_effect": {
-        "new_pane_id": "w18:p2",
-        "old_pane_id": "w18:p1",
+        "changed_fields": [
+          "pane_id",
+          "terminal_id",
+          "revision"
+        ],
+        "new_identity": {
+          "agent_session": null,
+          "flag": null,
+          "pane_id": "w1A:p2",
+          "rank": "2",
+          "revision": 1,
+          "state_change_seq": 239,
+          "status": "working",
+          "terminal_id": "term_6593908923f7310",
+          "title": "Phase2 {state}"
+        },
+        "new_pane_id": "w1A:p2",
+        "old_identity": {
+          "agent_session": null,
+          "flag": null,
+          "pane_id": "w1A:p1",
+          "rank": "3",
+          "revision": 14,
+          "state_change_seq": 238,
+          "status": "idle",
+          "terminal_id": "term_65939085bc362f",
+          "title": "/t/herdr-phase2-fixture-fow3gde7"
+        },
+        "old_pane_id": "w1A:p1",
         "opaque_identity_fields": {
-          "agent_session": "optional",
+          "agent_session": "compared",
           "pane_id": "changed",
-          "revision": "observed",
-          "terminal_id": "observed"
+          "revision": "compared",
+          "terminal_id": "compared"
         }
       },
       "request": {
         "method": "agent.focus",
         "params": {
-          "target": "w18:p2"
+          "target": "w1A:p2"
         }
       },
       "response": {
         "agent": {
           "agent": "fixture",
           "agent_status": "working",
-          "cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
+          "cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
           "focused": true,
-          "foreground_cwd": "/tmp/herdr-phase2-fixture-a1b0elh1",
-          "pane_id": "w18:p2",
+          "foreground_cwd": "/tmp/herdr-phase2-fixture-fow3gde7",
+          "pane_id": "w1A:p2",
           "revision": 1,
-          "state_change_seq": 229,
-          "tab_id": "w18:t1",
-          "terminal_id": "term_65938f77fefb5c",
+          "state_change_seq": 239,
+          "tab_id": "w1A:t1",
+          "terminal_id": "term_6593908923f7310",
           "tokens": {
             "age": "0m",
             "rank": "2",
             "since": "0s",
             "title": "Phase2 {state}"
           },
-          "workspace_id": "w18"
+          "workspace_id": "w1A"
         },
         "type": "agent_info"
       }
