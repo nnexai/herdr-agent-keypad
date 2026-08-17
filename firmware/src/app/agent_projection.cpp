@@ -20,6 +20,18 @@ constexpr uint16_t kWorking = 0xFD51;     // #E0AF68
 constexpr uint16_t kIdle = 0x9D4D;        // #9ECE6A
 constexpr uint16_t kSettled = 0x5351;     // #565F89
 
+LGFX_Sprite g_composition;
+bool g_composition_ready = false;
+
+bool ensureComposition() {
+  if (g_composition_ready) return true;
+  g_composition.setPsram(true);
+  g_composition.setColorDepth(16);
+  g_composition_ready = g_composition.createSprite(128, 128) != nullptr;
+  if (g_composition_ready) g_composition.fillScreen(kBackground);
+  return g_composition_ready;
+}
+
 bool listed(const char* value, const char* const* values, size_t count) {
   if (value == nullptr) return false;
   for (size_t index = 0; index < count; ++index) if (strcmp(value, values[index]) == 0) return true;
@@ -155,11 +167,13 @@ void AgentProjection::disableActive(BoardAdapter* board) {
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     pending_[slot] = Binding();
     pending_action_[slot] = 0;
+    pending_action_text_[slot][0] = '\0';
+    pending_deadline_[slot] = 0;
+    feedback_until_[slot] = 0;
     feedback_[slot] = Feedback::Disabled;
   }
   if (board != nullptr) renderSync(*board);
 }
-
 bool AgentProjection::commitSnapshot() {
   if (!staged_valid_) return false;
   committed_generation_ = staged_;
@@ -174,12 +188,15 @@ bool AgentProjection::commitSnapshot() {
   }
   return true;
 }
-
 bool AgentProjection::commitSnapshot(BoardAdapter& board) {
-  if (!staged_valid_) return false;
-  disableActive(&board);
-  strncpy(committed_generation_.source_status, staged_.source_status, sizeof(committed_generation_.source_status) - 1);
-  committed_generation_.source_status[sizeof(committed_generation_.source_status) - 1] = '\0';
+  if (!staged_valid_ || !ensureComposition()) return false;
+  disableActive(nullptr);
+  if (!renderSync(board)) {
+    staged_valid_ = false;
+    syncing_ = true;
+    return false;
+  }
+  committed_generation_ = staged_;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     if (!renderTile(board, slot, staged_.tiles[slot], Feedback::Disabled)) {
       staged_valid_ = false;
@@ -190,24 +207,27 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board) {
   return commitSnapshot();
 }
 
-void AgentProjection::renderSync(BoardAdapter& board) const {
+bool AgentProjection::renderSync(BoardAdapter& board) const {
+  if (!ensureComposition()) return false;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     Display* display = board.displayAt(slot);
-    if (display == nullptr) return;
-    display->fillScreen(kBackground);
-    display->setTextColor(kAccent, kBackground);
-    display->setTextSize(1);
-    display->drawString("SYNC", 8, 8);
-    display->drawRect(4, 4, 120, 4, kAccent);
-    display->setTextColor(kMetadata, kBackground);
-    display->drawString("UPDATING", 8, 56);
+    if (display == nullptr) return false;
+    g_composition.fillScreen(kBackground);
+    g_composition.setTextColor(kAccent, kBackground);
+    g_composition.setTextSize(1);
+    g_composition.drawString("SYNC", 8, 8);
+    g_composition.drawRect(4, 4, 120, 4, kAccent);
+    g_composition.setTextColor(kMetadata, kBackground);
+    g_composition.drawString("UPDATING", 8, 56);
+    g_composition.pushSprite(display, 0, 0);
   }
+  return true;
 }
 
 bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile, Feedback feedback) const {
   Display* display = board.displayAt(slot);
-  if (display == nullptr) return false;
-  display->fillScreen(kBackground);
+  if (display == nullptr || !ensureComposition()) return false;
+  g_composition.fillScreen(kBackground);
   uint16_t color = kSecondary;
   const char* state_label = "EMPTY";
   if (tile.state == TileState::Blocked) { color = kBlocked; state_label = "BLOCKED"; }
@@ -227,32 +247,32 @@ bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& 
   else if (feedback == Feedback::Offline) { color = kDestructive; state_label = "OFFLINE"; }
   else if (feedback == Feedback::Uncertain) { color = kWorking; state_label = "UNCERTAIN"; }
   else if (feedback == Feedback::Failed) { color = kDestructive; state_label = "FAILED"; }
-  display->drawRect(4, 4, 120, 4, color);
-  display->setTextColor(kPrimary, kBackground);
-  display->setTextSize(1);
-  display->drawString(tile.title, 8, 14);
-  display->setTextColor(kMetadata, kBackground);
-  display->drawString(tile.discriminator, 8, 30);
-  display->setTextColor(color, kBackground);
-  display->drawString(state_label, 8, 56);
-  // Geometric cues repeat the state meaning without relying on color.
+  g_composition.drawRect(4, 4, 120, 4, color);
+  g_composition.setTextColor(kPrimary, kBackground);
+  g_composition.setTextSize(1);
+  g_composition.drawString(tile.title, 8, 14);
+  g_composition.setTextColor(kMetadata, kBackground);
+  g_composition.drawString(tile.discriminator, 8, 30);
+  g_composition.setTextColor(color, kBackground);
+  g_composition.drawString(state_label, 8, 56);
   if (strcmp(state_label, "BLOCKED") == 0 || strcmp(state_label, "REJECTED") == 0 || strcmp(state_label, "FAILED") == 0 || strcmp(state_label, "VANISHED") == 0) {
-    display->drawLine(52, 48, 76, 72, color); display->drawLine(76, 48, 52, 72, color);
+    g_composition.drawLine(52, 48, 76, 72, color); g_composition.drawLine(76, 48, 52, 72, color);
   } else if (strcmp(state_label, "UNSEEN") == 0) {
-    display->fillCircle(64, 64, 8, color);
+    g_composition.fillCircle(64, 64, 8, color);
   } else if (strcmp(state_label, "WORKING") == 0) {
-    display->drawLine(56, 52, 56, 72, color); display->drawLine(56, 52, 76, 62, color); display->drawLine(76, 62, 56, 72, color);
+    g_composition.drawLine(56, 52, 56, 72, color); g_composition.drawLine(56, 52, 76, 62, color); g_composition.drawLine(76, 62, 56, 72, color);
   } else if (strcmp(state_label, "IDLE") == 0) {
-    display->drawCircle(64, 62, 9, color);
+    g_composition.drawCircle(64, 62, 9, color);
   } else if (strcmp(state_label, "SETTLED") == 0) {
-    display->drawLine(56, 52, 56, 72, color); display->drawLine(56, 52, 74, 52, color); display->drawLine(74, 52, 74, 62, color);
+    g_composition.drawLine(56, 52, 56, 72, color); g_composition.drawLine(56, 52, 74, 52, color); g_composition.drawLine(74, 52, 74, 62, color);
   } else if (strcmp(state_label, "STALE") == 0 || strcmp(state_label, "OFFLINE") == 0 || strcmp(state_label, "UNAVAILABLE") == 0) {
-    display->drawLine(48, 72, 80, 48, color); display->drawLine(48, 48, 80, 72, color);
+    g_composition.drawLine(48, 72, 80, 48, color); g_composition.drawLine(48, 48, 80, 72, color);
   } else {
-    display->drawCircle(64, 62, 9, color);
+    g_composition.drawCircle(64, 62, 9, color);
   }
-  display->setTextColor(color, kBackground);
-  display->drawString(tile.binding.occupied ? "PRESS TO FOCUS" : "NO AGENT", 8, 104);
+  g_composition.setTextColor(color, kBackground);
+  g_composition.drawString(tile.binding.occupied ? "PRESS TO FOCUS" : "NO AGENT", 8, 104);
+  g_composition.pushSprite(display, 0, 0);
   return true;
 }
 
