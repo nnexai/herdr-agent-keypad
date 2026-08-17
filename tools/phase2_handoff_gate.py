@@ -11,12 +11,18 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
+from phase1_bringup.evidence import verify_archive_lock, verify_build_lock, verify_selection_lock
+
 ROOT = Path(__file__).resolve().parents[1]
 DEVICE_ID_RE = re.compile(r"^[0-9a-fA-F]{8,128}$")
+PLUGIN_DIR = Path("/home/nnex/.config/herdr/plugins/github/herdr-agent-inbox-de409f683262")
+PLANNED_PLUGIN_REVISION = "de409f683262"
+ACTUAL_PLUGIN_REVISION = "78b243279b4da55150b58dc2cc3cffcdc2fd6a04"
 SOURCE_FILES = (
     "firmware/src/protocol/protocol.h",
     "firmware/src/protocol/protocol.cpp",
@@ -80,12 +86,40 @@ def check_lock_address(lock: dict[str, Any], key: str, expected_hash_key: str, l
 
 
 
+def check_installed_plugin() -> dict[str, str]:
+    regular(PLUGIN_DIR / "daemon.py", "installed inbox daemon")
+    completed = subprocess.run(
+        ["git", "-C", str(PLUGIN_DIR), "rev-parse", "HEAD"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    revision = completed.stdout.strip()
+    if completed.returncode != 0 or revision != ACTUAL_PLUGIN_REVISION:
+        fail(
+            "installed inbox checkout revision mismatch: "
+            f"expected actual HEAD {ACTUAL_PLUGIN_REVISION}, got {revision or 'unavailable'}"
+        )
+    return {
+        "path": str(PLUGIN_DIR),
+        "planned_revision": PLANNED_PLUGIN_REVISION,
+        "revision": revision,
+        "revision_override": "planned de409f683262 object unavailable; actual checkout HEAD is authoritative",
+    }
+
+
 def check_phase1(summary: Path, selection_path: Path, final_build_path: Path, archive_path: Path, binding_path: Path) -> dict[str, Any]:
     regular(summary, "Phase 1 completion summary")
     summary_text = summary.read_text(encoding="utf-8")
     if "plan: 13" not in summary_text or "selected USB" not in summary_text:
         fail("Phase 1 summary is not the completed 01-13 selected-USB handoff")
 
+    # Reuse the Phase 1 immutable readers in addition to the explicit
+    # cross-lock checks below; no build, flash, or transport is opened.
+    verify_selection_lock(selection_path)
+    verify_build_lock(final_build_path)
+    verify_archive_lock(archive_path)
+    installed_plugin = check_installed_plugin()
     selection = load_object(selection_path, "selection lock")
     final_build = load_object(final_build_path, "final-build lock")
     archive = load_object(archive_path, "archive marker")
@@ -162,6 +196,7 @@ def check_phase1(summary: Path, selection_path: Path, final_build_path: Path, ar
             "firmware": binding["firmware"],
         },
         "final_contract_hashes": source_hashes,
+        "installed_herdr": installed_plugin,
     }
 
 

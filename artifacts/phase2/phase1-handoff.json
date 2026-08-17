@@ -18,6 +18,12 @@
       "firmware/src/protocol/protocol.cpp": "75650ed695a550e56d4b0ea0c4ab6ffee2e155773f8be98d7e9aebbc72115e59",
       "firmware/src/protocol/protocol.h": "1f8e88627c22fe1050b087efea76468e16e05a378753daf16a3a14aa32ef5f61"
     },
+    "installed_herdr": {
+      "path": "/home/nnex/.config/herdr/plugins/github/herdr-agent-inbox-de409f683262",
+      "planned_revision": "de409f683262",
+      "revision": "78b243279b4da55150b58dc2cc3cffcdc2fd6a04",
+      "revision_override": "planned de409f683262 object unavailable; actual checkout HEAD is authoritative"
+    },
     "locks": {
       "archive": {
         "path": "/home/nnex/dev/prj/lilygo-t3/tools/phase1_bringup/ARCHIVED",
