@@ -832,15 +832,9 @@ class PermanentBridge:
         self._consume_events(now)
         if getattr(self.usb, "connected", False):
             try:
-                capacity = max(1, int(getattr(self.usb, "pending_focus_capacity", 16)))
-                for _ in range(capacity):
-                    if len(self._focus_jobs) >= capacity:
-                        break
-                    frame = self.usb.poll()
-                    if frame is None:
-                        break
-                    if frame.get("type") == "focus_intent":
-                        self._queue_focus_frame(frame)
+                frame = self.usb.poll()
+                if frame is not None and frame.get("type") == "focus_intent":
+                    self._queue_focus_frame(frame)
             except Exception:
                 self._mark_unavailable("offline")
                 return None
