@@ -17,6 +17,10 @@ from .bridge import (
     write_live_sync_evidence,
     _projection_payload,
 )
+from .herdr import HerdrClient
+from .projection import InboxProjection
+from .usb import UsbDeviceSession, binding_is_stable
+
 
 ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_BINDING = Path(os.path.expanduser("~/.config/herdr/keypad-binding.json"))
@@ -187,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--binding", type=Path, default=DEFAULT_BINDING)
     parser.add_argument("--herdr-socket", default=os.path.expanduser("~/.config/herdr/herdr.sock"))
     parser.add_argument("--timeout", type=float, default=3.0)
+    parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--evidence", type=Path, default=ROOT / "artifacts/phase2/automated-acceptance.json")
     parser.add_argument("--interval", type=float, default=0.1)
     parser.add_argument("--smoke-live-sync", type=float, metavar="SECONDS")
