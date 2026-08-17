@@ -130,13 +130,13 @@ Plans:
   4. Installed inbox rank/sequence order, opaque generation-bound identity, three fixed agent slots, stale/offline distinction, and `FocusExecutor` as the sole `agent.focus` path remain unchanged; panel 4, Codex/menu, and full recovery remain outside this phase.
   5. Focused host/native checks, the selected USB build/metrics, and one bounded exact-device smoke prove a real Herdr change reaches a higher ACKed revision as complete images and the changed tile still focuses only its exact pane.
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 02.1-01-PLAN.md — Carry typed Herdr invalidations through coalesced complete projection, exact ACK/readiness fencing, and once-only same-session interleaved focus handling.
+- [x] 02.1-01-PLAN.md — Carry typed Herdr invalidations through coalesced complete projection, exact ACK/readiness fencing, and once-only same-session interleaved focus handling.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
