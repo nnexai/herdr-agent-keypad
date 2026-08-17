@@ -1,0 +1,46 @@
+{
+  "phase": "03",
+  "phase_name": "truthful-codex-capacity-and-device-menu",
+  "timestamp": "2026-08-17T11:45:00Z",
+  "areas_completed": ["Codex freshness policy"],
+  "areas_remaining": ["Encoder menu flow"],
+  "decisions": {
+    "Codex freshness policy": [
+      {
+        "question": "How long may a successful Codex observation remain current before the tile becomes stale?",
+        "answer": "5 minutes",
+        "options_presented": ["1 minute", "5 minutes", "15 minutes"]
+      },
+      {
+        "question": "When the five-minute threshold is exceeded, what should the tile show?",
+        "answer": "Keep values with an unmistakable STALE marker",
+        "options_presented": ["Keep values with STALE marker", "Replace values with UNAVAILABLE", "Show values dimmed only"]
+      },
+      {
+        "question": "What should make a stale/offline Codex tile current again?",
+        "answer": "Only a successful full read",
+        "options_presented": ["Only a successful full read", "Full read or valid sparse merge", "Any app-server response"]
+      },
+      {
+        "question": "If a previous quota observation exists but the next Codex read times out or the process exits, which status should take precedence?",
+        "answer": "HOST OFFLINE, retaining stale values and observation age",
+        "options_presented": ["HOST OFFLINE, retain stale values", "STALE only", "UNAVAILABLE, discard values"]
+      }
+    ]
+  },
+  "deferred_ideas": [],
+  "canonical_refs": [
+    ".planning/ROADMAP.md",
+    ".planning/REQUIREMENTS.md",
+    ".planning/PROJECT.md",
+    ".planning/STATE.md",
+    ".planning/phases/03-truthful-codex-capacity-and-device-menu/03-RESEARCH.md",
+    ".planning/phases/02-authoritative-agent-projection-and-exact-focus/02-CONTEXT.md",
+    ".planning/phases/01-physical-keypad-and-proven-transport/01-CONTEXT.md",
+    "protocol/schema/v1.json",
+    "firmware/src/main.cpp",
+    "firmware/src/board/board_adapter.h",
+    "host/herdr_keypad/src/herdr_keypad/bridge.py",
+    "host/herdr_keypad/src/herdr_keypad/projection.py"
+  ]
+}

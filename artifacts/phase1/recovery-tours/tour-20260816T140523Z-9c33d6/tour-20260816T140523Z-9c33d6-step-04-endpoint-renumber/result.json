@@ -1,0 +1,1 @@
+{"detail":"operator marked endpoint renumber unavailable; no physical PASS claimed","human_response":"U","kind":"result","physical_pass":false,"recovery":[],"run_id":"tour-20260816T140523Z-9c33d6-step-04-endpoint-renumber","runtime_privilege":"ordinary-user","schema_version":1,"status":"unavailable","step":"endpoint-renumber","tour_id":"tour-20260816T140523Z-9c33d6"}

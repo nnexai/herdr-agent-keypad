@@ -1335,6 +1335,7 @@ def main(argv: list[str] | None = None) -> int:
         choices=(
             "physical-map",
             "recovery",
+            "recovery-proof",
             "action-specific",
             "hash-bound-resume",
             "canonical-history",
@@ -1342,6 +1343,12 @@ def main(argv: list[str] | None = None) -> int:
             "strict-traffic",
             "immutable-linkage",
             "complete-interruption-matrix",
+            "latency",
+            "physical-proof",
+            "qualification-semantic",
+            "exactly-one-adapter",
+            "qualified-binary-lineage",
+            "unselected-source-object-symbol-absent",
             "immutable-selection",
             "archived-source",
             "exact-manifest-hash",
@@ -1416,11 +1423,8 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"Phase 1 archive: {args.output} ({lock['binary_sha256']})")
             return 0
-        if args.command == "recover":
-            return run_recover(args.schema, args.evidence_root, args.binding, args.interruption)
-        if args.command == "pair":
-            return run_pair(args.schema, args.evidence_root, args.binding)
         if args.command == "verify-evidence":
+            requirements = set(args.require or ())
             kind = json.loads(args.path.read_text(encoding="utf-8")).get("kind")
             if kind == "physical-proof-lock":
                 checked = verify_physical_lock(args.path)
@@ -1439,14 +1443,22 @@ def main(argv: list[str] | None = None) -> int:
             elif kind == "phase1-archive-lock":
                 lock = verify_archive_lock(args.path)
                 print(f"Evidence verified: Phase 1 archive {args.path} ({lock['binary_sha256']})")
-            elif requirements & {"strict-traffic", "immutable-linkage", "complete-interruption-matrix"}:
+            elif kind == "qualification-lock" or requirements & {
+                "strict-traffic",
+                "immutable-linkage",
+                "complete-interruption-matrix",
+                "latency",
+                "physical-proof",
+                "recovery-proof",
+                "qualification-semantic",
+            }:
                 lock = verify_qualification_lock(args.path, requirements)
                 print(f"Evidence verified: qualification lock {args.path} ({lock['result_sha256']})")
             else:
                 path = verify_physical_evidence(
                     args.path,
                     require_physical_map="physical-map" in requirements or "canonical-history" in requirements,
-                    require_recovery="recovery" in requirements,
+                    require_recovery="recovery" in requirements or "recovery-proof" in requirements,
                     action_specific="action-specific" in requirements or "hash-bound-resume" in requirements,
                     reopened_machine_source="reopened-machine-source" in requirements,
                 )

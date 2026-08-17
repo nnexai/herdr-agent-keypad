@@ -1,0 +1,16 @@
+pyproject.toml
+src/phase1_bringup/__init__.py
+src/phase1_bringup/__main__.py
+src/phase1_bringup/discovery.py
+src/phase1_bringup/evidence.py
+src/phase1_bringup/guide.py
+src/phase1_bringup/pairing.py
+src/phase1_bringup/protocol.py
+src/phase1_bringup/qualification.py
+src/phase1_bringup/serial_link.py
+src/phase1_bringup/ui.py
+src/phase1_bringup.egg-info/PKG-INFO
+src/phase1_bringup.egg-info/SOURCES.txt
+src/phase1_bringup.egg-info/dependency_links.txt
+src/phase1_bringup.egg-info/requires.txt
+src/phase1_bringup.egg-info/top_level.txt

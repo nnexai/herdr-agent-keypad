@@ -1,0 +1,20 @@
+.pio/build/selected-usb/FrameworkArduino/MD5Builder.cpp.o: \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/MD5Builder.cpp \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/HEXBuilder.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/WString.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/pgmspace.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/newlib/platform_include/ctype.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/Stream.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/Print.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/newlib/platform_include/stdio.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/WString.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/Printable.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/MD5Builder.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_system/include/esp_system.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_err.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_compiler.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_attr.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_bit_defs.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_idf_version.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_rom/include/esp_rom_md5.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/HashBuilder.h

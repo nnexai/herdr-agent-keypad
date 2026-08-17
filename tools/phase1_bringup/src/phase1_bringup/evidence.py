@@ -154,20 +154,41 @@ def verify_qualification_lock(path: Path, requirements: set[str] | None = None) 
     traffic_path = Path(lock["traffic_path"])
     if _sha256(traffic_path) != lock.get("traffic_sha256"):
         raise EvidenceError("qualification lock traffic hash mismatch")
-    linkage = json.loads(result_path.read_text(encoding="utf-8")).get("qualification", {})
+    result = _load_object(result_path, "qualification result")
+    linkage = result.get("qualification", {})
     if linkage.get("manifest_sha256") != manifest["manifest_sha256"] or linkage.get("traffic_sha256") != lock["traffic_sha256"]:
         raise EvidenceError("qualification lock embedded linkage mismatch")
     if "strict-traffic" in requirements:
-        result = json.loads(result_path.read_text(encoding="utf-8"))
         counters = result.get("counters", {})
-        if result.get("status") != "pass" or any(counters.get(k) != counters.get("expected") for k in ("sent", "received", "acknowledged")):
+        expected = counters.get("expected")
+        if result.get("status") != "pass" or not isinstance(expected, int) or any(counters.get(k) != expected for k in ("sent", "received", "acknowledged")):
             raise EvidenceError("qualification lock lacks strict traffic equality")
         if any(counters.get(k) != 0 for k in ("digest_mismatch", "duplicate", "out_of_order", "malformed", "rejected", "watchdog_reset")):
             raise EvidenceError("qualification lock contains strict traffic failures")
     if "complete-interruption-matrix" in requirements:
-        required = {"software-reset", "normal-flash-reset", "same-port-reconnect", "different-port-reconnect", "forced-endpoint-renumbering", "host-utility-restart", "reset-unplug"}
-        if not required.issubset(set(lock.get("interruption_ids", []))):
+        from .qualification import required_interruption_ids
+        required = set(required_interruption_ids(manifest))
+        rows = {
+            row.get("id"): row
+            for row in result.get("interruption_matrix", [])
+            if isinstance(row, dict) and isinstance(row.get("id"), str)
+        }
+        if set(lock.get("interruption_ids", [])) != required or not required.issubset(rows):
             raise EvidenceError("qualification lock interruption matrix is incomplete")
+        if any(rows[row_id].get("response") != "Y" for row_id in required):
+            raise EvidenceError("qualification lock contains an unavailable or failed applicable interruption")
+    if requirements & {"qualification-semantic", "latency", "physical-proof", "recovery-proof"}:
+        from .qualification import validate_qualification_result
+        try:
+            validate_qualification_result(result, manifest)
+        except ValueError as exc:
+            raise EvidenceError(str(exc)) from exc
+    if "physical-proof" in requirements:
+        if result.get("physical_overlap") != "Y" or not isinstance(linkage.get("physical_lock_sha256"), str):
+            raise EvidenceError("qualification lock lacks linked physical proof")
+    if "recovery-proof" in requirements and manifest.get("recovery_proof_required", True):
+        if not isinstance(linkage.get("recovery_lock_sha256"), str):
+            raise EvidenceError("qualification lock lacks linked recovery proof")
     return lock
 
 def _load_object(path: Path, label: str) -> dict[str, Any]:
@@ -225,7 +246,7 @@ def select_transport(
         "status": "pass",
         "environment": "selected-usb",
         "selected_adapter": "usb_cdc",
-        "rationale": "USB selected for v1: every frozen qualification gate passed.",
+        "rationale": "USB selected for v1 scoped profile: all applicable qualification gates passed.",
         "manifest_path": str(Path(manifest_path).resolve()),
         "manifest_sha256": manifest["manifest_sha256"],
         "candidate_lock_path": str(Path(candidate_lock_path).resolve()),
@@ -253,8 +274,8 @@ def verify_selection_lock(path: Path) -> dict[str, Any]:
         or selection.get("selected_adapter") != "usb_cdc"
     ):
         raise EvidenceError("selection lock schema, status, or selected environment is invalid")
-    if selection.get("rationale") != "USB selected for v1: every frozen qualification gate passed.":
-        raise EvidenceError("selection rationale is not the frozen USB decision")
+    if selection.get("rationale") != "USB selected for v1 scoped profile: all applicable qualification gates passed.":
+        raise EvidenceError("selection rationale is not the scoped USB decision")
     manifest_path = _fixed_file(selection.get("manifest_path"), "selection manifest")
     manifest = verify_qualification_manifest(manifest_path)
     if selection.get("manifest_sha256") != manifest["manifest_sha256"]:

@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "kind": "qualification-pointer",
+  "purpose": "usb-eligibility",
+  "result_path": "20260816T190217Z-cc059b/result.json",
+  "result_sha256": "d9d1a73078910509199bdd7e303333e4517b793beb0139187004db4b3dcbdb18",
+  "manifest_sha256": "16d4430184ddc3270f708d28328faa03cc5b6b884440c0db1b80c5c5ee61232c"
+}

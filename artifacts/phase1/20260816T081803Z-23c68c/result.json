@@ -1,0 +1,1 @@
+{"error":{"message":"[Errno 13] could not open port /dev/ttyACM0: [Errno 13] Permission denied: '/dev/ttyACM0'","type":"SerialException"},"kind":"result","machine_facts":{"event":"not started","hello":"not started","probe":"not started"},"physical_observation":"unavailable","run_id":"20260816T081803Z-23c68c","schema_version":1,"status":"fail"}

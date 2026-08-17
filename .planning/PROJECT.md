@@ -65,8 +65,9 @@ The device must make agents that need attention immediately visible and let the 
 | Reserve the fourth display for Codex limits | Remaining subscription capacity is valuable ambient information and does not require encoder navigation | — Pending |
 | Keep deeper interaction inside herdr | Detecting and safely reproducing arbitrary agent prompts on four keys adds complexity without improving the primary selection workflow | — Pending |
 | Defer general macros | Voice input and configurable actions are useful, but the physical inbox must first be reliable | — Pending |
-| Prefer USB while researching transport | The device is already wired for power, but the best supported data path must be proven on real hardware | — Pending |
-| Require physical end-to-end validation for v1 | A simulated bridge or renderer alone does not establish that the companion hardware is useful or reliable | — Pending |
+| Prefer USB while researching transport | The device is already wired for power, but the best supported data path must be proven on real hardware | **Validated in Phase 1 Plan 01-06** — the exact paired unit passed strict USB qualification |
+| Require one physical end-to-end validation for v1 | A simulated bridge or renderer alone does not establish that the companion hardware is useful or reliable | **Validated once in Phase 1 Plan 01-06** — the immutable qualification result is the hardware baseline |
+| Do not rerun the long qualification profile | The 30-minute profile establishes a one-time hardware/transport baseline; repeating it adds operator cost without proving later host-only changes | Future work consumes the hash-bound result and uses bounded targeted smoke checks; the long profile is never rerun |
 
 ## Evolution
 
@@ -86,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-16 after initialization*
+*Last updated: 2026-08-16 after Plan 01-06 USB qualification*

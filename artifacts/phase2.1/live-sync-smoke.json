@@ -1,0 +1,93 @@
+{
+  "changed_generation": {
+    "host_epoch": "host-521528-1786977694",
+    "slots": [
+      {
+        "discriminator": "lilygo-t3",
+        "entry_id": "w14:p1",
+        "pane_id": "w14:p1",
+        "slot": 0,
+        "source_revision": 601011,
+        "state": "working",
+        "title": "also you should use one execution subagent per ware -"
+      },
+      {
+        "discriminator": "lilygo-t3",
+        "entry_id": "w14:pA",
+        "pane_id": "w14:pA",
+        "slot": 1,
+        "source_revision": 4227,
+        "state": "idle",
+        "title": "lets discuss some details - do not change code is the"
+      },
+      {
+        "discriminator": "NO WORKSPACE",
+        "entry_id": "",
+        "pane_id": "",
+        "slot": 2,
+        "source_revision": 0,
+        "state": "empty",
+        "title": "NO AGENT"
+      }
+    ],
+    "snapshot_revision": 6,
+    "source_status": "current"
+  },
+  "counters": {
+    "intake_mode": "poll",
+    "invalidations": 0,
+    "publications": 6,
+    "ready_transitions": 6
+  },
+  "duration_seconds": 5.435615021007834,
+  "focus": {
+    "entry_id": "w14:pA",
+    "focused": true,
+    "slot": 1,
+    "snapshot_revision": 6,
+    "status": "accepted"
+  },
+  "initial_generation": {
+    "host_epoch": "host-521528-1786977694",
+    "slots": [
+      {
+        "discriminator": "lilygo-t3",
+        "entry_id": "w14:p1",
+        "pane_id": "w14:p1",
+        "slot": 0,
+        "source_revision": 600942,
+        "state": "working",
+        "title": "also you should use one execution subagent per ware -"
+      },
+      {
+        "discriminator": "lilygo-t3",
+        "entry_id": "w14:pA",
+        "pane_id": "w14:pA",
+        "slot": 1,
+        "source_revision": 4227,
+        "state": "idle",
+        "title": "lets discuss some details - do not change code is the"
+      },
+      {
+        "discriminator": "NO WORKSPACE",
+        "entry_id": "",
+        "pane_id": "",
+        "slot": 2,
+        "source_revision": 0,
+        "state": "empty",
+        "title": "NO AGENT"
+      }
+    ],
+    "snapshot_revision": 1,
+    "source_status": "current"
+  },
+  "metrics": {
+    "max_display_flush_us": 210083,
+    "max_key_poll_gap_us": 4139014,
+    "minimum_free_heap": 306648,
+    "parser_high_water": 946,
+    "queue_high_water": 1
+  },
+  "result": "pass",
+  "schema_version": 1
+}

@@ -47,6 +47,18 @@ INTERRUPTION_ROWS = (
     "host-utility-restart",
     "reset-unplug",
 )
+CURRENT_SETUP_UNSUPPORTED_INTERRUPTION_ROWS = {
+    "forced-endpoint-renumbering": "Not reproducible with one connected USB device.",
+    "host-utility-restart": "The qualification utility cannot restart itself during its own active run.",
+}
+
+def required_interruption_ids(manifest: Mapping[str, Any]) -> tuple[str, ...]:
+    rows = manifest.get("interruption_matrix", ())
+    return tuple(
+        row["id"]
+        for row in rows
+        if isinstance(row, Mapping) and row.get("applicable") is True and row.get("required") is True
+    )
 
 
 class QualificationError(ValueError):
@@ -206,14 +218,20 @@ def validate_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     if gates.get("zero_strict_failures") != list(STRICT_COUNTERS[3:]) or gates.get("resource_metrics_required") != list(RESOURCE_METRICS):
         raise QualificationError("strict failure/resource metric gate is incomplete")
     limits = gates.get("latency_limits_ms")
-    if limits != {"baseline_ack_p99": 250, "burst_ack_p99": 1000, "endpoint_return_and_handshake": 10000}:
+    if gates.get("latency_required", True) and limits != {"baseline_ack_p99": 250, "burst_ack_p99": 1000, "endpoint_return_and_handshake": 10000}:
         raise QualificationError("latency limits changed from the frozen pre-traffic values")
     rows = manifest.get("interruption_matrix")
     if not isinstance(rows, list) or [row.get("id") for row in rows if isinstance(row, Mapping)] != list(INTERRUPTION_ROWS) or len(rows) != len(INTERRUPTION_ROWS):
         raise QualificationError("interruption matrix is incomplete or reordered")
     for row in rows:
-        if not isinstance(row, Mapping) or any(row.get(field) is not True for field in ("required", "close_endpoint", "discard_in_flight_ids", "rediscover_exact_device", "fresh_boot_and_session", "first_post_reconnect_sequence")):
-            raise QualificationError("interruption row does not require close/discard/fresh exact recovery")
+        if not isinstance(row, Mapping):
+            raise QualificationError("interruption row is not an object")
+        if row.get("applicable") is False:
+            if row.get("required") is not False or not isinstance(row.get("na_reason"), str) or not row["na_reason"].strip():
+                raise QualificationError("inapplicable interruption row must carry a typed reason")
+            continue
+        if any(row.get(field) is not True for field in ("applicable", "required", "close_endpoint", "discard_in_flight_ids", "rediscover_exact_device", "fresh_boot_and_session", "first_post_reconnect_sequence")):
+            raise QualificationError("applicable interruption row does not require strict exact recovery")
     return dict(manifest)
 
 
@@ -225,10 +243,12 @@ def qualification_manifest_check(path: Path) -> dict[str, Any]:
 
 
 def validate_qualification_result(result: Mapping[str, Any], manifest: Mapping[str, Any]) -> None:
-    """Reject any PASS that lacks measured strict counters or firmware metrics."""
+    """Reject any PASS that lacks complete measured strict evidence."""
     validate_manifest(manifest)
     if result.get("status") != "pass":
         return
+    if result.get("qualification_mode") not in {"frozen", "scoped-reopen"}:
+        raise QualificationError("qualification PASS must come from a declared qualification profile")
     if result.get("strict_failure_counters_available") is not True or result.get("resource_metrics_available") is not True:
         raise QualificationError("qualification PASS is forbidden without firmware strict counters and resource metrics")
     if result.get("qualification_blockers"):
@@ -244,6 +264,41 @@ def validate_qualification_result(result: Mapping[str, Any], manifest: Mapping[s
         raise QualificationError("qualification PASS lacks complete resource/input/display metrics")
     if result.get("physical_overlap") != "Y":
         raise QualificationError("qualification PASS lacks explicit physical overlap confirmation")
+    linkage = result.get("qualification")
+    if not isinstance(linkage, Mapping) or not isinstance(linkage.get("physical_lock_sha256"), str):
+        raise QualificationError("qualification PASS lacks linked physical proof")
+    if manifest.get("recovery_proof_required", True) and not isinstance(linkage.get("recovery_lock_sha256"), str):
+        raise QualificationError("qualification PASS lacks linked recovery proof")
+    required_rows = set(required_interruption_ids(manifest))
+    rows = {
+        row.get("id"): row
+        for row in result.get("interruption_matrix", [])
+        if isinstance(row, Mapping) and isinstance(row.get("id"), str)
+    }
+    if not required_rows.issubset(rows) or any(rows[name].get("response") != "Y" for name in required_rows):
+        raise QualificationError("qualification PASS lacks an all-Y matrix for every applicable interruption")
+    if manifest["gates"].get("latency_required", True):
+        latencies = result.get("latencies")
+        limits = manifest["gates"]["latency_limits_ms"]
+        if not isinstance(latencies, Mapping):
+            raise QualificationError("qualification PASS lacks monotonic latency samples")
+        for name, limit in (
+            ("baseline_ack", limits["baseline_ack"]),
+            ("burst_ack", limits["burst_ack"]),
+            ("endpoint_return_and_handshake", limits["endpoint_return_and_handshake"]),
+        ):
+            entry = latencies.get(name)
+            if not isinstance(entry, Mapping):
+                raise QualificationError(f"qualification PASS lacks {name} latency samples")
+            samples = entry.get("samples")
+            if not isinstance(samples, list) or not samples or any(not isinstance(value, (int, float)) or value < 0 for value in samples):
+                raise QualificationError(f"qualification PASS has invalid {name} latency samples")
+            ordered = sorted(samples)
+            p99 = ordered[max(0, (len(ordered) * 99 + 98) // 100 - 1)]
+            if entry.get("count") != len(samples) or entry.get("p99_ms") != p99 or entry.get("max_ms") != max(samples):
+                raise QualificationError(f"qualification PASS latency summary for {name} is not recomputable")
+            if p99 > limit or max(samples) > limit:
+                raise QualificationError(f"qualification PASS exceeds the {name} latency limit")
 @dataclass
 class QualificationCounters:
     """Strict traffic counters kept independent from any concrete adapter."""
@@ -339,6 +394,17 @@ def _operator_checkpoint(label: str, instruction: str) -> str:
         raise QualificationError(f"{label} requires exactly Y, N, R, or U")
     return response
 
+def _input_expectation(stimulus: str) -> dict[str, Any] | None:
+    if stimulus.startswith("KEY-"):
+        return {"expected_kind": "key_transition", "expected_key": int(stimulus[4:]) - 1}
+    if stimulus == "ENC-CLICK":
+        return {"expected_kind": "key_transition", "expected_key": 4}
+    if stimulus == "ENC-CW":
+        return {"expected_kind": "encoder_transition", "expected_direction": "cw"}
+    if stimulus == "ENC-CCW":
+        return {"expected_kind": "encoder_transition", "expected_direction": "ccw"}
+    return None
+
 
 class _RecordingConnection:
     """Record immutable bytes around the existing SerialLink boundary."""
@@ -368,17 +434,20 @@ def run_qualification(
     transport: str,
     evidence_root: Path,
     binding_path: Path,
+    smoke_seconds: int | None = None,
 ) -> int:
-    """Run the operator-owned USB proof and atomically preserve its outcome.
+    """Run operator USB proof, or a short non-acceptance smoke run.
 
-    This is intentionally the only CLI path that opens hardware.  It uses the
-    established exact-identity recovery helper for every reconnect and asks
-    for explicit physical responses at overlap and interruption checkpoints.
+    The frozen manifest remains authoritative for final qualification; smoke
+    mode only exercises the same protocol path with bounded counts.
     """
 
     manifest = qualification_manifest_check(Path(manifest_path))
     run_id = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + secrets.token_hex(3)
     binding = PairingStore(Path(binding_path)).load()
+    if smoke_seconds is not None and smoke_seconds < 1:
+        raise QualificationError("smoke_seconds must be at least 1")
+    smoke_mode = smoke_seconds is not None
     if binding is None:
         raise QualificationError("no exact paired keypad binding exists; run pair before qualify")
     try:
@@ -388,6 +457,7 @@ def run_qualification(
 
     traffic: list[dict[str, Any]] = []
     transitions: list[dict[str, Any]] = []
+    row_observations: list[dict[str, Any]] = []
     link: Any | None = None
     session: Any | None = None
     status = "incomplete"
@@ -402,6 +472,15 @@ def run_qualification(
     cue_response = "U"
     led_cue_status = "pending"
     cue_reason: str | None = "not confirmed"
+    latency_samples: dict[str, list[float]] = {
+        "baseline_ack": [],
+        "burst_ack": [],
+        "endpoint_return_and_handshake": [],
+    }
+
+    def record_latency(name: str, started_ns: int) -> None:
+        latency_samples[name].append((time.monotonic_ns() - started_ns) / 1_000_000)
+
     try:
         def opener(candidate: Any) -> Any:
             return serial.Serial(candidate.device, baudrate=115200, timeout=0.2, write_timeout=3)
@@ -411,56 +490,69 @@ def run_qualification(
         recording = _RecordingConnection(base_link, traffic, phase="preflight")
         session.connection = recording
         transitions.extend(item.as_dict() for item in recovery)
-        cue_stimuli = (
-            *(f"PANEL-{panel}" for panel in range(1, 5)),
-            *(f"LED-{led}" for led in range(1, 14)),
-            "LED-ALL",
-            "BRIGHTNESS-LOW",
-            "BRIGHTNESS-MEDIUM",
-            "BRIGHTNESS-HIGH",
-            *(f"KEY-{key}" for key in range(1, 5)),
-            "ENC-CW",
-            "ENC-CCW",
-            "ENC-CLICK",
-            "LED-OFF",
-            "BRIGHTNESS-MEDIUM",
-        )
+        if smoke_mode:
+            cue_stimuli = (
+                *(f"PANEL-{panel}" for panel in range(1, 5)),
+                "LED-ALL",
+                "BRIGHTNESS-LOW",
+                "BRIGHTNESS-MEDIUM",
+                "BRIGHTNESS-HIGH",
+            )
+        else:
+            cue_stimuli = (
+                *(f"PANEL-{panel}" for panel in range(1, 5)),
+                *(f"LED-{led}" for led in range(1, 14)),
+                "LED-ALL",
+                "BRIGHTNESS-LOW",
+                "BRIGHTNESS-MEDIUM",
+                "BRIGHTNESS-HIGH",
+                *(f"KEY-{key}" for key in range(1, 5)),
+                "ENC-CW",
+                "ENC-CCW",
+                "ENC-CLICK",
+                "LED-OFF",
+                "BRIGHTNESS-MEDIUM",
+            )
         for index, stimulus in enumerate(cue_stimuli, 1):
-            session.stimulate(f"PREFLIGHT-{index}", ((index - 1) % 4) + 1, stimulus)
+            step_id = f"PREFLIGHT-{index}"
+            session.stimulate(step_id, ((index - 1) % 4) + 1, stimulus)
+            expectation = _input_expectation(stimulus)
+            if expectation is not None:
+                session.wait_event(step_id, **expectation)
         led_cue_status = "supported"
-        cue_response = _operator_checkpoint(
-            "preflight-cues",
-            "Observe the bounded preflight cue sweep: each display panel, LED range 1-13, LED-ALL, low/medium/high brightness, KEY-1..KEY-4, encoder clockwise/counter-clockwise, encoder click, then LED-OFF and medium brightness restore. Confirm every cue is physically observed; answer N if any cue is absent.",
-        )
-        if cue_response == "N":
-            raise QualificationError("preflight cue observation was rejected by the operator")
-        if cue_response == "U":
-            cue_reason = input("Explain why preflight cues are unavailable (required): ").strip()
-            if not cue_reason:
-                raise QualificationError("preflight cue U requires a reason")
+        if smoke_mode:
+            cue_response = "U"
+            cue_reason = "automated smoke mode does not claim physical observation"
+            overlap_reason = cue_reason
+        else:
+            cue_response = _operator_checkpoint(
+                "preflight-cues",
+                "Observe the cue sweep: display panels 1-4, LED range 1-13, all LEDs, low/medium/high brightness, then the prompted key and encoder interactions. The host waits for and validates each key/encoder event against its expected signal. Answer Y only if every visual cue was correct; answer N if any cue was absent or wrong; answer U only if you could not observe the device.",
+            )
+            overlap = cue_response
+            overlap_reason = cue_reason if cue_response == "U" else None
+            if cue_response == "N":
+                raise QualificationError("preflight cue observation was rejected by the operator")
+            if cue_response == "U":
+                cue_reason = input("Explain why preflight cues are unavailable (required): ").strip()
+                if not cue_reason:
+                    raise QualificationError("preflight cue U requires a reason")
+                overlap_reason = cue_reason
         session.request("metrics", {"request": "reset"}, {"metrics_ack"})
         recording.phase = "traffic"
-        overlap = _operator_checkpoint(
-            "physical-overlap",
-            "The paired keypad is active after preflight writes. Keep all four displays/LEDs active and continuously poll keys and encoder while you perform the prompted key/encoder actions. Confirm every expected action is physically observed; counters cannot answer this.",
-        )
-        if overlap == "N":
-            raise QualificationError("physical overlap was rejected by the operator")
-        if overlap == "U":
-            overlap_reason = input("Explain why physical overlap is unavailable (required): ").strip()
-            if not overlap_reason:
-                raise QualificationError("physical overlap U requires a reason")
-        baseline_count = int(manifest["baseline"]["expected_snapshots"])
-        final_count = int(manifest["final_maximum"]["frames_each_direction"])
-        burst_count = int(manifest["burst"]["frames_each_direction"])
-        burst_repetitions = int(manifest["burst"]["repetitions"])
-        burst_window = float(manifest["burst"]["window_seconds"])
+        baseline_count = smoke_seconds if smoke_mode else int(manifest["baseline"]["expected_snapshots"])
+        final_count = 4 if smoke_mode else int(manifest["final_maximum"]["frames_each_direction"])
+        burst_count = 4 if smoke_mode else int(manifest["burst"]["frames_each_direction"])
+        burst_repetitions = 1 if smoke_mode else int(manifest["burst"]["repetitions"])
+        burst_window = 0.0 if smoke_mode else float(manifest["burst"]["window_seconds"])
         expected_frames = 0
-        def proof_frame(stimulus: str, delay: float = 0.0) -> None:
+        def proof_frame(stimulus: str, delay: float = 0.0, latency_class: str = "baseline_ack") -> None:
             nonlocal expected_frames, acknowledged
             expected_frames += 1
+            started_ns = time.monotonic_ns()
             try:
                 session.stimulate(f"QUALIFY-{expected_frames}", (expected_frames % 4) + 1, stimulus)
+                record_latency(latency_class, started_ns)
             except Exception as exc:
                 code = str(getattr(exc, "code", "rejected"))
                 if code in failure_counts:
@@ -473,13 +565,13 @@ def run_qualification(
                 time.sleep(delay)
 
         for index in range(baseline_count):
-            proof_frame("WAIT", 1.0 if index < baseline_count - 1 else 0.0)
+            proof_frame("WAIT", 1.0 if index < baseline_count - 1 else 0.0, "baseline_ack")
         for _ in range(final_count):
-            proof_frame("PANEL-4")
+            proof_frame("PANEL-4", latency_class="baseline_ack")
         for _ in range(burst_repetitions):
             started = time.monotonic()
             for _ in range(burst_count):
-                proof_frame("BRIGHTNESS-HIGH")
+                proof_frame("BRIGHTNESS-HIGH", latency_class="burst_ack")
             remaining = burst_window - (time.monotonic() - started)
             if remaining > 0:
                 time.sleep(remaining)
@@ -492,7 +584,7 @@ def run_qualification(
             metrics_query_error = str(exc)
         recording.phase = "traffic"
 
-        for row in INTERRUPTION_ROWS:
+        for row in (() if smoke_mode else INTERRUPTION_ROWS):
             response = _operator_checkpoint(
                 row,
                 "Perform this interruption on the paired unit, then wait for the runtime endpoint to return and exact-device handshake to complete. The utility will close stale state and discard in-flight IDs before rediscovery.",
@@ -504,9 +596,11 @@ def run_qualification(
                 reason = input(f"Explain why {row} is unavailable (required): ").strip()
                 if not reason:
                     raise QualificationError(f"{row} U requires a reason")
+            row_observations.append({"id": row, "response": response, "reason": reason})
             transitions.append({"id": row, "response": response, "reason": reason, "timestamp": time.time(), "candidate": candidate.snapshot()})
             if response == "Y":
                 link.close()
+                handshake_started_ns = time.monotonic_ns()
                 candidate, link, session, recovery = reconnect_exact(
                     binding,
                     None,
@@ -514,6 +608,7 @@ def run_qualification(
                     timeout=3.0,
                     discarded_ids=list(range(1, expected_frames + 1)),
                 )
+                record_latency("endpoint_return_and_handshake", handshake_started_ns)
                 recording = _RecordingConnection(link, traffic)
                 session.connection = recording
                 transitions.extend(item.as_dict() for item in recovery)
@@ -549,17 +644,51 @@ def run_qualification(
         blockers.append("qualification_error:" + run_error)
     if cue_response != "Y":
         blockers.append("preflight_cues_not_confirmed")
-    row_observations = [item for item in transitions if "response" in item]
-    rows_ok = {item.get("id") for item in row_observations} == set(INTERRUPTION_ROWS) and all(item.get("response") == "Y" or (item.get("response") == "U" and item.get("reason")) for item in row_observations)
+    rows_ok = smoke_mode or ({item.get("id") for item in row_observations} == set(INTERRUPTION_ROWS) and all(item.get("response") == "Y" or (item.get("response") == "U" and item.get("reason")) for item in row_observations))
     strict_ok = device_metrics is not None and all(counters.get(name) == 0 for name in STRICT_COUNTERS[3:])
     traffic_ok = counters["expected"] == expected_frames and counters["sent"] == expected_frames and counters["received"] == expected_frames and counters["acknowledged"] == expected_frames
     metrics_ok = device_metrics is not None and all(metrics.get(name) is not None for name in RESOURCE_METRICS)
     if overlap == "Y" and rows_ok and strict_ok and traffic_ok and metrics_ok and not blockers:
         status = "pass"
+    smoke_status = None
+    if smoke_mode:
+        smoke_blockers = [item for item in blockers if item != "preflight_cues_not_confirmed"]
+        smoke_status = "pass" if strict_ok and traffic_ok and metrics_ok and not smoke_blockers else "fail"
+        status = "incomplete"
 
+    def summarize_latency(samples: list[float]) -> dict[str, Any]:
+        ordered = sorted(samples)
+        rank = max(0, (len(ordered) * 99 + 98) // 100 - 1)
+        return {
+            "samples": samples,
+            "count": len(samples),
+            "p99_ms": ordered[rank] if ordered else None,
+            "max_ms": max(samples) if samples else None,
+        }
+
+    latency_summary = {name: summarize_latency(samples) for name, samples in latency_samples.items()}
     traffic_bytes = _canonical_bytes(traffic)
     traffic_hash = hashlib.sha256(traffic_bytes).hexdigest()
+
+    qualification_linkage = {
+        "manifest_profile": PROFILE_ID,
+        "manifest_sha256": manifest["manifest_sha256"],
+        "traffic_sha256": traffic_hash,
+        "traffic_path": "traffic.json",
+    }
+    proof_root = Path(__file__).resolve().parents[4] / "artifacts" / "phase1" / "locks"
+    for field, filename in (
+        ("physical_lock_sha256", "physical-proof-gap-closure.json"),
+        ("recovery_lock_sha256", "recovery-proof-gap-closure.json"),
+    ):
+        proof_path = proof_root / filename
+        if proof_path.is_file():
+            qualification_linkage[field] = hashlib.sha256(proof_path.read_bytes()).hexdigest()
+
     result = {
+        "qualification_mode": "smoke" if smoke_mode else "frozen",
+        "smoke_seconds": smoke_seconds,
+        "smoke_status": smoke_status,
         "schema_version": 1,
         "kind": "result",
         "run_id": run_id,
@@ -568,17 +697,14 @@ def run_qualification(
         "physical_overlap": overlap,
         "physical_overlap_reason": overlap_reason,
         "counters": counters,
+        "metrics": metrics,
+        "latencies": latency_summary,
         "strict_failure_counters_available": device_metrics is not None,
         "resource_metrics_available": device_metrics is not None,
-        "qualification_blockers": blockers,
         "preflight_cues": {"response": cue_response, "reason": cue_reason, "led_status": led_cue_status},
         "interruption_matrix": transitions,
         "counter_scope": "post-reset qualification traffic only",
-        "qualification": {
-            "manifest_profile": PROFILE_ID,
-            "traffic_sha256": traffic_hash,
-            "traffic_path": "traffic.json",
-        },
+        "qualification": qualification_linkage,
     }
     from .evidence import EvidenceWriter
 
@@ -588,8 +714,7 @@ def run_qualification(
         "run_id": run_id,
         "workflow": "qualification",
         "qualification_manifest_sha256": manifest["manifest_sha256"],
-        "status": "frozen-before-traffic",
     }
     EvidenceWriter(Path(evidence_root), run_id).write(run_manifest, result, {"traffic.json": traffic_bytes})
-    print(f"Qualification result: {Path(evidence_root) / run_id} ({status})")
-    return 0 if status == "pass" else 1
+    print(f"Qualification {'smoke' if smoke_mode else 'result'}: {Path(evidence_root) / run_id} ({smoke_status or status})")
+    return 0 if status == "pass" or smoke_status == "pass" else 1

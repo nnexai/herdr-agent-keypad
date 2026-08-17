@@ -1,0 +1,1 @@
+{"kind":"result","machine_facts":{"event":{"key":0,"received":true,"step_id":"PANEL-1"},"hello":{"acknowledged":true,"reply":2},"probe":{"acknowledged":true,"reply":3,"step_id":"PANEL-1"}},"physical_observation":"confirmed","run_id":"20260816T083124Z-c8553c","schema_version":1,"status":"pass","transport":{"bounded":true,"correlated":true,"type":"usb-cdc","version":1}}

@@ -1,0 +1,33 @@
+.pio/build/selected-usb/FrameworkArduino/WMath.cpp.o: \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/WMath.cpp \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_system/include/esp_system.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_err.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/newlib/platform_include/stdio.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_compiler.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_attr.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_bit_defs.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_idf_version.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/esp32-hal-log.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_timer/include/esp_timer.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_hw_support/include/esp_etm.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_rom/esp32s3/include/esp32s3/rom/ets_sys.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/soc/esp32s3/include/soc/soc.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_assert.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/soc/esp32s3/register/soc/reg_base.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_rom/include/esp_rom_sys.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/soc/esp32s3/include/soc/reset_reasons.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/soc/esp32s3/include/soc/soc_caps.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_config.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_level.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_color.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_buffer.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_timestamp.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_write.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_format.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_args.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_macros.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_common/include/esp_assert.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_log_attr.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/log/include/esp_private/log_attr.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_hw_support/include/esp_random.h

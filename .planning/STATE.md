@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02.1
 current_phase_name: Reliable Live Synchronization, Focus, and Flicker-Free Rendering
-status: ready
-stopped_at: "Checkpoint: 02.1-03 Task 2 human-verify"
-last_updated: "2026-08-17T13:39:22.194Z"
+status: complete
+stopped_at: "Phase 02.1 verification and physical checkpoint complete"
+last_updated: "2026-08-17"
 last_activity: 2026-08-17
-last_activity_desc: Phase 2 selected-USB snapshot, rendering, exact focus, and physical feedback accepted
+last_activity_desc: Phase 02.1 bounded verification and repeat-focus physical checkpoint passed
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 21
-  completed_plans: 20
+  completed_plans: 21
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 ## Current Position
 
-Phase: 02.1 (Reliable Live Synchronization, Focus, and Flicker-Free Rendering) — PLANNED
-Plan: 13 of 13
-Status: Complete; selected USB evidence and archive independently verify
-Last activity: 2026-08-17 — scoped gap-closure lineage archived
+Phase: 02.1 (Reliable Live Synchronization, Focus, and Flicker-Free Rendering) — COMPLETE
+Plan: 03 of 03
+Status: Complete; bounded live-sync evidence, selected build, and exact-device repeat-focus checkpoint passed
+Last activity: 2026-08-17 — phase closeout
 
-Progress: [██████████] 95%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -122,7 +122,7 @@ None yet.
 - [Phase 1]: Complete under the current-setup scope. Endpoint renumbering and self-restarting the active qualification utility are explicitly non-applicable and remain excluded from the archived profile.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
-- 02.1-03 Task 2 awaits bounded physical smoke: exact paired keypad, one real Herdr change, complete-image/no-tearing observation, exact changed-generation focus, and evidence checksum.
+- [Phase 02.1]: Bounded live-sync smoke evidence and exact-device physical checkpoint passed; no long qualification rerun.
 
 ### Roadmap Evolution
 
@@ -136,6 +136,5 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-17T13:39:21.954Z
-Stopped at: Checkpoint: 02.1-03 Task 2 human-verify
-Resume file: 02.1-03 Task 2
+Last session: 2026-08-17
+Stopped at: Phase 02.1 verification and physical checkpoint complete

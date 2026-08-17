@@ -1,0 +1,19 @@
+{
+  "name": "ButtonSense",
+  "version": "1.0.0",
+  "description": "A multi-button driver library with debounce, click/hold/combo detection and event callbacks.",
+  "keywords": ["button", "debounce", "click", "hold", "combo", "input"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lbuque/ButtonSense.git"
+  },
+  "authors": [
+    {
+      "name": "lbuque"
+    }
+  ],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "*",
+  "headers": ["ButtonSense.h", "ButtonManager.h"]
+}
