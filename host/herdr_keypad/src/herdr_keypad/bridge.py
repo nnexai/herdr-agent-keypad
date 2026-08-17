@@ -34,7 +34,7 @@ V2 = 2
 SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
 AGENT_STATES = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"}
 OUTCOMES = {"accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"}
-FOCUS_RESULT_GRACE_SECONDS = 0.25
+FOCUS_RESULT_GRACE_SECONDS = 1.0
 
 
 class V2ProtocolError(ValueError):
