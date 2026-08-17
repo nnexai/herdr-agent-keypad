@@ -42,7 +42,7 @@ class HerdrClient:
         body = dict(params or {})
         if self._requester is not None:
             return self._requester(method, body)
-        request_id = self._next_id
+        request_id = str(self._next_id)
         self._next_id += 1
         request = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": body}
         try:
@@ -78,6 +78,8 @@ class HerdrClient:
 
     def session_snapshot(self) -> Mapping[str, Any]:
         result = self.request("session.snapshot", {})
+        if isinstance(result, Mapping) and isinstance(result.get("snapshot"), Mapping):
+            result = result["snapshot"]
         if not isinstance(result, Mapping):
             raise HerdrError("session.snapshot result is not an object")
         return result

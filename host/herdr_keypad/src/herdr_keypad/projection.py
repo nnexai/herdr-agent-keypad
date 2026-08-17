@@ -76,6 +76,17 @@ def _uint(value: Any, name: str, *, allow_zero: bool = False) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < (0 if allow_zero else 1) or value > 0xFFFFFFFF:
         raise ProjectionUnavailable(f"{name} is not a bounded integer")
     return value
+def _session_token(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return _opaque(value, "agent_session")
+    if isinstance(value, Mapping):
+        pieces = [value.get(key) for key in ("source", "agent", "kind")]
+        if all(isinstance(piece, str) and piece for piece in pieces):
+            return _opaque(":".join(pieces), "agent_session")
+    raise ProjectionUnavailable("agent_session is not a bounded identity")
+
 
 
 def _repo_basename(cwd: Any) -> str | None:
@@ -124,7 +135,7 @@ class InboxProjection:
         terminal_id = _opaque(row.get("terminal_id"), "terminal_id")
         workspace_id = _opaque(row.get("workspace_id"), "workspace_id")
         tab_id = _opaque(row.get("tab_id"), "tab_id")
-        _uint(row.get("revision"), "revision")
+        revision = _uint(row.get("revision"), "revision")
         if not isinstance(row.get("focused"), bool):
             raise ProjectionUnavailable("focused must be boolean")
         status = row.get("agent_status")
@@ -139,16 +150,16 @@ class InboxProjection:
         rank = int(rank_value)
         state_change_seq = _uint(row.get("state_change_seq"), "state_change_seq", allow_zero=True)
         title_value = row.get("title") or tokens.get("title") or row.get("terminal_title_stripped") or row.get("agent")
+        if not isinstance(title_value, str):
+            raise ProjectionUnavailable("title is required")
+        title_value = title_value.encode("ascii", "ignore").decode("ascii").strip() or "UNKNOWN AGENT"
         title = _text(title_value, "title", MAX_TEXT)
         workspace_label = labels.get(workspace_id)
         discriminator = workspace_label or _repo_basename(row.get("cwd")) or "NO WORKSPACE"
         discriminator = _text(discriminator, "discriminator", MAX_DISCRIMINATOR)
-        session = row.get("agent_session")
-        if session is not None:
-            session = _opaque(session, "agent_session")
-        entry_id = pane_id
-        identity = Identity(pane_id, terminal_id, session, int(row["revision"]), workspace_id, tab_id)
-        return ProjectedEntry(-1, entry_id, title, discriminator, RANK_STATES[rank], rank, state_change_seq, identity)
+        session = _session_token(row.get("agent_session"))
+        identity = Identity(pane_id, terminal_id, session, revision, workspace_id, tab_id)
+        return ProjectedEntry(-1, pane_id, title, discriminator, RANK_STATES[rank], rank, state_change_seq, identity)
 
     def refresh(self, rows: Iterable[Mapping[str, Any]], workspaces: Iterable[Mapping[str, Any]] = (), *,
                 source_status: str = "current", plugin_revision: str | None = None,

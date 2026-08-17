@@ -6,8 +6,7 @@ from typing import Any, Mapping
 
 from .bridge import Binding, FocusIntent
 from .herdr import HerdrClient, HerdrError
-from .projection import InboxProjection
-
+from .projection import InboxProjection, _session_token
 OUTCOME_NAMES = {
     "accepted", "empty", "stale", "offline", "incompatible", "wrong_epoch", "wrong_revision",
     "wrong_slot", "pane_reused", "session_changed", "source_revision_changed", "vanished",
@@ -63,9 +62,11 @@ class FocusExecutor:
             return "pane_reused"
         if binding.identity.workspace_id and agent.get("workspace_id") != binding.identity.workspace_id:
             return "pane_reused"
-        if binding.identity.tab_id and agent.get("tab_id") != binding.identity.tab_id:
-            return "pane_reused"
-        if agent.get("agent_session") != binding.identity.agent_session:
+        try:
+            current_session = _session_token(agent.get("agent_session"))
+        except Exception:
+            return "session_changed"
+        if current_session != binding.identity.agent_session:
             return "session_changed"
         if agent.get("revision") != binding.identity.source_revision:
             return "source_revision_changed"
