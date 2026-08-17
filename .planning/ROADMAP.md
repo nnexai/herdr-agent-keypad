@@ -89,7 +89,7 @@ Plans:
 
 ### Phase 2: Authoritative Agent Projection and Exact Focus
 
-**Goal:** The user can recognize the installed inbox's three highest entries and focus the exact displayed herdr pane with one safe physical press.
+**Goal:** As a user of the delivered keypad, I want to see the installed inbox's three highest entries and focus the exact displayed Herdr pane with one safe physical press, so that I can switch to the agent needing attention without unsafe triage actions.
 **Mode:** mvp
 **Depends on:** Phase 1
 **Requirements:** INBX-01, INBX-02, INBX-03, INBX-04, FOCS-01, FOCS-02, FOCS-03, FOCS-04, SYNC-02, SAFE-02
@@ -116,11 +116,41 @@ Plans:
 
 **UI hint:** yes
 
+### Phase 02.1: Reliable Live Synchronization, Focus, and Flicker-Free Rendering (INSERTED)
+
+**Goal:** As a user of the delivered keypad, I want live Herdr changes to converge to one ACKed authoritative generation with exact focus fenced during refresh and each tile painted as one composed image, so that the physical inbox stays current, safe, and visually stable.
+**Requirements:** TBD — no requirement IDs are assigned to this inserted phase; Phase 2, Phase 3, and Phase 4 requirement ownership remains unchanged.
+**Depends on:** Phase 2
+
+**Success Criteria** (what must be TRUE):
+
+  1. Typed Herdr lifecycle events are invalidation signals only: bursts coalesce into complete authoritative three-slot reads, and equivalent normalized state does not advance the visible generation or redraw.
+  2. The host is ready for focus only after the exact current snapshot ACK; source, session, ACK, and refresh failures publish stale/offline state and fence focus without silently discarding or replaying an intent.
+  3. Firmware composes each SYNC, tile, and feedback state completely in one reused bounded buffer, flushes panels sequentially through `BoardAdapter`, and activates bindings only after all three panels succeed.
+  4. Installed inbox rank/sequence order, opaque generation-bound identity, three fixed agent slots, stale/offline distinction, and `FocusExecutor` as the sole `agent.focus` path remain unchanged; panel 4, Codex/menu, and full recovery remain outside this phase.
+  5. Focused host/native checks, the selected USB build/metrics, and one bounded exact-device smoke prove a real Herdr change reaches a higher ACKed revision as complete images and the changed tile still focuses only its exact pane.
+
+**Plans:** 3 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 02.1-01-PLAN.md — Carry typed Herdr invalidations through coalesced complete projection, exact ACK/readiness fencing, and once-only same-session interleaved focus handling.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02.1-02-PLAN.md — Compose every firmware tile off-screen, flush each panel once, clear generation-scoped feedback, and prove resource bounds through focused native tests and selected build metrics.
+
+**Wave 3** *(blocked on Waves 1–2 completion)*
+
+- [ ] 02.1-03-PLAN.md — Run one hard-deadline exact-device live-change/render/focus smoke and archive hash-addressed bounded evidence.
+
 ### Phase 3: Truthful Codex Capacity and Device Menu
 
 **Goal:** The user can trust the dedicated Codex tile and inspect device health or adjust brightness without disrupting direct agent selection.
 **Mode:** mvp
-**Depends on:** Phase 2
+**Depends on:** Phase 02.1
 **Requirements:** CODEX-01, CODEX-02, CODEX-03, CODEX-04, SYNC-03, SAFE-01, MENU-01, MENU-02, MENU-03, MENU-04
 **Research flag:** Mandatory installed-Codex research must generate and inspect the active app-server schema, account authentication mode, available primary and secondary buckets, nullable fields, reset and reached-limit fields, first-read and sparse-update behavior, and an evidence-based freshness policy before the tile is declared truthful.
 **Success Criteria** (what must be TRUE):
