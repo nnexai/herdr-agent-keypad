@@ -138,5 +138,20 @@ class FocusExecutor:
         if mismatch is not None:
             return self._reject(mismatch, intent, "focus acknowledgement identity differs", focused)
         if focused.get("focused") is not True:
+            try:
+                retry_response = self.client.focus(binding.identity.pane_id)
+            except HerdrError as exc:
+                text = str(exc).lower()
+                if "not_found" in text or "agent_not_found" in text:
+                    return self._reject("vanished", intent, str(exc))
+                return self._reject("uncertain" if "timeout" in text else "failed", intent, str(exc))
+            retry_focused = self._agent_result(retry_response)
+            if retry_focused is None:
+                return self._reject("rejected", intent, "focus retry response is not AgentInfo")
+            mismatch = self._same_identity(retry_focused, binding)
+            if mismatch is not None:
+                return self._reject(mismatch, intent, "focus retry identity differs", retry_focused)
+            focused = retry_focused
+        if focused.get("focused") is not True:
             return self._reject("rejected", intent, "AgentInfo is not focused", focused)
         return FocusOutcome("accepted", intent.action_id, "agent.focus acknowledged", focused)

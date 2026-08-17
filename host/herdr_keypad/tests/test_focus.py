@@ -47,6 +47,24 @@ class FocusTests(unittest.TestCase):
         self.assertEqual([call[0] for call in client.calls], ["agent.list", "agent.focus"])
         self.assertEqual(client.calls[-1][1], {"target": "p1"})
 
+    def test_focus_retries_transient_unfocused_ack(self):
+        class RetryClient(SpyClient):
+            def __init__(self):
+                super().__init__(result=None)
+                self.results = [
+                    {"type": "agent_info", "agent": {**row(), "focused": False}},
+                    {"type": "agent_info", "agent": {**row(), "focused": True}},
+                ]
+
+            def focus(self, pane_id):
+                self.calls.append(("agent.focus", {"target": pane_id}))
+                return self.results.pop(0)
+
+        client = RetryClient()
+        outcome = FocusExecutor(client, self.projection).execute(self.intent)
+        self.assertTrue(outcome.success)
+        self.assertEqual([call[0] for call in client.calls], ["agent.list", "agent.focus", "agent.focus"])
+
     def test_raw_revision_churn_focuses_but_material_projection_change_is_stale(self):
         revision_only = row(revision=99)
         focused = {**revision_only, "focused": True, "revision": 100}
