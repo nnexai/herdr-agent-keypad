@@ -178,6 +178,8 @@ bool AgentProjection::commitSnapshot() {
 bool AgentProjection::commitSnapshot(BoardAdapter& board) {
   if (!staged_valid_) return false;
   disableActive(&board);
+  strncpy(committed_generation_.source_status, staged_.source_status, sizeof(committed_generation_.source_status) - 1);
+  committed_generation_.source_status[sizeof(committed_generation_.source_status) - 1] = '\0';
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     if (!renderTile(board, slot, staged_.tiles[slot], Feedback::Disabled)) {
       staged_valid_ = false;
