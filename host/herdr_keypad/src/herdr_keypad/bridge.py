@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
 
+from .herdr import HerdrClient
 # Reuse the Phase 1 codec/session seam instead of introducing another transport
 # or frame parser.  The repository root is added only for the source checkout
 # invocation used by the tracer command.
@@ -548,10 +549,28 @@ class PermanentBridge:
         self.last_error = ""
         self.focus = None
         self._last_event_refresh = 0.0
+        self._event_stream: Any | None = None
+        self.intake_mode = "unclassified"
+        self._dirty = False
+        self._refresh_active = False
+        self._follow_up = False
+        self._reestablish_attempts = 0
+        self._last_reestablish = 0.0
+        self.invalidation_count = 0
+        self.publication_count = 0
+        self.ready_transitions = 0
+
+    def _clear_pending_focus(self) -> None:
+        clear = getattr(self.usb, "clear_pending_focus", None)
+        if callable(clear):
+            clear()
 
     def _mark_unavailable(self, reason: str) -> None:
         self.last_error = reason
+        if self.ready:
+            self.ready_transitions += 1
         self.ready = False
+        self._clear_pending_focus()
         try:
             stale = self.projection.invalidate(reason if reason in {"offline", "unavailable"} else "stale")
             if getattr(self.usb, "connected", False):
@@ -560,6 +579,8 @@ class PermanentBridge:
             pass
 
     def _publish_snapshot(self, snapshot: Any) -> Any:
+        self.ready = False
+        self._clear_pending_focus()
         ack = self.usb.publish_snapshot(_projection_payload(snapshot))
         if (
             ack.get("accepted") is not True
@@ -567,22 +588,30 @@ class PermanentBridge:
             or ack.get("snapshot_revision") != snapshot.snapshot_revision
         ):
             raise V2ProtocolError("snapshot_rejected", "keypad did not acknowledge the complete generation")
-        self.ready = snapshot.source_status == "current" and not self.projection.complete_refresh_required()
-        if not self.ready:
+        self.publication_count += 1
+        ready = snapshot.source_status == "current" and not self.projection.complete_refresh_required()
+        if not ready:
             raise V2ProtocolError("snapshot_unavailable", "complete current projection was not committed")
+        self.ready = True
+        self.ready_transitions += 1
         return snapshot
 
     def _publish_refresh(self) -> Any:
-        return self._publish_snapshot(self.projection.bootstrap(self.client))
+        before = getattr(self.projection, "snapshot_revision", 0)
+        snapshot = self.projection.bootstrap(self.client)
+        if getattr(snapshot, "snapshot_revision", before) == before:
+            return snapshot
+        return self._publish_snapshot(snapshot)
 
     def bootstrap(self) -> Any:
         verify_contract_inputs(self.contract_root)
         from .focus import FocusExecutor
-
         try:
+            before = getattr(self.projection, "snapshot_revision", 0)
             snapshot = self.projection.bootstrap(self.client)
             self.usb.connect()
-            self._publish_snapshot(snapshot)
+            if getattr(snapshot, "snapshot_revision", before) != before:
+                self._publish_snapshot(snapshot)
             subscriptions = [{"type": event_type} for event_type in self.GLOBAL_EVENT_TYPES]
             status_panes = {
                 entry.identity.pane_id
@@ -593,7 +622,17 @@ class PermanentBridge:
                 {"type": self.STATUS_EVENT_TYPE, "pane_id": pane_id}
                 for pane_id in sorted(status_panes)
             )
-            self.client.subscribe(subscriptions=subscriptions)
+            self._event_stream = getattr(self.client, "event_stream", None)
+            if self._event_stream is None and isinstance(self.client, HerdrClient) and getattr(self.client, "_requester", None) is None:
+                from .herdr import HerdrEventStream
+                self._event_stream = HerdrEventStream(self.client, subscriptions)
+                self.intake_mode = self._event_stream.probe(deadline_seconds=min(5.0, self.client.timeout))
+            else:
+                self.client.subscribe(subscriptions=subscriptions)
+                self.intake_mode = "poll"
+            if self.intake_mode == "push" and self._event_stream is not None and self._event_stream.typed_event is not None:
+                self._dirty = True
+                self.invalidation_count += 1
             self.focus = FocusExecutor(self.client, self.projection, device_session=getattr(self.usb, "session_id", None))
             return snapshot
         except Exception as exc:
@@ -642,13 +681,68 @@ class PermanentBridge:
             self._publish_refresh()
         return outcome
 
+    def _refresh_if_dirty(self, now: float) -> Any:
+        if not self._dirty:
+            return None
+        if self._refresh_active:
+            self._follow_up = True
+            return None
+        self._dirty = False
+        self._refresh_active = True
+        try:
+            return self._publish_refresh()
+        except Exception as exc:
+            self._mark_unavailable("offline" if "socket" in str(exc).lower() else "stale")
+            return None
+        finally:
+            self._refresh_active = False
+            if self._follow_up:
+                self._follow_up = False
+                self._dirty = True
+
+    def _consume_events(self, now: float) -> None:
+        stream = self._event_stream
+        if self.intake_mode == "push" and stream is not None:
+            for _ in range(16):
+                event = stream.poll()
+                if event is None:
+                    break
+                self.invalidation_count += 1
+                self._dirty = True
+            if getattr(stream, "mode", "push") != "push":
+                self._clear_pending_focus()
+                self.ready = False
+                self.intake_mode = "poll"
+                self._reestablish_attempts = 0
+                self._last_reestablish = now
+        if self.intake_mode == "poll":
+            if now - self._last_event_refresh >= 1.0:
+                self._last_event_refresh = now
+                self._dirty = True
+                if stream is not None and self._reestablish_attempts < 3 and now - self._last_reestablish >= 1.0:
+                    self._last_reestablish = now
+                    self._reestablish_attempts += 1
+                    mode = stream.probe(deadline_seconds=min(1.0, getattr(self.client, "timeout", 1.0)))
+                    if mode == "push":
+                        self.intake_mode = "push"
+                        self._reestablish_attempts = 0
+                        self._dirty = True
+
     def run_once(self) -> Any:
-        if not self.ready:
-            return None
-        frame = self.usb.poll()
+        now = time.monotonic()
+        self._consume_events(now)
+        refreshed = self._refresh_if_dirty(now)
+        if not getattr(self.usb, "connected", False):
+            return refreshed
+        try:
+            frame = self.usb.poll()
+        except Exception:
+            self._mark_unavailable("offline")
+            return refreshed
         if frame is None:
-            return None
-        return self.handle_frame(frame)
+            return refreshed
+        outcome = self.handle_frame(frame)
+        return outcome if outcome is not None else refreshed
 
     def run(self, *, interval: float = 0.1) -> None:
         from .usb import UsbSessionError

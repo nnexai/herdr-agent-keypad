@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import socket
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
@@ -119,3 +120,279 @@ class HerdrClient:
 
     def focus(self, pane_id: str) -> Any:
         return self.request("agent.focus", {"target": pane_id})
+
+class HerdrEventStream:
+    """Persistent bounded subscription stream used only for invalidation.
+
+    The stream admits ``push`` only after the same socket has returned the
+    correlated JSON-RPC subscribe response and then a typed ``{event,data}``
+    envelope.  Event bodies are never interpreted as projection rows.
+    """
+
+    MAX_LINE_BYTES = 65_536
+    DEFAULT_EVENTS = (
+        "pane.created",
+        "pane.updated",
+        "pane.closed",
+        "pane.focused",
+        "pane.moved",
+        "pane.exited",
+        "pane.agent_detected",
+        "pane.agent_status_changed",
+        "workspace.closed",
+        "tab.closed",
+    )
+
+    def __init__(
+        self,
+        client: HerdrClient,
+        subscriptions: Sequence[Mapping[str, Any]] | None = None,
+        *,
+        socket_factory: Callable[[], Any] | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.client = client
+        self.subscriptions = tuple(subscriptions or ({"type": item} for item in self.DEFAULT_EVENTS))
+        self.socket_factory = socket_factory
+        self.clock = clock
+        self.sock: Any | None = None
+        self.mode = "unclassified"
+        self.typed_event: Mapping[str, Any] | None = None
+        self.reason = ""
+        self._next_id = 1
+        self._request_id: str | int | None = None
+        self._deadline = 0.0
+
+    @property
+    def active(self) -> bool:
+        return self.sock is not None and self.mode == "push"
+
+    def _open(self) -> Any:
+        if self.socket_factory is not None:
+            return self.socket_factory()
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(max(0.05, self.client.timeout))
+        sock.connect(self.client.socket_path)
+        return sock
+
+    def _close_socket(self) -> None:
+        sock, self.sock = self.sock, None
+        if sock is not None:
+            try:
+                sock.close()
+            except OSError:
+                pass
+
+    def close(self) -> None:
+        self._close_socket()
+        self.mode = "closed"
+        self.typed_event = None
+        self._request_id = None
+
+    def reset(self) -> None:
+        self.close()
+        self.mode = "unclassified"
+        self.reason = ""
+
+    def _send_subscribe(self) -> None:
+        self._request_id = self._next_id
+        self._next_id += 1
+        request = {
+            "jsonrpc": "2.0",
+            "id": self._request_id,
+            "method": "events.subscribe",
+            "params": {"subscriptions": [dict(item) for item in self.subscriptions]},
+        }
+        payload = (json.dumps(request, separators=(",", ":")) + "\n").encode("utf-8")
+        self.sock.sendall(payload)
+
+    def _readline(self, *, deadline: float) -> bytes | None:
+        if self.sock is None:
+            return None
+        while self.clock() < deadline:
+            try:
+                chunk = self.sock.recv(4096)
+            except (BlockingIOError, TimeoutError, socket.timeout):
+                continue
+            except OSError as exc:
+                raise HerdrError(f"event socket unavailable: {exc}") from exc
+            if not chunk:
+                return None
+            if not hasattr(self, "_buffer"):
+                self._buffer = bytearray()
+            self._buffer.extend(chunk)
+            if len(self._buffer) > self.MAX_LINE_BYTES:
+                raise HerdrError("event response exceeds bounded line limit")
+            if b"\n" in self._buffer:
+                line, remainder = bytes(self._buffer).split(b"\n", 1)
+                self._buffer = bytearray(remainder)
+                return line
+        return None
+
+    @staticmethod
+    def _typed_event(value: Any) -> Mapping[str, Any] | None:
+        if not isinstance(value, Mapping):
+            return None
+        event = value.get("event")
+        data = value.get("data")
+        if not isinstance(event, str) or not event or not isinstance(data, Mapping):
+            return None
+        if any(ord(char) < 0x21 or char in "\r\n" for char in event):
+            return None
+        return value
+
+    def probe(self, *, deadline_seconds: float = 5.0) -> str:
+        """Classify the installed socket as ``push`` or bounded ``poll``."""
+        if deadline_seconds <= 0:
+            raise ValueError("deadline_seconds must be positive")
+        self.reset()
+        deadline = self.clock() + deadline_seconds
+        self._deadline = deadline
+        try:
+            self.sock = self._open()
+            self._send_subscribe()
+            line = self._readline(deadline=deadline)
+            if line is None:
+                self.reason = "timeout_or_eof_before_subscribe_ack"
+                self.mode = "poll"
+                self._close_socket()
+                return self.mode
+            try:
+                response = json.loads(line)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self.reason = "malformed_subscribe_ack"
+                self.mode = "poll"
+                self._close_socket()
+                return self.mode
+            if (
+                not isinstance(response, Mapping)
+                or response.get("id") != self._request_id
+                or "result" not in response
+            ):
+                self.reason = "uncorrelated_subscribe_ack"
+                self.mode = "poll"
+                self._close_socket()
+                return self.mode
+            line = self._readline(deadline=deadline)
+            if line is None:
+                self.reason = "ack_without_typed_event"
+                self.mode = "poll"
+                self._close_socket()
+                return self.mode
+            try:
+                event = json.loads(line)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self.reason = "malformed_typed_event"
+                self.mode = "poll"
+                self._close_socket()
+                return self.mode
+            typed = self._typed_event(event)
+            if typed is None:
+                self.reason = "missing_typed_lifecycle_event"
+                self.mode = "poll"
+                self._close_socket()
+                return self.mode
+            self.typed_event = typed
+            self.mode = "push"
+            self.reason = "subscribe_ack_plus_typed_event"
+            return self.mode
+        except (OSError, HerdrError, TimeoutError) as exc:
+            self.reason = type(exc).__name__.lower()
+            self.mode = "poll"
+            self._close_socket()
+            return self.mode
+
+    def poll(self) -> Mapping[str, Any] | None:
+        """Return one typed invalidation without blocking beyond the deadline."""
+        if self.typed_event is not None:
+            event, self.typed_event = self.typed_event, None
+            return event
+        if not self.active:
+            return None
+        try:
+            line = self._readline(deadline=min(self._deadline, self.clock() + 0.001))
+        except HerdrError:
+            self._close_socket()
+            self.mode = "poll"
+            self.reason = "stream_read_failure"
+            return None
+        if line is None:
+            self._close_socket()
+            self.mode = "poll"
+            self.reason = "stream_eof"
+            return None
+        try:
+            event = json.loads(line)
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._close_socket()
+            self.mode = "poll"
+            self.reason = "malformed_event"
+            return None
+        return self._typed_event(event)
+
+
+def _contract_record(stream: HerdrEventStream, *, deadline_seconds: float) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "mode": stream.mode,
+        "reason": stream.reason,
+        "deadline_seconds": deadline_seconds,
+        "observed": {
+            "subscribe_ack": stream.reason == "subscribe_ack_plus_typed_event",
+            "typed_event": stream.reason == "subscribe_ack_plus_typed_event",
+        },
+        "recovery": {
+            "max_reestablish_attempts": 3,
+            "max_attempts_per_tick": 1,
+            "poll_interval_seconds": 1.0,
+        },
+    }
+
+
+def probe_event_contract(argv: list[str] | None = None) -> int:
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--deadline-seconds", type=float, default=5.0)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args(argv)
+    if not 0 < args.deadline_seconds <= 5:
+        parser.error("--deadline-seconds must be in (0, 5]")
+    client = HerdrClient(timeout=args.deadline_seconds)
+    stream = HerdrEventStream(client)
+    stream.probe(deadline_seconds=args.deadline_seconds)
+    path = Path(args.output)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(_contract_record(stream, deadline_seconds=args.deadline_seconds), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    print(json.dumps(_contract_record(stream, deadline_seconds=args.deadline_seconds), sort_keys=True))
+    return 0
+
+
+def verify_event_contract(argv: list[str] | None = None) -> int:
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("path")
+    args = parser.parse_args(argv)
+    data = json.loads(Path(args.path).read_text(encoding="utf-8"))
+    if data.get("mode") == "push":
+        if data.get("reason") != "subscribe_ack_plus_typed_event":
+            raise SystemExit("push requires ACK plus typed event")
+    elif data.get("mode") != "poll":
+        raise SystemExit("contract mode must be push or poll")
+    if data.get("recovery", {}).get("max_reestablish_attempts") != 3:
+        raise SystemExit("recovery bounds missing")
+    print("event contract valid")
+    return 0
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "probe-event-contract":
+        raise SystemExit(probe_event_contract(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "verify-event-contract":
+        raise SystemExit(verify_event_contract(sys.argv[2:]))

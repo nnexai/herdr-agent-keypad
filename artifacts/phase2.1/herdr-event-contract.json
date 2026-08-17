@@ -1,0 +1,15 @@
+{
+  "deadline_seconds": 5.0,
+  "mode": "poll",
+  "observed": {
+    "subscribe_ack": false,
+    "typed_event": false
+  },
+  "reason": "uncorrelated_subscribe_ack",
+  "recovery": {
+    "max_attempts_per_tick": 1,
+    "max_reestablish_attempts": 3,
+    "poll_interval_seconds": 1.0
+  },
+  "schema_version": 1
+}

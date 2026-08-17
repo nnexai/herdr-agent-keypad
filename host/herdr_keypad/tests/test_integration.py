@@ -133,7 +133,7 @@ class PluginLifecycleTests(unittest.TestCase):
         first = bridge.bootstrap()
         second = bridge.bootstrap()
         self.assertEqual(first.host_epoch, second.host_epoch)
-        self.assertEqual(usb.published[-1]["snapshot_revision"], 2)
+        self.assertEqual(usb.published[-1]["snapshot_revision"], 1)
         self.assertEqual([name for name, _ in fake.calls].count("events.subscribe"), 2)
         subscribe_calls = [params for name, params in fake.calls if name == "events.subscribe"]
         expected_subscriptions = [{"type": event_type} for event_type in PermanentBridge.GLOBAL_EVENT_TYPES]
@@ -145,7 +145,7 @@ class PluginLifecycleTests(unittest.TestCase):
             subscribe_calls,
             [{"subscriptions": expected_subscriptions}] * 2,
         )
-        self.assertEqual(len(usb.published), 2)
+        self.assertEqual(len(usb.published), 1)
 
     def test_contract_drift_blocks_startup_before_usb(self):
         fake = FakeHerdr()
@@ -277,3 +277,43 @@ class ExactUsbSessionTests(unittest.TestCase):
             self.assertEqual(len(raw.outbound), 2)
             session.close()
             self.assertTrue(raw.closed)
+
+class HerdrEventContractTests(unittest.TestCase):
+    class Socket:
+        def __init__(self, *lines: bytes):
+            self.lines = list(lines)
+            self.sent = []
+            self.closed = False
+
+        def settimeout(self, _timeout):
+            return None
+
+        def sendall(self, payload):
+            self.sent.append(payload)
+
+        def recv(self, _size):
+            return self.lines.pop(0) if self.lines else b""
+
+        def close(self):
+            self.closed = True
+
+    def test_ack_plus_typed_event_admits_push_and_retains_invalidation(self):
+        sock = self.Socket(
+            b'{"jsonrpc":"2.0","id":1,"result":{"subscribed":true}}\n',
+            b'{"event":"pane.updated","data":{"pane_id":"partial"}}\n',
+        )
+        stream = __import__("herdr_keypad.herdr", fromlist=["HerdrEventStream"]).HerdrEventStream(
+            HerdrClient(timeout=0.1), socket_factory=lambda: sock
+        )
+        self.assertEqual(stream.probe(deadline_seconds=1), "push")
+        self.assertEqual(stream.poll()["event"], "pane.updated")
+        self.assertEqual(json.loads(sock.sent[0])["method"], "events.subscribe")
+
+    def test_ack_only_falls_back_to_poll(self):
+        sock = self.Socket(b'{"jsonrpc":"2.0","id":1,"result":{"subscribed":true}}\n')
+        stream = __import__("herdr_keypad.herdr", fromlist=["HerdrEventStream"]).HerdrEventStream(
+            HerdrClient(timeout=0.1), socket_factory=lambda: sock
+        )
+        self.assertEqual(stream.probe(deadline_seconds=1), "poll")
+        self.assertEqual(stream.reason, "ack_without_typed_event")
+
