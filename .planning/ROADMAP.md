@@ -130,7 +130,7 @@ Plans:
   4. Installed inbox rank/sequence order, opaque generation-bound identity, three fixed agent slots, stale/offline distinction, and `FocusExecutor` as the sole `agent.focus` path remain unchanged; panel 4, Codex/menu, and full recovery remain outside this phase.
   5. Focused host/native checks, the selected USB build/metrics, and one bounded exact-device smoke prove a real Herdr change reaches a higher ACKed revision as complete images and the changed tile still focuses only its exact pane.
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 
@@ -140,7 +140,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02.1-02-PLAN.md — Compose every firmware tile off-screen, flush each panel once, clear generation-scoped feedback, and prove resource bounds through focused native tests and selected build metrics.
+- [x] 02.1-02-PLAN.md — Compose every firmware tile off-screen, flush each panel once, clear generation-scoped feedback, and prove resource bounds through focused native tests and selected build metrics.
 
 **Wave 3** *(blocked on Waves 1–2 completion)*
 

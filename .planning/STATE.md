@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 02.1
 current_phase_name: Reliable Live Synchronization, Focus, and Flicker-Free Rendering
 status: ready
-stopped_at: Completed 02.1-01-PLAN.md
-last_updated: "2026-08-17T13:28:40.668Z"
+stopped_at: Completed 02.1-02-PLAN.md
+last_updated: "2026-08-17T13:35:36.443Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 2 selected-USB snapshot, rendering, exact focus, and physical feedback accepted
 progress:
   total_phases: 4
   completed_phases: 2
   total_plans: 21
-  completed_plans: 19
+  completed_plans: 20
 ---
 
 # Project State
@@ -32,7 +32,7 @@ Plan: 13 of 13
 Status: Complete; selected USB evidence and archive independently verify
 Last activity: 2026-08-17 — scoped gap-closure lineage archived
 
-Progress: [█████████░] 90%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -69,6 +69,7 @@ Progress: [█████████░] 90%
 | Phase 02 P02 | 3600 | 2 tasks | 5 files |
 | Phase 02 P03 | 3600 | 2 tasks | 3 files |
 | Phase 02.1 P01 | 35min | 3 tasks | 6 files |
+| Phase 02.1 P02 | 25min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -109,6 +110,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 2]: Actual-device acceptance passed on the exact selected-USB keypad: complete snapshot acknowledgement, explicit empty rejection, exact target focus, terminal FOCUSED feedback, and authoritative state restoration are verified by commits `db323fe`, `b3f172e`, and `8a6d557`.
 - [Phase ?]: Plan 02.1-01 requires ACK-plus-typed-event proof for push; installed socket selected bounded polling.
 - [Phase ?]: Typed Herdr events invalidate only; complete authoritative reads determine all slots and ordering.
+- [Phase ?]: Firmware uses one reusable PSRAM-preferred 128x128 RGB565 composition sprite and sequential BoardAdapter flushes.
+- [Phase ?]: Generation replacement clears pending action/deadline/feedback state; complete composed flush is measured by existing ProofMetrics.
 
 ### Pending Todos
 
@@ -132,6 +135,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-17T13:28:40.654Z
-Stopped at: Completed 02.1-01-PLAN.md
+Last session: 2026-08-17T13:35:36.429Z
+Stopped at: Completed 02.1-02-PLAN.md
 Resume file: None
