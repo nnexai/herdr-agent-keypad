@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 01
 current_phase_name: physical-keypad-and-proven-transport
 status: ready
-stopped_at: Completed 02-00-PLAN.md
-last_updated: "2026-08-17T07:20:53.791Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-08-17T08:13:11.048Z"
 last_activity: 2026-08-17
 last_activity_desc: Phase 01 scoped USB qualification, selection, build, and archive completed
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 18
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -32,7 +32,7 @@ Plan: 13 of 13
 Status: Complete; selected USB evidence and archive independently verify
 Last activity: 2026-08-17 — scoped gap-closure lineage archived
 
-Progress: [████████░░] 78%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [████████░░] 78%
 | Phase 01 P09 | execution window | 3 tasks | 12 files |
 | Phase 01 P10 | 133 | 3 tasks | 9 files |
 | Phase 02 P00 | 25min | 3 tasks | 6 files |
+| Phase 02 P01 | 180 | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -97,6 +98,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 1]: Current-setup scope excludes endpoint renumbering and active utility self-restart as non-applicable; the archived USB profile requires all remaining applicable interruption rows and records the exclusions explicitly.
 - [Phase ?]: Phase 2 Wave 0 pins installed herdr-agent-inbox at actual HEAD 78b243279b4da55150b58dc2cc3cffcdc2fd6a04 because planned de409f683262 object is unavailable.
 - [Phase ?]: 02-00 Herdr artifacts are baseline-compatible; agent.focus is the sole device action and host epoch/snapshot revision remain bridge-owned.
+- [Phase ?]: V2 preserves the Phase 1 FrameCodec/ProtocolSession envelope and uses exactly three staged/committed slots with opaque identity plus bridge-owned host epoch and snapshot revision.
+- [Phase ?]: Only canonical key slots 0..2 emit typed focus_intent; key/panel 4 and encoder remain unbound.
 
 ### Pending Todos
 
@@ -117,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-17T07:20:53.780Z
-Stopped at: Completed 02-00-PLAN.md
+Last session: 2026-08-17T08:12:59.655Z
+Stopped at: Completed 02-01-PLAN.md
 Resume file: None

@@ -102,12 +102,12 @@ Plans:
   4. Empty, stale, vanished, incompatible, offline, or reassigned bindings reject visibly; sequential panel updates never pair one generation's pixels with another generation's action.
   5. A keypad press can request only typed focus: documented native seen/manual-unread effects may occur, while settle, dismiss, reply, approval, and arbitrary Herdr or host actions remain impossible.
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 
 - [x] 02-00-PLAN.md
-- [ ] 02-01-PLAN.md
+- [x] 02-01-PLAN.md
 - [ ] 02-02-PLAN.md
 - [ ] 02-03-PLAN.md
 - [ ] 02-04-PLAN.md
@@ -166,6 +166,6 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Physical Keypad and Proven Transport | 10/13 | In Progress|  |
-| 2. Authoritative Agent Projection and Exact Focus | 1/5 | In Progress|  |
+| 2. Authoritative Agent Projection and Exact Focus | 2/5 | In Progress|  |
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
