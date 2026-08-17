@@ -79,7 +79,7 @@ completed: 2026-08-17
 ## Task Commits
 
 1. **Task 1: Start one permanent bridge over the exact paired selected-USB session** - `61a6cdf`
-2. **Task 2: Prove the complete focus-only product contract with bounded integration and actual-device smoke** - `90fca6a`, `a08bd2a`
+2. **Task 2: Prove the complete focus-only product contract with bounded integration and actual-device smoke** - `90fca6a`, `a08bd2a`, `6292f4d`
 3. **Task 3: Verify the delivered three-tile projection and exact physical focus** - blocked at human checkpoint; no source commit
 
 ## Verification Evidence
