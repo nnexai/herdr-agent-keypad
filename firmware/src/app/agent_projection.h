@@ -12,13 +12,12 @@ class AgentProjection final {
   static constexpr size_t kTextBytes = 65;
   static constexpr uint32_t kPendingDeadlineUs = 3000000UL;
   static constexpr uint32_t kFeedbackHoldUs = 2000000UL;
-
+  enum class Feedback : uint8_t { Disabled = 0, Ready, Pending, Success, Rejected, Stale, Vanished, Offline, Uncertain, Failed };
   enum class TileState : uint8_t {
     Empty = 0, Blocked, Unseen, Working, Idle, Settled, Unknown,
     Stale, Offline, Unavailable, Sync, Pending, Focused, Rejected,
     Vanished, Uncertain, Failed,
   };
-  enum class Feedback : uint8_t { Disabled = 0, Ready, Pending, Success, Rejected, Stale, Offline, Uncertain, Failed };
 
   AgentProjection();
 
@@ -29,7 +28,7 @@ class AgentProjection final {
   bool commitSnapshot(BoardAdapter& board);
   void tick(BoardAdapter& board, uint32_t now_us);
   bool committed() const { return committed_ && !syncing_; }
-  bool syncing() const { return syncing_; }
+  void renderFeedback(BoardAdapter& board, uint8_t slot);
   bool hasBinding(uint8_t slot) const;
   Feedback feedback(uint8_t slot) const;
   TileState state(uint8_t slot) const;

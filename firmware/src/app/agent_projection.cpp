@@ -221,6 +221,7 @@ bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& 
   else if (feedback == Feedback::Success) { color = kIdle; state_label = "FOCUSED"; }
   else if (feedback == Feedback::Rejected) { color = kDestructive; state_label = "REJECTED"; }
   else if (feedback == Feedback::Stale) { color = kDestructive; state_label = "STALE"; }
+  else if (feedback == Feedback::Vanished) { color = kDestructive; state_label = "VANISHED"; }
   else if (feedback == Feedback::Offline) { color = kDestructive; state_label = "OFFLINE"; }
   else if (feedback == Feedback::Uncertain) { color = kWorking; state_label = "UNCERTAIN"; }
   else if (feedback == Feedback::Failed) { color = kDestructive; state_label = "FAILED"; }
@@ -233,7 +234,7 @@ bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& 
   display->setTextColor(color, kBackground);
   display->drawString(state_label, 8, 56);
   // Geometric cues repeat the state meaning without relying on color.
-  if (strcmp(state_label, "BLOCKED") == 0 || strcmp(state_label, "REJECTED") == 0 || strcmp(state_label, "FAILED") == 0) {
+  if (strcmp(state_label, "BLOCKED") == 0 || strcmp(state_label, "REJECTED") == 0 || strcmp(state_label, "FAILED") == 0 || strcmp(state_label, "VANISHED") == 0) {
     display->drawLine(52, 48, 76, 72, color); display->drawLine(76, 48, 52, 72, color);
   } else if (strcmp(state_label, "UNSEEN") == 0) {
     display->fillCircle(64, 64, 8, color);
@@ -262,8 +263,18 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       feedback_[slot] = Feedback::Uncertain;
       feedback_until_[slot] = now_us + kFeedbackHoldUs;
       renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+    } else if (pending_action_[slot] == 0 && feedback_until_[slot] != 0 && elapsed(now_us, feedback_until_[slot])) {
+      feedback_until_[slot] = 0;
+      feedback_[slot] = (committed_generation_.tiles[slot].binding.occupied &&
+                         strcmp(committed_generation_.source_status, "current") == 0)
+                            ? Feedback::Ready : Feedback::Disabled;
+      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
     }
   }
+}
+
+void AgentProjection::renderFeedback(BoardAdapter& board, uint8_t slot) {
+  if (slot < kSlotCount && committed_ && !syncing_) renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
 }
 
 bool AgentProjection::hasBinding(uint8_t slot) const {
@@ -318,9 +329,10 @@ bool AgentProjection::applyFocusResult(JsonObjectConst payload) {
       payload["snapshot_revision"].as<uint32_t>() != committed_generation_.snapshot_revision || !matchingResult(payload, pending_[slot], slot)) return false;
   pending_action_[slot] = 0;
   pending_[slot] = Binding();
+  feedback_until_[slot] = micros() + kFeedbackHoldUs;
   if (strcmp(outcome, "accepted") == 0 && payload["focused"].as<bool>()) feedback_[slot] = Feedback::Success;
   else if (strcmp(outcome, "stale_target") == 0) feedback_[slot] = Feedback::Stale;
-  else if (strcmp(outcome, "vanished") == 0 || strcmp(outcome, "not_found") == 0) feedback_[slot] = Feedback::Rejected;
+  else if (strcmp(outcome, "vanished") == 0 || strcmp(outcome, "not_found") == 0) feedback_[slot] = Feedback::Vanished;
   else if (strcmp(outcome, "herdr_offline") == 0) feedback_[slot] = Feedback::Offline;
   else if (strcmp(outcome, "timeout") == 0 || strcmp(outcome, "uncertain") == 0) feedback_[slot] = Feedback::Uncertain;
   else if (strcmp(outcome, "failed") == 0) feedback_[slot] = Feedback::Failed;

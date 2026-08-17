@@ -412,9 +412,9 @@ void reportAgentKey() {
     std::snprintf(actionId, sizeof(actionId), "device-%lu", static_cast<unsigned long>(micros()));
     JsonDocument intent;
     if (agentProjection.captureFocusIntent(key, actionId, intent.to<JsonObject>())) {
+      agentProjection.renderFeedback(board, key);
       sendFrame("focus_intent", 0, intent.as<JsonObjectConst>());
     }
-    break;
   }
 }
 
