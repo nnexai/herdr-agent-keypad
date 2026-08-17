@@ -31,8 +31,7 @@ decisions:
 actuals:
   tokens: 25900
   tasks: 2
-  commits: 4
-metrics:
+  commits: 5
   duration: 1h
   completed: 2026-08-17
 status: complete
@@ -53,8 +52,7 @@ status: complete
 
 ## Verification Evidence
 
-- `PYTHONPATH=host/herdr_keypad/src tools/phase1_bringup/.venv/bin/python -m unittest host.herdr_keypad.tests.test_projection host.herdr_keypad.tests.test_focus` — passed, 9 tests.
-- `PYTHONPATH=host/herdr_keypad/src tools/phase1_bringup/.venv/bin/python -m unittest host.herdr_keypad.tests.test_protocol` — passed, 5 existing protocol tests.
+- `PYTHONPATH=host/herdr_keypad/src tools/phase1_bringup/.venv/bin/python -m unittest host.herdr_keypad.tests.test_projection host.herdr_keypad.tests.test_focus host.herdr_keypad.tests.test_protocol` — passed, 14 tests.
 - `tools/phase1_bringup/.venv/bin/python tools/phase2_herdr_focus_fixture.py --verify-only --phase1-handoff artifacts/phase2/phase1-handoff.json --output-root artifacts/phase2 --installed-plugin /home/nnex/.config/herdr/plugins/github/herdr-agent-inbox-de409f683262` — passed; immutable focus-effects and contract artifacts remain baseline-compatible.
 - The accepted Phase 1 handoff gate was re-opened with its documented arguments and reports only the already-accepted mutable `.pio` selected-usb binary hash mismatch; no source or contract drift was introduced.
 
@@ -68,6 +66,13 @@ status: complete
 - **Fix:** All projection authority checks use the actual installed revision already released by Plan 02-00; no fallback revision or priority model was added.
 - **Files modified:** `host/herdr_keypad/src/herdr_keypad/projection.py`
 - **Commit:** `89c1972`
+
+**2. [Rule 1 - Bug] Kept bridge-owned entry IDs bounded**
+- **Found during:** final focused host regression
+- **Issue:** Combining workspace and pane IDs could exceed the v2 identifier bound even though each source field was individually valid.
+- **Fix:** Use the opaque pane ID as the bounded bridge-owned entry ID; workspace and tab remain separate identity fields for revalidation.
+- **Files modified:** `host/herdr_keypad/src/herdr_keypad/projection.py`
+- **Commit:** `b2a29da`
 
 ## Auth Gates
 
