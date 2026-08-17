@@ -51,11 +51,11 @@ def acceptance_fixture(args: argparse.Namespace) -> int:
     # while no Herdr focus or device action is invoked by this mode.
     projection = InboxProjection(host_epoch="acceptance-fixture")
     rows = []
-    if args.stale_once:
+    if getattr(args, "stale_once", False):
         rows = []
     snapshot = projection.refresh(rows, source_status="empty")
     observed = {
-        "mode": "stale-once" if args.stale_once else "ui-bounds",
+        "mode": "stale-once" if getattr(args, "stale_once", False) else "ui-bounds",
         "physical_press_observed": False,
         "focus_invoked": False,
         "states": ["EMPTY", "STALE", "OFFLINE", "UNAVAILABLE", "PENDING", "FOCUSED", "REJECTED", "UNCERTAIN"],
@@ -65,15 +65,32 @@ def acceptance_fixture(args: argparse.Namespace) -> int:
     print("acceptance-only fixture complete; no focus invoked")
     return 0
 
-
 def smoke_mode(args: argparse.Namespace) -> int:
     bridge = _bridge(args)
     contract = verify_contract_inputs(ROOT)
-    snapshot = bridge.bootstrap()
+    try:
+        snapshot = bridge.bootstrap()
+    except Exception as exc:
+        snapshot = bridge.projection.invalidate("offline")
+        write_acceptance_evidence(
+            Path(args.evidence),
+            contract=contract,
+            snapshot=snapshot,
+            observed={
+                "mode": "selected-usb-snapshot-ack",
+                "physical_press_observed": False,
+                "focus_invoked": False,
+                "snapshot_acknowledged": False,
+                "error": str(exc)[:160],
+            },
+        )
+        print(f"snapshot acknowledgement unavailable: {str(exc)[:120]}", file=sys.stderr)
+        return 1
     observed = {
         "mode": "selected-usb-snapshot-ack",
         "physical_press_observed": False,
         "focus_invoked": False,
+        "snapshot_acknowledged": True,
         "device_id_persisted": True,
     }
     write_acceptance_evidence(Path(args.evidence), contract=contract, snapshot=snapshot, observed=observed)

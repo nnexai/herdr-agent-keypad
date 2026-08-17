@@ -654,6 +654,9 @@ def write_acceptance_evidence(path: Path, *, contract: Mapping[str, Any], snapsh
             "effects_sha256": contract["effects_sha256"],
             "plugin_revision": contract["plugin_revision"],
             "herdr_version": contract["herdr_version"],
+            "schema_sha256": _sha256(_ROOT / "protocol/schema/v2.json"),
+            "fixture_sha256": _sha256(_ROOT / "protocol/fixtures/v2-golden.json"),
+            "firmware_lock_sha256": _sha256(_ROOT / "artifacts/phase1/locks/final-build-gap-closure.json"),
         },
         "snapshot": {
             "host_epoch": snapshot.host_epoch,
