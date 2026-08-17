@@ -268,8 +268,11 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
   const char *type = admission.frame.type;
   if (strcmp(type, "agent_snapshot") == 0) {
     JsonObjectConst snapshot = payload.as<JsonObjectConst>();
+    const uint32_t render_started = micros();
     const bool staged = agentProjection.stageSnapshot(snapshot);
     const bool committed = staged && agentProjection.commitSnapshot(board);
+    proofMetrics.observeDisplayFlush(micros() - render_started);
+    proofMetrics.sampleRuntime();
     JsonDocument reply;
     reply["accepted"] = committed;
     reply["host_epoch"] = snapshot["host_epoch"].as<const char*>();
