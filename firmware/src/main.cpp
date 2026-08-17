@@ -269,7 +269,7 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
   if (strcmp(type, "agent_snapshot") == 0) {
     JsonObjectConst snapshot = payload.as<JsonObjectConst>();
     const bool staged = agentProjection.stageSnapshot(snapshot);
-    const bool committed = staged && agentProjection.commitSnapshot();
+    const bool committed = staged && agentProjection.commitSnapshot(board);
     JsonDocument reply;
     reply["accepted"] = committed;
     reply["host_epoch"] = snapshot["host_epoch"].as<const char*>();
@@ -463,8 +463,8 @@ void loop() {
   readFrames();
   if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
   lastKeyPollAt = now;
+  agentProjection.tick(board, now);
   reportAgentKey();
-  reportInput();
   proofMetrics.sampleRuntime();
   delay(1);
 }
