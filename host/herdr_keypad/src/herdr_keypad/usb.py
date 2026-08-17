@@ -58,6 +58,8 @@ class UsbDeviceSession:
         self.session: Any | None = None
         self.device: dict[str, Any] = {}
         self.closed = True
+        self._pending_focus: list[dict[str, Any]] = []
+        self.pending_focus_capacity = 16
 
     @staticmethod
     def _open_serial(candidate: Candidate) -> Any:
@@ -78,6 +80,7 @@ class UsbDeviceSession:
 
     def connect(self) -> dict[str, Any]:
         binding = self.pair_store.load()
+        self._pending_focus.clear()
         if binding is None:
             raise UsbSessionError("binding_missing", "paired keypad binding is missing")
         self.binding = binding
@@ -144,15 +147,19 @@ class UsbDeviceSession:
                     raise UsbSessionError("out_of_order", "v2 response sequence is stale")
                 session.last_received_seq = response["seq"]
                 if response["type"] == "focus_intent":
-                    # A focus intent is a device-originated event, not the
-                    # response to this request. Leave it for poll().
+                    if len(self._pending_focus) >= self.pending_focus_capacity:
+                        self.close()
+                        raise UsbSessionError("queue_overflow", "pending focus queue is full")
+                    self._pending_focus.append(dict(response))
                     continue
                 if response["type"] in allowed_set and response["reply_to"] == sequence:
                     return dict(response["payload"])
             raise UsbSessionError("timeout", f"timed out waiting for {frame_type} acknowledgement")
         except UsbSessionError:
+            self._pending_focus.clear()
             raise
         except (SerialLinkError, OSError, TimeoutError) as exc:
+            self._pending_focus.clear()
             self.close()
             raise UsbSessionError("io", str(exc)) from exc
 
@@ -172,8 +179,17 @@ class UsbDeviceSession:
             self.close()
             raise UsbSessionError("io", str(exc)) from exc
 
+    def clear_pending_focus(self) -> None:
+        self._pending_focus.clear()
+
+    @property
+    def pending_focus_count(self) -> int:
+        return len(self._pending_focus)
+
     def poll(self) -> dict[str, Any] | None:
         link, session = self._require_open()
+        if self._pending_focus:
+            return self._pending_focus.pop(0)
         try:
             line = link.readline()
         except SerialLinkError as exc:
@@ -183,16 +199,20 @@ class UsbDeviceSession:
             return None
         parsed = v1_protocol.classify_v2_line(line)
         if not parsed.accepted or parsed.frame is None:
+            self._pending_focus.clear()
             raise UsbSessionError("protocol", parsed.reason)
         frame = parsed.frame
         if frame["boot_id"] != session.boot_id or frame["session_id"] != session.session_id:
+            self._pending_focus.clear()
             raise UsbSessionError("session_mismatch", "v2 event belongs to another USB session")
         if frame["seq"] <= session.last_received_seq:
+            self._pending_focus.clear()
             raise UsbSessionError("out_of_order", "v2 event sequence is stale")
         session.last_received_seq = frame["seq"]
         return frame
 
     def close(self) -> None:
+        self._pending_focus.clear()
         if self.link is not None:
             self.link.close()
         self.link = None

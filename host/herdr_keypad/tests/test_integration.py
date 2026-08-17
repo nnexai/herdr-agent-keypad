@@ -239,6 +239,7 @@ class ExactUsbSessionTests(unittest.TestCase):
             self.outbound: list[bytes] = []
             self.inbound: list[bytes] = []
             self.closed = False
+            self.inject_focus = False
 
         def write(self, data: bytes) -> int:
             self.outbound.append(data)
@@ -253,7 +254,13 @@ class ExactUsbSessionTests(unittest.TestCase):
                     request = parsed_v2.frame
                     p = request["payload"]
                     ack = {"accepted": True, "host_epoch": p["host_epoch"], "snapshot_revision": p["snapshot_revision"], "source_status": p["source_status"], "reason": "committed"}
-                    self.inbound.append(protocol.encode_v2_frame(protocol.new_v2_frame("snapshot_ack", "device-boot", request["session_id"], 2, ack, request["seq"])))
+                    ack_seq = 3 if self.inject_focus else 2
+                    if self.inject_focus:
+                        entry = p["agents"][0]
+                        intent = {key: entry[key] for key in ("pane_id", "terminal_id", "agent_session", "source_revision")}
+                        intent.update({"action_id": "queued", "host_epoch": p["host_epoch"], "snapshot_revision": p["snapshot_revision"], "slot": 0, "entry_id": entry["entry_id"]})
+                        self.inbound.append(protocol.encode_v2_frame(protocol.new_v2_frame("focus_intent", "device-boot", request["session_id"], 2, intent)))
+                    self.inbound.append(protocol.encode_v2_frame(protocol.new_v2_frame("snapshot_ack", "device-boot", request["session_id"], ack_seq, ack, request["seq"])))
             return len(data)
 
         def readline(self, *_args):
@@ -277,6 +284,23 @@ class ExactUsbSessionTests(unittest.TestCase):
             self.assertEqual(len(raw.outbound), 2)
             session.close()
             self.assertTrue(raw.closed)
+
+    def test_interleaved_focus_is_queued_once_and_cleared_on_close(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binding_path = Path(directory) / "binding.json"
+            PairingStore(binding_path).save(PairingBinding("paired-device", 1, "phase1-bringup"))
+            raw = self.Raw()
+            raw.inject_focus = True
+            session = UsbDeviceSession(binding_path, ports=[self.Port()], opener=lambda _candidate: raw, timeout=0.1)
+            session.connect()
+            fixture = InboxProjection(host_epoch="epoch")
+            snapshot = fixture.refresh([row("p1", "0", 1)])
+            session.publish_snapshot(_projection_payload(snapshot))
+            self.assertEqual(session.pending_focus_count, 1)
+            self.assertEqual(session.poll()["type"], "focus_intent")
+            self.assertEqual(session.pending_focus_count, 0)
+            session.close()
+            self.assertEqual(session.pending_focus_count, 0)
 
 class HerdrEventContractTests(unittest.TestCase):
     class Socket:
