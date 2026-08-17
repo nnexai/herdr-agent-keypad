@@ -114,6 +114,30 @@ void test_fixture_vectors(void) {
   TEST_ASSERT_EQUAL_UINT(40, count);
 }
 
+#ifndef PHASE2_GOLDEN_FIXTURE
+#error "PHASE2_GOLDEN_FIXTURE must point at the repository fixture"
+#endif
+
+void test_v2_fixture_vectors(void) {
+  std::ifstream fixture(PHASE2_GOLDEN_FIXTURE);
+  TEST_ASSERT_TRUE_MESSAGE(fixture.good(), "v2 golden fixture must be readable");
+  std::string vector;
+  std::size_t count = 0;
+  while (std::getline(fixture, vector)) {
+    if (vector.find("\"id\":\"v2_") == std::string::npos) continue;
+    std::string line;
+    std::string expected;
+    TEST_ASSERT_TRUE(field_string(vector, "line", line));
+    TEST_ASSERT_TRUE(field_string(vector, "reason", expected));
+    if (line == "synthetic:oversized") line.assign(4096, 'x'), line.push_back('\n');
+    ProtocolSession session("boot-a", "session-a", 4);
+    const Result result = session.accept(reinterpret_cast<const uint8_t*>(line.data()), line.size());
+    TEST_ASSERT_EQUAL_STRING(expected.c_str(), phase1::protocol::rejection_name(result.reason));
+    ++count;
+  }
+  TEST_ASSERT_EQUAL_UINT(4, count);
+}
+
 void test_valid_encode_decode_and_reset(void) {
   std::ifstream fixture(PHASE1_GOLDEN_FIXTURE);
   std::string vector;
@@ -236,6 +260,7 @@ void test_queue_bound_completion_and_bootstrap(void) {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_fixture_vectors);
+  RUN_TEST(test_v2_fixture_vectors);
   RUN_TEST(test_valid_encode_decode_and_reset);
   RUN_TEST(test_rejects_wide_version_and_trailing_bytes);
   RUN_TEST(test_queue_bound_completion_and_bootstrap);

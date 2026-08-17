@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://herdr.dev/keypad/protocol/schema/v2.json",
+  "title": "Herdr keypad authoritative projection and exact focus v2",
+  "description": "Closed bounded v2 product frames. Encoded NDJSON including LF is at most 4096 bytes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "type", "boot_id", "session_id", "seq", "reply_to", "digest", "payload"],
+  "properties": {
+    "v": {"type": "integer", "const": 2},
+    "type": {"type": "string", "enum": ["agent_snapshot", "snapshot_ack", "focus_intent", "focus_result"]},
+    "boot_id": {"$ref": "#/$defs/identifier"},
+    "session_id": {"$ref": "#/$defs/identifier"},
+    "seq": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+    "reply_to": {"type": ["integer", "null"], "minimum": 1, "maximum": 4294967295},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "payload": {"type": "object"}
+  },
+  "oneOf": [
+    {"properties": {"type": {"const": "agent_snapshot"}, "payload": {"$ref": "#/$defs/agent_snapshot"}}},
+    {"properties": {"type": {"const": "snapshot_ack"}, "payload": {"$ref": "#/$defs/snapshot_ack"}}},
+    {"properties": {"type": {"const": "focus_intent"}, "payload": {"$ref": "#/$defs/focus_intent"}}},
+    {"properties": {"type": {"const": "focus_result"}, "payload": {"$ref": "#/$defs/focus_result"}}}
+  ],
+  "$defs": {
+    "identifier": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[\\u0021-\\u007E]+$"},
+    "optional_identity": {"type": ["string", "null"], "maxLength": 64, "pattern": "^[\\u0021-\\u007E]+$"},
+    "host_epoch": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[\\u0021-\\u007E]+$"},
+    "title": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[\\u0000-\\u007F]*$"},
+    "discriminator": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[\\u0000-\\u007F]*$"},
+    "source_revision": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+    "empty_source_revision": {"type": "integer", "const": 0},
+    "identity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["pane_id", "terminal_id", "agent_session", "source_revision"],
+      "properties": {
+        "pane_id": {"$ref": "#/$defs/identifier"},
+        "terminal_id": {"$ref": "#/$defs/identifier"},
+        "agent_session": {"$ref": "#/$defs/optional_identity"},
+        "source_revision": {"$ref": "#/$defs/source_revision"}
+      }
+    },
+    "agent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["slot", "entry_id", "title", "discriminator", "state", "pane_id", "terminal_id", "agent_session", "source_revision"],
+      "properties": {
+        "slot": {"type": "integer", "minimum": 0, "maximum": 2},
+        "entry_id": {"type": "string", "maxLength": 64, "pattern": "^[\\u0021-\\u007E]*$"},
+        "title": {"$ref": "#/$defs/title"},
+        "discriminator": {"$ref": "#/$defs/discriminator"},
+        "state": {"type": "string", "enum": ["empty", "working", "idle", "blocked", "finished", "settled", "unknown"]},
+        "pane_id": {"type": "string", "maxLength": 64, "pattern": "^[\\u0021-\\u007E]*$"},
+        "terminal_id": {"type": "string", "maxLength": 64, "pattern": "^[\\u0021-\\u007E]*$"},
+        "agent_session": {"$ref": "#/$defs/optional_identity"},
+        "source_revision": {"type": "integer", "minimum": 0, "maximum": 4294967295}
+      }
+    },
+    "agent_snapshot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["host_epoch", "snapshot_revision", "source_status", "agents"],
+      "properties": {
+        "host_epoch": {"$ref": "#/$defs/host_epoch"},
+        "snapshot_revision": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "source_status": {"type": "string", "enum": ["current", "empty", "stale", "unavailable", "offline"]},
+        "agents": {"type": "array", "prefixItems": [{"$ref": "#/$defs/agent"}, {"$ref": "#/$defs/agent"}, {"$ref": "#/$defs/agent"}], "items": false, "minItems": 3, "maxItems": 3}
+      }
+    },
+    "snapshot_ack": {
+      "type": "object", "additionalProperties": false,
+      "required": ["accepted", "host_epoch", "snapshot_revision", "source_status", "reason"],
+      "properties": {
+        "accepted": {"type": "boolean"}, "host_epoch": {"$ref": "#/$defs/host_epoch"},
+        "snapshot_revision": {"type": "integer", "minimum": 1, "maximum": 4294967295},
+        "source_status": {"type": "string", "enum": ["current", "empty", "stale", "unavailable", "offline"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[\\u0000-\\u007F]*$"}
+      }
+    },
+    "focus_intent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["action_id", "host_epoch", "snapshot_revision", "slot", "entry_id", "pane_id", "terminal_id", "agent_session", "source_revision"],
+      "properties": {
+        "action_id": {"$ref": "#/$defs/identifier"}, "host_epoch": {"$ref": "#/$defs/host_epoch"},
+        "snapshot_revision": {"type": "integer", "minimum": 1, "maximum": 4294967295}, "slot": {"type": "integer", "minimum": 0, "maximum": 2},
+        "entry_id": {"$ref": "#/$defs/identifier"}, "pane_id": {"$ref": "#/$defs/identifier"}, "terminal_id": {"$ref": "#/$defs/identifier"},
+        "agent_session": {"$ref": "#/$defs/optional_identity"}, "source_revision": {"$ref": "#/$defs/source_revision"}
+      }
+    },
+    "focus_result": {
+      "type": "object", "additionalProperties": false,
+      "required": ["action_id", "outcome", "host_epoch", "snapshot_revision", "slot", "entry_id", "pane_id", "terminal_id", "agent_session", "source_revision", "focused"],
+      "properties": {
+        "action_id": {"$ref": "#/$defs/identifier"}, "outcome": {"type": "string", "enum": ["accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"]},
+        "host_epoch": {"$ref": "#/$defs/host_epoch"}, "snapshot_revision": {"type": "integer", "minimum": 1, "maximum": 4294967295}, "slot": {"type": "integer", "minimum": 0, "maximum": 2},
+        "entry_id": {"$ref": "#/$defs/identifier"}, "pane_id": {"$ref": "#/$defs/identifier"}, "terminal_id": {"$ref": "#/$defs/identifier"},
+        "agent_session": {"$ref": "#/$defs/optional_identity"}, "source_revision": {"$ref": "#/$defs/source_revision"}, "focused": {"type": "boolean"}
+      }
+    }
+  },
+  "x-max-encoded-line-bytes-including-lf": 4096,
+  "x-digest": {"algorithm": "fnv1a-64", "input": "canonical sorted-key payload JSON UTF-8 bytes", "encoding": "lowercase hexadecimal"},
+  "x-rejection-codes": ["empty_line", "missing_lf", "line_too_long", "invalid_utf8", "invalid_json", "duplicate_key", "unknown_field", "invalid_version", "unknown_type", "invalid_envelope", "invalid_payload", "invalid_shape", "invalid_identifier", "invalid_identity", "invalid_sequence", "invalid_reply_to", "invalid_digest", "digest_mismatch", "boot_mismatch", "session_mismatch", "out_of_order", "duplicate", "queue_full", "invalid_generation", "invalid_slot", "stale_target"]
+}
