@@ -43,13 +43,12 @@ def encode_frame(frame_type: str, boot_id: str, session_id: str, sequence: int,
         "boot_id": boot_id,
         "digest": fnv1a64(payload_bytes),
         "payload": payload,
+        "reply_to": reply_to,
         "seq": sequence,
         "session_id": session_id,
         "type": frame_type,
         "v": version,
     }
-    if reply_to is not None:
-        frame["reply_to"] = reply_to
     return (json.dumps(frame, separators=(",", ":"), ensure_ascii=True) + "\n").encode("utf-8")
 
 
@@ -68,8 +67,6 @@ def snapshot_payload(revision: int, *, source_status: str = "current",
             "terminal_id": f"phase22-terminal-{slot}" if occupied else "",
             "agent_session": None,
             "source_revision": revision if occupied else 0,
-            "workspace_id": f"phase22-workspace-{slot}" if occupied else None,
-            "tab_id": f"phase22-tab-{slot}" if occupied else None,
         })
     return {
         "host_epoch": "phase22-smoke-epoch",

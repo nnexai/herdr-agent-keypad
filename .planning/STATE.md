@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 02.2
 current_phase_name: firmware-themes-led-bars-and-device-selection-menu
 status: executing
-stopped_at: Phase 02.2 planned — 5 plans in 4 waves; ready to execute
-last_updated: "2026-08-18T11:48:35.797Z"
+stopped_at: Phase 02.2 Plans 01–04 implemented and committed; Plan 05 exact-device smoke is awaiting human observations
+last_updated: "2026-08-18T13:20:00.000Z"
 last_activity: 2026-08-18
-last_activity_desc: Phase 02.2 researched, UI contract written, 5 plans created inline
+last_activity_desc: Phase 02.2 themes, LED grammars, encoder menu, smoke driver, and selected USB firmware implemented
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 26
-  completed_plans: 21
+  completed_plans: 24
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 ## Current Position
 
 Phase: 02.2 (firmware-themes-led-bars-and-device-selection-menu) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 02.2
-Last activity: 2026-08-18 — Phase 02.2 execution started
+Plan: 5 of 5
+Status: Plan 05 exact-device smoke awaiting human checkpoint
+Last activity: 2026-08-18 — Plans 02.2-01 through 02.2-04 complete; smoke driver flashed and interactive run is waiting for operator input
 
-Progress: [██████████] 100%
+Progress: [█████████░] 96%
 
 ## Performance Metrics
 
@@ -147,7 +147,7 @@ None yet.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/02.2-firmware-themes-led-bars-and-device-selection-menu/02.2-01-PLAN.md
+**Resume file:** .planning/phases/02.2-firmware-themes-led-bars-and-device-selection-menu/02.2-05-PLAN.md
 
-Last session: 2026-08-18T11:45:00.000Z
-Stopped at: Phase 02.2 planned; next step $gsd-execute-phase 02.2
+Last session: 2026-08-18T13:20:00.000Z
+Stopped at: Plan 05 smoke is running on the flashed keypad and is awaiting the operator's focus-feedback and physical-sighting confirmations.

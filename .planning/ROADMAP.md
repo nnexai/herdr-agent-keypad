@@ -165,22 +165,22 @@ Plans:
   6. Every visible state is composed into the existing bounded frame buffer and flushed without black flashes or partial-generation frames; persistent BLOCKED motion and transient feedback use bounded discrete frames and remain synchronized between displays and LEDs.
   7. Focused native checks plus an exact-device smoke exercise every theme/LED combination, menu selection, reboot persistence, stale/offline fencing, and focus feedback on the connected keypad; evidence records the final physical mapping and resource bounds.
 
-**Plans:** 0/5 plans executed
+**Plans:** 4/5 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 02.2-01-PLAN.md — Theme seam + Signal Edge, per-panel reveal amendment, feedback timing split, NVS settings store, contract amendments recorded.
+- [x] 02.2-01-PLAN.md — Theme seam + Signal Edge, per-panel reveal amendment, feedback timing split, NVS settings store, contract amendments recorded.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 02.2-02-PLAN.md — Ledger, Beacon, and Instrument themes plus the bounded measured-budget animation scheduler.
-- [ ] 02.2-03-PLAN.md — Four LED grammars and the policy-enforcing LED engine over the verified 14-pixel map.
+- [x] 02.2-02-PLAN.md — Ledger, Beacon, and Instrument themes plus the bounded measured-budget animation scheduler.
+- [x] 02.2-03-PLAN.md — Four LED grammars and the policy-enforcing LED engine over the verified 14-pixel map.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 02.2-04-PLAN.md — Panel-4 encoder menu: clamped navigation, preview-then-confirm, live LED preview, persistence wiring.
+- [x] 02.2-04-PLAN.md — Panel-4 encoder menu: clamped navigation, preview-then-confirm, live LED preview, persistence wiring.
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -240,6 +240,6 @@ Plans:
 | 1. Physical Keypad and Proven Transport | 10/13 | In Progress|  |
 | 2. Authoritative Agent Projection and Exact Focus | 4/5 | In Progress|  |
 | 02.1 Reliable Live Synchronization, Focus, and Flicker-Free Rendering | 3/3 | Complete | 2026-08-17 |
-| 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 0/5 | Planned | - |
+| 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 4/5 | In Progress |  |
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
