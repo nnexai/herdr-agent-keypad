@@ -4,7 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "../ui/render_state.h"
+
 class BoardAdapter;
+class ThemeRenderer;
 
 class AgentProjection final {
  public:
@@ -12,14 +15,17 @@ class AgentProjection final {
   static constexpr size_t kTextBytes = 65;
   static constexpr uint32_t kPendingDeadlineUs = 3000000UL;
   static constexpr uint32_t kFeedbackHoldUs = 2000000UL;
-  enum class Feedback : uint8_t { Disabled = 0, Ready, Pending, Success, Rejected, Stale, Vanished, Offline, Uncertain, Failed };
-  enum class TileState : uint8_t {
-    Empty = 0, Blocked, Unseen, Working, Idle, Settled, Unknown,
-    Stale, Offline, Unavailable, Sync, Pending, Focused, Rejected,
-    Vanished, Uncertain, Failed,
-  };
+  // Success feedback is deliberately shorter than the failure family (D-15).
+  static constexpr uint32_t kSuccessHoldUs = 800000UL;
+  using Feedback = TileFeedback;
+  using TileState = ::TileState;
 
   AgentProjection();
+
+  // Presentation is delegated to the active theme; staging, commit fencing,
+  // bindings, and flush ownership stay here.
+  void setTheme(ThemeRenderer& theme) { theme_ = &theme; }
+  ThemeRenderer& theme() const;
 
   // The FrameCodec has already bounded and parsed the admitted payload.  All
   // three records are staged before any active binding can become actionable.
@@ -91,4 +97,5 @@ class AgentProjection final {
   bool committed_ = false;
   bool syncing_ = true;
   uint32_t next_action_ = 1;
+  ThemeRenderer* theme_ = nullptr;
 };

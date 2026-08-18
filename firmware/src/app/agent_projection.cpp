@@ -4,21 +4,12 @@
 #include <string.h>
 
 #include "../board/board_adapter.h"
+#include "../ui/theme.h"
 
 namespace {
 constexpr const char* kSourceStatuses[] = {"current", "empty", "stale", "unavailable", "offline"};
 constexpr const char* kStates[] = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"};
 constexpr uint16_t kBackground = 0x1122;  // #0B0F14
-constexpr uint16_t kSecondary = 0x18E3;   // #1F2937
-constexpr uint16_t kAccent = 0x15B7;      // #22D3EE
-constexpr uint16_t kPrimary = 0xFFFF;     // #F8FAFC
-constexpr uint16_t kMetadata = 0xD69D;    // #CBD5E1
-constexpr uint16_t kDestructive = 0xF926; // #EF4444
-constexpr uint16_t kBlocked = 0xFBB5;     // #F7768E
-constexpr uint16_t kUnseen = 0x7D9F;      // #7DCFFF
-constexpr uint16_t kWorking = 0xFD51;     // #E0AF68
-constexpr uint16_t kIdle = 0x9D4D;        // #9ECE6A
-constexpr uint16_t kSettled = 0x5351;     // #565F89
 
 LGFX_Sprite g_composition;
 bool g_composition_ready = false;
@@ -54,6 +45,10 @@ bool elapsed(uint32_t now, uint32_t deadline) {
 
 AgentProjection::AgentProjection() : feedback_{} {
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) feedback_[slot] = Feedback::Disabled;
+}
+
+ThemeRenderer& AgentProjection::theme() const {
+  return theme_ != nullptr ? *theme_ : signalEdgeTheme();
 }
 
 bool AgentProjection::copyBounded(char* destination, size_t capacity, const char* source, bool allow_empty) const {
@@ -190,12 +185,18 @@ bool AgentProjection::commitSnapshot() {
 }
 bool AgentProjection::commitSnapshot(BoardAdapter& board) {
   if (!staged_valid_ || !ensureComposition()) return false;
+  // Per-panel direct-cut reveal (R-2): panels flip old-complete -> new-complete
+  // sequentially with no SYNC veil for ordinary refreshes.  Bindings deactivate
+  // here at stage time and activate only after the third flush, so a press
+  // during the reveal window can never bind to mixed pixels.  Boot, session
+  // reset, and any compose/flush failure keep the SYNC presentation.
   disableActive(nullptr);
   committed_generation_ = staged_;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     if (!renderTile(board, slot, staged_.tiles[slot], Feedback::Disabled)) {
       staged_valid_ = false;
       syncing_ = true;
+      renderSync(board);  // best-effort fail-closed SYNC on all panels
       return false;
     }
   }
@@ -207,13 +208,7 @@ bool AgentProjection::renderSync(BoardAdapter& board) const {
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     Display* display = board.displayAt(slot);
     if (display == nullptr) return false;
-    g_composition.fillScreen(kBackground);
-    g_composition.setTextColor(kAccent, kBackground);
-    g_composition.setTextSize(1);
-    g_composition.drawString("SYNC", 8, 8);
-    g_composition.drawRect(4, 4, 120, 4, kAccent);
-    g_composition.setTextColor(kMetadata, kBackground);
-    g_composition.drawString("UPDATING", 8, 56);
+    theme().composeSync(g_composition);
     g_composition.pushSprite(display, 0, 0);
   }
   return true;
@@ -222,51 +217,16 @@ bool AgentProjection::renderSync(BoardAdapter& board) const {
 bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile, Feedback feedback) const {
   Display* display = board.displayAt(slot);
   if (display == nullptr || !ensureComposition()) return false;
-  g_composition.fillScreen(kBackground);
-  uint16_t color = kSecondary;
-  const char* state_label = "EMPTY";
-  if (tile.state == TileState::Blocked) { color = kBlocked; state_label = "BLOCKED"; }
-  else if (tile.state == TileState::Unseen) { color = kUnseen; state_label = "UNSEEN"; }
-  else if (tile.state == TileState::Working) { color = kWorking; state_label = "WORKING"; }
-  else if (tile.state == TileState::Idle) { color = kIdle; state_label = "IDLE"; }
-  else if (tile.state == TileState::Settled) { color = kSettled; state_label = "SETTLED"; }
-  else if (tile.state == TileState::Unknown) { color = kSettled; state_label = "UNKNOWN"; }
-  if (strcmp(committed_generation_.source_status, "stale") == 0) { color = kDestructive; state_label = "STALE"; }
-  else if (strcmp(committed_generation_.source_status, "offline") == 0) { color = kDestructive; state_label = "OFFLINE"; }
-  else if (strcmp(committed_generation_.source_status, "unavailable") == 0) { color = kDestructive; state_label = "UNAVAILABLE"; }
-  if (feedback == Feedback::Pending) { color = kAccent; state_label = "PENDING"; }
-  else if (feedback == Feedback::Success) { color = kIdle; state_label = "FOCUSED"; }
-  else if (feedback == Feedback::Rejected) { color = kDestructive; state_label = "REJECTED"; }
-  else if (feedback == Feedback::Stale) { color = kDestructive; state_label = "STALE"; }
-  else if (feedback == Feedback::Vanished) { color = kDestructive; state_label = "VANISHED"; }
-  else if (feedback == Feedback::Offline) { color = kDestructive; state_label = "OFFLINE"; }
-  else if (feedback == Feedback::Uncertain) { color = kWorking; state_label = "UNCERTAIN"; }
-  else if (feedback == Feedback::Failed) { color = kDestructive; state_label = "FAILED"; }
-  g_composition.drawRect(4, 4, 120, 4, color);
-  g_composition.setTextColor(kPrimary, kBackground);
-  g_composition.setTextSize(1);
-  g_composition.drawString(tile.title, 8, 14);
-  g_composition.setTextColor(kMetadata, kBackground);
-  g_composition.drawString(tile.discriminator, 8, 30);
-  g_composition.setTextColor(color, kBackground);
-  g_composition.drawString(state_label, 8, 56);
-  if (strcmp(state_label, "BLOCKED") == 0 || strcmp(state_label, "REJECTED") == 0 || strcmp(state_label, "FAILED") == 0 || strcmp(state_label, "VANISHED") == 0) {
-    g_composition.drawLine(52, 48, 76, 72, color); g_composition.drawLine(76, 48, 52, 72, color);
-  } else if (strcmp(state_label, "UNSEEN") == 0) {
-    g_composition.fillCircle(64, 64, 8, color);
-  } else if (strcmp(state_label, "WORKING") == 0) {
-    g_composition.drawLine(56, 52, 56, 72, color); g_composition.drawLine(56, 52, 76, 62, color); g_composition.drawLine(76, 62, 56, 72, color);
-  } else if (strcmp(state_label, "IDLE") == 0) {
-    g_composition.drawCircle(64, 62, 9, color);
-  } else if (strcmp(state_label, "SETTLED") == 0) {
-    g_composition.drawLine(56, 52, 56, 72, color); g_composition.drawLine(56, 52, 74, 52, color); g_composition.drawLine(74, 52, 74, 62, color);
-  } else if (strcmp(state_label, "STALE") == 0 || strcmp(state_label, "OFFLINE") == 0 || strcmp(state_label, "UNAVAILABLE") == 0) {
-    g_composition.drawLine(48, 72, 80, 48, color); g_composition.drawLine(48, 48, 80, 72, color);
-  } else {
-    g_composition.drawCircle(64, 62, 9, color);
-  }
-  g_composition.setTextColor(color, kBackground);
-  g_composition.drawString(tile.binding.occupied ? "PRESS TO FOCUS" : "NO AGENT", 8, 104);
+  RenderState state;
+  state.source_status = committed_generation_.source_status;
+  state.syncing = syncing_;
+  RenderState::Slot& out = state.slots[slot];
+  out.occupied = tile.binding.occupied;
+  out.title = tile.title;
+  out.discriminator = tile.discriminator;
+  out.state = tile.state;
+  out.feedback = feedback;
+  theme().composeTile(g_composition, slot, state);
   g_composition.pushSprite(display, 0, 0);
   return true;
 }
@@ -348,7 +308,6 @@ bool AgentProjection::applyFocusResult(JsonObjectConst payload) {
       payload["snapshot_revision"].as<uint32_t>() != committed_generation_.snapshot_revision || !matchingResult(payload, pending_[slot], slot)) return false;
   pending_action_[slot] = 0;
   pending_[slot] = Binding();
-  feedback_until_[slot] = micros() + kFeedbackHoldUs;
   if (strcmp(outcome, "accepted") == 0 && payload["focused"].as<bool>()) feedback_[slot] = Feedback::Success;
   else if (strcmp(outcome, "stale_target") == 0) feedback_[slot] = Feedback::Stale;
   else if (strcmp(outcome, "vanished") == 0 || strcmp(outcome, "not_found") == 0) feedback_[slot] = Feedback::Vanished;
@@ -356,5 +315,6 @@ bool AgentProjection::applyFocusResult(JsonObjectConst payload) {
   else if (strcmp(outcome, "timeout") == 0 || strcmp(outcome, "uncertain") == 0) feedback_[slot] = Feedback::Uncertain;
   else if (strcmp(outcome, "failed") == 0) feedback_[slot] = Feedback::Failed;
   else feedback_[slot] = Feedback::Rejected;
+  feedback_until_[slot] = micros() + (feedback_[slot] == Feedback::Success ? kSuccessHoldUs : kFeedbackHoldUs);
   return feedback_[slot] == Feedback::Success;
 }
