@@ -2,7 +2,7 @@
 
 ## Overview
 
-Herdr Agent Keypad reaches its first usable release through four vertical, real-device capabilities: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; add truthful Codex capacity plus secondary diagnostics and brightness controls; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, approves, or invokes arbitrary actions.
+Herdr Agent Keypad reaches its first usable release through six roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, approves, or invokes arbitrary actions.
 
 ## Phases
 
@@ -10,6 +10,8 @@ Herdr Agent Keypad reaches its first usable release through four vertical, real-
 
 - [x] **Phase 1: Physical Keypad and Proven Transport** - The connected unit has a verified physical map and a scoped, reliable, bounded USB host link.
 - [x] **Phase 2: Authoritative Agent Projection and Exact Focus** - Three keys mirror the installed inbox and focus only the exact rendered target with truthful outcomes.
+- [ ] **Phase 02.1: Reliable Live Synchronization, Focus, and Flicker-Free Rendering** - Live Herdr changes converge to complete ACKed generations and composed panel images without unsafe focus or black flashes.
+- [ ] **Phase 02.2: Firmware Themes, LED Bars, and Device Selection Menu** - All four proposed display languages and LED grammars are implemented in firmware and selectable from the encoder menu without weakening direct agent focus.
 - [ ] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness.
 - [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
 
@@ -116,6 +118,7 @@ Plans:
 
 **UI hint:** yes
 
+
 ### Phase 02.1: Reliable Live Synchronization, Focus, and Flicker-Free Rendering (INSERTED)
 
 **Goal:** As a user of the delivered keypad, I want live Herdr changes to converge to one ACKed authoritative generation with exact focus fenced during refresh and each tile painted as one composed image, so that the physical inbox stays current, safe, and visually stable.
@@ -145,11 +148,51 @@ Plans:
 
 - [x] 02.1-03-PLAN.md — Run one hard-deadline exact-device live-change/render/focus smoke and archive hash-addressed bounded evidence.
 
+### Phase 02.2: Firmware Themes, LED Bars, and Device Selection Menu (INSERTED)
+
+**Goal:** The firmware exposes the four design-proposal display languages and four LED grammars as complete, selectable modes, while preserving the existing authoritative snapshot, focus-only input, freshness fencing, and compose-then-flush rendering contracts.
+**Mode:** mvp
+**Depends on:** Phase 02.1
+**Requirements:** TBD — this inserted phase is an initial design scope; requirement IDs and exact acceptance thresholds will be established during discussion and planning.
+**Research flag:** Mandatory firmware and hardware research must inventory the existing renderer/`BoardAdapter`, the verified 14-pixel LED map, encoder event semantics, memory and frame-time limits, and the persistence boundary before implementation. The design proposal is the behavioral source for the four display themes, four LED grammars, state/feedback/health coverage, motion rules, and menu affordance; host authority and focus semantics remain unchanged.
+**Success Criteria** (initial scope; refine during discussion):
+
+  1. Agent displays implement selectable Signal Edge, Ledger, Beacon, and Instrument themes. Each theme renders the complete shared vocabulary: working, idle, blocked, unseen, settled, unknown, empty, pending, focused, named focus failures, stale/offline fencing, and sync transitions without color-only meaning.
+  2. The panel-4 surface implements each theme's Codex/health composition and the encoder-menu surface, including truthful unavailable, stale, offline, authentication-failed, and limit-reached states; no theme invents missing values or changes host-owned semantics.
+  3. Four selectable LED grammars drive the real 14-pixel strip: Rail Echo, Exception Channel, Field Extension, and Meter + Lamps. Each grammar covers per-key state, usage/health, menu-open, focus feedback, blocked motion, brightness/dim/all-off policy, and the documented physical index zones without exceeding the global power/brightness budget.
+  4. Encoder click opens and closes the menu; encoder rotation navigates bounded menu rows; click selects display theme and LED theme independently. Menu rendering may be a panel-4 overlay initially, while the three agent keys remain direct, non-modal focus paths throughout.
+  5. Theme and LED selections persist across reboot within the approved device-settings boundary, reject invalid or unavailable values safely, and never alter inbox ordering, generation-bound identities, freshness fencing, or `agent.focus` authorization.
+  6. Every visible state is composed into the existing bounded frame buffer and flushed without black flashes or partial-generation frames; persistent BLOCKED motion and transient feedback use bounded discrete frames and remain synchronized between displays and LEDs.
+  7. Focused native checks plus an exact-device smoke exercise every theme/LED combination, menu selection, reboot persistence, stale/offline fencing, and focus feedback on the connected keypad; evidence records the final physical mapping and resource bounds.
+
+**Plans:** 0/5 plans executed
+
+Plans:
+
+**Wave 1**
+
+- [ ] 02.2-01-PLAN.md — Theme seam + Signal Edge, per-panel reveal amendment, feedback timing split, NVS settings store, contract amendments recorded.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02.2-02-PLAN.md — Ledger, Beacon, and Instrument themes plus the bounded measured-budget animation scheduler.
+- [ ] 02.2-03-PLAN.md — Four LED grammars and the policy-enforcing LED engine over the verified 14-pixel map.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02.2-04-PLAN.md — Panel-4 encoder menu: clamped navigation, preview-then-confirm, live LED preview, persistence wiring.
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 02.2-05-PLAN.md — Exact-device smoke: 16 combinations, persistence/fallback, fencing/feedback/LED sightings, hardware-question observations.
+
+**UI hint:** yes
+
 ### Phase 3: Truthful Codex Capacity and Device Menu
 
 **Goal:** The user can trust the dedicated Codex tile and inspect device health or adjust brightness without disrupting direct agent selection.
 **Mode:** mvp
-**Depends on:** Phase 02.1
+**Depends on:** Phase 02.2
 **Requirements:** CODEX-01, CODEX-02, CODEX-03, CODEX-04, SYNC-03, SAFE-01, MENU-01, MENU-02, MENU-03, MENU-04
 **Research flag:** Mandatory installed-Codex research must generate and inspect the active app-server schema, account authentication mode, available primary and secondary buckets, nullable fields, reset and reached-limit fields, first-read and sparse-update behavior, and an evidence-based freshness policy before the tile is declared truthful.
 **Success Criteria** (what must be TRUE):
@@ -196,5 +239,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Physical Keypad and Proven Transport | 10/13 | In Progress|  |
 | 2. Authoritative Agent Projection and Exact Focus | 4/5 | In Progress|  |
+| 02.1 Reliable Live Synchronization, Focus, and Flicker-Free Rendering | 3/3 | Complete | 2026-08-17 |
+| 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 0/5 | Planned | - |
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |

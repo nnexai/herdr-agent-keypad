@@ -4,11 +4,11 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 02.2
 current_phase_name: Firmware Themes, LED Bars, and Device Selection Menu
-status: planning
-stopped_at: Phase 02.2 context gathered
-last_updated: "2026-08-18T10:37:40.590Z"
+status: planned
+stopped_at: Phase 02.2 planned — 5 plans in 4 waves; ready to execute
+last_updated: "2026-08-18T11:45:00.000Z"
 last_activity: 2026-08-18
-last_activity_desc: inserted firmware theme phase; discussion pending
+last_activity_desc: Phase 02.2 researched, UI contract written, 5 plans created inline
 progress:
   total_phases: 5
   completed_phases: 3
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 ## Current Position
 
-Phase: 02.2 (Firmware Themes, LED Bars, and Device Selection Menu) — EXECUTING
-Plan: 1 of ?
-Status: Planning; discussion pending
-Last activity: 2026-08-18 — Phase 02.2 execution started
+Phase: 02.2 (Firmware Themes, LED Bars, and Device Selection Menu) — PLANNED
+Plan: 0 of 5
+Status: Planned; ready for execute-phase
+Last activity: 2026-08-18 — Phase 02.2 research, UI-SPEC, and 5 plans (4 waves) written
 
 Progress: [██████████] 100%
 
@@ -112,6 +112,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Typed Herdr events invalidate only; complete authoritative reads determine all slots and ordering.
 - [Phase ?]: Firmware uses one reusable PSRAM-preferred 128x128 RGB565 composition sprite and sequential BoardAdapter flushes.
 - [Phase ?]: Generation replacement clears pending action/deadline/feedback state; complete composed flush is measured by existing ProofMetrics.
+- [Phase 02.2]: Ambient/continuous animation is permitted under a measured budget (R-1): complete composed frames only, degradation to static, semantic states always dominant; amends the decorative-animation exclusion.
+- [Phase 02.2]: SYNC-02 amended (R-2): bindings stay all-panel atomic; pixels may reveal per panel (≤250 ms, keys fenced during reveal); SYNC veil retained for boot/reset/failure.
+- [Phase 02.2]: Theme/LED grammar persistence uses NVS Preferences with schema version; invalid values fall back to Signal Edge + Rail Echo without write-back.
+- [Phase 02.2]: Grammar B (Exception Channel) gets a minimal bounded press blink to satisfy D-08 while keeping its darkness philosophy.
 
 ### Pending Todos
 
@@ -143,7 +147,7 @@ None yet.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/02.2-firmware-themes-led-bars-and-device-selection-menu/02.2-CONTEXT.md
+**Resume file:** .planning/phases/02.2-firmware-themes-led-bars-and-device-selection-menu/02.2-01-PLAN.md
 
-Last session: 2026-08-18T10:37:40.580Z
-Stopped at: Phase 02.2 context gathered
+Last session: 2026-08-18T11:45:00.000Z
+Stopped at: Phase 02.2 planned; next step $gsd-execute-phase 02.2
