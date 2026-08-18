@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "../ui/animation.h"
 #include "../ui/render_state.h"
 
 class BoardAdapter;
@@ -26,6 +27,8 @@ class AgentProjection final {
   // bindings, and flush ownership stay here.
   void setTheme(ThemeRenderer& theme) { theme_ = &theme; }
   ThemeRenderer& theme() const;
+  AnimationScheduler& animation() { return animation_; }
+  const AnimationScheduler& animation() const { return animation_; }
 
   // The FrameCodec has already bounded and parsed the admitted payload.  All
   // three records are staged before any active binding can become actionable.
@@ -98,4 +101,5 @@ class AgentProjection final {
   bool syncing_ = true;
   uint32_t next_action_ = 1;
   ThemeRenderer* theme_ = nullptr;
+  AnimationScheduler animation_{};
 };

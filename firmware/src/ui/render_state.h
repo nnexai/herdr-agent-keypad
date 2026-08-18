@@ -38,4 +38,7 @@ struct RenderState {
   Slot slots[kSlotCount];
   const char* source_status = "";
   bool syncing = false;
+  // BLOCKED pulse phase from the AnimationScheduler (1.2 s period, LED
+  // synced). Themes draw their alternate BLOCKED frame when false.
+  bool blocked_pulse_high = true;
 };

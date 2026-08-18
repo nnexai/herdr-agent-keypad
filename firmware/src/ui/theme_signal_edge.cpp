@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "theme.h"
+#include "theme_common.h"
 
 // Signal Edge — the default display language. State rail on the left edge
 // (width + fill pattern is the non-color state channel), quiet two-row title,
@@ -12,68 +13,7 @@
 // projection commit path.
 
 namespace {
-constexpr uint16_t kBackground = 0x1122;   // #0B0F14
-constexpr uint16_t kAccent = 0x15B7;       // #22D3EE
-constexpr uint16_t kPrimary = 0xFFFF;      // #F8FAFC
-constexpr uint16_t kMetadata = 0xD69D;     // #CBD5E1
-constexpr uint16_t kDestructive = 0xF926;  // #EF4444
-constexpr uint16_t kBlocked = 0xFBB5;      // #F7768E
-constexpr uint16_t kUnseen = 0x7D9F;       // #7DCFFF
-constexpr uint16_t kWorking = 0xFD51;      // #E0AF68
-constexpr uint16_t kIdle = 0x9D4D;         // #9ECE6A
-constexpr uint16_t kSettled = 0x5351;      // #565F89
-constexpr uint16_t kEmptyEdge = 0x21A9;    // #263648
-
-struct StateStyle {
-  const char* word;
-  uint16_t color;
-};
-
-StateStyle styleFor(TileState state) {
-  switch (state) {
-    case TileState::Blocked: return {"BLOCKED", kBlocked};
-    case TileState::Unseen: return {"UNSEEN", kUnseen};
-    case TileState::Working: return {"WORKING", kWorking};
-    case TileState::Idle: return {"IDLE", kIdle};
-    case TileState::Settled: return {"SETTLED", kSettled};
-    case TileState::Unknown: return {"UNKNOWN", kSettled};
-    case TileState::Stale: return {"STALE", kDestructive};
-    case TileState::Offline: return {"OFFLINE", kDestructive};
-    case TileState::Unavailable: return {"UNAVAILABLE", kDestructive};
-    case TileState::Empty:
-    default: return {"EMPTY", kEmptyEdge};
-  }
-}
-
-const StateStyle* feedbackStyle(TileFeedback feedback) {
-  static constexpr StateStyle kPending{"PENDING", kAccent};
-  static constexpr StateStyle kFocused{"FOCUSED", kIdle};
-  static constexpr StateStyle kRejected{"REJECTED", kDestructive};
-  static constexpr StateStyle kStaleFb{"STALE", kDestructive};
-  static constexpr StateStyle kVanished{"VANISHED", kDestructive};
-  static constexpr StateStyle kOffline{"OFFLINE", kDestructive};
-  static constexpr StateStyle kUncertain{"UNCERTAIN", kWorking};
-  static constexpr StateStyle kFailed{"FAILED", kDestructive};
-  switch (feedback) {
-    case TileFeedback::Pending: return &kPending;
-    case TileFeedback::Success: return &kFocused;
-    case TileFeedback::Rejected: return &kRejected;
-    case TileFeedback::Stale: return &kStaleFb;
-    case TileFeedback::Vanished: return &kVanished;
-    case TileFeedback::Offline: return &kOffline;
-    case TileFeedback::Uncertain: return &kUncertain;
-    case TileFeedback::Failed: return &kFailed;
-    default: return nullptr;  // Ready / Disabled have no feedback vehicle.
-  }
-}
-
-const char* fenceWord(const char* source_status) {
-  if (source_status == nullptr) return nullptr;
-  if (strcmp(source_status, "stale") == 0) return "STALE";
-  if (strcmp(source_status, "offline") == 0) return "OFFLINE";
-  if (strcmp(source_status, "unavailable") == 0) return "UNAVAILABLE";
-  return nullptr;
-}
+using namespace theme_common;
 
 void drawDashedRect(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w, int32_t h, uint16_t color) {
   for (int32_t dx = 0; dx < w; dx += 6) {
@@ -89,11 +29,13 @@ void drawDashedRect(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w, int32_
 }
 
 // State rail x:0..15 — width plus fill pattern is the state channel.
-void drawRail(LGFX_Sprite& sprite, TileState state, uint16_t color) {
+void drawRail(LGFX_Sprite& sprite, TileState state, uint16_t color, bool pulse_high) {
   switch (state) {
-    case TileState::Blocked:  // 16 px dashes (animated crawl lands with the scheduler).
-      for (int32_t y = 0; y < 128; y += 12) sprite.fillRect(0, y, 16, 7, color);
+    case TileState::Blocked: {  // 16 px animated dashes — crawl by half a
+      const int32_t offset = pulse_high ? 0 : 6;  // dash period per pulse phase
+      for (int32_t y = offset; y < 128; y += 12) sprite.fillRect(0, y, 16, 7, color);
       break;
+    }
     case TileState::Unseen:  // 3-1-3 doubled stripes.
       sprite.fillRect(0, 0, 3, 128, color);
       sprite.fillRect(4, 0, 3, 128, color);
@@ -198,7 +140,7 @@ class SignalEdgeTheme final : public ThemeRenderer {
       sprite.drawString("NO AGENT", 24, 56);
       drawGlyph(sprite, TileState::Empty, kEmptyEdge);
     } else {
-      drawRail(sprite, tile.state, content);
+      drawRail(sprite, tile.state, content, state.blocked_pulse_high);
       drawTitleRows(sprite, tile.title, fence != nullptr ? kSettled : kPrimary);
       sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
       sprite.drawString(tile.discriminator, 18, 34);
@@ -259,6 +201,11 @@ SignalEdgeTheme g_signal_edge;
 ThemeRenderer& signalEdgeTheme() { return g_signal_edge; }
 
 ThemeRenderer& themeById(ThemeId id) {
-  (void)id;  // Ledger/Beacon/Instrument land in plan 02.2-02.
-  return g_signal_edge;
+  switch (id) {
+    case ThemeId::Ledger: return ledgerTheme();
+    case ThemeId::Beacon: return beaconTheme();
+    case ThemeId::Instrument: return instrumentTheme();
+    case ThemeId::SignalEdge:
+    default: return g_signal_edge;
+  }
 }

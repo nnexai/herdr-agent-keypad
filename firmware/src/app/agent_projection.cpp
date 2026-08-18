@@ -220,6 +220,7 @@ bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& 
   RenderState state;
   state.source_status = committed_generation_.source_status;
   state.syncing = syncing_;
+  state.blocked_pulse_high = animation_.blockedPulseHigh(micros());
   RenderState::Slot& out = state.slots[slot];
   out.occupied = tile.binding.occupied;
   out.title = tile.title;
@@ -245,6 +246,27 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       feedback_[slot] = (committed_generation_.tiles[slot].binding.occupied &&
                          strcmp(committed_generation_.source_status, "current") == 0)
                             ? Feedback::Ready : Feedback::Disabled;
+      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+    }
+  }
+
+  // Bounded animation (R-1): the scheduler decides when a frame is due; every
+  // frame is a complete recomposition flushed through the normal path.
+  // Semantic dominance: fences suppress all motion; per-slot feedback
+  // suppresses that slot's motion (Pending keeps its own spinner cadence via
+  // the BLOCKED clock so it still steps, bounded).
+  const bool fenced = strcmp(committed_generation_.source_status, "current") != 0;
+  const bool blocked_frame = animation_.blockedFrameDue(now_us);
+  const bool ambient_frame = animation_.ambientFrameDue(now_us);
+  if (fenced || (!blocked_frame && !ambient_frame)) return;
+  const uint8_t ambient_mask = ambient_frame ? theme().ambientTick(now_us) : 0;
+  for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
+    const bool feedback_active = feedback_[slot] != Feedback::Ready && feedback_[slot] != Feedback::Disabled;
+    const bool blocked_dirty = blocked_frame && committed_generation_.tiles[slot].state == TileState::Blocked;
+    const bool ambient_dirty = (ambient_mask & static_cast<uint8_t>(1U << slot)) != 0;
+    const bool pending_dirty = blocked_frame && feedback_[slot] == Feedback::Pending;
+    if (feedback_active && !pending_dirty) continue;
+    if (blocked_dirty || pending_dirty || (ambient_dirty && !feedback_active)) {
       renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
     }
   }

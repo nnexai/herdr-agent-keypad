@@ -1,0 +1,93 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-08-18T12:42:30.880Z",
+  "phase": "02.2",
+  "phase_name": "firmware-themes-led-bars-and-device-selection-menu",
+  "phase_dir": ".planning/phases/02.2-firmware-themes-led-bars-and-device-selection-menu",
+  "plan": 2,
+  "task": 3,
+  "total_tasks": 3,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 1,
+      "name": "Ledger theme — complete language",
+      "status": "done_uncommitted",
+      "progress": "theme_ledger.cpp implemented; native vocabulary, empty, fence, feedback, and panel-4 coverage passes"
+    },
+    {
+      "id": 2,
+      "name": "Beacon and Instrument themes — complete languages",
+      "status": "done_uncommitted",
+      "progress": "theme_beacon.cpp and theme_instrument.cpp implemented; all theme dispatch/vocabulary/panel-4 tests pass"
+    },
+    {
+      "id": 3,
+      "name": "Bounded animation scheduler with measured-budget degradation",
+      "status": "done_uncommitted",
+      "progress": "animation.h integrated with AgentProjection::tick and main loop; native cadence/degradation/fence/no-allocation coverage passes"
+    }
+  ],
+  "remaining_tasks": [
+    {
+      "id": 4,
+      "name": "Review Plan 02 working tree, commit implementation atomically, write 02.2-02-SUMMARY.md",
+      "status": "not_started"
+    },
+    {
+      "id": 5,
+      "name": "Execute Plan 02.2-03 LED grammars and engine",
+      "status": "not_started"
+    },
+    {
+      "id": 6,
+      "name": "Execute Plan 02.2-04 encoder settings menu",
+      "status": "not_started"
+    },
+    {
+      "id": 7,
+      "name": "Execute Plan 02.2-05 device evidence checkpoint",
+      "status": "not_started"
+    }
+  ],
+  "blockers": [],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {
+      "decision": "All render languages use one ThemeRenderer/RenderState seam; AgentProjection retains staging, identity-bound focus fencing, compose ownership, and one-push-per-panel flush semantics.",
+      "rationale": "Theme changes must never create a second snapshot cache or alter host authority/focus behavior.",
+      "phase": "02.2"
+    },
+    {
+      "decision": "SYNC remains hidden across ordinary per-panel refreshes; bindings are disabled until all three frames flush. Mid-reveal failure performs a best-effort SYNC fallback and rejects the commit.",
+      "rationale": "Implements R-2: visible pixels may briefly mix only while no key is actionable.",
+      "phase": "02.2"
+    },
+    {
+      "decision": "Settings persist only schema-versioned ThemeId and LedGrammarId in Preferences namespace keypad; invalid/missing values fall back without write-back.",
+      "rationale": "Fallback is not user confirmation; firmware never persists host data or bindings.",
+      "phase": "02.2"
+    },
+    {
+      "decision": "Theme animation uses AnimationScheduler: 1.2 s BLOCKED phase exported for LED synchronization; ambient cadence degrades Full → Half → Static when cost exceeds 30% duty.",
+      "rationale": "R-1 permits ambient motion only as complete frames inside a measured budget and below semantic states.",
+      "phase": "02.2"
+    }
+  ],
+  "uncommitted_files": [
+    "firmware/src/ui/animation.h",
+    "firmware/src/ui/theme_common.h",
+    "firmware/src/ui/theme_ledger.cpp",
+    "firmware/src/ui/theme_beacon.cpp",
+    "firmware/src/ui/theme_instrument.cpp",
+    "firmware/src/app/agent_projection.{h,cpp}",
+    "firmware/src/main.cpp",
+    "firmware/src/ui/{render_state.h,theme.h,theme_signal_edge.cpp}",
+    "platformio.ini",
+    "test/test_agent_projection/test_main.cpp",
+    ".pio/build/** (tracked pre-existing build artifacts; do not commit)"
+  ],
+  "next_action": "Read .continue-here.md, inspect only the intended Plan 02 source/test/config changes (exclude tracked .pio artifacts), run the already-green native and selected-usb verification once after any correction, commit Plan 02 implementation, then write 02.2-02-SUMMARY.md before opening Plan 03.",
+  "context_notes": "Plan 01 is fully summarized and committed (39e7151). Plan 02 implementation is complete and verified but deliberately paused before commit/summary. Native suite: 29/29 passed. Selected USB build passed. No async jobs or services were started."
+}

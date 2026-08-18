@@ -455,6 +455,7 @@ void setup() {
   board.begin(physicalMap);
   settingsStore.load();
   agentProjection.setTheme(themeById(settingsStore.theme()));
+  agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
   deviceId = opaqueId();
   bootId = freshBootId(deviceId);
   protocolSession.reset(bootId.c_str(), "");
@@ -471,7 +472,14 @@ void loop() {
   readFrames();
   if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
   lastKeyPollAt = now;
-  agentProjection.tick(board, now);
+  {
+    const uint32_t tick_started = micros();
+    agentProjection.tick(board, now);
+    const uint32_t tick_cost = micros() - tick_started;
+    // Feed measured tick cost into the animation budget (loop window ~1 ms
+    // delay + work); ProofMetrics keeps measuring flush transactions.
+    if (tick_cost > 0) agentProjection.animation().observeFlushCost(tick_cost, 1000);
+  }
   reportAgentKey();
   proofMetrics.sampleRuntime();
   delay(1);

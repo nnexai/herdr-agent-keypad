@@ -24,15 +24,21 @@ class ThemeRenderer {
   virtual void composeSync(LGFX_Sprite& sprite) = 0;
 
   // Returns a dirty-slot bitmask requesting recomposition for ambient motion.
-  // 0 = static frame. The bounded scheduler lands with the themes that use it.
+  // 0 = static frame. Driven by the AnimationScheduler through tick().
   virtual uint8_t ambientTick(uint32_t now_us) {
     (void)now_us;
     return 0;
   }
+
+  // Ambient cadence declared by the theme (0 = no ambient loop). The
+  // scheduler owns degradation; the theme only declares its natural period.
+  virtual uint32_t ambientPeriodUs() const { return 0; }
 };
 
 ThemeRenderer& signalEdgeTheme();
+ThemeRenderer& ledgerTheme();
+ThemeRenderer& beaconTheme();
+ThemeRenderer& instrumentTheme();
 
-// Resolves a persisted theme selection. Until plan 02.2-02 lands the three
-// remaining languages, every id resolves to Signal Edge (the safe default).
+// Resolves a persisted theme selection to its language implementation.
 ThemeRenderer& themeById(ThemeId id);

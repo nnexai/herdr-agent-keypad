@@ -408,6 +408,155 @@ void test_settings_confirm_rejects_out_of_range() {
   TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
 }
 
+// --- Plan 02: three more themes -------------------------------------------
+
+namespace {
+// Renders one committed snapshot through `theme` and returns whether the log
+// contains the literal word afterwards.
+void commitThroughTheme(ThemeRenderer& theme, AgentProjection& projection, BoardAdapter& board,
+                        uint32_t revision, const char* state0, const char* source_status = "current") {
+  projection.setTheme(theme);
+  JsonDocument document = snapshot_document(revision, state0, source_status);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  resetLog();
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+}
+
+void assertThemeVocabulary(ThemeRenderer& theme) {
+  const struct { const char* state; const char* word; } states[] = {
+      {"blocked", "BLOCKED"}, {"finished", "UNSEEN"}, {"working", "WORKING"},
+      {"idle", "IDLE"}, {"settled", "SETTLED"}, {"unknown", "UNKNOWN"},
+  };
+  uint32_t revision = 1;
+  for (const auto& entry : states) {
+    AgentProjection projection;
+    BoardAdapter board;
+    commitThroughTheme(theme, projection, board, revision++, entry.state);
+    TEST_ASSERT_TRUE_MESSAGE(logContainsText(entry.word), entry.word);
+  }
+  const struct { const char* status; const char* word; } fences[] = {
+      {"stale", "STALE"}, {"offline", "OFFLINE"}, {"unavailable", "UNAVAILABLE"},
+  };
+  for (const auto& entry : fences) {
+    AgentProjection projection;
+    BoardAdapter board;
+    commitThroughTheme(theme, projection, board, revision++, "working", entry.status);
+    TEST_ASSERT_TRUE_MESSAGE(logContainsText(entry.word), entry.word);
+    TEST_ASSERT_FALSE(projection.hasBinding(0));
+  }
+  // Feedback words: PENDING and REJECTED through the real focus path.
+  AgentProjection projection;
+  BoardAdapter board;
+  commitThroughTheme(theme, projection, board, revision++, "working");
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "vocab-action", intent.to<JsonObject>()));
+  resetLog();
+  projection.renderFeedback(board, 0);
+  TEST_ASSERT_TRUE(logContainsText("PENDING"));
+  JsonDocument result = focus_result_document("vocab-action", "rejected");
+  result["snapshot_revision"] = revision - 1;
+  TEST_ASSERT_FALSE(projection.applyFocusResult(result.as<JsonObjectConst>()));
+  resetLog();
+  projection.renderFeedback(board, 0);
+  TEST_ASSERT_TRUE(logContainsText("REJECTED"));
+}
+}  // namespace
+
+void test_ledger_full_vocabulary() { assertThemeVocabulary(ledgerTheme()); }
+void test_beacon_full_vocabulary() { assertThemeVocabulary(beaconTheme()); }
+void test_instrument_full_vocabulary() { assertThemeVocabulary(instrumentTheme()); }
+
+void test_theme_by_id_dispatches_all_four() {
+  TEST_ASSERT_EQUAL_PTR(&signalEdgeTheme(), &themeById(ThemeId::SignalEdge));
+  TEST_ASSERT_EQUAL_PTR(&ledgerTheme(), &themeById(ThemeId::Ledger));
+  TEST_ASSERT_EQUAL_PTR(&beaconTheme(), &themeById(ThemeId::Beacon));
+  TEST_ASSERT_EQUAL_PTR(&instrumentTheme(), &themeById(ThemeId::Instrument));
+}
+
+void test_ledger_empty_and_blocked_inversion() {
+  AgentProjection projection;
+  BoardAdapter board;
+  commitThroughTheme(ledgerTheme(), projection, board, 1, "blocked");
+  TEST_ASSERT_TRUE(logContainsText("BLOCKED"));
+  // Slot 1 is empty in the fixture: SLOT EMPTY must appear in the same commit.
+  TEST_ASSERT_TRUE(logContainsText("SLOT EMPTY"));
+}
+
+void test_panel4_compositions_are_honest() {
+  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  LGFX_Sprite sprite;
+  RenderState rest;
+  for (ThemeRenderer* theme : themes) {
+    resetLog();
+    theme->composePanel4(sprite, rest);
+    TEST_ASSERT_TRUE(logContainsText("CODEX"));
+    TEST_ASSERT_TRUE(logContainsText("UNAVAILABLE"));
+  }
+}
+
+// --- Plan 02: animation scheduler -------------------------------------------
+
+void test_blocked_pulse_cadence_and_phase() {
+  AnimationScheduler scheduler;
+  const uint32_t start = 1000;
+  scheduler.blockedFrameDue(start);  // establishes the epoch
+  TEST_ASSERT_FALSE(scheduler.blockedFrameDue(start + 100000UL));       // within half period
+  TEST_ASSERT_TRUE(scheduler.blockedFrameDue(start + 650000UL));        // crossed 600 ms
+  TEST_ASSERT_FALSE(scheduler.blockedFrameDue(start + 700000UL));
+  TEST_ASSERT_TRUE(scheduler.blockedFrameDue(start + 1250000UL));       // next half period
+  // Phase query is stable and derived from the same epoch.
+  TEST_ASSERT_TRUE(scheduler.blockedPulseHigh(start + 100000UL));
+  TEST_ASSERT_FALSE(scheduler.blockedPulseHigh(start + 650000UL));
+  TEST_ASSERT_TRUE(scheduler.blockedPulseHigh(start + 1250000UL));
+  TEST_ASSERT_EQUAL_UINT32(start, scheduler.blockedPhaseEpoch());
+}
+
+void test_ambient_cadence_degrades_under_budget_pressure() {
+  AnimationScheduler scheduler;
+  scheduler.setAmbientPeriod(100000UL);  // 100 ms ambient cadence
+  TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Full), static_cast<int>(scheduler.level()));
+  // Flush cost 50 ms per 100 ms period = 50 % duty > 30 % -> Half.
+  scheduler.observeFlushCost(50000UL, 1000000UL);
+  TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Half), static_cast<int>(scheduler.level()));
+  // Still over budget at halved cadence (50 ms / 200 ms = 25 %? no — 25 < 30,
+  // so feed a heavier cost to force Static).
+  scheduler.observeFlushCost(90000UL, 1000000UL);
+  TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Static), static_cast<int>(scheduler.level()));
+  // Static level schedules no ambient frames.
+  TEST_ASSERT_FALSE(scheduler.ambientFrameDue(1));
+  TEST_ASSERT_FALSE(scheduler.ambientFrameDue(10000000UL));
+  // Comfortable margin recovers toward full cadence stepwise.
+  scheduler.observeFlushCost(1000UL, 1000000UL);
+  TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Half), static_cast<int>(scheduler.level()));
+  scheduler.observeFlushCost(1000UL, 1000000UL);
+  TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Full), static_cast<int>(scheduler.level()));
+}
+
+void test_blocked_motion_suppressed_by_fence_and_no_alloc() {
+  AgentProjection projection;
+  BoardAdapter board;
+  // Fenced source: tick must schedule no animation frames.
+  commitThroughTheme(signalEdgeTheme(), projection, board, 1, "blocked", "stale");
+  resetLog();
+  projection.tick(board, 5000000UL);
+  projection.tick(board, 10000000UL);
+  TEST_ASSERT_EQUAL_UINT32(0, countPushes());
+}
+
+void test_blocked_motion_recomposes_blocked_panel_only() {
+  AgentProjection projection;
+  BoardAdapter board;
+  commitThroughTheme(signalEdgeTheme(), projection, board, 1, "blocked");
+  // First tick establishes the epoch; the second, one half-period later, must
+  // recompose exactly the BLOCKED slot (slot 0) as one complete frame.
+  projection.tick(board, 1000);
+  resetLog();
+  projection.tick(board, 1000 + 650000UL);
+  const std::vector<int> order = pushOrder();
+  TEST_ASSERT_EQUAL_UINT32(1, order.size());
+  TEST_ASSERT_EQUAL_INT(0, order[0]);
+}
+
 int runAllTests() {
   UNITY_BEGIN();
   RUN_TEST(test_compose_then_flush_commits_generation);
@@ -429,6 +578,16 @@ int runAllTests() {
   RUN_TEST(test_settings_corrupt_version_falls_back_without_write);
   RUN_TEST(test_settings_out_of_range_enum_falls_back_without_write);
   RUN_TEST(test_settings_confirm_rejects_out_of_range);
+  RUN_TEST(test_ledger_full_vocabulary);
+  RUN_TEST(test_beacon_full_vocabulary);
+  RUN_TEST(test_instrument_full_vocabulary);
+  RUN_TEST(test_theme_by_id_dispatches_all_four);
+  RUN_TEST(test_ledger_empty_and_blocked_inversion);
+  RUN_TEST(test_panel4_compositions_are_honest);
+  RUN_TEST(test_blocked_pulse_cadence_and_phase);
+  RUN_TEST(test_ambient_cadence_degrades_under_budget_pressure);
+  RUN_TEST(test_blocked_motion_suppressed_by_fence_and_no_alloc);
+  RUN_TEST(test_blocked_motion_recomposes_blocked_panel_only);
   return UNITY_END();
 }
 
