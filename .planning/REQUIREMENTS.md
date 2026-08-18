@@ -37,7 +37,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 ### Synchronization and Safety
 
 - [ ] **SYNC-01**: After device, bridge, herdr, Codex, or link startup or reconnection, the user receives a complete authoritative four-tile snapshot before any agent key is enabled.
-- [x] **SYNC-02**: The device replaces snapshots atomically so the rendered pixels and key bindings always represent one logical host epoch and revision despite sequential panel updates.
+- [x] **SYNC-02**: The device replaces snapshots atomically so the rendered pixels of any *actionable* key binding always represent exactly one logical host epoch and revision. Bindings deactivate at stage time and activate only after every panel has flushed; ordinary refreshes may reveal per panel (old complete frame to new complete frame, sequential, target ≤ 250 ms total) during which no binding is actionable. Boot, session reset, and failure paths retain the all-panel SYNC presentation. *(Amended 2026-08-18, Phase 02.2 — per-panel progressive reveal per 02.2-CONTEXT D-16 and 02.2-RESEARCH R-2; original all-panel pixel atomicity superseded, safety intent preserved.)*
 - [ ] **SYNC-03**: Agent-inbox freshness, Codex freshness, and device-link health are tracked and rendered independently.
 - [ ] **SYNC-04**: A keypress made while disconnected or against an uncertain result is never queued, replayed, or optimistically retried after reconnection.
 - [ ] **SAFE-01**: Herdr and Codex credentials remain on the host; firmware receives only bounded normalized display data, opaque identities, freshness metadata, and focus results.
@@ -85,7 +85,7 @@ Deferred capabilities tracked for later releases; they are not part of the curre
 | Credentials, raw prompts, transcripts, chain-of-thought, or host paths on firmware | These are unnecessary for selection, unreadable on 128x128 panels, and violate the host-side security boundary. |
 | Queued or replayed keypresses | The visible target may change during an outage, making replay unsafe. |
 | Hybrid transport, battery portability, or expansion modules in v1 | They add authority, power, provisioning, or discovery work unrelated to validating the connected Linux/herdr loop. |
-| Decorative animation | Motion can obscure stale/error states and compete with the device's ambient attention purpose. |
+| Unbudgeted decorative animation | Motion can obscure stale/error states. *(Amended 2026-08-18, Phase 02.2 — per 02.2-CONTEXT D-13/D-14 and 02.2-RESEARCH R-1, theme-specific ambient motion is permitted under a measured animation budget: complete compose-then-flush frames only, total animation flush time ≤ 30 % of loop wall time measured on device, degradation to half cadence then static frames, semantic states/fences/feedback always preempt, no per-frame allocation. The blanket exclusion is superseded; unbudgeted or semantics-obscuring motion remains out of scope.)* |
 
 ## Traceability
 
@@ -128,4 +128,4 @@ Every v1 requirement maps to exactly one roadmap phase.
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-16 after initial roadmap mapping*
+*Last updated: 2026-08-18 — Phase 02.2 amendments to SYNC-02 and the decorative-animation exclusion (R-1/R-2)*
