@@ -5,10 +5,16 @@
 
 #include "render_state.h"
 
-// Panel-4 encoder menu state. Plan 02.2-04 extends this; until then themes
-// render their honest panel-4 rest composition when the menu is closed.
+// Panel-4 encoder menu state. The controller owns transitions and persistence;
+// themes only render this bounded view.
 struct MenuState {
   bool open = false;
+  uint8_t cursor = 0;
+  bool editing = false;
+  ThemeId theme_candidate = ThemeId::SignalEdge;
+  LedGrammarId grammar_candidate = LedGrammarId::RailEcho;
+  ThemeId theme_stored = ThemeId::SignalEdge;
+  LedGrammarId grammar_stored = LedGrammarId::RailEcho;
 };
 
 // A display language. Every implementation composes complete frames into the

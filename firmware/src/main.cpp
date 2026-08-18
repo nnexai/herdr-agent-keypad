@@ -14,6 +14,7 @@
 #include "ui/bringup_renderer.h"
 #include "app/agent_projection.h"
 #include "app/settings_store.h"
+#include "app/menu_controller.h"
 #include "ui/theme.h"
 #include "ui/led_engine.h"
 
@@ -34,6 +35,7 @@ BringupRenderer renderer;
 PhysicalMap physicalMap;
 AgentProjection agentProjection;
 SettingsStore settingsStore;
+MenuController menuController(settingsStore);
 LedEngine ledEngine;
 UsbCdcLink usbLink;
 ProofMetrics proofMetrics;
@@ -449,6 +451,24 @@ void reportInput() {
     armedInput = ArmedInput::None;
   }
 }
+
+void refreshMenuPresentation() {
+  if (!menuController.takeDirty()) return;
+  const ThemeId stored_theme = menuController.storedTheme();
+  agentProjection.setTheme(themeById(stored_theme));
+  agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
+  ledEngine.setGrammar(ledGrammarById(menuController.activeGrammar()));
+  const bool theme_preview = menuController.editing() && menuController.state().cursor == 0;
+  ThemeRenderer& menu_theme = themeById(theme_preview ? menuController.activeTheme() : stored_theme);
+  agentProjection.renderMenu(board, menu_theme, menuController.state());
+}
+
+void pollMenu() {
+  if (board.wasPressed(4)) menuController.click();
+  const long delta = board.encoderDelta();
+  if (delta != 0) menuController.rotate(delta);
+  refreshMenuPresentation();
+}
 }  // namespace
 
 void setup() {
@@ -456,15 +476,18 @@ void setup() {
   physicalMap.loadVerified();
   board.begin(physicalMap);
   settingsStore.load();
-  agentProjection.setTheme(themeById(settingsStore.theme()));
+  menuController.resetFromStore();
+  agentProjection.setTheme(themeById(menuController.storedTheme()));
   agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
-  ledEngine.setGrammar(ledGrammarById(settingsStore.ledGrammar()));
+  ledEngine.setGrammar(ledGrammarById(menuController.storedGrammar()));
   deviceId = opaqueId();
+
   bootId = freshBootId(deviceId);
   protocolSession.reset(bootId.c_str(), "");
   if (board.ready()) {
     board.setBrightness(80);
     render(BringupState::Wait, 0);
+    agentProjection.renderMenu(board, themeById(menuController.storedTheme()), menuController.state());
   }
   proofMetrics.sampleRuntime();
 }
@@ -483,7 +506,9 @@ void loop() {
     // delay + work); ProofMetrics keeps measuring flush transactions.
     if (tick_cost > 0) agentProjection.animation().observeFlushCost(tick_cost, 1000);
   }
+  pollMenu();
   LedEvents led_events;
+  led_events.menu_open = menuController.open();
   ledEngine.render(agentProjection.renderState(now), led_events, now, board);
   reportAgentKey();
   proofMetrics.sampleRuntime();

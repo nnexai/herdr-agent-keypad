@@ -272,6 +272,14 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
   }
 }
 
+void AgentProjection::renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const {
+  Display* display = board.displayAt(3);
+  if (display == nullptr || !ensureComposition()) return;
+  if (menu.open) theme.composeMenu(g_composition, menu);
+  else theme.composePanel4(g_composition, renderState(micros()));
+  g_composition.pushSprite(display, 0, 0);
+}
+
 void AgentProjection::renderFeedback(BoardAdapter& board, uint8_t slot) {
   if (slot < kSlotCount && committed_ && !syncing_) renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
 }

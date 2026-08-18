@@ -74,6 +74,26 @@ inline const char* fenceWord(const char* source_status) {
   return nullptr;
 }
 
+inline const char* themeName(ThemeId id) {
+  switch (id) {
+    case ThemeId::Ledger: return "LEDGER";
+    case ThemeId::Beacon: return "BEACON";
+    case ThemeId::Instrument: return "INSTRUMENT";
+    case ThemeId::SignalEdge:
+    default: return "SIGNAL EDGE";
+  }
+}
+
+inline const char* grammarName(LedGrammarId id) {
+  switch (id) {
+    case LedGrammarId::Exception: return "EXCEPTION";
+    case LedGrammarId::FieldExtension: return "FIELD EXT";
+    case LedGrammarId::MeterLamps: return "METER+LAMPS";
+    case LedGrammarId::RailEcho:
+    default: return "RAIL ECHO";
+  }
+}
+
 // Bounded tail-ellipsized copy into a caller-owned scratch row. Never
 // allocates; `capacity` includes the terminator.
 inline void ellipsize(char* destination, size_t capacity, const char* source) {

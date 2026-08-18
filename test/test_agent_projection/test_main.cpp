@@ -10,6 +10,7 @@
 #include "../../firmware/src/board/board_adapter.h"
 #include "../../firmware/src/ui/theme.h"
 #include "../../firmware/src/ui/led_engine.h"
+#include "../../firmware/src/app/menu_controller.h"
 #include "../../firmware/src/ui/led_grammar.h"
 
 namespace {
@@ -74,6 +75,17 @@ bool logContainsText(const char* word) {
   return false;
 }
 
+bool logContainsFragment(const char* word) {
+  const std::string needle = std::string("text:") + word;
+  for (const auto& entry : g_render_log) if (entry.find(needle) != std::string::npos) return true;
+  return false;
+}
+
+bool logContainsAny(const char* word) {
+  for (const auto& entry : g_render_log) if (entry.find(word) != std::string::npos) return true;
+  return false;
+}
+
 std::vector<int> pushOrder() {
   std::vector<int> order;
   for (const auto& entry : g_render_log) {
@@ -89,7 +101,7 @@ int displayIndexOf(Display* display) {
 }
 
 Display* BoardAdapter::displayAt(uint8_t index) {
-  if (index >= 3 || (missing_panel && index == 1)) return nullptr;
+  if (index >= 4 || (missing_panel && index == 1)) return nullptr;
   return &displays[index];
 }
 
@@ -663,6 +675,71 @@ void test_led_grammar_scene_masks() {
   }
 }
 
+void test_menu_controller_clamps_previews_and_persists_only_on_confirm() {
+  SettingsStore settings;
+  settings.load();
+  MenuController menu(settings);
+  menu.resetFromStore();
+  TEST_ASSERT_TRUE(menu.click());
+  TEST_ASSERT_TRUE(menu.open());
+  TEST_ASSERT_EQUAL_UINT8(0, menu.state().cursor);
+  TEST_ASSERT_FALSE(menu.rotate(-1));
+  TEST_ASSERT_TRUE(menu.rotate(1));
+  TEST_ASSERT_EQUAL_UINT8(1, menu.state().cursor);
+  TEST_ASSERT_TRUE(menu.click());
+  TEST_ASSERT_TRUE(menu.editing());
+  TEST_ASSERT_TRUE(menu.rotate(1));
+  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::Exception), static_cast<int>(menu.activeGrammar()));
+  TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
+  TEST_ASSERT_TRUE(menu.click());
+  TEST_ASSERT_FALSE(menu.editing());
+  TEST_ASSERT_EQUAL_UINT32(3, g_nvs_write_count);
+  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::Exception), static_cast<int>(menu.storedGrammar()));
+  TEST_ASSERT_TRUE(menu.click());
+  TEST_ASSERT_FALSE(menu.open());
+
+  menu.click();
+  menu.rotate(1);
+  menu.click();
+  const uint32_t writes_before_revert = g_nvs_write_count;
+  menu.rotate(1);
+  TEST_ASSERT_TRUE(menu.cancel());
+  TEST_ASSERT_FALSE(menu.open());
+  TEST_ASSERT_EQUAL_UINT32(writes_before_revert, g_nvs_write_count);
+  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::Exception), static_cast<int>(menu.storedGrammar()));
+}
+
+void test_each_theme_composes_menu_vocabulary() {
+  MenuState menu;
+  menu.open = true;
+  menu.cursor = 1;
+  menu.editing = true;
+  menu.theme_candidate = ThemeId::Instrument;
+  menu.grammar_candidate = LedGrammarId::FieldExtension;
+  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  for (ThemeRenderer* theme : themes) {
+    resetLog();
+    LGFX_Sprite sprite;
+    theme->composeMenu(sprite, menu);
+    TEST_ASSERT_TRUE(logContainsAny("THEME"));
+    TEST_ASSERT_TRUE(logContainsAny("LED"));
+    TEST_ASSERT_TRUE(logContainsText("TURN·SEL — CLICK·CLOSE"));
+  }
+}
+
+void test_menu_redraw_is_panel4_only() {
+  AgentProjection projection;
+  BoardAdapter board;
+  MenuState menu;
+  menu.open = true;
+  menu.cursor = 0;
+  resetLog();
+  projection.renderMenu(board, signalEdgeTheme(), menu);
+  const std::vector<int> order = pushOrder();
+  TEST_ASSERT_EQUAL_UINT32(1, order.size());
+  TEST_ASSERT_EQUAL_INT(3, order[0]);
+}
+
 int runAllTests() {
   UNITY_BEGIN();
   RUN_TEST(test_compose_then_flush_commits_generation);
@@ -697,6 +774,9 @@ int runAllTests() {
   RUN_TEST(test_led_policy_clamps_bright_led_count_and_all_off);
   RUN_TEST(test_led_grammar_scene_masks);
   RUN_TEST(test_blocked_motion_recomposes_blocked_panel_only);
+  RUN_TEST(test_menu_controller_clamps_previews_and_persists_only_on_confirm);
+  RUN_TEST(test_each_theme_composes_menu_vocabulary);
+  RUN_TEST(test_menu_redraw_is_panel4_only);
   return UNITY_END();
 }
 

@@ -178,10 +178,24 @@ class SignalEdgeTheme final : public ThemeRenderer {
     sprite.drawString("NO VALUES", 18, 114);
   }
 
-  void composeMenu(LGFX_Sprite& sprite, const MenuState&) override {
-    // Menu body lands in plan 02.2-04; until then the rest composition shows.
-    RenderState rest;
-    composePanel4(sprite, rest);
+  void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
+    sprite.fillScreen(kBackground);
+    sprite.fillRect(0, 0, 12, 128, kAccent);
+    sprite.setTextColor(kPrimary, kBackground);
+    sprite.drawString("MENU", 20, 8);
+    sprite.setTextColor(kMetadata, kBackground);
+    sprite.drawString("THEME", 20, 34);
+    sprite.drawString("LED", 20, 62);
+    sprite.setTextColor(menu.cursor == 0 ? kAccent : kSettled, kBackground);
+    sprite.drawString(menu.cursor == 0 ? ">" : " ", 8, 34);
+    sprite.setTextColor(menu.cursor == 1 ? kAccent : kSettled, kBackground);
+    sprite.drawString(menu.cursor == 1 ? ">" : " ", 8, 62);
+    sprite.setTextColor(menu.editing && menu.cursor == 0 ? kAccent : kPrimary, kBackground);
+    sprite.drawString(themeName(menu.theme_candidate), 68, 34);
+    sprite.setTextColor(menu.editing && menu.cursor == 1 ? kAccent : kPrimary, kBackground);
+    sprite.drawString(grammarName(menu.grammar_candidate), 68, 62);
+    sprite.setTextColor(kMetadata, kBackground);
+    sprite.drawString("TURN·SEL — CLICK·CLOSE", 8, 110);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {

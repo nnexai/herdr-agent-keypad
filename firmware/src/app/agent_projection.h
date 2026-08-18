@@ -9,7 +9,7 @@
 
 class BoardAdapter;
 class ThemeRenderer;
-
+struct MenuState;
 class AgentProjection final {
  public:
   static constexpr uint8_t kSlotCount = 3;
@@ -37,6 +37,7 @@ class AgentProjection final {
   bool commitSnapshot();
   bool commitSnapshot(BoardAdapter& board);
   void tick(BoardAdapter& board, uint32_t now_us);
+  void renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const;
   bool committed() const { return committed_ && !syncing_; }
   void renderFeedback(BoardAdapter& board, uint8_t slot);
   bool hasBinding(uint8_t slot) const;

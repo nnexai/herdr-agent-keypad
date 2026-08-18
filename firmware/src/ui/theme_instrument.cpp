@@ -203,9 +203,19 @@ class InstrumentTheme final : public ThemeRenderer {
     sprite.drawString("NO VALUES", 36, 114);
   }
 
-  void composeMenu(LGFX_Sprite& sprite, const MenuState&) override {
-    RenderState rest;
-    composePanel4(sprite, rest);
+  void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
+    sprite.fillScreen(kBackground);
+    drawBezelTicks(sprite, kSettled);
+    sprite.setTextColor(kPrimary, kBackground);
+    sprite.drawString("MENU", 50, 8);
+    sprite.setTextColor(menu.cursor == 0 ? kAccent : kMetadata, kBackground);
+    sprite.drawString(menu.cursor == 0 ? "> THEME" : "  THEME", 16, 36);
+    sprite.drawString(themeName(menu.theme_candidate), 16, 50);
+    sprite.setTextColor(menu.cursor == 1 ? kAccent : kMetadata, kBackground);
+    sprite.drawString(menu.cursor == 1 ? "> LED" : "  LED", 16, 72);
+    sprite.drawString(grammarName(menu.grammar_candidate), 16, 86);
+    sprite.setTextColor(kMetadata, kBackground);
+    sprite.drawString("TURN·SEL — CLICK·CLOSE", 8, 112);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {
