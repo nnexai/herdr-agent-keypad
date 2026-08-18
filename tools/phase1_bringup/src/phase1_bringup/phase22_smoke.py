@@ -205,13 +205,27 @@ def sha256_file(path: Path) -> str:
 
 
 def run_device(port: str, output: Path, firmware: Path | None = None) -> int:
+    evidence = SmokeEvidence.skeleton()
+    if firmware is not None:
+        evidence.binary_sha256 = sha256_file(firmware)
+    try:
+        return _run_device(port, output, evidence)
+    except (EOFError, TimeoutError) as exc:
+        evidence.machine_facts["checkpoint"] = {
+            "status": "incomplete",
+            "reason": str(exc),
+            "operator_action": "rerun after completing the requested physical interaction",
+        }
+        evidence.write(output)
+        print(f"Smoke checkpoint incomplete; evidence skeleton saved to {output}: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_device(port: str, output: Path, evidence: SmokeEvidence) -> int:
     try:
         import serial  # type: ignore
     except ImportError as exc:
         raise RuntimeError("pyserial is required for --port device runs") from exc
-    evidence = SmokeEvidence.skeleton()
-    if firmware is not None:
-        evidence.binary_sha256 = sha256_file(firmware)
     with serial.Serial(port, 115200, timeout=0.25) as connection:
         session = DeviceSession(connection)
         hello = session.hello()
