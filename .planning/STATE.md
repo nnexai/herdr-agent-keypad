@@ -3,16 +3,16 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 02.2
-current_phase_name: Firmware Themes, LED Bars, and Device Selection Menu
-status: planned
+current_phase_name: firmware-themes-led-bars-and-device-selection-menu
+status: executing
 stopped_at: Phase 02.2 planned — 5 plans in 4 waves; ready to execute
-last_updated: "2026-08-18T11:45:00.000Z"
+last_updated: "2026-08-18T11:48:35.797Z"
 last_activity: 2026-08-18
 last_activity_desc: Phase 02.2 researched, UI contract written, 5 plans created inline
 progress:
   total_phases: 5
   completed_phases: 3
-  total_plans: 21
+  total_plans: 26
   completed_plans: 21
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-16)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 02.2 — Firmware Themes, LED Bars, and Device Selection Menu
+**Current focus:** Phase 02.2 — firmware-themes-led-bars-and-device-selection-menu
 
 ## Current Position
 
-Phase: 02.2 (Firmware Themes, LED Bars, and Device Selection Menu) — PLANNED
-Plan: 0 of 5
-Status: Planned; ready for execute-phase
-Last activity: 2026-08-18 — Phase 02.2 research, UI-SPEC, and 5 plans (4 waves) written
+Phase: 02.2 (firmware-themes-led-bars-and-device-selection-menu) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 02.2
+Last activity: 2026-08-18 — Phase 02.2 execution started
 
 Progress: [██████████] 100%
 
