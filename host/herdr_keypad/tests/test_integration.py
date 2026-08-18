@@ -418,6 +418,22 @@ class HerdrEventContractTests(unittest.TestCase):
         self.assertEqual(stream.probe(deadline_seconds=1), "push")
         self.assertEqual(stream.reason, "subscribe_ack")
         self.assertTrue(stream.active)
+    def test_idle_push_poll_does_not_drop_focus_ready_state(self):
+        class IdleSocket(self.Socket):
+            def recv(self, _size):
+                if self.lines:
+                    return self.lines.pop(0)
+                raise TimeoutError()
+
+        sock = IdleSocket(b'{"jsonrpc":"2.0","id":"1","result":{"subscribed":true}}\n')
+        stream = __import__("herdr_keypad.herdr", fromlist=["HerdrEventStream"]).HerdrEventStream(
+            HerdrClient(timeout=0.1), socket_factory=lambda: sock
+        )
+        self.assertEqual(stream.probe(deadline_seconds=1), "push")
+        self.assertIsNone(stream.poll())
+        self.assertEqual(stream.mode, "push")
+        self.assertTrue(stream.active)
+
 
     def test_live_smoke_rejects_unbounded_window_before_device_access(self):
         self.assertEqual(main(["--smoke-live-sync", "4"]), 2)

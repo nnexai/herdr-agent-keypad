@@ -161,6 +161,8 @@ class HerdrEventStream:
         self._next_id = 1
         self._request_id: str | int | None = None
         self._deadline = 0.0
+        self._eof = False
+        self._buffer = bytearray()
 
     @property
     def active(self) -> bool:
@@ -187,6 +189,8 @@ class HerdrEventStream:
         self.mode = "closed"
         self.typed_event = None
         self._request_id = None
+        self._eof = False
+        self._buffer.clear()
 
     def reset(self) -> None:
         self.close()
@@ -208,6 +212,7 @@ class HerdrEventStream:
     def _readline(self, *, deadline: float) -> bytes | None:
         if self.sock is None:
             return None
+        self._eof = False
         while self.clock() < deadline:
             try:
                 remaining = min(0.05, max(0.001, deadline - self.clock()))
@@ -220,9 +225,8 @@ class HerdrEventStream:
             except OSError as exc:
                 raise HerdrError(f"event socket unavailable: {exc}") from exc
             if not chunk:
+                self._eof = True
                 return None
-            if not hasattr(self, "_buffer"):
-                self._buffer = bytearray()
             self._buffer.extend(chunk)
             if len(self._buffer) > self.MAX_LINE_BYTES:
                 raise HerdrError("event response exceeds bounded line limit")
@@ -293,16 +297,17 @@ class HerdrEventStream:
         if not self.active:
             return None
         try:
-            line = self._readline(deadline=min(self._deadline, self.clock() + 0.001))
+            line = self._readline(deadline=self.clock() + 0.001)
         except HerdrError:
             self._close_socket()
             self.mode = "poll"
             self.reason = "stream_read_failure"
             return None
         if line is None:
-            self._close_socket()
-            self.mode = "poll"
-            self.reason = "stream_eof"
+            if self._eof:
+                self._close_socket()
+                self.mode = "poll"
+                self.reason = "stream_eof"
             return None
         try:
             event = json.loads(line)
