@@ -13,6 +13,8 @@
 #include "transport/link.h"
 #include "ui/bringup_renderer.h"
 #include "app/agent_projection.h"
+#include "app/settings_store.h"
+#include "ui/theme.h"
 
 namespace {
 constexpr size_t kMaxLineBytes = phase1::protocol::kMaxLineBytes;
@@ -30,6 +32,7 @@ BoardAdapter board;
 BringupRenderer renderer;
 PhysicalMap physicalMap;
 AgentProjection agentProjection;
+SettingsStore settingsStore;
 UsbCdcLink usbLink;
 ProofMetrics proofMetrics;
 phase1::protocol::ProtocolSession protocolSession("", "", phase1::protocol::kQueueCapacity);
@@ -450,6 +453,8 @@ void setup() {
   usbLink.begin(kBaud, sizeof(inputFrame));
   physicalMap.loadVerified();
   board.begin(physicalMap);
+  settingsStore.load();
+  agentProjection.setTheme(themeById(settingsStore.theme()));
   deviceId = opaqueId();
   bootId = freshBootId(deviceId);
   protocolSession.reset(bootId.c_str(), "");
