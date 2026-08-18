@@ -27,6 +27,7 @@ class AgentProjection final {
   // bindings, and flush ownership stay here.
   void setTheme(ThemeRenderer& theme) { theme_ = &theme; }
   ThemeRenderer& theme() const;
+  RenderState renderState(uint32_t now_us) const;
   AnimationScheduler& animation() { return animation_; }
   const AnimationScheduler& animation() const { return animation_; }
 

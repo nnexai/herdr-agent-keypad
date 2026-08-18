@@ -46,6 +46,7 @@ class AnimationScheduler final {
   // BLOCKED phase reference for LED synchronization: both the display pulse
   // and the LED engine derive their on/off half-period from this epoch.
   uint32_t blockedPhaseEpoch() const { return blocked_epoch_us_; }
+  uint32_t blockedPhaseEpochUs() const { return blocked_epoch_us_; }
   bool blockedPulseHigh(uint32_t now_us) const {
     return ((now_us - blocked_epoch_us_) / (kBlockedPeriodUs / 2)) % 2 == 0;
   }

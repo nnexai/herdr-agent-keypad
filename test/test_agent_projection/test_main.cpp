@@ -9,9 +9,13 @@
 #include "../../firmware/src/app/settings_store.h"
 #include "../../firmware/src/board/board_adapter.h"
 #include "../../firmware/src/ui/theme.h"
+#include "../../firmware/src/ui/led_engine.h"
+#include "../../firmware/src/ui/led_grammar.h"
 
 namespace {
 Display displays[4];
+struct LedCall { uint16_t hue; uint8_t saturation; uint8_t brightness; uint16_t mask; };
+std::vector<LedCall> g_led_calls;
 bool missing_panel = false;
 
 JsonDocument snapshot_document(uint32_t revision, const char* state0 = "working",
@@ -89,12 +93,16 @@ Display* BoardAdapter::displayAt(uint8_t index) {
   return &displays[index];
 }
 
+void BoardAdapter::setLeds(uint16_t hue, uint8_t saturation, uint8_t brightness, uint16_t mask) {
+  g_led_calls.push_back({hue, saturation, brightness, mask});
+}
+
 void setUp() {}
 void tearDown() {
   missing_panel = false;
   g_nvs.clear();
-  g_nvs_write_count = 0;
   resetLog();
+  g_led_calls.clear();
   g_sync_draw_count = 0;
 }
 
@@ -557,6 +565,104 @@ void test_blocked_motion_recomposes_blocked_panel_only() {
   TEST_ASSERT_EQUAL_INT(0, order[0]);
 }
 
+void test_led_grammars_and_policy() {
+  RenderState state;
+  state.source_status = "current";
+  state.blocked_pulse_high = true;
+  state.slots[0].occupied = true;
+  state.slots[0].state = TileState::Blocked;
+  state.slots[1].occupied = true;
+  state.slots[1].state = TileState::Unseen;
+  state.slots[2].occupied = true;
+  state.slots[2].state = TileState::Working;
+
+  BoardAdapter board;
+  LedEngine engine;
+  engine.setGrammar(railEchoGrammar());
+  engine.render(state, LedEvents(), 0, board);
+  TEST_ASSERT_TRUE(g_led_calls.size() > 0);
+  bool saw_blocked = false;
+  bool saw_unseen = false;
+  bool saw_working = false;
+  for (const LedCall& call : g_led_calls) {
+    TEST_ASSERT_LESS_OR_EQUAL_UINT8(45, call.brightness);
+    if ((call.mask & (1U << 1)) != 0 && call.brightness == 40) saw_blocked = true;
+    if ((call.mask & (1U << 4)) != 0 && call.brightness == 30) saw_unseen = true;
+    if ((call.mask & (1U << 7)) != 0 && call.brightness == 18) saw_working = true;
+  }
+  TEST_ASSERT_TRUE(saw_blocked);
+  TEST_ASSERT_TRUE(saw_unseen);
+  TEST_ASSERT_TRUE(saw_working);
+  const size_t writes = g_led_calls.size();
+  engine.render(state, LedEvents(), 1, board);
+  TEST_ASSERT_EQUAL_UINT32(writes, g_led_calls.size());
+
+  state.source_status = "stale";
+  engine.setGrammar(exceptionChannelGrammar());
+  g_led_calls.clear();
+  engine.render(state, LedEvents(), 0, board);
+  bool saw_health = false;
+  for (const LedCall& call : g_led_calls) {
+    if (call.hue == 0 && call.brightness == 10 && (call.mask & (1U << 0)) != 0) saw_health = true;
+  }
+  TEST_ASSERT_TRUE(saw_health);
+}
+
+void test_led_policy_clamps_bright_led_count_and_all_off() {
+  struct Overbright final : public LedGrammar {
+    size_t frame(const RenderState&, const LedEvents&, uint32_t,
+                 LedSegment* out, size_t capacity) const override {
+      if (capacity == 0) return 0;
+      out[0] = {0x3FFF, 220, 100, 90};
+      return 1;
+    }
+  } overbright;
+  RenderState state;
+  state.source_status = "current";
+  state.slots[0].state = TileState::Blocked;
+  LedEngine engine;
+  engine.setGrammar(overbright);
+  BoardAdapter board;
+  engine.render(state, LedEvents(), 0, board);
+  TEST_ASSERT_EQUAL_UINT32(2, g_led_calls.size());
+  TEST_ASSERT_EQUAL_UINT16(0x003F, g_led_calls[0].mask);
+  TEST_ASSERT_EQUAL_UINT8(45, g_led_calls[0].brightness);
+  TEST_ASSERT_EQUAL_UINT16(0x3FC0, g_led_calls[1].mask);
+  TEST_ASSERT_EQUAL_UINT8(25, g_led_calls[1].brightness);
+
+  g_led_calls.clear();
+  LedEvents off;
+  off.all_off = true;
+  engine.render(state, off, 1, board);
+  TEST_ASSERT_EQUAL_UINT32(1, g_led_calls.size());
+  TEST_ASSERT_EQUAL_UINT16(0x3FFF, g_led_calls[0].mask);
+  TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
+}
+
+void test_led_grammar_scene_masks() {
+  RenderState state;
+  state.source_status = "current";
+  state.slots[0].state = TileState::Idle;
+  state.slots[1].state = TileState::Working;
+  state.slots[2].state = TileState::Empty;
+  LedSegment segments[kLedGrammarMaxSegments]{};
+  LedEvents menu;
+  menu.menu_open = true;
+  const size_t rail_count = railEchoGrammar().frame(state, menu, 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_EQUAL_UINT32(3, rail_count);
+  TEST_ASSERT_EQUAL_UINT16(1U << 13, segments[2].mask);
+  state.slots[0].feedback = TileFeedback::Pending;
+  const size_t field_count = fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_TRUE(field_count >= 2);
+  TEST_ASSERT_EQUAL_UINT16(1U, segments[0].mask);
+  TEST_ASSERT_EQUAL_UINT8(45, segments[0].brightness);
+  const size_t meter_count = meterLampsGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_TRUE(meter_count > 0);
+  for (size_t index = 0; index < meter_count; ++index) {
+    TEST_ASSERT_EQUAL_UINT16(0, static_cast<uint16_t>(segments[index].mask & ((1U << 0) | (1U << 2) | (1U << 3) | (1U << 6))));
+  }
+}
+
 int runAllTests() {
   UNITY_BEGIN();
   RUN_TEST(test_compose_then_flush_commits_generation);
@@ -587,6 +693,9 @@ int runAllTests() {
   RUN_TEST(test_blocked_pulse_cadence_and_phase);
   RUN_TEST(test_ambient_cadence_degrades_under_budget_pressure);
   RUN_TEST(test_blocked_motion_suppressed_by_fence_and_no_alloc);
+  RUN_TEST(test_led_grammars_and_policy);
+  RUN_TEST(test_led_policy_clamps_bright_led_count_and_all_off);
+  RUN_TEST(test_led_grammar_scene_masks);
   RUN_TEST(test_blocked_motion_recomposes_blocked_panel_only);
   return UNITY_END();
 }

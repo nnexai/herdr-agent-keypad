@@ -288,6 +288,23 @@ AgentProjection::TileState AgentProjection::state(uint8_t slot) const { return s
 const char* AgentProjection::title(uint8_t slot) const { return slot < kSlotCount ? committed_generation_.tiles[slot].title : ""; }
 const char* AgentProjection::discriminator(uint8_t slot) const { return slot < kSlotCount ? committed_generation_.tiles[slot].discriminator : ""; }
 
+RenderState AgentProjection::renderState(uint32_t now_us) const {
+  RenderState state;
+  state.source_status = committed_generation_.source_status;
+  state.syncing = syncing_;
+  state.blocked_pulse_high = animation_.blockedPulseHigh(now_us);
+  for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
+    RenderState::Slot& output = state.slots[slot];
+    const Tile& tile = committed_generation_.tiles[slot];
+    output.occupied = tile.binding.occupied;
+    output.title = tile.title;
+    output.discriminator = tile.discriminator;
+    output.state = tile.state;
+    output.feedback = feedback_[slot];
+  }
+  return state;
+}
+
 bool AgentProjection::captureFocusIntent(uint8_t key, const char* action_id, JsonObject payload) {
   if (!committed_ || syncing_ || key >= kSlotCount || action_id == nullptr || !hasBinding(key) || pending_action_[key] != 0 ||
       !copyBounded(pending_action_text_[key], sizeof(pending_action_text_[key]), action_id, false)) return false;

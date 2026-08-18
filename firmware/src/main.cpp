@@ -15,6 +15,7 @@
 #include "app/agent_projection.h"
 #include "app/settings_store.h"
 #include "ui/theme.h"
+#include "ui/led_engine.h"
 
 namespace {
 constexpr size_t kMaxLineBytes = phase1::protocol::kMaxLineBytes;
@@ -33,6 +34,7 @@ BringupRenderer renderer;
 PhysicalMap physicalMap;
 AgentProjection agentProjection;
 SettingsStore settingsStore;
+LedEngine ledEngine;
 UsbCdcLink usbLink;
 ProofMetrics proofMetrics;
 phase1::protocol::ProtocolSession protocolSession("", "", phase1::protocol::kQueueCapacity);
@@ -456,6 +458,7 @@ void setup() {
   settingsStore.load();
   agentProjection.setTheme(themeById(settingsStore.theme()));
   agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
+  ledEngine.setGrammar(ledGrammarById(settingsStore.ledGrammar()));
   deviceId = opaqueId();
   bootId = freshBootId(deviceId);
   protocolSession.reset(bootId.c_str(), "");
@@ -480,6 +483,8 @@ void loop() {
     // delay + work); ProofMetrics keeps measuring flush transactions.
     if (tick_cost > 0) agentProjection.animation().observeFlushCost(tick_cost, 1000);
   }
+  LedEvents led_events;
+  ledEngine.render(agentProjection.renderState(now), led_events, now, board);
   reportAgentKey();
   proofMetrics.sampleRuntime();
   delay(1);
