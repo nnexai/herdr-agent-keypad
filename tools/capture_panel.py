@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""Capture one composed 128x128 keypad panel directly from the USB framebuffer."""
+import argparse
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT / "phase1_bringup" / "src"))
+
+from phase1_bringup.pairing import PairingStore
+from phase1_bringup.serial_link import reconnect_exact
+
+PIXELS = 128 * 128
+BYTES = PIXELS * 2
+HEADER = b"SCREENSHOT-RGB565\n"
+
+
+def read_exact(connection: object, count: int, timeout: float) -> bytes:
+    deadline = time.monotonic() + timeout
+    data = bytearray()
+    while len(data) < count and time.monotonic() < deadline:
+        chunk = connection.read(count - len(data))  # type: ignore[attr-defined]
+        if chunk:
+            data.extend(chunk)
+    if len(data) != count:
+        raise TimeoutError(f"screenshot payload truncated: {len(data)}/{count} bytes")
+    return bytes(data)
+
+
+def ppm_from_rgb565(raw: bytes) -> bytes:
+    pixels = bytearray(PIXELS * 3)
+    for index in range(PIXELS):
+        value = (raw[index * 2] << 8) | raw[index * 2 + 1]
+        r = ((value >> 11) & 0x1F) * 255 // 31
+        g = ((value >> 5) & 0x3F) * 255 // 63
+        b = (value & 0x1F) * 255 // 31
+        offset = index * 3
+        pixels[offset:offset + 3] = bytes((r, g, b))
+    return f"P6\n128 128\n255\n".encode("ascii") + pixels
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("panel", type=int, choices=range(4), help="zero-based panel index")
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--binding", type=Path, default=Path.home() / ".config/herdr/keypad-binding.json")
+    parser.add_argument("--timeout", type=float, default=5.0)
+    args = parser.parse_args()
+
+    binding = PairingStore(args.binding).load()
+    if binding is None:
+        raise RuntimeError(f"pairing binding missing: {args.binding}")
+    selected, link, session, _ = reconnect_exact(
+        binding,
+        ports=None,
+        opener=lambda candidate: __import__("serial").Serial(candidate.device, 115200, timeout=0.2, write_timeout=2.0),
+        timeout=args.timeout,
+    )
+    try:
+        payload = {"panel": args.panel + 1, "step_id": "screen-capture", "stimulus": f"CAPTURE:{args.panel}"}
+        frame, _fact = session.request("probe", payload, {"probe_ack"})
+        if not frame["payload"].get("accepted"):
+            raise RuntimeError("device rejected screen capture")
+        marker = read_exact(link.connection, len(HEADER), args.timeout)
+        if marker != HEADER:
+            raise RuntimeError(f"unexpected capture marker: {marker!r}")
+        raw = read_exact(link.connection, BYTES, args.timeout)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_bytes(ppm_from_rgb565(raw))
+        args.output.with_suffix(args.output.suffix + ".rgb565").write_bytes(raw)
+        print(f"captured panel {args.panel} from {selected.device} to {args.output}")
+    finally:
+        link.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

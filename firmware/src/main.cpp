@@ -254,6 +254,20 @@ void completeAdmission() {
   protocolSession.complete();
   proofMetrics.observeQueue(protocolSession.pending_count());
 }
+bool streamCapturedPanel() {
+  static constexpr size_t kPixelBytes = 128U * 128U * sizeof(uint16_t);
+  static constexpr size_t kChunkBytes = 1024U;
+  const char header[] = "SCREENSHOT-RGB565\n";
+  if (usbLink.write(reinterpret_cast<const uint8_t *>(header), sizeof(header) - 1) != sizeof(header) - 1) return false;
+  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(agentProjection.capturePixels());
+  if (bytes == nullptr) return false;
+  for (size_t offset = 0; offset < kPixelBytes; offset += kChunkBytes) {
+    const size_t count = (kPixelBytes - offset) < kChunkBytes ? (kPixelBytes - offset) : kChunkBytes;
+    if (usbLink.write(bytes + offset, count) != count) return false;
+  }
+  return true;
+}
+
 
 void dispatchAdmission(const phase1::protocol::Result &admission) {
   if (!admission.accepted) {
@@ -346,6 +360,22 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     if (!board.ready()) {
       sendError("board_not_ready", "board initialization failed; probe not executed", admission.frame.sequence);
       completeAdmission();
+      return;
+    }
+    if (stimulus != nullptr && strncmp(stimulus, "CAPTURE:", 8) == 0 &&
+        stimulus[8] >= '0' && stimulus[8] <= '3' && stimulus[9] == '\0') {
+      const uint8_t capturePanel = static_cast<uint8_t>(stimulus[8] - '0');
+      if (!agentProjection.capturePanel(capturePanel)) {
+        sendError("capture_failed", "panel composition unavailable", admission.frame.sequence);
+        completeAdmission();
+        return;
+      }
+      JsonDocument reply;
+      reply["accepted"] = true;
+      reply["step_id"] = "screen-capture";
+      sendFrame("probe_ack", admission.frame.sequence, reply.as<JsonObjectConst>());
+      completeAdmission();
+      streamCapturedPanel();
       return;
     }
     activeStep = step;

@@ -9,7 +9,7 @@
 namespace {
 constexpr const char* kSourceStatuses[] = {"current", "empty", "stale", "unavailable", "offline"};
 constexpr const char* kStates[] = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"};
-constexpr uint16_t kBackground = 0x1122;  // #0B0F14
+constexpr uint16_t kBackground = 0x0862;  // #0B0F14
 
 LGFX_Sprite g_composition;
 bool g_composition_ready = false;
@@ -142,7 +142,9 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
         !copyOptional(tile.binding.tab_id, sizeof(tile.binding.tab_id), agent["tab_id"], tab_present) ||
         !copyOptional(tile.binding.agent_session, sizeof(tile.binding.agent_session), agent["agent_session"], tile.binding.has_agent_session) ||
         !copyDisplay(tile.title, sizeof(tile.title), agent["title"].as<const char*>(), "NO AGENT") ||
-        !copyDisplay(tile.discriminator, sizeof(tile.discriminator), agent["discriminator"].as<const char*>(), "NO WORKSPACE")) {
+        !copyDisplay(tile.discriminator, sizeof(tile.discriminator), agent["discriminator"].as<const char*>(), "NO WORKSPACE") ||
+        !copyDisplay(tile.since, sizeof(tile.since), agent["since"].as<const char*>(), "-") ||
+        !copyDisplay(tile.age, sizeof(tile.age), agent["age"].as<const char*>(), "-")) {
       staged_valid_ = false;
       return false;
     }
@@ -225,6 +227,8 @@ bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& 
   out.occupied = tile.binding.occupied;
   out.title = tile.title;
   out.discriminator = tile.discriminator;
+  out.since = tile.since;
+  out.age = tile.age;
   out.state = tile.state;
   out.feedback = feedback;
   theme().composeTile(g_composition, slot, state);
@@ -279,6 +283,19 @@ void AgentProjection::renderMenu(BoardAdapter& board, ThemeRenderer& theme, cons
   else theme.composePanel4(g_composition, renderState(micros()));
   g_composition.pushSprite(display, 0, 0);
 }
+bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer) {
+  if (panel >= 4 || !ensureComposition()) return false;
+  ThemeRenderer& selected = renderer != nullptr ? *renderer : theme();
+  const RenderState state = renderState(micros());
+  if (panel < kSlotCount) selected.composeTile(g_composition, panel, state);
+  else selected.composePanel4(g_composition, state);
+  return true;
+}
+
+const uint16_t* AgentProjection::capturePixels() const {
+  return static_cast<const uint16_t*>(g_composition.getBuffer());
+}
+
 
 void AgentProjection::renderFeedback(BoardAdapter& board, uint8_t slot) {
   if (slot < kSlotCount && committed_ && !syncing_) renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
@@ -307,6 +324,8 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
     output.occupied = tile.binding.occupied;
     output.title = tile.title;
     output.discriminator = tile.discriminator;
+    output.since = tile.since;
+    output.age = tile.age;
     output.state = tile.state;
     output.feedback = feedback_[slot];
   }

@@ -15,12 +15,12 @@
 namespace {
 using namespace theme_common;
 
-// Blend a color toward the background in quarter steps (RGB565 channel math,
-// bounded, no lookup tables).
-uint16_t dim565(uint16_t color, uint8_t step) {  // step 0=full .. 3=faint
-  const uint16_t r = ((color >> 11) & 0x1F) >> step;
-  const uint16_t g = ((color >> 5) & 0x3F) >> step;
-  const uint16_t b = (color & 0x1F) >> step;
+// Scale a hue toward black using explicit luminance steps. The Beacon field
+// reserves the brightest color for the glyph; the field itself peaks at 24 %.
+uint16_t scale565(uint16_t color, uint8_t numerator, uint8_t denominator = 64) {
+  const uint16_t r = static_cast<uint16_t>(((color >> 11) & 0x1F) * numerator / denominator);
+  const uint16_t g = static_cast<uint16_t>(((color >> 5) & 0x3F) * numerator / denominator);
+  const uint16_t b = static_cast<uint16_t>((color & 0x1F) * numerator / denominator);
   return static_cast<uint16_t>((r << 11) | (g << 5) | b);
 }
 
@@ -29,12 +29,12 @@ bool activeField(TileState state) {
 }
 
 void drawField(LGFX_Sprite& sprite, uint16_t hue) {
-  // Stepped concentric bands: bounded op count, RGB565-banding-safe.
-  const int32_t cx = 64;
-  const int32_t cy = 52;
-  const int32_t radii[] = {58, 44, 31, 18};
-  for (uint8_t band = 0; band < 4; ++band) {
-    sprite.fillCircle(cx, cy, radii[band], dim565(hue, static_cast<uint8_t>(3 - band)));
+  // Eight shallow bands avoid the old bullseye effect while remaining stable
+  // on RGB565 panels. The outer band is intentionally near-black.
+  static constexpr int32_t kRadii[] = {58, 52, 46, 40, 34, 28, 22, 16};
+  static constexpr uint8_t kLuma[] = {3, 5, 7, 10, 14, 18, 21, 24};
+  for (uint8_t band = 0; band < 8; ++band) {
+    sprite.fillCircle(64, 52, kRadii[band], scale565(hue, kLuma[band]));
   }
 }
 
@@ -137,9 +137,9 @@ class BeaconTheme final : public ThemeRenderer {
       // BLOCKED field+glyph breathe in the 1.2 s pulse; other active states
       // render a steady field.
       const bool low = tile.state == TileState::Blocked && !state.blocked_pulse_high;
-      drawField(sprite, low ? dim565(base.color, 1) : base.color);
+      drawField(sprite, low ? scale565(base.color, 12) : base.color);
     } else if (feedback != nullptr && activeField(tile.state)) {
-      drawField(sprite, dim565(base.color, 1));  // dimmed field under takeover
+      drawField(sprite, scale565(base.color, 12));  // dimmed field under takeover
     }
 
     if (feedback != nullptr) {
@@ -152,7 +152,11 @@ class BeaconTheme final : public ThemeRenderer {
       sprite.drawString(base.word, 40, 73);
     }
 
+    // Opaque title strip prevents the radial field from bleeding behind text.
+    sprite.fillRect(0, 96, 128, 32, kBackground);
     // Title strip y:100..122 — one title line + one identity line, centered.
+    sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
+    sprite.drawString(tile.since, 92, 8);
     ellipsize(row, 17, tile.title);
     sprite.setTextColor(fence != nullptr ? kSettled : kPrimary, kBackground);
     sprite.drawString(row, 16, 100);

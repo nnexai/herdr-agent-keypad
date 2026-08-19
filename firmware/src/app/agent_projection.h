@@ -38,6 +38,10 @@ class AgentProjection final {
   bool commitSnapshot(BoardAdapter& board);
   void tick(BoardAdapter& board, uint32_t now_us);
   void renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const;
+  // Developer capture seam: compose one panel without flushing it, then expose
+  // the existing PSRAM-backed RGB565 sprite for a bounded USB dump.
+  bool capturePanel(uint8_t panel, ThemeRenderer* renderer = nullptr);
+  const uint16_t* capturePixels() const;
   bool committed() const { return committed_ && !syncing_; }
   void renderFeedback(BoardAdapter& board, uint8_t slot);
   bool hasBinding(uint8_t slot) const;
@@ -71,6 +75,8 @@ class AgentProjection final {
     Binding binding;
     char title[kTextBytes] = "NO AGENT";
     char discriminator[33] = "NO WORKSPACE";
+    char since[17] = "-";
+    char age[17] = "-";
     TileState state = TileState::Empty;
   };
 

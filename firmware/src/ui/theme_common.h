@@ -11,16 +11,16 @@
 
 namespace theme_common {
 
-constexpr uint16_t kBackground = 0x1122;   // #0B0F14
-constexpr uint16_t kAccent = 0x15B7;       // #22D3EE
-constexpr uint16_t kPrimary = 0xFFFF;      // #F8FAFC
-constexpr uint16_t kMetadata = 0xD69D;     // #CBD5E1
-constexpr uint16_t kDestructive = 0xF926;  // #EF4444
-constexpr uint16_t kBlocked = 0xFBB5;      // #F7768E
-constexpr uint16_t kUnseen = 0x7D9F;       // #7DCFFF
-constexpr uint16_t kWorking = 0xFD51;      // #E0AF68
-constexpr uint16_t kIdle = 0x9D4D;         // #9ECE6A
-constexpr uint16_t kSettled = 0x5351;      // #565F89
+constexpr uint16_t kBackground = 0x0862;   // #0B0F14
+constexpr uint16_t kAccent = 0x269D;       // #22D3EE
+constexpr uint16_t kPrimary = 0xFFDF;      // #F8FAFC
+constexpr uint16_t kMetadata = 0xCEBC;     // #CBD5E1
+constexpr uint16_t kDestructive = 0xEA28;  // #EF4444
+constexpr uint16_t kBlocked = 0xF3B1;      // #F7768E
+constexpr uint16_t kUnseen = 0x7E7F;       // #7DCFFF
+constexpr uint16_t kWorking = 0xE56D;      // #E0AF68
+constexpr uint16_t kIdle = 0x9E6D;         // #9ECE6A
+constexpr uint16_t kSettled = 0x52F1;      // #565F89
 constexpr uint16_t kEmptyEdge = 0x21A9;    // #263648
 
 struct StateStyle {
