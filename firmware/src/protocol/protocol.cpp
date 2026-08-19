@@ -332,6 +332,8 @@ RejectReason parse_v2_agent(Cursor& cursor) {
   char entry_id[kMaxIdentifierBytes + 1] = {};
   char title[kMaxPayloadStringBytes + 1] = {};
   char discriminator[33] = {};
+  char since[17] = {};
+  char age[17] = {};
   char state[16] = {};
   char pane_id[kMaxIdentifierBytes + 1] = {};
   char terminal_id[kMaxIdentifierBytes + 1] = {};
@@ -346,11 +348,13 @@ RejectReason parse_v2_agent(Cursor& cursor) {
     else if (std::strcmp(key, "entry_id") == 0) bit = 1U << 1;
     else if (std::strcmp(key, "title") == 0) bit = 1U << 2;
     else if (std::strcmp(key, "discriminator") == 0) bit = 1U << 3;
-    else if (std::strcmp(key, "state") == 0) bit = 1U << 4;
-    else if (std::strcmp(key, "pane_id") == 0) bit = 1U << 5;
-    else if (std::strcmp(key, "terminal_id") == 0) bit = 1U << 6;
-    else if (std::strcmp(key, "agent_session") == 0) bit = 1U << 7;
-    else if (std::strcmp(key, "source_revision") == 0) bit = 1U << 8;
+    else if (std::strcmp(key, "since") == 0) bit = 1U << 4;
+    else if (std::strcmp(key, "age") == 0) bit = 1U << 5;
+    else if (std::strcmp(key, "state") == 0) bit = 1U << 6;
+    else if (std::strcmp(key, "pane_id") == 0) bit = 1U << 7;
+    else if (std::strcmp(key, "terminal_id") == 0) bit = 1U << 8;
+    else if (std::strcmp(key, "agent_session") == 0) bit = 1U << 9;
+    else if (std::strcmp(key, "source_revision") == 0) bit = 1U << 10;
     else return RejectReason::UnknownField;
     if ((mask & bit) != 0) return RejectReason::DuplicateKey;
     mask |= bit;
@@ -363,12 +367,16 @@ RejectReason parse_v2_agent(Cursor& cursor) {
     } else if (bit == (1U << 3)) {
       if (!cursor.string(discriminator, sizeof(discriminator)) || std::strlen(discriminator) == 0 || std::strlen(discriminator) > 32) return RejectReason::InvalidShape;
     } else if (bit == (1U << 4)) {
-      if (!cursor.string(state, sizeof(state)) || !valid_agent_state(state)) return RejectReason::InvalidShape;
+      if (!cursor.string(since, sizeof(since)) || std::strlen(since) > 16) return RejectReason::InvalidShape;
     } else if (bit == (1U << 5)) {
-      if (!cursor.string(pane_id, sizeof(pane_id))) return RejectReason::InvalidIdentifier;
+      if (!cursor.string(age, sizeof(age)) || std::strlen(age) > 16) return RejectReason::InvalidShape;
     } else if (bit == (1U << 6)) {
-      if (!cursor.string(terminal_id, sizeof(terminal_id))) return RejectReason::InvalidIdentifier;
+      if (!cursor.string(state, sizeof(state)) || !valid_agent_state(state)) return RejectReason::InvalidShape;
     } else if (bit == (1U << 7)) {
+      if (!cursor.string(pane_id, sizeof(pane_id))) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 8)) {
+      if (!cursor.string(terminal_id, sizeof(terminal_id))) return RejectReason::InvalidIdentifier;
+    } else if (bit == (1U << 9)) {
       if (!parse_optional_opaque(cursor, agent_session, sizeof(agent_session))) return RejectReason::InvalidIdentifier;
     } else {
       if (!cursor.uint32(source_revision)) return RejectReason::InvalidShape;
@@ -377,7 +385,7 @@ RejectReason parse_v2_agent(Cursor& cursor) {
     if (cursor.take('}')) break;
     if (!cursor.take(',')) return RejectReason::InvalidJson;
   }
-  if (mask != 0x1ffU) return RejectReason::InvalidShape;
+  if (mask != 0x7ffU) return RejectReason::InvalidShape;
   const bool empty = std::strcmp(state, "empty") == 0;
   if (!valid_opaque(entry_id, empty) || !valid_opaque(pane_id, empty) || !valid_opaque(terminal_id, empty) ||
       (!empty && source_revision == 0) || (empty && source_revision != 0)) return RejectReason::InvalidIdentifier;

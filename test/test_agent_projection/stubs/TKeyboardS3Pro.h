@@ -33,6 +33,8 @@ class LGFX_Sprite {
   void setPsram(bool) {}
   void setColorDepth(uint8_t) {}
   void* createSprite(int32_t, int32_t) { return this; }
+  uint16_t* getBuffer() { return pixels_; }
+  const uint16_t* getBuffer() const { return pixels_; }
   void fillScreen(uint16_t) { g_render_log.push_back("fillScreen"); }
   void setTextColor(uint16_t, uint16_t) {}
   void setTextSize(uint8_t) {}
@@ -50,6 +52,8 @@ class LGFX_Sprite {
   void pushSprite(Display* display, int32_t, int32_t) {
     g_render_log.push_back("push:" + std::to_string(displayIndexOf(display)));
   }
+ private:
+  uint16_t pixels_[128 * 128]{};
 };
 
 namespace button { class ButtonSense {}; }

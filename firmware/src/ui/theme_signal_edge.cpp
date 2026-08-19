@@ -107,7 +107,7 @@ void drawTitleRows(LGFX_Sprite& sprite, const char* title, uint16_t color) {
   memcpy(row, title, first);
   row[first] = '\0';
   sprite.setTextColor(color, kBackground);
-  sprite.drawString(row, 18, 8);
+  sprite.drawString(row, 15, 5);
   if (length > kRowChars) {
     size_t remaining = length - kRowChars;
     size_t second = remaining < kRowChars ? remaining : kRowChars;
@@ -118,7 +118,7 @@ void drawTitleRows(LGFX_Sprite& sprite, const char* title, uint16_t color) {
       row[second - 2] = '.';
       row[second - 3] = '.';
     }
-    sprite.drawString(row, 18, 20);
+    sprite.drawString(row, 15, 17);
   }
 }
 
@@ -143,20 +143,22 @@ class SignalEdgeTheme final : public ThemeRenderer {
       drawRail(sprite, tile.state, content, state.blocked_pulse_high);
       drawTitleRows(sprite, tile.title, fence != nullptr ? kSettled : kPrimary);
       sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
-      sprite.drawString(tile.discriminator, 18, 34);
+      sprite.drawString(tile.discriminator, 15, 32);
       drawGlyph(sprite, tile.state, content);
       sprite.setTextColor(content, kBackground);
-      sprite.drawString(base.word, 18, 96);
+      sprite.drawString(base.word, 15, 110);
+      sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
+      sprite.drawString(tile.since, 100, 112);
     }
 
     if (feedback != nullptr) {
-      sprite.fillRect(0, 108, 128, 20, feedback->color);
+      sprite.fillRect(16, 108, 112, 20, feedback->color);
       sprite.setTextColor(kBackground, feedback->color);
-      sprite.drawString(feedback->word, 18, 114);
+      sprite.drawString(feedback->word, 30, 114);
     } else if (fence != nullptr) {
-      sprite.fillRect(0, 108, 128, 20, kDestructive);
+      sprite.fillRect(16, 108, 112, 20, kDestructive);
       sprite.setTextColor(kBackground, kDestructive);
-      sprite.drawString(fence, 18, 114);
+      sprite.drawString(fence, 30, 114);
     }
   }
 

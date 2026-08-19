@@ -27,6 +27,8 @@ class ProjectedEntry:
     entry_id: str
     title: str
     discriminator: str
+    since: str
+    age: str
     state: str
     rank: int | None
     state_change_seq: int
@@ -39,7 +41,7 @@ class ProjectedEntry:
 
     @classmethod
     def empty(cls, slot: int, state: str = "empty", *, stale: bool = False) -> "ProjectedEntry":
-        return cls(slot, "", "NO AGENT", "NO WORKSPACE", state, None, 0, None, stale)
+        return cls(slot, "", "NO AGENT", "NO WORKSPACE", "", "", state, None, 0, None, stale)
 
 
 @dataclass(frozen=True)
@@ -158,9 +160,13 @@ class InboxProjection:
         workspace_label = labels.get(workspace_id)
         discriminator = workspace_label or _repo_basename(row.get("cwd")) or "NO WORKSPACE"
         discriminator = _text(discriminator, "discriminator", MAX_DISCRIMINATOR)
+        since_value = tokens.get("since", "-")
+        age_value = tokens.get("age", "-")
+        since = _text(since_value if isinstance(since_value, str) and since_value else "-", "since", 16)
+        age = _text(age_value if isinstance(age_value, str) and age_value else "-", "age", 16)
         session = _session_token(row.get("agent_session"))
         identity = Identity(pane_id, terminal_id, session, revision, workspace_id, tab_id)
-        return ProjectedEntry(-1, pane_id, title, discriminator, RANK_STATES[rank], rank, state_change_seq, identity)
+        return ProjectedEntry(-1, pane_id, title, discriminator, since, age, RANK_STATES[rank], rank, state_change_seq, identity)
 
     @staticmethod
     def _same_logical_entry(left: ProjectedEntry, right: ProjectedEntry) -> bool:
@@ -173,6 +179,8 @@ class InboxProjection:
             left.entry_id,
             left.title,
             left.discriminator,
+            left.since,
+            left.age,
             left.state,
             left.rank,
             left.state_change_seq,
@@ -187,6 +195,8 @@ class InboxProjection:
             right.entry_id,
             right.title,
             right.discriminator,
+            right.since,
+            right.age,
             right.state,
             right.rank,
             right.state_change_seq,
@@ -213,6 +223,8 @@ class InboxProjection:
                 entry.entry_id,
                 entry.title,
                 entry.discriminator,
+                entry.since,
+                entry.age,
                 entry.state,
                 entry.rank,
                 entry.state_change_seq,
@@ -238,6 +250,8 @@ class InboxProjection:
                     candidate.entry_id,
                     candidate.title,
                     candidate.discriminator,
+                    candidate.since,
+                    candidate.age,
                     candidate.state,
                     candidate.rank,
                     candidate.state_change_seq,
@@ -300,8 +314,8 @@ class InboxProjection:
             reason = "stale"
         self.snapshot_revision += 1
         entries = tuple(
-            ProjectedEntry(entry.slot, entry.entry_id, entry.title, entry.discriminator, reason,
-                           entry.rank, entry.state_change_seq, entry.identity, stale=True)
+            ProjectedEntry(entry.slot, entry.entry_id, entry.title, entry.discriminator, entry.since, entry.age,
+                           reason, entry.rank, entry.state_change_seq, entry.identity, stale=True)
             if entry.identity is not None else ProjectedEntry.empty(entry.slot, reason)
             for entry in self._last_entries
         )

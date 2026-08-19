@@ -117,10 +117,14 @@ void drawInnerGlyph(LGFX_Sprite& sprite, TileState state, uint16_t color) {
 }
 
 void drawBezelTicks(LGFX_Sprite& sprite, uint16_t color) {
-  sprite.fillRect(4, 4, 6, 6, color);
-  sprite.fillRect(118, 4, 6, 6, color);
-  sprite.fillRect(4, 118, 6, 6, color);
-  sprite.fillRect(118, 118, 6, 6, color);
+  sprite.drawLine(4, 4, 10, 4, color);
+  sprite.drawLine(4, 4, 4, 10, color);
+  sprite.drawLine(117, 4, 123, 4, color);
+  sprite.drawLine(123, 4, 123, 10, color);
+  sprite.drawLine(4, 117, 4, 123, color);
+  sprite.drawLine(4, 123, 10, 123, color);
+  sprite.drawLine(117, 123, 123, 123, color);
+  sprite.drawLine(123, 117, 123, 123, color);
 }
 
 class InstrumentTheme final : public ThemeRenderer {
@@ -142,7 +146,7 @@ class InstrumentTheme final : public ThemeRenderer {
       drawStateRing(sprite, TileState::Empty, kEmptyEdge);
       drawInnerGlyph(sprite, TileState::Empty, kEmptyEdge);
       sprite.setTextColor(kMetadata, kBackground);
-      sprite.drawString("NO AGENT", 34, 112);
+      sprite.drawString("NO AGENT", 34, 89);
       return;
     }
 
@@ -151,24 +155,31 @@ class InstrumentTheme final : public ThemeRenderer {
     sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
     sprite.drawString(row, 22, 5);
 
-    // Ring: feedback recolors the ring (cyan-dashed pending, lime success,
-    // red cause); resting uses the per-state stroke style.
+    // Ring: feedback replaces the inner glyph with its own bounded primitive.
     if (feedback != nullptr) {
       if (tile.feedback == TileFeedback::Pending) {
-        drawStateRing(sprite, TileState::Blocked, feedback->color);  // dashed cyan
+        drawStateRing(sprite, TileState::Blocked, feedback->color);
+        sprite.drawCircle(kCx, kCy, 12, feedback->color);
+        sprite.fillCircle(kCx, kCy - 12, 2, feedback->color);
+      } else if (tile.feedback == TileFeedback::Success) {
+        drawStateRing(sprite, TileState::Working, feedback->color);
+        sprite.drawLine(kCx - 10, kCy, kCx - 3, kCy + 8, feedback->color);
+        sprite.drawLine(kCx - 3, kCy + 8, kCx + 12, kCy - 9, feedback->color);
       } else {
-        drawStateRing(sprite, TileState::Working, feedback->color);  // solid recolor
+        drawStateRing(sprite, TileState::Working, feedback->color);
+        sprite.drawLine(kCx - 10, kCy - 10, kCx + 10, kCy + 10, feedback->color);
+        sprite.drawLine(kCx + 10, kCy - 10, kCx - 10, kCy + 10, feedback->color);
       }
-      drawInnerGlyph(sprite, tile.state, dim565(content));
     } else {
       const bool low = tile.state == TileState::Blocked && !state.blocked_pulse_high;
       drawStateRing(sprite, tile.state, low ? dim565(content) : content);
       drawInnerGlyph(sprite, tile.state, content);
     }
 
-    // State line y:89 — fused word · since; feedback reason on meta line.
+    // State line y:89 — word plus verbatim since; feedback reason on meta line.
     sprite.setTextColor(feedback != nullptr ? feedback->color : content, kBackground);
     sprite.drawString(feedback != nullptr ? feedback->word : base.word, 22, 89);
+    if (feedback == nullptr) sprite.drawString(tile.since, 88, 89);
     if (fence != nullptr) {
       sprite.setTextColor(kDestructive, kBackground);
       sprite.drawString(fence, 22, 100);

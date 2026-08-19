@@ -40,6 +40,37 @@ void drawStateUnderline(LGFX_Sprite& sprite, TileState state, int32_t x, int32_t
       break;  // BLOCKED handled by inversion band; empty draws none.
   }
 }
+void drawLedgerGlyph(LGFX_Sprite& sprite, TileState state, int32_t cx, int32_t cy, uint16_t color) {
+  switch (state) {
+    case TileState::Blocked:
+      sprite.drawLine(cx - 7, cy - 7, cx + 7, cy + 7, color);
+      sprite.drawLine(cx + 7, cy - 7, cx - 7, cy + 7, color);
+      break;
+    case TileState::Unseen:
+      sprite.fillCircle(cx, cy, 6, color);
+      break;
+    case TileState::Working:
+      sprite.drawLine(cx - 5, cy - 7, cx - 5, cy + 7, color);
+      sprite.drawLine(cx - 5, cy - 7, cx + 7, cy, color);
+      sprite.drawLine(cx + 7, cy, cx - 5, cy + 7, color);
+      break;
+    case TileState::Idle:
+      sprite.drawCircle(cx, cy, 6, color);
+      break;
+    case TileState::Settled:
+      sprite.drawLine(cx - 6, cy - 6, cx - 6, cy + 6, color);
+      sprite.drawLine(cx - 6, cy - 6, cx + 6, cy - 6, color);
+      break;
+    case TileState::Unknown:
+      sprite.drawCircle(cx, cy - 3, 4, color);
+      sprite.fillRect(cx - 1, cy + 2, 2, 4, color);
+      sprite.fillCircle(cx, cy + 8, 1, color);
+      break;
+    default:
+      sprite.fillRect(cx - 6, cy - 1, 12, 2, color);
+      break;
+  }
+}
 
 class LedgerTheme final : public ThemeRenderer {
  public:
@@ -63,7 +94,6 @@ class LedgerTheme final : public ThemeRenderer {
       sprite.setTextColor(kBackground, feedback->color);
       sprite.drawString(feedback->word, 6, 7);
     } else if (fence != nullptr) {
-      // Persistent red band absorbing the discriminator.
       sprite.fillRect(0, 4, 128, 14, kDestructive);
       sprite.setTextColor(kBackground, kDestructive);
       sprite.drawString(fence, 6, 7);
@@ -71,14 +101,14 @@ class LedgerTheme final : public ThemeRenderer {
       ellipsize(row, 14, tile.discriminator);
       sprite.setTextColor(meta, kBackground);
       sprite.drawString(row, 6, 7);
+      sprite.drawString(tile.age, 100, 7);
     }
-    sprite.drawLine(4, 18, 124, 18, kSettled);  // hairline
+    sprite.drawLine(4, 18, 124, 18, kSettled);
 
     if (tile.state == TileState::Empty) {
       sprite.setTextColor(kMetadata, kBackground);
       sprite.drawString("SLOT EMPTY", 6, 56);
     } else {
-      // Two-row title y:22.
       char first[16] = {};
       ellipsize(first, 15, tile.title);
       const size_t length = strlen(tile.title);
@@ -90,26 +120,27 @@ class LedgerTheme final : public ThemeRenderer {
         row[0] = '\0';
       }
       sprite.setTextColor(ink, kBackground);
-      sprite.drawString(first, 6, 24);
-      if (row[0] != '\0') sprite.drawString(row, 6, 38);
+      sprite.drawString(first, 6, 22);
+      if (row[0] != '\0') sprite.drawString(row, 6, 36);
       if (detail_line_enabled) {
         sprite.setTextColor(meta, kBackground);
-        sprite.drawString("—", 6, 54);
+        sprite.drawString("-", 6, 52);
       }
 
-      // State row y:72..88.
       if (tile.state == TileState::Blocked && fence == nullptr) {
-        sprite.fillRect(0, 70, 128, 20, kBlocked);  // full-band inversion
+        sprite.fillRect(0, 70, 128, 20, kBlocked);
+        drawLedgerGlyph(sprite, tile.state, 16, 80, kBackground);
         sprite.setTextColor(kBackground, kBlocked);
-        sprite.drawString(base.word, 6, 76);
+        sprite.drawString(base.word, 30, 74);
       } else {
+        drawLedgerGlyph(sprite, tile.state, 16, 80, state_color);
         sprite.setTextColor(state_color, kBackground);
-        sprite.drawString(base.word, 6, 74);
-        drawStateUnderline(sprite, tile.state, 6, 86, 70, state_color);
+        sprite.drawString(base.word, 30, 74);
+        sprite.drawString(tile.since, 100, 74);
+        drawStateUnderline(sprite, tile.state, 30, 86, 64, state_color);
       }
     }
 
-    // Footer y:116 — failure reason left, slot dots right.
     if (feedback != nullptr && tile.feedback != TileFeedback::Pending && tile.feedback != TileFeedback::Success) {
       sprite.setTextColor(feedback->color, kBackground);
       sprite.drawString(feedback->word, 6, 114);

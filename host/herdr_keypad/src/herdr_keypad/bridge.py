@@ -70,6 +70,8 @@ class AgentEntry:
     entry_id: str
     title: str
     discriminator: str
+    since: str
+    age: str
     state: str
     identity: Identity = field(default_factory=Identity)
 
@@ -79,6 +81,8 @@ class AgentEntry:
             "entry_id": self.entry_id,
             "title": self.title,
             "discriminator": self.discriminator,
+            "since": self.since,
+            "age": self.age,
             "state": self.state,
             **self.identity.as_payload(),
         }
@@ -217,7 +221,7 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
         for agent in agents:
             if not isinstance(agent, dict):
                 raise V2ProtocolError("invalid_shape", "agent slot must be an object")
-            required = {"slot", "entry_id", "title", "discriminator", "state", "pane_id", "terminal_id", "agent_session", "source_revision"}
+            required = {"slot", "entry_id", "title", "discriminator", "since", "age", "state", "pane_id", "terminal_id", "agent_session", "source_revision"}
             if set(agent) != required:
                 raise V2ProtocolError("unknown_field", "agent slot is closed")
             slot = agent["slot"]
@@ -231,6 +235,8 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
             _opaque(agent["entry_id"], "entry_id", allow_empty=empty)
             _bounded_text(agent["title"], "title", 64)
             _bounded_text(agent["discriminator"], "discriminator", 32)
+            _bounded_text(agent["since"], "since", 16, allow_empty=True)
+            _bounded_text(agent["age"], "age", 16, allow_empty=True)
             _identity(agent, empty=empty)
         if seen != set(range(MAX_SLOTS)):
             raise V2ProtocolError("invalid_shape", "agent slots must be 0, 1, and 2")
@@ -334,11 +340,13 @@ def make_snapshot(*, host_epoch: str | None = None, revision: int = 1, state: st
         "w19:p1",
         "Phase2",
         "fixture",
+        "7m",
+        "4h",
         state,
         Identity("w19:p1", "term_6593907102c45d", None, 1),
     )
-    empty = AgentEntry(1, "", "NO AGENT", "EMPTY", "empty", Identity())
-    empty2 = AgentEntry(2, "", "NO AGENT", "EMPTY", "empty", Identity())
+    empty = AgentEntry(1, "", "NO AGENT", "EMPTY", "", "", "empty", Identity())
+    empty2 = AgentEntry(2, "", "NO AGENT", "EMPTY", "", "", "empty", Identity())
     return Snapshot(epoch, revision, "current", (occupied, empty, empty2))
 
 
@@ -445,8 +453,6 @@ def _wire_focus_result(intent: FocusIntent, outcome: Any) -> FocusResult:
         wire_outcome == "accepted" and bool(getattr(outcome, "success", False)),
         str(getattr(outcome, "reason", ""))[:64],
     )
-
-
 def _projection_payload(snapshot: Any) -> dict[str, Any]:
     """Translate the production normalized projection to the v2 wire shape."""
     agents = []
@@ -458,6 +464,8 @@ def _projection_payload(snapshot: Any) -> dict[str, Any]:
                 "entry_id": entry.entry_id,
                 "title": entry.title,
                 "discriminator": entry.discriminator,
+                "since": entry.since,
+                "age": entry.age,
                 "state": entry.state,
                 "pane_id": identity.pane_id if identity else "",
                 "terminal_id": identity.terminal_id if identity else "",

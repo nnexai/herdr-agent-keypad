@@ -31,6 +31,8 @@ struct RenderState {
     bool occupied = false;
     const char* title = "";
     const char* discriminator = "";
+    const char* since = "";
+    const char* age = "";
     TileState state = TileState::Empty;
     TileFeedback feedback = TileFeedback::Disabled;
   };
