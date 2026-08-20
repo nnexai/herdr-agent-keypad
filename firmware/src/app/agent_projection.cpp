@@ -9,8 +9,27 @@
 namespace {
 constexpr const char* kSourceStatuses[] = {"current", "empty", "stale", "unavailable", "offline"};
 constexpr const char* kStates[] = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"};
+constexpr const char* kLinkStates[] = {"current", "offline"};
 constexpr const char* kCodexStates[] = {"current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"};
 constexpr uint16_t kBackground = 0x0862;  // #0B0F14
+bool validErrorCode(const char* value) {
+  if (value == nullptr || value[0] == '\0') return value != nullptr;
+  if (strlen(value) != 6 || value[0] != 'E' || value[1] != '-') return false;
+  uint32_t code = 0;
+  for (uint8_t index = 2; index < 6; ++index) {
+    if (value[index] < '0' || value[index] > '9') return false;
+    code = code * 10U + static_cast<uint32_t>(value[index] - '0');
+  }
+  return code >= 2400 && code <= 2410;
+}
+bool validSuffix(const char* value) {
+  if (value == nullptr || value[0] == '\0' || strlen(value) > 6) return false;
+  for (size_t index = 0; value[index] != '\0'; ++index) {
+    const char c = value[index];
+    if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return false;
+  }
+  return true;
+}
 
 LGFX_Sprite g_composition;
 bool g_composition_ready = false;
@@ -151,60 +170,101 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
   const char* source_status = payload["source_status"].as<const char*>();
   const uint32_t revision = payload["snapshot_revision"].as<uint32_t>();
   JsonArrayConst agents = payload["agents"].as<JsonArrayConst>();
-  if (!copyBounded(staged_.host_epoch, sizeof(staged_.host_epoch), epoch, false) ||
-      !copyBounded(staged_.source_status, sizeof(staged_.source_status), source_status, false) ||
+  JsonObjectConst codex = payload["codex"].as<JsonObjectConst>();
+  JsonObjectConst diagnostics = payload["diagnostics"].as<JsonObjectConst>();
+  Generation candidate{};
+  if (!copyBounded(candidate.host_epoch, sizeof(candidate.host_epoch), epoch, false) ||
+      !copyBounded(candidate.source_status, sizeof(candidate.source_status), source_status, false) ||
       !listed(source_status, kSourceStatuses, sizeof(kSourceStatuses) / sizeof(kSourceStatuses[0])) ||
-      revision == 0 || agents.isNull() || agents.size() != kSlotCount) {
+      revision == 0 || agents.isNull() || agents.size() != kSlotCount || codex.isNull() || diagnostics.isNull()) {
     staged_valid_ = false;
     return false;
   }
-  if (committed_ && strcmp(committed_generation_.host_epoch, staged_.host_epoch) == 0 &&
+  if (committed_ && strcmp(committed_generation_.host_epoch, candidate.host_epoch) == 0 &&
       revision <= committed_generation_.snapshot_revision) {
     staged_valid_ = false;
     return false;
   }
-  staged_.snapshot_revision = revision;
-  staged_.codex_source_state[0] = '\0';
-  copyBounded(staged_.codex_source_state, sizeof(staged_.codex_source_state), "unavailable", false);
-  staged_.codex_primary = -1;
-  staged_.codex_secondary = -1;
-  copyBounded(staged_.codex_reset_text, sizeof(staged_.codex_reset_text), "RESET N/A", false);
-  copyBounded(staged_.codex_observation_age, sizeof(staged_.codex_observation_age), "AGE N/A", false);
-  staged_.codex_reached_limit = -1;
-  staged_.codex_error_code[0] = '\0';
-  JsonObjectConst codex = payload["codex"].as<JsonObjectConst>();
-  if (!codex.isNull()) {
-    const char* codex_state = codex["source_state"].as<const char*>();
-    const char* error_code = codex["error_code"].as<const char*>();
-    if (!codex_state || !listed(codex_state, kCodexStates, sizeof(kCodexStates) / sizeof(kCodexStates[0])) ||
-        !copyBounded(staged_.codex_source_state, sizeof(staged_.codex_source_state), codex_state, false) ||
-        !copyDisplay(staged_.codex_reset_text, sizeof(staged_.codex_reset_text), codex["reset_text"].as<const char*>(), "RESET N/A") ||
-        !copyDisplay(staged_.codex_observation_age, sizeof(staged_.codex_observation_age), codex["observation_age"].as<const char*>(), "AGE N/A") ||
-        (error_code != nullptr && error_code[0] != '\0' && !copyBounded(staged_.codex_error_code, sizeof(staged_.codex_error_code), error_code, false))) {
-      staged_valid_ = false;
-      return false;
-    }
-    for (int16_t* target : {&staged_.codex_primary, &staged_.codex_secondary}) {
-      const char* key = target == &staged_.codex_primary ? "primary" : "secondary";
-      JsonVariantConst value = codex[key];
-      if (!value.isNull()) {
-        const int16_t percent = value.as<int16_t>();
-        if (value.is<bool>() || percent < 0 || percent > 100) {
-          staged_valid_ = false;
-          return false;
-        }
-        *target = percent;
-      }
-    }
-    JsonVariantConst reached = codex["reached_limit"];
-    if (!reached.isNull()) {
-      if (!reached.is<bool>()) {
+  candidate.snapshot_revision = revision;
+
+  const char* codex_state = codex["source_state"].as<const char*>();
+  const char* codex_error = codex["error_code"].as<const char*>();
+  if (!codex_state || !listed(codex_state, kCodexStates, sizeof(kCodexStates) / sizeof(kCodexStates[0])) ||
+      !copyBounded(candidate.codex_source_state, sizeof(candidate.codex_source_state), codex_state, false) ||
+      !copyBounded(candidate.codex_reset_text, sizeof(candidate.codex_reset_text), codex["reset_text"].as<const char*>(), false) ||
+      !copyBounded(candidate.codex_observation_age, sizeof(candidate.codex_observation_age), codex["observation_age"].as<const char*>(), false) ||
+      !codex_error || !copyBounded(candidate.codex_error_code, sizeof(candidate.codex_error_code), codex_error, true) ||
+      !validErrorCode(candidate.codex_error_code)) {
+    staged_valid_ = false;
+    return false;
+  }
+  for (int16_t* target : {&candidate.codex_primary, &candidate.codex_secondary}) {
+    const char* key = target == &candidate.codex_primary ? "primary" : "secondary";
+    JsonVariantConst value = codex[key];
+    if (!value.isNull()) {
+      if (!value.is<int>() || value.is<bool>()) {
         staged_valid_ = false;
         return false;
       }
-      staged_.codex_reached_limit = reached.as<bool>() ? 1 : 0;
+      const int16_t percent = value.as<int16_t>();
+      if (percent < 0 || percent > 100) {
+        staged_valid_ = false;
+        return false;
+      }
+      *target = percent;
     }
   }
+  JsonVariantConst reached = codex["reached_limit"];
+  if (!reached.isNull()) {
+    if (!reached.is<bool>()) {
+      staged_valid_ = false;
+      return false;
+    }
+    candidate.codex_reached_limit = reached.as<bool>() ? 1 : 0;
+  }
+  if (strcmp(candidate.codex_error_code, "E-2401") == 0 &&
+      (strcmp(candidate.codex_source_state, "unavailable") != 0 || candidate.codex_primary >= 0 ||
+       candidate.codex_secondary >= 0 || strcmp(candidate.codex_reset_text, "RESET N/A") != 0 ||
+       candidate.codex_reached_limit >= 0)) {
+    staged_valid_ = false;
+    return false;
+  }
+
+  const char* link_status = diagnostics["link_status"].as<const char*>();
+  const char* herdr_status = diagnostics["herdr_status"].as<const char*>();
+  const char* diagnostics_codex_status = diagnostics["codex_status"].as<const char*>();
+  if (!link_status || !listed(link_status, kLinkStates, sizeof(kLinkStates) / sizeof(kLinkStates[0])) ||
+      !copyBounded(candidate.diagnostics_link_status, sizeof(candidate.diagnostics_link_status), link_status, false) ||
+      !herdr_status || !listed(herdr_status, kSourceStatuses, sizeof(kSourceStatuses) / sizeof(kSourceStatuses[0])) ||
+      !copyBounded(candidate.diagnostics_herdr_status, sizeof(candidate.diagnostics_herdr_status), herdr_status, false) ||
+      !diagnostics_codex_status || !listed(diagnostics_codex_status, kCodexStates, sizeof(kCodexStates) / sizeof(kCodexStates[0])) ||
+      !copyBounded(candidate.diagnostics_codex_status, sizeof(candidate.diagnostics_codex_status), diagnostics_codex_status, false) ||
+      !copyBounded(candidate.diagnostics_sync_age, sizeof(candidate.diagnostics_sync_age), diagnostics["sync_age"].as<const char*>(), false) ||
+      !copyBounded(candidate.diagnostics_codex_age, sizeof(candidate.diagnostics_codex_age), diagnostics["codex_age"].as<const char*>(), false) ||
+      !copyBounded(candidate.diagnostics_firmware_version, sizeof(candidate.diagnostics_firmware_version), diagnostics["firmware_version"].as<const char*>(), false) ||
+      !copyBounded(candidate.diagnostics_bridge_version, sizeof(candidate.diagnostics_bridge_version), diagnostics["bridge_version"].as<const char*>(), false) ||
+      !copyBounded(candidate.diagnostics_device_suffix, sizeof(candidate.diagnostics_device_suffix), diagnostics["device_suffix"].as<const char*>(), false) ||
+      !validSuffix(candidate.diagnostics_device_suffix) ||
+      !copyBounded(candidate.diagnostics_session_suffix, sizeof(candidate.diagnostics_session_suffix), diagnostics["session_suffix"].as<const char*>(), false) ||
+      !validSuffix(candidate.diagnostics_session_suffix) ||
+      !copyBounded(candidate.diagnostics_revision_suffix, sizeof(candidate.diagnostics_revision_suffix), diagnostics["revision_suffix"].as<const char*>(), false) ||
+      !validSuffix(candidate.diagnostics_revision_suffix)) {
+    staged_valid_ = false;
+    return false;
+  }
+  JsonVariantConst protocol_version = diagnostics["protocol_version"];
+  if (!protocol_version.is<int>() || protocol_version.is<bool>() || protocol_version.as<int>() != 2) {
+    staged_valid_ = false;
+    return false;
+  }
+  const char* diagnostics_error = diagnostics["error_code"].as<const char*>();
+  if (!diagnostics_error ||
+      !copyBounded(candidate.diagnostics_error_code, sizeof(candidate.diagnostics_error_code), diagnostics_error, true) ||
+      !validErrorCode(candidate.diagnostics_error_code)) {
+    staged_valid_ = false;
+    return false;
+  }
+
   bool seen[kSlotCount] = {};
   for (JsonObjectConst agent : agents) {
     const uint8_t slot = agent["slot"].as<uint8_t>();
@@ -212,7 +272,7 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
     seen[slot] = true;
     const char* state = agent["state"].as<const char*>();
     if (!listed(state, kStates, sizeof(kStates) / sizeof(kStates[0]))) { staged_valid_ = false; return false; }
-    Tile& tile = staged_.tiles[slot];
+    Tile& tile = candidate.tiles[slot];
     tile = Tile();
     tile.state = parseState(state);
     const bool empty = tile.state == TileState::Empty;
@@ -240,6 +300,7 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
     if (!tile.binding.occupied && tile.binding.source_revision != 0) { staged_valid_ = false; return false; }
   }
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) if (!seen[slot]) { staged_valid_ = false; return false; }
+  staged_ = candidate;
   staged_valid_ = true;
   return true;
 }
@@ -279,7 +340,6 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board) {
   // during the reveal window can never bind to mixed pixels.  Boot, session
   // reset, and any compose/flush failure keep the SYNC presentation.
   disableActive(nullptr);
-  committed_generation_ = staged_;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     if (!renderTile(board, slot, staged_.tiles[slot], Feedback::Disabled)) {
       staged_valid_ = false;
@@ -340,6 +400,18 @@ bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer, u
   state.codex.observation_age = committed_generation_.codex_observation_age;
   state.codex.reached_limit = committed_generation_.codex_reached_limit;
   state.codex.error_code = committed_generation_.codex_error_code;
+  state.diagnostics.link_status = committed_generation_.diagnostics_link_status;
+  state.diagnostics.herdr_status = committed_generation_.diagnostics_herdr_status;
+  state.diagnostics.codex_status = committed_generation_.diagnostics_codex_status;
+  state.diagnostics.sync_age = committed_generation_.diagnostics_sync_age;
+  state.diagnostics.codex_age = committed_generation_.diagnostics_codex_age;
+  state.diagnostics.firmware_version = committed_generation_.diagnostics_firmware_version;
+  state.diagnostics.protocol_version = committed_generation_.diagnostics_protocol_version;
+  state.diagnostics.bridge_version = committed_generation_.diagnostics_bridge_version;
+  state.diagnostics.device_suffix = committed_generation_.diagnostics_device_suffix;
+  state.diagnostics.session_suffix = committed_generation_.diagnostics_session_suffix;
+  state.diagnostics.revision_suffix = committed_generation_.diagnostics_revision_suffix;
+  state.diagnostics.error_code = committed_generation_.diagnostics_error_code;
   out.feedback = feedback;
   renderer.composeTile(g_composition, slot, state);
   g_composition.pushSprite(display, 0, 0);
@@ -483,6 +555,18 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
   state.codex.observation_age = committed_generation_.codex_observation_age;
   state.codex.reached_limit = committed_generation_.codex_reached_limit;
   state.codex.error_code = committed_generation_.codex_error_code;
+  state.diagnostics.link_status = committed_generation_.diagnostics_link_status;
+  state.diagnostics.herdr_status = committed_generation_.diagnostics_herdr_status;
+  state.diagnostics.codex_status = committed_generation_.diagnostics_codex_status;
+  state.diagnostics.sync_age = committed_generation_.diagnostics_sync_age;
+  state.diagnostics.codex_age = committed_generation_.diagnostics_codex_age;
+  state.diagnostics.firmware_version = committed_generation_.diagnostics_firmware_version;
+  state.diagnostics.protocol_version = committed_generation_.diagnostics_protocol_version;
+  state.diagnostics.bridge_version = committed_generation_.diagnostics_bridge_version;
+  state.diagnostics.device_suffix = committed_generation_.diagnostics_device_suffix;
+  state.diagnostics.session_suffix = committed_generation_.diagnostics_session_suffix;
+  state.diagnostics.revision_suffix = committed_generation_.diagnostics_revision_suffix;
+  state.diagnostics.error_code = committed_generation_.diagnostics_error_code;
   return state;
 }
 

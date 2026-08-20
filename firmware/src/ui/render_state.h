@@ -38,6 +38,21 @@ struct CodexRenderView {
   const char* error_code = "";
 };
 
+struct DiagnosticsRenderView {
+  const char* link_status = "offline";
+  const char* herdr_status = "unavailable";
+  const char* codex_status = "unavailable";
+  const char* sync_age = "AGE N/A";
+  const char* codex_age = "AGE N/A";
+  const char* firmware_version = "UNAVAL";
+  uint8_t protocol_version = 2;
+  const char* bridge_version = "UNAVAL";
+  const char* device_suffix = "UNAVAL";
+  const char* session_suffix = "UNAVAL";
+  const char* revision_suffix = "UNAVAL";
+  const char* error_code = "";
+};
+
 struct RenderState {
   static constexpr uint8_t kSlotCount = 3;
 
@@ -51,6 +66,7 @@ struct RenderState {
     TileFeedback feedback = TileFeedback::Disabled;
   };
   CodexRenderView codex;
+  DiagnosticsRenderView diagnostics;
 
   Slot slots[kSlotCount];
   const char* source_status = "";

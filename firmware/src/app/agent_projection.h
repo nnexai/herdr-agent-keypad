@@ -121,8 +121,19 @@ class AgentProjection final {
     char codex_observation_age[17] = "AGE N/A";
     int8_t codex_reached_limit = -1;
     char codex_error_code[17] = {};
+    char diagnostics_link_status[16] = "offline";
+    char diagnostics_herdr_status[16] = "unavailable";
+    char diagnostics_codex_status[20] = "unavailable";
+    char diagnostics_sync_age[17] = "AGE N/A";
+    char diagnostics_codex_age[17] = "AGE N/A";
+    char diagnostics_firmware_version[17] = "UNAVAL";
+    uint8_t diagnostics_protocol_version = 2;
+    char diagnostics_bridge_version[17] = "UNAVAL";
+    char diagnostics_device_suffix[7] = "UNAVAL";
+    char diagnostics_session_suffix[7] = "UNAVAL";
+    char diagnostics_revision_suffix[7] = "UNAVAL";
+    char diagnostics_error_code[17] = {};
   };
-
   bool copyBounded(char* destination, size_t capacity, const char* source, bool allow_empty) const;
   bool copyOptional(char* destination, size_t capacity, JsonVariantConst value, bool& present) const;
   bool copyDisplay(char* destination, size_t capacity, const char* source, const char* fallback) const;
