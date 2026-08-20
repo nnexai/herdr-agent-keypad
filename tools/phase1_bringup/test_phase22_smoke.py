@@ -50,3 +50,37 @@ def test_vocabulary_is_explicit() -> None:
     assert len(STATES) == 7
     assert len(FENCES) == 3
     assert fnv1a64(b"") == "cbf29ce484222325"
+
+
+class FragmentedConnection:
+    def __init__(self, chunks: list[bytes]) -> None:
+        self.chunks = iter(chunks)
+
+    def readline(self) -> bytes:
+        return next(self.chunks, b"")
+
+
+def test_focus_intent_survives_fragmented_usb_line() -> None:
+    from phase1_bringup.phase22_smoke import DeviceSession, encode_frame
+
+    frame = encode_frame(
+        "focus_intent",
+        "device-boot",
+        "host-session",
+        1,
+        {
+            "action_id": "action-1",
+            "agent_session": None,
+            "entry_id": "entry-1",
+            "host_epoch": "epoch-1",
+            "pane_id": "pane-1",
+            "slot": 0,
+            "snapshot_revision": 1,
+            "source_revision": 1,
+            "terminal_id": "terminal-1",
+        },
+    )
+    split = len(frame) // 2
+    session = DeviceSession(FragmentedConnection([frame[:split], frame[split:]]), timeout=0.05)
+
+    assert session.wait_for_type("focus_intent", 0.05)["type"] == "focus_intent"

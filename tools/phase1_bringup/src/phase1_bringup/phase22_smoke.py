@@ -62,6 +62,8 @@ def snapshot_payload(revision: int, *, source_status: str = "current",
             "entry_id": f"phase22-entry-{slot}" if occupied else "",
             "title": f"Phase22 Agent {slot + 1}" if occupied else "NO AGENT",
             "discriminator": f"repo-{slot + 1}" if occupied else "NO WORKSPACE",
+            "since": "7m" if occupied else "",
+            "age": "4h" if occupied else "",
             "state": state,
             "pane_id": f"phase22-pane-{slot}" if occupied else "",
             "terminal_id": f"phase22-terminal-{slot}" if occupied else "",
@@ -143,19 +145,27 @@ class DeviceSession:
         self.boot_id = "host-boot"
         self.session_id = "host-session-" + secrets.token_hex(6)
         self.sequence = 0
+        self._rx_buffer = bytearray()
 
     def _read_frame(self, deadline: float) -> dict[str, Any]:
         while time.monotonic() < deadline:
-            line = self.connection.readline()
-            if not line:
+            newline = self._rx_buffer.find(b"\n")
+            if newline >= 0:
+                line = bytes(self._rx_buffer[:newline])
+                del self._rx_buffer[:newline + 1]
+                try:
+                    frame = json.loads(line.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                if isinstance(frame, dict):
+                    return frame
                 continue
-            try:
-                frame = json.loads(line.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError):
+            chunk = self.connection.readline()
+            if not chunk:
                 continue
-            if isinstance(frame, dict):
-                return frame
+            self._rx_buffer.extend(chunk)
         raise TimeoutError("timed out waiting for keypad frame")
+
 
     def send(self, frame_type: str, payload: dict[str, Any], *, version: int = 2) -> int:
         self.sequence += 1
