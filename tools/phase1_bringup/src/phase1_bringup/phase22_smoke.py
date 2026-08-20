@@ -13,6 +13,7 @@ import json
 import secrets
 import sys
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, BinaryIO
@@ -52,7 +53,7 @@ def encode_frame(frame_type: str, boot_id: str, session_id: str, sequence: int,
     return (json.dumps(frame, separators=(",", ":"), ensure_ascii=True) + "\n").encode("utf-8")
 
 
-def snapshot_payload(revision: int, *, source_status: str = "current",
+def snapshot_payload(revision: int, host_epoch: str, *, source_status: str = "current",
                      states: tuple[str, str, str] = ("blocked", "working", "idle")) -> dict[str, Any]:
     agents: list[dict[str, Any]] = []
     for slot, state in enumerate(states):
@@ -71,7 +72,7 @@ def snapshot_payload(revision: int, *, source_status: str = "current",
             "source_revision": revision if occupied else 0,
         })
     return {
-        "host_epoch": "phase22-smoke-epoch",
+        "host_epoch": host_epoch,
         "snapshot_revision": revision,
         "source_status": source_status,
         "agents": agents,
@@ -146,6 +147,7 @@ class DeviceSession:
         self.session_id = "host-session-" + secrets.token_hex(6)
         self.sequence = 0
         self._rx_buffer = bytearray()
+        self._pending_focus_intents: deque[dict[str, Any]] = deque(maxlen=16)
 
     def _read_frame(self, deadline: float) -> dict[str, Any]:
         while time.monotonic() < deadline:
@@ -167,17 +169,27 @@ class DeviceSession:
         raise TimeoutError("timed out waiting for keypad frame")
 
 
+    def discard_pending_input(self) -> None:
+        self._rx_buffer.clear()
+        self._pending_focus_intents.clear()
+        self.connection.reset_input_buffer()
+
+
     def send(self, frame_type: str, payload: dict[str, Any], *, version: int = 2) -> int:
         self.sequence += 1
         self.connection.write(encode_frame(frame_type, self.boot_id, self.session_id, self.sequence, payload, version=version))
         return self.sequence
 
     def wait_for_type(self, frame_type: str, timeout: float) -> dict[str, Any]:
+        if frame_type == "focus_intent" and self._pending_focus_intents:
+            return self._pending_focus_intents.popleft()
         deadline = time.monotonic() + timeout
         while True:
             frame = self._read_frame(deadline)
             if frame.get("type") == frame_type:
                 return frame
+            if frame.get("type") == "focus_intent":
+                self._pending_focus_intents.append(frame)
 
     def request(self, frame_type: str, payload: dict[str, Any], *, version: int = 2) -> dict[str, Any]:
         sequence = self.send(frame_type, payload, version=version)
@@ -188,6 +200,8 @@ class DeviceSession:
                 if frame.get("type") == "error":
                     raise RuntimeError(f"device rejected {frame_type}: {frame.get('payload')}")
                 return frame
+            if frame.get("type") == "focus_intent":
+                self._pending_focus_intents.append(frame)
 
     def hello(self) -> dict[str, Any]:
         response = self.request("hello", {"device_id": "phase22-smoke", "firmware": "phase22-smoke", "protocol": 1}, version=1)
@@ -240,21 +254,30 @@ def _run_device(port: str, output: Path, evidence: SmokeEvidence) -> int:
         session = DeviceSession(connection)
         hello = session.hello()
         evidence.machine_facts["hello_ack"] = hello.get("payload", {})
+        host_epoch = "phase22-smoke-" + secrets.token_hex(8)
         revision = 1
         for state in STATES:
-            response = session.request("agent_snapshot", snapshot_payload(revision, states=(state, "empty", "empty")))
+            response = session.request(
+                "agent_snapshot",
+                snapshot_payload(revision, host_epoch, states=(state, "empty", "empty")),
+            )
             evidence.machine_facts[f"snapshot_{state}"] = response.get("payload", {})
             revision += 1
         for status in FENCES:
-            response = session.request("agent_snapshot", snapshot_payload(revision, source_status=status))
+            response = session.request(
+                "agent_snapshot",
+                snapshot_payload(revision, host_epoch, source_status=status),
+            )
             evidence.machine_facts[f"fence_{status}"] = response.get("payload", {})
             revision += 1
-        current = session.request("agent_snapshot", snapshot_payload(revision))
+        current = session.request("agent_snapshot", snapshot_payload(revision, host_epoch))
         evidence.machine_facts["current_snapshot"] = current.get("payload", {})
 
         print("\nFocus feedback: press the occupied KEY-1 when prompted.")
         for scenario, outcome, focused in (("success", "accepted", True), ("failure", "rejected", False), ("uncertain", None, False)):
-            input(f"Press ENTER, then press KEY-1 for the {scenario} scenario...")
+            input(f"Press ENTER when ready to arm the {scenario} scenario...")
+            session.discard_pending_input()
+            print(f"ARMED: press KEY-1 once for the {scenario} scenario.", flush=True)
             intent = session.wait_for_type("focus_intent", 10.0)
             payload = dict(intent.get("payload", {}))
             if outcome is not None:
