@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 02.2
-current_phase_name: firmware-themes-led-bars-and-device-selection-menu
-status: executing
+current_phase: 03
+current_phase_name: Truthful Codex Capacity and Device Menu
+status: planning
 stopped_at: Completed 02.2-05-PLAN.md under explicit deferred fallback waiver; Phase 02.2 awaits verification
-last_updated: "2026-08-20T15:48:33.819Z"
+last_updated: "2026-08-20T16:38:57.124Z"
 last_activity: 2026-08-20
 last_activity_desc: Plan 05 exact-device evidence accepted with the fresh-erase/settings fallback explicitly deferred and ledgered
 progress:
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 ## Current Position
 
-Phase: 02.2 (firmware-themes-led-bars-and-device-selection-menu) — EXECUTING
-Plan: 5 of 5
-Status: Plan 05 complete under explicit deferred fallback waiver; Phase 02.2 awaits verification
-Last activity: 2026-08-20 — Plan 05 closeout recorded accepted-with-deferred evidence; fallback physical proof remains open
+Phase: 03 — Truthful Codex Capacity and Device Menu
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-08-20 — Phase 02.2 complete, transitioned to Phase 03
 
 Progress: [██████████] 100%
 
@@ -38,7 +38,7 @@ Progress: [██████████] 100%
 
 **Velocity:**
 
-- Total plans completed: 1
+- Total plans completed: 6
 - Average duration: 14 min
 - Total execution time: 0.2 hours
 
@@ -47,6 +47,7 @@ Progress: [██████████] 100%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 1 | 8 | 14 min |
+| 02.2 | 5 | - | - |
 
 **Recent Trend:**
 
