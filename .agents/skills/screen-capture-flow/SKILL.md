@@ -68,7 +68,7 @@ The bridge may be restarted after capture or upload. Never select the first arbi
      tools/capture_panel.py 0 artifacts/phase2/panel-1.ppm
    ```
 
-   The utility sends the bounded `probe` stimulus `CAPTURE:N`, waits for `probe_ack`, validates the `SCREENSHOT-RGB565\n` marker, reads exactly `128 × 128 × 2` bytes, and writes both PPM and a `.rgb565` sidecar.
+   The utility sends the bounded `probe` stimulus `CAPTURE:N` for a live capture or the extended deterministic fixture form when `--theme` / `--scene` is present. It waits for `probe_ack`, validates the `SCREENSHOT-RGB565\n` marker, reads exactly `128 × 128 × 2` bytes, and writes both PPM and a `.rgb565` sidecar.
 
 4. Convert and inspect the capture:
 
@@ -97,6 +97,22 @@ The bridge may be restarted after capture or upload. Never select the first arbi
      '[0:v][1:v][2:v][3:v]xstack=inputs=4:layout=0_0|128_0|0_128|128_128' \
      -frames:v 1 artifacts/phase2/panels-contact.png
    ```
+
+## Deterministic Scene Capture
+
+Use the on-device fixture renderer to inspect every theme and semantic state without changing NVS, the active theme, inbox bindings, or host data:
+
+```bash
+tools/phase1_bringup/.venv/bin/python3 tools/capture_panel.py \
+  0 artifacts/phase2/beacon-blocked.ppm \
+  --theme beacon --scene blocked
+
+tools/phase1_bringup/.venv/bin/python3 tools/capture_panel.py \
+  3 artifacts/phase2/instrument-menu.ppm \
+  --theme instrument --scene menu-led
+```
+
+`--theme` selects one of the four renderers. `--scene` selects a resting state, source fence, feedback state, sync screen, or menu row; use `tools/capture_panel.py --help` for the exact current choices. Capture menu scenes from panel `3`; capture tile scenes from panel `0`–`2`. The fixture uses long bounded title, discriminator, and time values so clipping and overlap failures remain visible.
 
 ## Pixel Interpretation
 

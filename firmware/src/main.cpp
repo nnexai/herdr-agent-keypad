@@ -37,6 +37,7 @@ AgentProjection agentProjection;
 SettingsStore settingsStore;
 MenuController menuController(settingsStore);
 LedEngine ledEngine;
+ThemeId presentedTheme = ThemeId::SignalEdge;
 UsbCdcLink usbLink;
 ProofMetrics proofMetrics;
 phase1::protocol::ProtocolSession protocolSession("", "", phase1::protocol::kQueueCapacity);
@@ -254,6 +255,47 @@ void completeAdmission() {
   protocolSession.complete();
   proofMetrics.observeQueue(protocolSession.pending_count());
 }
+
+bool parseCaptureRequest(const char* stimulus, uint8_t& panel, ThemeRenderer*& renderer,
+                         CaptureScene& scene) {
+  renderer = nullptr;
+  scene = CaptureScene::Current;
+  if (stimulus == nullptr || strncmp(stimulus, "CAPTURE:", 8) != 0 ||
+      stimulus[8] < '0' || stimulus[8] > '3') {
+    return false;
+  }
+  panel = static_cast<uint8_t>(stimulus[8] - '0');
+  if (stimulus[9] == '\0') return true;
+  if (stimulus[9] != ':' || stimulus[10] < '0' || stimulus[10] > '3' ||
+      stimulus[11] != ':' || stimulus[12] == '\0' || stimulus[13] != '\0') {
+    return false;
+  }
+  renderer = &themeById(static_cast<ThemeId>(stimulus[10] - '0'));
+  switch (stimulus[12]) {
+    case 'C': scene = CaptureScene::Current; break;
+    case 'B': scene = CaptureScene::Blocked; break;
+    case 'U': scene = CaptureScene::Unseen; break;
+    case 'W': scene = CaptureScene::Working; break;
+    case 'I': scene = CaptureScene::Idle; break;
+    case 'S': scene = CaptureScene::Settled; break;
+    case 'Q': scene = CaptureScene::Unknown; break;
+    case 'E': scene = CaptureScene::Empty; break;
+    case 'T': scene = CaptureScene::Stale; break;
+    case 'O': scene = CaptureScene::Offline; break;
+    case 'A': scene = CaptureScene::Unavailable; break;
+    case 'P': scene = CaptureScene::Pending; break;
+    case 'F': scene = CaptureScene::Focused; break;
+    case 'R': scene = CaptureScene::Rejected; break;
+    case 'V': scene = CaptureScene::Vanished; break;
+    case 'N': scene = CaptureScene::Uncertain; break;
+    case 'X': scene = CaptureScene::Failed; break;
+    case 'Y': scene = CaptureScene::Sync; break;
+    case 'M': scene = CaptureScene::MenuTheme; break;
+    case 'L': scene = CaptureScene::MenuLed; break;
+    default: return false;
+  }
+  return true;
+}
 bool streamCapturedPanel() {
   static constexpr size_t kPixelBytes = 128U * 128U * sizeof(uint16_t);
   static constexpr size_t kChunkBytes = 1024U;
@@ -362,10 +404,11 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
       completeAdmission();
       return;
     }
-    if (stimulus != nullptr && strncmp(stimulus, "CAPTURE:", 8) == 0 &&
-        stimulus[8] >= '0' && stimulus[8] <= '3' && stimulus[9] == '\0') {
-      const uint8_t capturePanel = static_cast<uint8_t>(stimulus[8] - '0');
-      if (!agentProjection.capturePanel(capturePanel)) {
+    uint8_t capturePanel = 0;
+    ThemeRenderer* captureTheme = nullptr;
+    CaptureScene captureScene = CaptureScene::Current;
+    if (parseCaptureRequest(stimulus, capturePanel, captureTheme, captureScene)) {
+      if (!agentProjection.capturePanel(capturePanel, captureTheme, captureScene)) {
         sendError("capture_failed", "panel composition unavailable", admission.frame.sequence);
         completeAdmission();
         return;
@@ -447,7 +490,7 @@ void reportEncoderTransition(const char *direction) {
 void reportAgentKey() {
   if (!agentProjection.committed() || !board.ready()) return;
   for (uint8_t key = 0; key < AgentProjection::kSlotCount; ++key) {
-    if (!board.wasPressed(key)) continue;
+    if (!board.consumePressed(key)) continue;
     char actionId[32] = {};
     std::snprintf(actionId, sizeof(actionId), "device-%lu", static_cast<unsigned long>(micros()));
     JsonDocument intent;
@@ -461,7 +504,7 @@ void reportAgentKey() {
 void reportInput() {
   if (!board.ready() || armedInput == ArmedInput::None || activeStep.isEmpty()) return;
   if (armedInput == ArmedInput::Key) {
-    if (board.wasPressed(expectedKey)) {
+    if (board.consumePressed(expectedKey)) {
       reportKeyTransition(expectedKey);
       armedInput = ArmedInput::None;
     }
@@ -476,7 +519,7 @@ void reportInput() {
       reportEncoderTransition("ccw");
       armedInput = ArmedInput::None;
     }
-  } else if (armedInput == ArmedInput::EncoderClick && board.wasPressed(expectedKey)) {
+  } else if (armedInput == ArmedInput::EncoderClick && board.consumePressed(expectedKey)) {
     reportKeyTransition(expectedKey);
     armedInput = ArmedInput::None;
   }
@@ -485,16 +528,20 @@ void reportInput() {
 void refreshMenuPresentation() {
   if (!menuController.takeDirty()) return;
   const ThemeId stored_theme = menuController.storedTheme();
+  const bool theme_changed = stored_theme != presentedTheme;
   agentProjection.setTheme(themeById(stored_theme));
   agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
   ledEngine.setGrammar(ledGrammarById(menuController.activeGrammar()));
+  if (theme_changed && (!agentProjection.committed() || agentProjection.redrawTiles(board))) {
+    presentedTheme = stored_theme;
+  }
   const bool theme_preview = menuController.editing() && menuController.state().cursor == 0;
   ThemeRenderer& menu_theme = themeById(theme_preview ? menuController.activeTheme() : stored_theme);
   agentProjection.renderMenu(board, menu_theme, menuController.state());
 }
 
 void pollMenu() {
-  if (board.wasPressed(4)) menuController.click();
+  if (board.consumePressed(4)) menuController.click();
   const long delta = board.encoderDelta();
   if (delta != 0) menuController.rotate(delta);
   refreshMenuPresentation();
@@ -508,6 +555,7 @@ void setup() {
   settingsStore.load();
   menuController.resetFromStore();
   agentProjection.setTheme(themeById(menuController.storedTheme()));
+  presentedTheme = menuController.storedTheme();
   agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
   ledEngine.setGrammar(ledGrammarById(menuController.storedGrammar()));
   deviceId = opaqueId();
@@ -525,6 +573,11 @@ void setup() {
 void loop() {
   const uint32_t now = micros();
   board.update();
+  // Consume physical agent edges immediately after the single hardware poll.
+  // USB snapshot admission and display/LED composition can be comparatively
+  // expensive; polling after those operations lets a quick press expire
+  // before ButtonSense sees the next update.
+  reportAgentKey();
   readFrames();
   if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
   lastKeyPollAt = now;
@@ -540,7 +593,6 @@ void loop() {
   LedEvents led_events;
   led_events.menu_open = menuController.open();
   ledEngine.render(agentProjection.renderState(now), led_events, now, board);
-  reportAgentKey();
   proofMetrics.sampleRuntime();
   delay(1);
 }

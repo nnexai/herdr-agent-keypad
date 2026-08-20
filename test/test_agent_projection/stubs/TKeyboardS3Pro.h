@@ -44,11 +44,33 @@ class LGFX_Sprite {
     }
     g_render_log.push_back(std::string("text:") + (value != nullptr ? value : ""));
   }
-  void drawRect(int32_t, int32_t, int32_t, int32_t, uint16_t) { g_render_log.push_back("drawRect"); }
-  void fillRect(int32_t, int32_t, int32_t, int32_t, uint16_t) { g_render_log.push_back("fillRect"); }
-  void drawLine(int32_t, int32_t, int32_t, int32_t, uint16_t) { g_render_log.push_back("drawLine"); }
-  void fillCircle(int32_t, int32_t, int32_t, uint16_t) { g_render_log.push_back("fillCircle"); }
-  void drawCircle(int32_t, int32_t, int32_t, uint16_t) { g_render_log.push_back("drawCircle"); }
+  void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t) {
+    g_render_log.push_back("drawRect:" + std::to_string(x) + ":" + std::to_string(y) + ":" +
+                           std::to_string(w) + ":" + std::to_string(h));
+  }
+  void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t) {
+    g_render_log.push_back("fillRect:" + std::to_string(x) + ":" + std::to_string(y) + ":" +
+                           std::to_string(w) + ":" + std::to_string(h));
+  }
+  void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint16_t) {
+    g_render_log.push_back("drawLine:" + std::to_string(x0) + ":" + std::to_string(y0) + ":" +
+                           std::to_string(x1) + ":" + std::to_string(y1));
+  }
+  void fillCircle(int32_t x, int32_t y, int32_t r, uint16_t) {
+    g_render_log.push_back("fillCircle:" + std::to_string(x) + ":" + std::to_string(y) + ":" +
+                           std::to_string(r));
+  }
+  void drawCircle(int32_t x, int32_t y, int32_t r, uint16_t) {
+    g_render_log.push_back("drawCircle:" + std::to_string(x) + ":" + std::to_string(y) + ":" +
+                           std::to_string(r));
+  }
+  void fillTriangle(int32_t x0, int32_t y0, int32_t x1, int32_t y1,
+                    int32_t x2, int32_t y2, uint16_t) {
+    g_render_log.push_back("fillTriangle:" + std::to_string(x0) + ":" + std::to_string(y0) + ":" +
+                           std::to_string(x1) + ":" + std::to_string(y1) + ":" +
+                           std::to_string(x2) + ":" + std::to_string(y2));
+  }
+  void drawPixel(int32_t, int32_t, uint16_t) {}
   void pushSprite(Display* display, int32_t, int32_t) {
     g_render_log.push_back("push:" + std::to_string(displayIndexOf(display)));
   }

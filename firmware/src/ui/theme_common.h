@@ -23,6 +23,11 @@ constexpr uint16_t kIdle = 0x9E6D;         // #9ECE6A
 constexpr uint16_t kSettled = 0x52F1;      // #565F89
 constexpr uint16_t kEmptyEdge = 0x21A9;    // #263648
 
+constexpr const char* kMenuHint = "TURN:SEL CLICK:CLOSE";
+constexpr int32_t kMenuHintX = 4;
+constexpr int32_t kSafeRight = 124;
+constexpr int32_t kGlyphCellWidth = 6;
+
 struct StateStyle {
   const char* word;
   uint16_t color;
@@ -112,6 +117,16 @@ inline void ellipsize(char* destination, size_t capacity, const char* source) {
     destination[budget - 2] = '.';
     destination[budget - 3] = '.';
   }
+}
+
+inline int32_t rightAlignedX(const char* text, int32_t right = kSafeRight) {
+  const size_t length = text != nullptr ? strlen(text) : 0;
+  return right - static_cast<int32_t>(length) * kGlyphCellWidth;
+}
+
+inline int32_t centeredX(const char* text) {
+  const size_t length = text != nullptr ? strlen(text) : 0;
+  return (128 - static_cast<int32_t>(length) * kGlyphCellWidth) / 2;
 }
 
 }  // namespace theme_common

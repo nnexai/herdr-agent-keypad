@@ -24,21 +24,32 @@ constexpr int32_t kCx = 64;
 constexpr int32_t kCy = 54;
 constexpr int32_t kRadius = 32;  // ⌀64
 
+static constexpr int8_t kRingPoints[][2] = {
+    {0, -32}, {12, -30}, {23, -23}, {30, -12},
+    {32, 0}, {30, 12}, {23, 23}, {12, 30},
+    {0, 32}, {-12, 30}, {-23, 23}, {-30, 12},
+    {-32, 0}, {-30, -12}, {-23, -23}, {-12, -30},
+};
+
 void drawGapMask(LGFX_Sprite& sprite, int32_t gap_count) {
-  // Punch background-colored radial gaps to create dashed/dotted strokes.
-  // Gap positions are fixed multiples around the ring; bounded op count.
-  static constexpr int8_t kOffsets[][2] = {
-      {0, -1}, {1, -1}, {1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1},
-  };
-  for (int32_t gap = 0; gap < gap_count && gap < 8; ++gap) {
-    const int32_t gx = kCx + kOffsets[gap][0] * kRadius;
-    const int32_t gy = kCy + kOffsets[gap][1] * kRadius;
-    sprite.fillRect(gx - 4, gy - 4, 9, 9, kBackground);
+  // Punch evenly spaced background gaps on the ring itself.
+  const int32_t step = 16 / gap_count;
+  for (int32_t gap = 0; gap < gap_count; ++gap) {
+    const int32_t point = gap * step;
+    const int32_t gx = kCx + kRingPoints[point][0];
+    const int32_t gy = kCy + kRingPoints[point][1];
+    sprite.fillRect(gx - 2, gy - 2, 5, 5, kBackground);
   }
 }
 
-// Stroke styles: solid(3px)=3 circles, thin(1.5px)=2 circles, dashed=heavy+8
-// gaps, double=2 separated circles, dotted=1 circle+8 gaps, hairline=1 circle.
+void drawDottedRing(LGFX_Sprite& sprite, uint16_t color) {
+  for (const auto& point : kRingPoints) {
+    sprite.fillCircle(kCx + point[0], kCy + point[1], 1, color);
+  }
+}
+
+// Stroke styles: solid(3px), thin(2px), heavy dashed, double, discrete
+// dotted points, hairline, and dashed hairline.
 void drawStateRing(LGFX_Sprite& sprite, TileState state, uint16_t color) {
   switch (state) {
     case TileState::Working:  // solid 3 px
@@ -61,8 +72,7 @@ void drawStateRing(LGFX_Sprite& sprite, TileState state, uint16_t color) {
       sprite.drawCircle(kCx, kCy, kRadius - 5, color);
       break;
     case TileState::Unknown:  // dotted
-      sprite.drawCircle(kCx, kCy, kRadius, color);
-      drawGapMask(sprite, 8);
+      drawDottedRing(sprite, color);
       break;
     case TileState::Settled:  // hairline
       sprite.drawCircle(kCx, kCy, kRadius, color);
@@ -90,9 +100,7 @@ void drawInnerGlyph(LGFX_Sprite& sprite, TileState state, uint16_t color) {
       sprite.fillCircle(kCx, kCy, 11, color);
       break;
     case TileState::Working:
-      sprite.drawLine(kCx - 8, kCy - 12, kCx - 8, kCy + 12, color);
-      sprite.drawLine(kCx - 8, kCy - 12, kCx + 12, kCy, color);
-      sprite.drawLine(kCx + 12, kCy, kCx - 8, kCy + 12, color);
+      sprite.fillTriangle(kCx - 8, kCy - 12, kCx - 8, kCy + 12, kCx + 12, kCy, color);
       break;
     case TileState::Idle:
       sprite.drawCircle(kCx, kCy, 11, color);
@@ -127,6 +135,19 @@ void drawBezelTicks(LGFX_Sprite& sprite, uint16_t color) {
   sprite.drawLine(123, 117, 123, 123, color);
 }
 
+void drawUsageGauge(LGFX_Sprite& sprite, int32_t track_y, const char* label) {
+  sprite.setTextColor(kMetadata, kBackground);
+  sprite.drawString(label, 8, track_y - 10);
+  sprite.drawString("N/A", rightAlignedX("N/A", 120), track_y - 10);
+  sprite.drawRect(8, track_y, 112, 10, kSettled);
+  for (int32_t start = 10; start < 117; start += 7) {
+    const int32_t end = start + 6 < 117 ? start + 6 : 117;
+    sprite.drawLine(start, track_y + 7, end, track_y + 7 - (end - start), kSettled);
+  }
+  // Fixed 75% warning mark from the accepted Instrument gauge language.
+  sprite.fillRect(92, track_y - 1, 2, 12, kBlocked);
+}
+
 class InstrumentTheme final : public ThemeRenderer {
  public:
   void composeTile(LGFX_Sprite& sprite, uint8_t slot, const RenderState& state) override {
@@ -146,14 +167,14 @@ class InstrumentTheme final : public ThemeRenderer {
       drawStateRing(sprite, TileState::Empty, kEmptyEdge);
       drawInnerGlyph(sprite, TileState::Empty, kEmptyEdge);
       sprite.setTextColor(kMetadata, kBackground);
-      sprite.drawString("NO AGENT", 34, 89);
+      sprite.drawString("NO AGENT", centeredX("NO AGENT"), 89);
       return;
     }
 
     // Header y:4 centered discriminator.
     ellipsize(row, 15, tile.discriminator);
     sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
-    sprite.drawString(row, 22, 5);
+    sprite.drawString(row, centeredX(row), 5);
 
     // Ring: feedback replaces the inner glyph with its own bounded primitive.
     if (feedback != nullptr) {
@@ -176,49 +197,41 @@ class InstrumentTheme final : public ThemeRenderer {
       drawInnerGlyph(sprite, tile.state, content);
     }
 
-    // State line y:89 — word plus verbatim since; feedback reason on meta line.
+    // State line y:89 — one state or feedback word, plus verbatim since.
     sprite.setTextColor(feedback != nullptr ? feedback->color : content, kBackground);
-    sprite.drawString(feedback != nullptr ? feedback->word : base.word, 22, 89);
-    if (feedback == nullptr) sprite.drawString(tile.since, 88, 89);
+    sprite.drawString(feedback != nullptr ? feedback->word : base.word,
+                      centeredX(feedback != nullptr ? feedback->word : base.word), 89);
+    if (feedback == nullptr) {
+      ellipsize(row, 6, tile.since);
+      sprite.drawString(row, rightAlignedX(row), 89);
+    }
     if (fence != nullptr) {
       sprite.setTextColor(kDestructive, kBackground);
-      sprite.drawString(fence, 22, 100);
-    } else if (feedback != nullptr && tile.feedback != TileFeedback::Pending && tile.feedback != TileFeedback::Success) {
-      sprite.setTextColor(feedback->color, kBackground);
-      sprite.drawString(feedback->word, 22, 100);
+      sprite.drawString(fence, centeredX(fence), 100);
     }
 
     // Title y:112 centered.
     ellipsize(row, 17, tile.title);
     sprite.setTextColor(fence != nullptr ? kSettled : kPrimary, kBackground);
-    sprite.drawString(row, 16, 112);
+    sprite.drawString(row, centeredX(row), 112);
   }
 
   void composePanel4(LGFX_Sprite& sprite, const RenderState&) override {
-    // Twin gauges with the 75 % warn tick, honest UNAVAILABLE form.
     sprite.fillScreen(kBackground);
     drawBezelTicks(sprite, kSettled);
     sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("CODEX", 46, 5);
-    for (uint8_t gauge = 0; gauge < 2; ++gauge) {
-      const int32_t cx = 36 + gauge * 56;
-      sprite.drawCircle(cx, 58, 22, kSettled);
-      // 75 % warn tick.
-      sprite.drawLine(cx + 15, 42, cx + 19, 38, kSettled);
-      // Hatch: no needle, no value.
-      sprite.drawLine(cx - 10, 68, cx + 10, 48, kSettled);
-      sprite.drawLine(cx - 10, 62, cx + 10, 42, kSettled);
-    }
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("UNAVAILABLE", 30, 100);
-    sprite.drawString("NO VALUES", 36, 114);
+    sprite.drawString("CODEX", centeredX("CODEX"), 5);
+    drawUsageGauge(sprite, 32, "5H");
+    drawUsageGauge(sprite, 64, "WEEK");
+    sprite.setTextColor(kDestructive, kBackground);
+    sprite.drawString("UNAVAILABLE", centeredX("UNAVAILABLE"), 100);
   }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);
     drawBezelTicks(sprite, kSettled);
     sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("MENU", 50, 8);
+    sprite.drawString("MENU", centeredX("MENU"), 8);
     sprite.setTextColor(menu.cursor == 0 ? kAccent : kMetadata, kBackground);
     sprite.drawString(menu.cursor == 0 ? "> THEME" : "  THEME", 16, 36);
     sprite.drawString(themeName(menu.theme_candidate), 16, 50);
@@ -226,7 +239,7 @@ class InstrumentTheme final : public ThemeRenderer {
     sprite.drawString(menu.cursor == 1 ? "> LED" : "  LED", 16, 72);
     sprite.drawString(grammarName(menu.grammar_candidate), 16, 86);
     sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("TURN·SEL — CLICK·CLOSE", 8, 112);
+    sprite.drawString(kMenuHint, kMenuHintX, 112);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {
@@ -234,10 +247,8 @@ class InstrumentTheme final : public ThemeRenderer {
     drawBezelTicks(sprite, kSettled);
     sprite.setTextColor(kAccent, kBackground);
     sprite.setTextSize(1);
-    sprite.drawString("SYNC", 52, 50);
     sprite.drawCircle(kCx, kCy, kRadius, kAccent);
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("UPDATING", 40, 100);
+    sprite.drawString("SYNC", centeredX("SYNC"), 50);
   }
 
  private:

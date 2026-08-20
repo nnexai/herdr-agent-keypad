@@ -10,6 +10,29 @@
 class BoardAdapter;
 class ThemeRenderer;
 struct MenuState;
+
+enum class CaptureScene : uint8_t {
+  Current = 0,
+  Blocked,
+  Unseen,
+  Working,
+  Idle,
+  Settled,
+  Unknown,
+  Empty,
+  Stale,
+  Offline,
+  Unavailable,
+  Pending,
+  Focused,
+  Rejected,
+  Vanished,
+  Uncertain,
+  Failed,
+  Sync,
+  MenuTheme,
+  MenuLed,
+};
 class AgentProjection final {
  public:
   static constexpr uint8_t kSlotCount = 3;
@@ -38,9 +61,14 @@ class AgentProjection final {
   bool commitSnapshot(BoardAdapter& board);
   void tick(BoardAdapter& board, uint32_t now_us);
   void renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const;
-  // Developer capture seam: compose one panel without flushing it, then expose
-  // the existing PSRAM-backed RGB565 sprite for a bounded USB dump.
-  bool capturePanel(uint8_t panel, ThemeRenderer* renderer = nullptr);
+  // Recompose every committed agent tile after a confirmed theme change.
+  // Bindings and feedback remain untouched; only complete pixels are flushed.
+  bool redrawTiles(BoardAdapter& board) const;
+  // Developer capture seam: compose one live or deterministic fixture panel
+  // without flushing it, then expose the existing PSRAM-backed RGB565 sprite
+  // for a bounded USB dump.
+  bool capturePanel(uint8_t panel, ThemeRenderer* renderer = nullptr,
+                    CaptureScene scene = CaptureScene::Current);
   const uint16_t* capturePixels() const;
   bool committed() const { return committed_ && !syncing_; }
   void renderFeedback(BoardAdapter& board, uint8_t slot);

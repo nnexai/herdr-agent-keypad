@@ -15,13 +15,21 @@
 namespace {
 using namespace theme_common;
 
-// Scale a hue toward black using explicit luminance steps. The Beacon field
-// reserves the brightest color for the glyph; the field itself peaks at 24 %.
-uint16_t scale565(uint16_t color, uint8_t numerator, uint8_t denominator = 64) {
-  const uint16_t r = static_cast<uint16_t>(((color >> 11) & 0x1F) * numerator / denominator);
-  const uint16_t g = static_cast<uint16_t>(((color >> 5) & 0x3F) * numerator / denominator);
-  const uint16_t b = static_cast<uint16_t>((color & 0x1F) * numerator / denominator);
+uint16_t blend565(uint16_t base, uint16_t color, uint8_t numerator, uint8_t denominator = 64) {
+  const int32_t base_r = (base >> 11) & 0x1F;
+  const int32_t base_g = (base >> 5) & 0x3F;
+  const int32_t base_b = base & 0x1F;
+  const int32_t color_r = (color >> 11) & 0x1F;
+  const int32_t color_g = (color >> 5) & 0x3F;
+  const int32_t color_b = color & 0x1F;
+  const uint16_t r = static_cast<uint16_t>(base_r + (color_r - base_r) * numerator / denominator);
+  const uint16_t g = static_cast<uint16_t>(base_g + (color_g - base_g) * numerator / denominator);
+  const uint16_t b = static_cast<uint16_t>(base_b + (color_b - base_b) * numerator / denominator);
   return static_cast<uint16_t>((r << 11) | (g << 5) | b);
+}
+
+uint16_t scale565(uint16_t color, uint8_t numerator, uint8_t denominator = 64) {
+  return blend565(0, color, numerator, denominator);
 }
 
 bool activeField(TileState state) {
@@ -29,12 +37,29 @@ bool activeField(TileState state) {
 }
 
 void drawField(LGFX_Sprite& sprite, uint16_t hue) {
-  // Eight shallow bands avoid the old bullseye effect while remaining stable
-  // on RGB565 panels. The outer band is intentionally near-black.
-  static constexpr int32_t kRadii[] = {58, 52, 46, 40, 34, 28, 22, 16};
-  static constexpr uint8_t kLuma[] = {3, 5, 7, 10, 14, 18, 21, 24};
-  for (uint8_t band = 0; band < 8; ++band) {
-    sprite.fillCircle(64, 52, kRadii[band], scale565(hue, kLuma[band]));
+  // Ordered-dithered radial falloff. One bounded pass over the visible field
+  // avoids the hard concentric bullseye produced by nested solid circles.
+  static constexpr uint8_t kBayer4[4][4] = {
+      {0, 8, 2, 10},
+      {12, 4, 14, 6},
+      {3, 11, 1, 9},
+      {15, 7, 13, 5},
+  };
+  static constexpr int32_t kRadius = 58;
+  static constexpr int32_t kRadiusSquared = kRadius * kRadius;
+  for (int32_t y = 0; y < 96; ++y) {
+    const int32_t dy = y - 52;
+    for (int32_t x = 6; x < 123; ++x) {
+      const int32_t dx = x - 64;
+      const int32_t distance_squared = dx * dx + dy * dy;
+      if (distance_squared > kRadiusSquared) continue;
+      const uint32_t alpha_sixteenths =
+          static_cast<uint32_t>(kRadiusSquared - distance_squared) * 240U /
+          static_cast<uint32_t>(kRadiusSquared);
+      uint8_t alpha = static_cast<uint8_t>(alpha_sixteenths >> 4);
+      if (kBayer4[y & 3][x & 3] < (alpha_sixteenths & 0x0F)) ++alpha;
+      sprite.drawPixel(x, y, blend565(kBackground, hue, alpha));
+    }
   }
 }
 
@@ -52,14 +77,11 @@ void drawCenterGlyph(LGFX_Sprite& sprite, TileState state, uint16_t color) {
     case TileState::Unseen:  // filled disc
       sprite.fillCircle(cx, cy, 20, color);
       break;
-    case TileState::Working:  // triangle
-      sprite.drawLine(cx - 14, cy - 20, cx - 14, cy + 20, color);
-      sprite.drawLine(cx - 14, cy - 20, cx + 20, cy, color);
-      sprite.drawLine(cx + 20, cy, cx - 14, cy + 20, color);
+    case TileState::Working:  // filled triangle
+      sprite.fillTriangle(cx - 14, cy - 20, cx - 14, cy + 20, cx + 20, cy, color);
       break;
-    case TileState::Idle:  // ring
+    case TileState::Idle:  // thin ring
       sprite.drawCircle(cx, cy, 20, color);
-      sprite.drawCircle(cx, cy, 19, color);
       break;
     case TileState::Settled:  // corner
       sprite.drawLine(cx - 16, cy - 16, cx - 16, cy + 16, color);
@@ -80,23 +102,42 @@ void drawCenterGlyph(LGFX_Sprite& sprite, TileState state, uint16_t color) {
   }
 }
 
-void drawFeedbackGlyph(LGFX_Sprite& sprite, TileFeedback feedback, uint16_t color) {
+static constexpr int8_t kSpinnerPoints[][2] = {
+    {0, -22}, {8, -20}, {16, -16}, {20, -8},
+    {22, 0}, {20, 8}, {16, 16}, {8, 20},
+    {0, 22}, {-8, 20}, {-16, 16}, {-20, 8},
+    {-22, 0}, {-20, -8}, {-16, -16}, {-8, -20},
+};
+
+void drawPendingSpinner(LGFX_Sprite& sprite, uint16_t color, bool phase_high) {
+  const uint8_t start = phase_high ? 0 : 8;
+  for (uint8_t segment = 0; segment < 12; ++segment) {
+    const uint8_t from = static_cast<uint8_t>((start + segment) & 0x0F);
+    const uint8_t to = static_cast<uint8_t>((from + 1) & 0x0F);
+    sprite.drawLine(64 + kSpinnerPoints[from][0], 52 + kSpinnerPoints[from][1],
+                    64 + kSpinnerPoints[to][0], 52 + kSpinnerPoints[to][1], color);
+    sprite.fillCircle(64 + kSpinnerPoints[from][0], 52 + kSpinnerPoints[from][1], 1, color);
+  }
+  const uint8_t marker = static_cast<uint8_t>((start + 12) & 0x0F);
+  sprite.fillCircle(64 + kSpinnerPoints[marker][0], 52 + kSpinnerPoints[marker][1], 2, color);
+}
+
+void drawFeedbackGlyph(LGFX_Sprite& sprite, TileFeedback feedback, uint16_t color, bool phase_high) {
   const int32_t cx = 64;
   const int32_t cy = 52;
   switch (feedback) {
-    case TileFeedback::Pending:  // spinner ring
-      sprite.drawCircle(cx, cy, 18, color);
-      sprite.fillCircle(cx, cy - 18, 3, color);
+    case TileFeedback::Pending:
+      drawPendingSpinner(sprite, color, phase_high);
       break;
-    case TileFeedback::Success:  // check
+    case TileFeedback::Success:
       sprite.drawLine(cx - 14, cy, cx - 4, cy + 12, color);
       sprite.drawLine(cx - 4, cy + 12, cx + 16, cy - 12, color);
       break;
-    case TileFeedback::Uncertain:  // exclamation
+    case TileFeedback::Uncertain:
       sprite.fillRect(cx - 1, cy - 16, 3, 20, color);
       sprite.fillCircle(cx, cy + 12, 2, color);
       break;
-    default:  // failure cross
+    default:
       sprite.drawLine(cx - 14, cy - 14, cx + 14, cy + 14, color);
       sprite.drawLine(cx + 14, cy - 14, cx - 14, cy + 14, color);
       break;
@@ -127,7 +168,7 @@ class BeaconTheme final : public ThemeRenderer {
       }
       drawCenterGlyph(sprite, TileState::Empty, kEmptyEdge);
       sprite.setTextColor(kMetadata, kBackground);
-      sprite.drawString("NO AGENT", 34, 96);
+      sprite.drawString("NO AGENT", centeredX("NO AGENT"), 96);
       return;
     }
 
@@ -143,33 +184,39 @@ class BeaconTheme final : public ThemeRenderer {
     }
 
     if (feedback != nullptr) {
-      drawFeedbackGlyph(sprite, tile.feedback, feedback->color);
+      drawFeedbackGlyph(sprite, tile.feedback, feedback->color, state.blocked_pulse_high);
       sprite.setTextColor(feedback->color, kBackground);
-      sprite.drawString(feedback->word, 40, 73);
+      sprite.drawString(feedback->word, centeredX(feedback->word), 76);
+      if (tile.feedback == TileFeedback::Pending) {
+        sprite.setTextColor(kMetadata, kBackground);
+        sprite.drawString("FOCUS SENT", centeredX("FOCUS SENT"), 88);
+      }
     } else {
       drawCenterGlyph(sprite, tile.state, content);
       sprite.setTextColor(content, kBackground);
-      sprite.drawString(base.word, 40, 73);
+      sprite.drawString(base.word, centeredX(base.word), 73);
     }
 
     // Opaque title strip prevents the radial field from bleeding behind text.
     sprite.fillRect(0, 96, 128, 32, kBackground);
     // Title strip y:100..122 — one title line + one identity line, centered.
     sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
-    sprite.drawString(tile.since, 92, 8);
+    char since[6] = {};
+    ellipsize(since, sizeof(since), tile.since);
+    sprite.drawString(since, rightAlignedX(since), 8);
     ellipsize(row, 17, tile.title);
     sprite.setTextColor(fence != nullptr ? kSettled : kPrimary, kBackground);
-    sprite.drawString(row, 16, 100);
+    sprite.drawString(row, centeredX(row), 100);
     ellipsize(row, 17, tile.discriminator);
     sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
-    sprite.drawString(row, 16, 112);
+    sprite.drawString(row, centeredX(row), 112);
 
     if (fence != nullptr) {
       // Bottom fence line with the reason word; offline adds a red top
       // hairline on all panels.
-      sprite.fillRect(0, 88, 128, 10, kDestructive);
+      sprite.fillRect(0, 88, 128, 8, kDestructive);
       sprite.setTextColor(kBackground, kDestructive);
-      sprite.drawString(fence, 40, 89);
+      sprite.drawString(fence, centeredX(fence), 88);
       if (strcmp(fence, "OFFLINE") == 0) sprite.fillRect(0, 0, 128, 2, kDestructive);
     }
   }
@@ -178,21 +225,26 @@ class BeaconTheme final : public ThemeRenderer {
     // Hatched conic dial in honest UNAVAILABLE form.
     sprite.fillScreen(kBackground);
     sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("CODEX", 46, 8);
+    sprite.drawString("CODEX", centeredX("CODEX"), 8);
     sprite.drawCircle(64, 60, 34, kSettled);
     sprite.drawCircle(64, 60, 33, kSettled);
-    for (int32_t hatch = -28; hatch <= 28; hatch += 8) {
-      sprite.drawLine(64 + hatch - 6, 60 + 24, 64 + hatch + 6, 60 - 24, kSettled);
+    for (int32_t y = 29; y <= 91; ++y) {
+      const int32_t dy = y - 60;
+      for (int32_t x = 33; x <= 95; ++x) {
+        const int32_t dx = x - 64;
+        if (dx * dx + dy * dy <= 31 * 31 && ((x + y) % 9) == 0) {
+          sprite.drawPixel(x, y, kSettled);
+        }
+      }
     }
     sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("UNAVAILABLE", 30, 102);
-    sprite.drawString("NO VALUES", 36, 114);
+    sprite.drawString("UNAVAILABLE", centeredX("UNAVAILABLE"), 110);
   }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);
     sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("MENU", 48, 8);
+    sprite.drawString("MENU", centeredX("MENU"), 8);
     sprite.setTextColor(menu.cursor == 0 ? kAccent : kMetadata, kBackground);
     sprite.drawString("THEME", 28, 36);
     sprite.drawString(themeName(menu.theme_candidate), 28, 52);
@@ -203,17 +255,15 @@ class BeaconTheme final : public ThemeRenderer {
     sprite.drawString(menu.cursor == 0 ? ">" : " ", 14, 36);
     sprite.drawString(menu.cursor == 1 ? ">" : " ", 14, 76);
     sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("TURN·SEL — CLICK·CLOSE", 8, 112);
+    sprite.drawString(kMenuHint, kMenuHintX, 112);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {
     sprite.fillScreen(kBackground);
     sprite.setTextColor(kAccent, kBackground);
     sprite.setTextSize(1);
-    sprite.drawString("SYNC", 52, 46);
     sprite.drawCircle(64, 52, 24, kAccent);
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("UPDATING", 40, 100);
+    sprite.drawString("SYNC", centeredX("SYNC"), 48);
   }
 };
 

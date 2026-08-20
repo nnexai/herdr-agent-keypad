@@ -19,6 +19,7 @@ class BoardAdapter {
   uint8_t screenCount() const;
   button::ButtonSense* key(uint8_t index);
   bool wasPressed(uint8_t logical_index);
+  bool consumePressed(uint8_t logical_index);
   bool mapKeyLabel(uint8_t label, uint8_t& library_index) const;
   bool mapEncoderClick(uint8_t& library_index) const;
   long encoderDelta();
@@ -33,4 +34,5 @@ class BoardAdapter {
   TKeyboardS3ProClass& board_ = TKeyboardS3Pro;
   const PhysicalMap* physical_map_ = nullptr;
   bool ready_ = false;
+  uint8_t pressed_latch_ = 0;
 };

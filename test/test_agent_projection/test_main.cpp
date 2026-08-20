@@ -86,6 +86,15 @@ bool logContainsAny(const char* word) {
   return false;
 }
 
+size_t logTextCount(const char* word) {
+  const std::string needle = std::string("text:") + word;
+  size_t count = 0;
+  for (const auto& entry : g_render_log) {
+    if (entry == needle) ++count;
+  }
+  return count;
+}
+
 std::vector<int> pushOrder() {
   std::vector<int> order;
   for (const auto& entry : g_render_log) {
@@ -378,6 +387,75 @@ void test_rejected_persists_beyond_success_bound() {
   TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Ready), static_cast<int>(projection.feedback(0)));
 }
 
+void test_terminal_feedback_does_not_block_next_press() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+
+  JsonDocument first_intent;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "first-action", first_intent.to<JsonObject>()));
+  JsonDocument rejected = focus_result_document("first-action", "rejected");
+  rejected["snapshot_revision"] = 1;
+  TEST_ASSERT_FALSE(projection.applyFocusResult(rejected.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+
+  JsonDocument second_intent;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "second-action", second_intent.to<JsonObject>()));
+  TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Pending), static_cast<int>(projection.feedback(0)));
+}
+
+void test_pending_press_is_superseded_by_new_press() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+
+  JsonDocument first;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "first-action", first.to<JsonObject>()));
+  JsonDocument second;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "second-action", second.to<JsonObject>()));
+  TEST_ASSERT_EQUAL_STRING("second-action", second["action_id"].as<const char*>());
+
+  JsonDocument old_result = focus_result_document("first-action", "accepted");
+  old_result["snapshot_revision"] = 1;
+  TEST_ASSERT_FALSE(projection.applyFocusResult(old_result.as<JsonObjectConst>()));
+  TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Pending), static_cast<int>(projection.feedback(0)));
+
+  JsonDocument new_result = focus_result_document("second-action", "accepted");
+  new_result["snapshot_revision"] = 1;
+  TEST_ASSERT_TRUE(projection.applyFocusResult(new_result.as<JsonObjectConst>()));
+  TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Success), static_cast<int>(projection.feedback(0)));
+}
+
+void test_multiple_agent_keys_capture_without_waiting() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  JsonArray agents = document["agents"].as<JsonArray>();
+  JsonObject slot1 = agents[1].as<JsonObject>();
+  slot1["entry_id"] = "entry-1";
+  slot1["title"] = "Agent two";
+  slot1["discriminator"] = "repo";
+  slot1["state"] = "idle";
+  slot1["pane_id"] = "pane-1";
+  slot1["terminal_id"] = "term-1";
+  slot1["source_revision"] = 2;
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+
+  JsonDocument first;
+  JsonDocument second;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "key-one", first.to<JsonObject>()));
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(1, "key-two", second.to<JsonObject>()));
+  TEST_ASSERT_EQUAL_STRING("key-one", first["action_id"].as<const char*>());
+  TEST_ASSERT_EQUAL_STRING("key-two", second["action_id"].as<const char*>());
+  TEST_ASSERT_EQUAL_UINT8(0, first["slot"].as<uint8_t>());
+  TEST_ASSERT_EQUAL_UINT8(1, second["slot"].as<uint8_t>());
+}
+
 // --- Settings store ----------------------------------------------------------
 
 void test_settings_fresh_device_falls_back_without_write() {
@@ -493,6 +571,20 @@ void test_theme_by_id_dispatches_all_four() {
   TEST_ASSERT_EQUAL_PTR(&instrumentTheme(), &themeById(ThemeId::Instrument));
 }
 
+void test_theme_redraw_flushes_every_agent_panel() {
+  AgentProjection projection;
+  BoardAdapter board;
+  commitThroughTheme(signalEdgeTheme(), projection, board, 1, "working");
+  projection.setTheme(instrumentTheme());
+  resetLog();
+  TEST_ASSERT_TRUE(projection.redrawTiles(board));
+  const std::vector<int> order = pushOrder();
+  TEST_ASSERT_EQUAL_UINT32(3, order.size());
+  TEST_ASSERT_EQUAL_INT(0, order[0]);
+  TEST_ASSERT_EQUAL_INT(1, order[1]);
+  TEST_ASSERT_EQUAL_INT(2, order[2]);
+}
+
 void test_ledger_empty_and_blocked_inversion() {
   AgentProjection projection;
   BoardAdapter board;
@@ -512,6 +604,109 @@ void test_panel4_compositions_are_honest() {
     TEST_ASSERT_TRUE(logContainsText("CODEX"));
     TEST_ASSERT_TRUE(logContainsText("UNAVAILABLE"));
   }
+}
+
+void test_feedback_and_sync_copy_is_not_duplicated() {
+  AgentProjection projection;
+  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  for (ThemeRenderer* theme : themes) {
+    resetLog();
+    TEST_ASSERT_TRUE(projection.capturePanel(0, theme, CaptureScene::Rejected));
+    TEST_ASSERT_EQUAL_UINT32(1, logTextCount("REJECTED"));
+    resetLog();
+    LGFX_Sprite sprite;
+    theme->composeSync(sprite);
+    TEST_ASSERT_EQUAL_UINT32(1, logTextCount("SYNC"));
+    TEST_ASSERT_EQUAL_UINT32(0, logTextCount("UPDATING"));
+  }
+}
+
+void test_signal_edge_polish_geometry() {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "current";
+  state.slots[0].occupied = true;
+  state.slots[0].title = "Agent";
+  state.slots[0].discriminator = "workspace";
+  state.slots[0].since = "4m";
+  state.slots[0].state = TileState::Idle;
+  state.slots[0].feedback = TileFeedback::Pending;
+  resetLog();
+  signalEdgeTheme().composeTile(sprite, 0, state);
+  TEST_ASSERT_TRUE(logContainsAny("fillRect:0:108:128:20"));
+
+  state.slots[0].occupied = false;
+  state.slots[0].state = TileState::Empty;
+  state.slots[0].feedback = TileFeedback::Disabled;
+  resetLog();
+  signalEdgeTheme().composeTile(sprite, 0, state);
+  TEST_ASSERT_TRUE(logContainsAny("fillRect:54:59:20:2"));
+
+  MenuState menu;
+  menu.open = true;
+  menu.cursor = 0;
+  menu.editing = true;
+  menu.theme_candidate = ThemeId::Instrument;
+  menu.grammar_candidate = LedGrammarId::MeterLamps;
+  resetLog();
+  signalEdgeTheme().composeMenu(sprite, menu);
+  TEST_ASSERT_TRUE(logContainsAny("fillRect:12:30:112:20"));
+  TEST_ASSERT_TRUE(logContainsText("TURN: CHANGE"));
+  TEST_ASSERT_TRUE(logContainsText("CLICK: SAVE"));
+}
+
+void test_usage_placeholders_follow_theme_geometry() {
+  LGFX_Sprite sprite;
+  RenderState state;
+
+  resetLog();
+  signalEdgeTheme().composePanel4(sprite, state);
+  TEST_ASSERT_TRUE(logContainsText("5H"));
+  TEST_ASSERT_TRUE(logContainsText("WEEK"));
+  TEST_ASSERT_EQUAL_UINT32(2, logTextCount("N/A"));
+  TEST_ASSERT_EQUAL_UINT32(0, logTextCount("NO VALUES"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:16:40:108:12"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:16:72:108:12"));
+
+  resetLog();
+  instrumentTheme().composePanel4(sprite, state);
+  TEST_ASSERT_TRUE(logContainsText("5H"));
+  TEST_ASSERT_TRUE(logContainsText("WEEK"));
+  TEST_ASSERT_EQUAL_UINT32(2, logTextCount("N/A"));
+  TEST_ASSERT_EQUAL_UINT32(0, logTextCount("NO VALUES"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:8:32:112:10"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:8:64:112:10"));
+  TEST_ASSERT_FALSE(logContainsAny("drawCircle:"));
+}
+
+void test_working_symbols_are_filled_in_every_theme() {
+  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "current";
+  state.slots[0].occupied = true;
+  state.slots[0].state = TileState::Working;
+  for (ThemeRenderer* theme : themes) {
+    resetLog();
+    theme->composeTile(sprite, 0, state);
+    TEST_ASSERT_TRUE(logContainsAny("fillTriangle:"));
+  }
+}
+
+void test_beacon_pending_uses_large_animated_takeover() {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "current";
+  state.blocked_pulse_high = true;
+  state.slots[0].occupied = true;
+  state.slots[0].title = "Agent";
+  state.slots[0].discriminator = "workspace";
+  state.slots[0].state = TileState::Working;
+  state.slots[0].feedback = TileFeedback::Pending;
+  resetLog();
+  beaconTheme().composeTile(sprite, 0, state);
+  TEST_ASSERT_TRUE(logContainsText("FOCUS SENT"));
+  TEST_ASSERT_TRUE(logContainsAny("fillCircle:42:52:2"));
 }
 
 // --- Plan 02: animation scheduler -------------------------------------------
@@ -723,7 +918,12 @@ void test_each_theme_composes_menu_vocabulary() {
     theme->composeMenu(sprite, menu);
     TEST_ASSERT_TRUE(logContainsAny("THEME"));
     TEST_ASSERT_TRUE(logContainsAny("LED"));
-    TEST_ASSERT_TRUE(logContainsText("TURN·SEL — CLICK·CLOSE"));
+    if (theme == &signalEdgeTheme()) {
+      TEST_ASSERT_TRUE(logContainsText("TURN: CHANGE"));
+      TEST_ASSERT_TRUE(logContainsText("CLICK: SAVE"));
+    } else {
+      TEST_ASSERT_TRUE(logContainsText("TURN:SEL CLICK:CLOSE"));
+    }
   }
 }
 
@@ -756,6 +956,9 @@ int runAllTests() {
   RUN_TEST(test_mid_reveal_failure_falls_back_to_sync_on_all_panels);
   RUN_TEST(test_success_hold_is_shorter_than_failure_hold);
   RUN_TEST(test_rejected_persists_beyond_success_bound);
+  RUN_TEST(test_terminal_feedback_does_not_block_next_press);
+  RUN_TEST(test_pending_press_is_superseded_by_new_press);
+  RUN_TEST(test_multiple_agent_keys_capture_without_waiting);
   RUN_TEST(test_settings_fresh_device_falls_back_without_write);
   RUN_TEST(test_settings_valid_roundtrip);
   RUN_TEST(test_settings_corrupt_version_falls_back_without_write);
@@ -764,9 +967,15 @@ int runAllTests() {
   RUN_TEST(test_ledger_full_vocabulary);
   RUN_TEST(test_beacon_full_vocabulary);
   RUN_TEST(test_instrument_full_vocabulary);
+  RUN_TEST(test_theme_redraw_flushes_every_agent_panel);
   RUN_TEST(test_theme_by_id_dispatches_all_four);
   RUN_TEST(test_ledger_empty_and_blocked_inversion);
   RUN_TEST(test_panel4_compositions_are_honest);
+  RUN_TEST(test_feedback_and_sync_copy_is_not_duplicated);
+  RUN_TEST(test_signal_edge_polish_geometry);
+  RUN_TEST(test_usage_placeholders_follow_theme_geometry);
+  RUN_TEST(test_working_symbols_are_filled_in_every_theme);
+  RUN_TEST(test_beacon_pending_uses_large_animated_takeover);
   RUN_TEST(test_blocked_pulse_cadence_and_phase);
   RUN_TEST(test_ambient_cadence_degrades_under_budget_pressure);
   RUN_TEST(test_blocked_motion_suppressed_by_fence_and_no_alloc);

@@ -15,6 +15,35 @@ PIXELS = 128 * 128
 BYTES = PIXELS * 2
 HEADER = b"SCREENSHOT-RGB565\n"
 
+THEMES = {
+    "signal-edge": "0",
+    "ledger": "1",
+    "beacon": "2",
+    "instrument": "3",
+}
+SCENES = {
+    "current": "C",
+    "blocked": "B",
+    "unseen": "U",
+    "working": "W",
+    "idle": "I",
+    "settled": "S",
+    "unknown": "Q",
+    "empty": "E",
+    "stale": "T",
+    "offline": "O",
+    "unavailable": "A",
+    "pending": "P",
+    "focused": "F",
+    "rejected": "R",
+    "vanished": "V",
+    "uncertain": "N",
+    "failed": "X",
+    "sync": "Y",
+    "menu-theme": "M",
+    "menu-led": "L",
+}
+
 
 def read_exact(connection: object, count: int, timeout: float) -> bytes:
     deadline = time.monotonic() + timeout
@@ -46,6 +75,8 @@ def main() -> int:
     parser.add_argument("output", type=Path)
     parser.add_argument("--binding", type=Path, default=Path.home() / ".config/herdr/keypad-binding.json")
     parser.add_argument("--timeout", type=float, default=5.0)
+    parser.add_argument("--theme", choices=THEMES)
+    parser.add_argument("--scene", choices=SCENES, default="current")
     args = parser.parse_args()
 
     binding = PairingStore(args.binding).load()
@@ -58,7 +89,11 @@ def main() -> int:
         timeout=args.timeout,
     )
     try:
-        payload = {"panel": args.panel + 1, "step_id": "screen-capture", "stimulus": f"CAPTURE:{args.panel}"}
+        stimulus = f"CAPTURE:{args.panel}"
+        if args.theme is not None or args.scene != "current":
+            theme = THEMES[args.theme or "signal-edge"]
+            stimulus = f"{stimulus}:{theme}:{SCENES[args.scene]}"
+        payload = {"panel": args.panel + 1, "step_id": "screen-capture", "stimulus": stimulus}
         frame, _fact = session.request("probe", payload, {"probe_ack"})
         if not frame["payload"].get("accepted"):
             raise RuntimeError("device rejected screen capture")

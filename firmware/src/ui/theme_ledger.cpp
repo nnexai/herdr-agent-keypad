@@ -50,9 +50,7 @@ void drawLedgerGlyph(LGFX_Sprite& sprite, TileState state, int32_t cx, int32_t c
       sprite.fillCircle(cx, cy, 6, color);
       break;
     case TileState::Working:
-      sprite.drawLine(cx - 5, cy - 7, cx - 5, cy + 7, color);
-      sprite.drawLine(cx - 5, cy - 7, cx + 7, cy, color);
-      sprite.drawLine(cx + 7, cy, cx - 5, cy + 7, color);
+      sprite.fillTriangle(cx - 5, cy - 7, cx - 5, cy + 7, cx + 7, cy, color);
       break;
     case TileState::Idle:
       sprite.drawCircle(cx, cy, 6, color);
@@ -136,15 +134,12 @@ class LedgerTheme final : public ThemeRenderer {
         drawLedgerGlyph(sprite, tile.state, 16, 80, state_color);
         sprite.setTextColor(state_color, kBackground);
         sprite.drawString(base.word, 30, 74);
-        sprite.drawString(tile.since, 100, 74);
+        ellipsize(row, 6, tile.since);
+        sprite.drawString(row, rightAlignedX(row), 74);
         drawStateUnderline(sprite, tile.state, 30, 86, 64, state_color);
       }
     }
 
-    if (feedback != nullptr && tile.feedback != TileFeedback::Pending && tile.feedback != TileFeedback::Success) {
-      sprite.setTextColor(feedback->color, kBackground);
-      sprite.drawString(feedback->word, 6, 114);
-    }
     for (uint8_t dot = 0; dot < RenderState::kSlotCount; ++dot) {
       const int32_t cx = 100 + dot * 9;
       if (dot == slot) sprite.fillCircle(cx, 119, 2, meta);
@@ -153,7 +148,7 @@ class LedgerTheme final : public ThemeRenderer {
   }
 
   void composePanel4(LGFX_Sprite& sprite, const RenderState&) override {
-    // Ledger numbers page in honest UNAVAILABLE form: labels with em-dash
+    // Ledger numbers page in honest UNAVAILABLE form: explicit ASCII N/A
     // values, never fabricated numbers.
     sprite.fillScreen(kBackground);
     sprite.setTextColor(kPrimary, kBackground);
@@ -164,12 +159,11 @@ class LedgerTheme final : public ThemeRenderer {
       const int32_t y = 30 + line * 20;
       sprite.setTextColor(kMetadata, kBackground);
       sprite.drawString(labels[line], 6, y);
-      sprite.drawString("—", 96, y);
+      sprite.drawString("N/A", 96, y);
       sprite.drawLine(4, y + 14, 124, y + 14, kSettled);
     }
     sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("UNAVAILABLE", 6, 100);
-    sprite.drawString("NO VALUES", 6, 114);
+    sprite.drawString("UNAVAILABLE", 6, 112);
   }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
@@ -179,13 +173,13 @@ class LedgerTheme final : public ThemeRenderer {
     sprite.drawLine(4, 18, 124, 18, kSettled);
     sprite.setTextColor(menu.cursor == 0 ? kAccent : kMetadata, kBackground);
     sprite.drawString(menu.cursor == 0 ? "> THEME" : "  THEME", 6, 32);
-    sprite.drawString(themeName(menu.theme_candidate), 68, 32);
+    sprite.drawString(themeName(menu.theme_candidate), 58, 32);
     sprite.setTextColor(menu.cursor == 1 ? kAccent : kMetadata, kBackground);
     sprite.drawString(menu.cursor == 1 ? "> LED" : "  LED", 6, 52);
-    sprite.drawString(grammarName(menu.grammar_candidate), 68, 52);
+    sprite.drawString(grammarName(menu.grammar_candidate), 58, 52);
     sprite.drawLine(4, 72, 124, 72, kSettled);
     sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("TURN·SEL — CLICK·CLOSE", 6, 108);
+    sprite.drawString(kMenuHint, kMenuHintX, 108);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {
@@ -194,8 +188,9 @@ class LedgerTheme final : public ThemeRenderer {
     sprite.setTextSize(1);
     sprite.drawString("SYNC", 8, 8);
     sprite.drawLine(4, 18, 124, 18, kAccent);
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("UPDATING", 8, 56);
+    sprite.drawLine(8, 42, 88, 42, kSettled);
+    sprite.drawLine(8, 58, 112, 58, kSettled);
+    sprite.drawLine(8, 74, 72, 74, kSettled);
   }
 };
 

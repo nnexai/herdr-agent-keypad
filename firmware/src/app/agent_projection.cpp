@@ -41,6 +41,50 @@ bool printable(const char* value, bool allow_empty) {
 bool elapsed(uint32_t now, uint32_t deadline) {
   return static_cast<int32_t>(now - deadline) >= 0;
 }
+
+RenderState captureFixture(CaptureScene scene) {
+  RenderState state;
+  state.source_status = "current";
+  state.blocked_pulse_high = true;
+  for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
+    RenderState::Slot& tile = state.slots[slot];
+    tile.occupied = true;
+    tile.title = "@DESIGNER-ONBOARDING.html";
+    tile.discriminator = "lilygo-t3.long";
+    tile.since = "5h42m";
+    tile.age = "3m";
+    tile.state = TileState::Working;
+    tile.feedback = TileFeedback::Ready;
+  }
+
+  TileState tile_state = TileState::Working;
+  TileFeedback feedback = TileFeedback::Ready;
+  switch (scene) {
+    case CaptureScene::Blocked: tile_state = TileState::Blocked; break;
+    case CaptureScene::Unseen: tile_state = TileState::Unseen; break;
+    case CaptureScene::Working: tile_state = TileState::Working; break;
+    case CaptureScene::Idle: tile_state = TileState::Idle; break;
+    case CaptureScene::Settled: tile_state = TileState::Settled; break;
+    case CaptureScene::Unknown: tile_state = TileState::Unknown; break;
+    case CaptureScene::Empty: tile_state = TileState::Empty; break;
+    case CaptureScene::Stale: state.source_status = "stale"; break;
+    case CaptureScene::Offline: state.source_status = "offline"; break;
+    case CaptureScene::Unavailable: state.source_status = "unavailable"; break;
+    case CaptureScene::Pending: feedback = TileFeedback::Pending; break;
+    case CaptureScene::Focused: feedback = TileFeedback::Success; break;
+    case CaptureScene::Rejected: feedback = TileFeedback::Rejected; break;
+    case CaptureScene::Vanished: feedback = TileFeedback::Vanished; break;
+    case CaptureScene::Uncertain: feedback = TileFeedback::Uncertain; break;
+    case CaptureScene::Failed: feedback = TileFeedback::Failed; break;
+    default: break;
+  }
+  for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
+    state.slots[slot].state = tile_state;
+    state.slots[slot].feedback = feedback;
+    if (tile_state == TileState::Empty) state.slots[slot].occupied = false;
+  }
+  return state;
+}
 }  // namespace
 
 AgentProjection::AgentProjection() : feedback_{} {
@@ -201,6 +245,12 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board) {
       renderSync(board);  // best-effort fail-closed SYNC on all panels
       return false;
     }
+#ifdef ARDUINO
+    // Snapshot flushes are long enough to overlap a normal human press. Keep
+    // ButtonSense sampling between panels; BoardAdapter latches the edge until
+    // the normal input dispatcher consumes it after the commit.
+    board.update();
+#endif
   }
   return commitSnapshot();
 }
@@ -283,10 +333,33 @@ void AgentProjection::renderMenu(BoardAdapter& board, ThemeRenderer& theme, cons
   else theme.composePanel4(g_composition, renderState(micros()));
   g_composition.pushSprite(display, 0, 0);
 }
-bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer) {
+
+bool AgentProjection::redrawTiles(BoardAdapter& board) const {
+  if (!committed_ || syncing_) return false;
+  for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
+    if (!renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot])) return false;
+  }
+  return true;
+}
+bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer, CaptureScene scene) {
   if (panel >= 4 || !ensureComposition()) return false;
   ThemeRenderer& selected = renderer != nullptr ? *renderer : theme();
-  const RenderState state = renderState(micros());
+  if (scene == CaptureScene::Sync) {
+    selected.composeSync(g_composition);
+    return true;
+  }
+  if (scene == CaptureScene::MenuTheme || scene == CaptureScene::MenuLed) {
+    if (panel != 3) return false;
+    MenuState menu;
+    menu.open = true;
+    menu.cursor = scene == CaptureScene::MenuTheme ? 0 : 1;
+    menu.editing = true;
+    menu.theme_candidate = ThemeId::Instrument;
+    menu.grammar_candidate = LedGrammarId::MeterLamps;
+    selected.composeMenu(g_composition, menu);
+    return true;
+  }
+  const RenderState state = scene == CaptureScene::Current ? renderState(micros()) : captureFixture(scene);
   if (panel < kSlotCount) selected.composeTile(g_composition, panel, state);
   else selected.composePanel4(g_composition, state);
   return true;
@@ -302,10 +375,11 @@ void AgentProjection::renderFeedback(BoardAdapter& board, uint8_t slot) {
 }
 
 bool AgentProjection::hasBinding(uint8_t slot) const {
-  const Feedback feedback = slot < kSlotCount ? feedback_[slot] : Feedback::Disabled;
-  const bool actionable = feedback == Feedback::Ready || feedback == Feedback::Success;
+  // Feedback is presentation-only. A current occupied binding remains
+  // actionable after any terminal result so a fast retry is never swallowed
+  // by the feedback hold timer; only an in-flight action suppresses duplicates.
   return committed_ && !syncing_ && slot < kSlotCount && committed_generation_.tiles[slot].binding.occupied &&
-         strcmp(committed_generation_.source_status, "current") == 0 && actionable;
+         strcmp(committed_generation_.source_status, "current") == 0;
 }
 
 AgentProjection::Feedback AgentProjection::feedback(uint8_t slot) const { return slot < kSlotCount ? feedback_[slot] : Feedback::Disabled; }
@@ -333,7 +407,10 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
 }
 
 bool AgentProjection::captureFocusIntent(uint8_t key, const char* action_id, JsonObject payload) {
-  if (!committed_ || syncing_ || key >= kSlotCount || action_id == nullptr || !hasBinding(key) || pending_action_[key] != 0 ||
+  // A new physical press supersedes the previous request for this tile. The
+  // old result is rejected by action-id correlation; the newest press remains
+  // the visible pending action and is the one that determines the final state.
+  if (!committed_ || syncing_ || key >= kSlotCount || action_id == nullptr || !hasBinding(key) ||
       !copyBounded(pending_action_text_[key], sizeof(pending_action_text_[key]), action_id, false)) return false;
   pending_[key] = committed_generation_.tiles[key].binding;
   pending_action_[key] = next_action_++;
