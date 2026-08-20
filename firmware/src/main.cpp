@@ -529,12 +529,16 @@ void refreshMenuPresentation() {
   if (!menuController.takeDirty()) return;
   const ThemeId stored_theme = menuController.storedTheme();
   const bool theme_changed = stored_theme != presentedTheme;
-  agentProjection.setTheme(themeById(stored_theme));
-  agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
-  ledEngine.setGrammar(ledGrammarById(menuController.activeGrammar()));
-  if (theme_changed && (!agentProjection.committed() || agentProjection.redrawTiles(board))) {
-    presentedTheme = stored_theme;
+  ThemeRenderer& candidate = themeById(stored_theme);
+  if (theme_changed) {
+    const bool applied = !agentProjection.committed() || agentProjection.redrawTiles(board, candidate);
+    if (applied) {
+      agentProjection.setTheme(candidate);
+      agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
+      presentedTheme = stored_theme;
+    }
   }
+  ledEngine.setGrammar(ledGrammarById(menuController.activeGrammar()));
   const bool theme_preview = menuController.editing() && menuController.state().cursor == 0;
   ThemeRenderer& menu_theme = themeById(theme_preview ? menuController.activeTheme() : stored_theme);
   agentProjection.renderMenu(board, menu_theme, menuController.state());

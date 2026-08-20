@@ -619,6 +619,20 @@ void test_ledger_empty_and_blocked_inversion() {
   TEST_ASSERT_TRUE(logContainsText("SLOT EMPTY"));
 }
 
+void test_failed_theme_redraw_enters_sync_and_disables_bindings() {
+  AgentProjection projection;
+  BoardAdapter board;
+  commitThroughTheme(signalEdgeTheme(), projection, board, 1, "working");
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+  missing_panel = true;
+  g_sync_draw_count = 0;
+  TEST_ASSERT_FALSE(projection.redrawTiles(board, instrumentTheme()));
+  missing_panel = false;
+  TEST_ASSERT_FALSE(projection.committed());
+  TEST_ASSERT_FALSE(projection.hasBinding(0));
+  TEST_ASSERT_TRUE(g_sync_draw_count > 0);
+}
+
 void test_panel4_compositions_are_honest() {
   ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
   LGFX_Sprite sprite;
@@ -989,6 +1003,7 @@ int runAllTests() {
   RUN_TEST(test_settings_corrupt_version_falls_back_without_write);
   RUN_TEST(test_settings_out_of_range_enum_falls_back_without_write);
   RUN_TEST(test_settings_confirm_rejects_out_of_range);
+  RUN_TEST(test_failed_theme_redraw_enters_sync_and_disables_bindings);
   RUN_TEST(test_settings_failed_replacement_never_loads_hybrid_pair);
   RUN_TEST(test_ledger_full_vocabulary);
   RUN_TEST(test_beacon_full_vocabulary);

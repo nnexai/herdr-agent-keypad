@@ -266,7 +266,13 @@ bool AgentProjection::renderSync(BoardAdapter& board) const {
   return true;
 }
 
-bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile, Feedback feedback) const {
+bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile,
+                                  Feedback feedback) const {
+  return renderTile(board, theme(), slot, tile, feedback);
+}
+
+bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer, uint8_t slot,
+                                  const Tile& tile, Feedback feedback) const {
   Display* display = board.displayAt(slot);
   if (display == nullptr || !ensureComposition()) return false;
   RenderState state;
@@ -281,7 +287,7 @@ bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& 
   out.age = tile.age;
   out.state = tile.state;
   out.feedback = feedback;
-  theme().composeTile(g_composition, slot, state);
+  renderer.composeTile(g_composition, slot, state);
   g_composition.pushSprite(display, 0, 0);
   return true;
 }
@@ -334,11 +340,19 @@ void AgentProjection::renderMenu(BoardAdapter& board, ThemeRenderer& theme, cons
   g_composition.pushSprite(display, 0, 0);
 }
 
-bool AgentProjection::redrawTiles(BoardAdapter& board) const {
+bool AgentProjection::redrawTiles(BoardAdapter& board) {
+  return redrawTiles(board, theme());
+}
+
+bool AgentProjection::redrawTiles(BoardAdapter& board, ThemeRenderer& candidate) {
   if (!committed_ || syncing_) return false;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
-    if (!renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot])) return false;
+    if (!renderTile(board, candidate, slot, committed_generation_.tiles[slot], feedback_[slot])) {
+      disableActive(&board);
+      return false;
+    }
   }
+  theme_ = &candidate;
   return true;
 }
 bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer, CaptureScene scene) {

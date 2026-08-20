@@ -62,8 +62,9 @@ class AgentProjection final {
   void tick(BoardAdapter& board, uint32_t now_us);
   void renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const;
   // Recompose every committed agent tile after a confirmed theme change.
-  // Bindings and feedback remain untouched; only complete pixels are flushed.
-  bool redrawTiles(BoardAdapter& board) const;
+  // The candidate is installed only after all complete frames flush.
+  bool redrawTiles(BoardAdapter& board);
+  bool redrawTiles(BoardAdapter& board, ThemeRenderer& candidate);
   // Developer capture seam: compose one live or deterministic fixture panel
   // without flushing it, then expose the existing PSRAM-backed RGB565 sprite
   // for a bounded USB dump.
@@ -122,6 +123,8 @@ class AgentProjection final {
   TileState parseState(const char* state) const;
   void disableActive(BoardAdapter* board);
   bool renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile, Feedback feedback) const;
+  bool renderTile(BoardAdapter& board, ThemeRenderer& theme, uint8_t slot,
+                  const Tile& tile, Feedback feedback) const;
   bool renderSync(BoardAdapter& board) const;
 
   Generation staged_{};
