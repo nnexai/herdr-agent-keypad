@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03
 current_phase_name: Truthful Codex Capacity and Device Menu
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-08-20T21:31:39.312Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-08-20T21:47:24.287Z"
 last_activity: 2026-08-20
-last_activity_desc: "Completed Phase 03 Plan 01 truthful Codex tracer"
+last_activity_desc: Completed Phase 03 Plan 01 truthful Codex tracer
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 35
-  completed_plans: 27
+  completed_plans: 28
 ---
 
 Total Phases: 6
@@ -23,12 +23,12 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03
 current_phase_name: Truthful Codex Capacity and Device Menu
-status: executing
+status: Ready to execute
 stopped_at: Completed 03-01-PLAN.md
 last_updated: "2026-08-20T21:31:39.312Z"
 last_activity: 2026-08-20
 last_activity_desc: "Completed Phase 03 Plan 01 truthful Codex tracer"
-progress:[████████░░] 77%
+progress:[████████░░] 80%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03 — Truthful Codex Capacity and Device Menu
-Plan: 02 of 09
+Plan: 3 of 09
 Status: Ready to execute
 Last activity: 2026-08-20 — Completed Phase 03 Plan 01 truthful Codex tracer
 
@@ -92,6 +92,7 @@ Progress: [████████░░] 77%
 | Phase 02.1 P02 | 25min | 2 tasks | 7 files |
 | Phase 02.2 P05 | 15min | 2 tasks | 6 files |
 | Phase 03 P01 | 120 | 3 tasks | 9 files |
+| Phase 03 P02 | 16min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -142,6 +143,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: 02.2 device evidence uses accepted-with-deferred overall disposition while retaining the fallback sighting as pending/deferred rather than a physical pass.
 - [Phase ?]: Exact fresh hello matched stored device and firmware identity; tracer records the committed snapshot ACK.
 - [Phase ?]: Installed E-2406 request failure is CODEX OFFLINE without quota claims; bucket maps remain redacted manifest-only.
+- [Phase ?]: Only documented top-level rateLimits supplies capacity; map-only and unusable shapes remain unavailable with E-2401.
+- [Phase ?]: Sparse updates require a known baseline, preserve omissions and metadata nulls, and schedule one coalesced full refetch.
+- [Phase ?]: Codex-only publications preserve Herdr generation, identities, bindings, pending focus, and focus authorization.
 
 ### Pending Todos
 
@@ -178,5 +182,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-20T21:31:39.299Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-08-20T21:47:24.276Z
+Stopped at: Completed 03-02-PLAN.md
