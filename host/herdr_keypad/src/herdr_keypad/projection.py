@@ -13,6 +13,7 @@ MAX_DISCRIMINATOR = 32
 PLUGIN_REVISION = "78b243279b4da55150b58dc2cc3cffcdc2fd6a04"
 PLUGIN_PATH = "/home/nnex/.config/herdr/plugins/github/herdr-agent-inbox-de409f683262"
 SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
+HEALTH_STATUSES = SOURCE_STATUSES | {"auth_required", "codex_offline", "host_offline"}
 RANK_STATES = {0: "blocked", 1: "finished", 2: "working", 3: "idle", 4: "unknown", 5: "settled"}
 
 
@@ -52,11 +53,31 @@ class ProjectionSnapshot:
     entries: tuple[ProjectedEntry, ...]
     plugin_revision: str = PLUGIN_REVISION
     schema_version: int = 1
+    herdr_status: str = "unavailable"
+    codex_status: str = "unavailable"
+    link_status: str = "offline"
+    sync_age: str = "AGE N/A"
+    codex_age: str = "AGE N/A"
+    herdr_age: str = "AGE N/A"
+    link_age: str = "AGE N/A"
+    error_code: str = ""
+
+    def __post_init__(self) -> None:
+        for name in ("herdr_status", "codex_status", "link_status"):
+            if getattr(self, name) not in HEALTH_STATUSES:
+                raise ValueError(f"invalid {name}")
+        for name in ("sync_age", "codex_age", "herdr_age", "link_age", "error_code"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or len(value) > 16 or any(ord(char) >= 128 for char in value):
+                raise ValueError(f"invalid {name}")
 
     @property
     def actionable(self) -> bool:
         return self.source_status == "current" and any(entry.occupied and not entry.stale for entry in self.entries)
 
+    def with_health(self, **updates: str) -> "ProjectionSnapshot":
+        from dataclasses import replace
+        return replace(self, **updates)
 
 
 def _text(value: Any, name: str, maximum: int, *, allow_empty: bool = False) -> str:
@@ -292,8 +313,22 @@ class InboxProjection:
         if self.current is not None and projection_key == self._last_projection_key:
             return self.current
         self.snapshot_revision += 1
-        snapshot = ProjectionSnapshot(self.host_epoch, self.snapshot_revision, source_status, entries,
-                                      self.plugin_revision, self.schema_version)
+        snapshot = ProjectionSnapshot(
+            self.host_epoch,
+            self.snapshot_revision,
+            source_status,
+            entries,
+            self.plugin_revision,
+            self.schema_version,
+            herdr_status=source_status,
+            herdr_age="AGE 0M",
+            codex_status=self.current.codex_status if self.current is not None else "unavailable",
+            link_status=self.current.link_status if self.current is not None else "offline",
+            sync_age=self.current.sync_age if self.current is not None else "AGE N/A",
+            codex_age=self.current.codex_age if self.current is not None else "AGE N/A",
+            link_age=self.current.link_age if self.current is not None else "AGE N/A",
+            error_code=self.current.error_code if self.current is not None else "",
+        )
         self.current = snapshot
         self._last_entries = entries
         self._last_projection_key = projection_key
@@ -305,7 +340,7 @@ class InboxProjection:
             client.session_snapshot()
             rows = client.agent_list()
             workspaces = client.workspace_list()
-        except HerdrError as exc:
+        except HerdrError:
             return self.invalidate("offline")
         return self.refresh(rows, workspaces, source_status=source_status)
 
@@ -319,8 +354,23 @@ class InboxProjection:
             if entry.identity is not None else ProjectedEntry.empty(entry.slot, reason)
             for entry in self._last_entries
         )
-        self.current = ProjectionSnapshot(self.host_epoch, self.snapshot_revision, reason, entries,
-                                          self.plugin_revision, self.schema_version)
+        prior = self.current
+        self.current = ProjectionSnapshot(
+            self.host_epoch,
+            self.snapshot_revision,
+            reason,
+            entries,
+            self.plugin_revision,
+            self.schema_version,
+            herdr_status=reason,
+            codex_status=prior.codex_status if prior is not None else "unavailable",
+            link_status=prior.link_status if prior is not None else "offline",
+            sync_age=prior.sync_age if prior is not None else "AGE N/A",
+            codex_age=prior.codex_age if prior is not None else "AGE N/A",
+            herdr_age=prior.herdr_age if prior is not None else "AGE N/A",
+            link_age=prior.link_age if prior is not None else "AGE N/A",
+            error_code=prior.error_code if prior is not None else "",
+        )
         return self.current
 
     def complete_refresh_required(self) -> bool:

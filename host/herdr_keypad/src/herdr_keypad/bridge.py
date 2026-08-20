@@ -15,7 +15,7 @@ import secrets
 import sys
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable, Mapping
 from .herdr import HerdrClient
@@ -386,12 +386,12 @@ def _projection_payload(snapshot: Any, *, codex: CodexView | None = None,
         )
     codex = codex or CodexView()
     diagnostics = diagnostics or {
-        "link_status": "current",
-        "herdr_status": "current" if snapshot.source_status == "current" else "offline",
-        "codex_status": codex.source_state,
-        "sync_age": "AGE N/A",
-        "codex_age": codex.observation_age,
-        "error_code": codex.error_code,
+        "link_status": getattr(snapshot, "link_status", "current"),
+        "herdr_status": getattr(snapshot, "herdr_status", "current" if snapshot.source_status == "current" else "offline"),
+        "codex_status": getattr(snapshot, "codex_status", codex.source_state),
+        "sync_age": getattr(snapshot, "sync_age", "AGE N/A"),
+        "codex_age": getattr(snapshot, "codex_age", codex.observation_age),
+        "error_code": getattr(snapshot, "error_code", codex.error_code),
     }
     payload = {
         "host_epoch": snapshot.host_epoch,
@@ -403,6 +403,12 @@ def _projection_payload(snapshot: Any, *, codex: CodexView | None = None,
     }
     validate_v2_payload("agent_snapshot", payload)
     return payload
+
+
+def _age_text(clock: Callable[[], float], observed_at: float | None) -> str:
+    if observed_at is None:
+        return "AGE N/A"
+    return f"AGE {max(0, int((clock() - observed_at) // 60))}M"
 
 def _sha256(path: Path) -> str:
     import hashlib
@@ -491,6 +497,11 @@ class PermanentBridge:
         self.codex_collector = codex_collector
         self.codex_result: CodexResult | None = None
         self.codex_view = CodexView()
+        self._herdr_observed_at: float | None = None
+        self._codex_observed_at: float | None = None
+        self._sync_observed_at: float | None = None
+        self._link_observed_at: float | None = None
+        self._link_status = "offline"
         self.last_snapshot_ack: dict[str, Any] | None = None
         self.ready = False
         self.last_error = ""
@@ -560,12 +571,13 @@ class PermanentBridge:
 
     def _fence_disconnected(self, reason: str) -> None:
         self.last_error = reason
+        self._link_status = "offline"
+        self._link_observed_at = self._clock()
         if self.ready:
             self.ready_transitions += 1
         self.ready = False
         self._fence_focus()
         self._close_event_stream()
-
 
     def _focus_matches_snapshot(self, frame: Mapping[str, Any], snapshot: Any) -> bool:
         payload = frame.get("payload")
@@ -602,11 +614,12 @@ class PermanentBridge:
             self.ready_transitions += 1
         self.ready = False
         self._fence_focus()
-        self._close_event_stream()
         try:
             stale = self.projection.invalidate(reason if reason in {"offline", "unavailable"} else "stale")
             if getattr(self.usb, "connected", False):
-                self.usb.publish_snapshot(_projection_payload(stale))
+                self.usb.publish_snapshot(
+                    _projection_payload(stale, codex=self.codex_view, diagnostics=self._diagnostics(stale))
+                )
         except Exception:
             pass
 
@@ -617,11 +630,17 @@ class PermanentBridge:
             frame for frame in self._deferred_focus
             if self._focus_matches_snapshot(frame, snapshot)
         ]
-        ack = self.usb.publish_snapshot(_projection_payload(snapshot, codex=self.codex_view))
+        self._sync_observed_at = self._clock()
+        joined = self._join_health(snapshot)
+        if hasattr(self.projection, "current"):
+            self.projection.current = joined
+        ack = self.usb.publish_snapshot(
+            _projection_payload(joined, codex=self.codex_view, diagnostics=self._diagnostics(joined))
+        )
         if (
             ack.get("accepted") is not True
-            or ack.get("host_epoch") != snapshot.host_epoch
-            or ack.get("snapshot_revision") != snapshot.snapshot_revision
+            or ack.get("host_epoch") != joined.host_epoch
+            or ack.get("snapshot_revision") != joined.snapshot_revision
         ):
             raise V2ProtocolError("snapshot_rejected", "keypad did not acknowledge the complete generation")
         self.last_snapshot_ack = {
@@ -630,12 +649,40 @@ class PermanentBridge:
             "snapshot_revision": ack.get("snapshot_revision"),
         }
         self.publication_count += 1
-        ready = snapshot.source_status == "current" and not self.projection.complete_refresh_required()
+        ready = joined.source_status == "current" and not self.projection.complete_refresh_required()
         if not ready:
             raise V2ProtocolError("snapshot_unavailable", "complete current projection was not committed")
         self.ready = True
         self.ready_transitions += 1
-        self._drain_deferred_focus(snapshot)
+        self._drain_deferred_focus(joined)
+        return joined
+
+    def _diagnostics(self, snapshot: Any) -> dict[str, str]:
+        herdr_status = getattr(snapshot, "source_status", "unavailable")
+        if herdr_status not in SOURCE_STATUSES:
+            herdr_status = "unavailable"
+        codex_status = self.codex_view.source_state
+        return {
+            "link_status": self._link_status,
+            "herdr_status": herdr_status,
+            "codex_status": codex_status,
+            "sync_age": _age_text(self._clock, self._sync_observed_at),
+            "codex_age": self.codex_view.observation_age,
+            "error_code": self.codex_view.error_code,
+        }
+
+    def _join_health(self, snapshot: Any) -> Any:
+        if hasattr(snapshot, "with_health"):
+            return snapshot.with_health(
+                herdr_status=getattr(snapshot, "source_status", "unavailable"),
+                codex_status=self.codex_view.source_state,
+                link_status=self._link_status,
+                sync_age=_age_text(self._clock, self._sync_observed_at),
+                codex_age=self.codex_view.observation_age,
+                herdr_age=_age_text(self._clock, self._herdr_observed_at),
+                link_age=_age_text(self._clock, self._link_observed_at),
+                error_code=self.codex_view.error_code,
+            )
         return snapshot
 
     def _collect_codex(self) -> CodexResult | None:
@@ -646,11 +693,45 @@ class PermanentBridge:
             raise V2ProtocolError("codex_invalid", "collector returned an invalid normalized result")
         self.codex_result = result
         self.codex_view = result.view
+        observed_at = getattr(self.codex_collector, "last_observed_at", None)
+        self._codex_observed_at = observed_at if isinstance(observed_at, (int, float)) else self._clock()
         return result
+    def refresh_codex(self) -> CodexView:
+        self._collect_codex()
+        snapshot = getattr(self.projection, "current", None)
+        if snapshot is not None and getattr(self.usb, "connected", False):
+            self._publish_snapshot(snapshot)
+        return self.codex_view
+
+    def apply_codex_sparse(self, update: Mapping[str, Any]) -> bool:
+        if self.codex_collector is None:
+            return False
+        accepted = bool(self.codex_collector.apply_sparse_update(update))
+        if not accepted:
+            return False
+        self.codex_view = self.codex_collector.view()
+        observed_at = getattr(self.codex_collector, "last_observed_at", None)
+        self._codex_observed_at = observed_at if isinstance(observed_at, (int, float)) else self._clock()
+        snapshot = getattr(self.projection, "current", None)
+        if snapshot is not None and getattr(self.usb, "connected", False):
+            self._publish_snapshot(snapshot)
+        return True
+
+    def account_changed(self, *, auth_required: bool = False) -> CodexView:
+        if self.codex_collector is None:
+            self.codex_view = CodexView(source_state="auth_required" if auth_required else "unavailable")
+        else:
+            self.codex_view = self.codex_collector.account_changed(auth_required=auth_required)
+        self._codex_observed_at = None
+        snapshot = getattr(self.projection, "current", None)
+        if snapshot is not None and getattr(self.usb, "connected", False):
+            self._publish_snapshot(snapshot)
+        return self.codex_view
 
     def _publish_refresh(self, *, force: bool = False) -> Any:
         before = getattr(self.projection, "snapshot_revision", 0)
         snapshot = self.projection.bootstrap(self.client)
+        self._herdr_observed_at = self._clock()
         if not force and getattr(snapshot, "snapshot_revision", before) == before:
             return snapshot
         return self._publish_snapshot(snapshot)
@@ -668,7 +749,6 @@ class PermanentBridge:
             {"type": self.STATUS_EVENT_TYPE, "pane_id": pane_id}
             for pane_id in sorted(status_panes)
         )
-        self._close_event_stream()
         stream_factory = getattr(self.client, "event_stream_factory", None)
         if callable(stream_factory):
             self._event_stream = stream_factory()
@@ -715,6 +795,8 @@ class PermanentBridge:
         self._reconnect_due = None
         try:
             self.usb.connect()
+            self._link_status = "current"
+            self._link_observed_at = now
             self._rebuild_after_connect(force_publish=True)
         except Exception as exc:
             self._fence_disconnected("offline" if "socket" in str(exc).lower() else "unavailable")
@@ -734,12 +816,15 @@ class PermanentBridge:
         try:
             before = getattr(self.projection, "snapshot_revision", 0)
             snapshot = self.projection.bootstrap(self.client)
+            self._herdr_observed_at = self._clock()
             self._collect_codex()
             self.usb.connect()
+            self._link_status = "current"
+            self._link_observed_at = self._clock()
             self._configure_runtime(snapshot)
             if getattr(snapshot, "snapshot_revision", before) != before:
                 self._publish_snapshot(snapshot)
-            return snapshot
+            return getattr(self.projection, "current", snapshot)
         except Exception as exc:
             self._mark_unavailable("offline" if "socket" in str(exc).lower() else "unavailable")
             if isinstance(exc, V2ProtocolError):
@@ -932,6 +1017,10 @@ class PermanentBridge:
             self._disconnect("offline", now)
             return None
         self._drain_focus_jobs()
+        if self.codex_collector is not None:
+            due = getattr(self.codex_collector, "should_poll", None)
+            if callable(due) and due(now):
+                self.refresh_codex()
         return self._refresh_if_dirty(now)
 
     def run(self, *, interval: float = 0.1) -> None:
