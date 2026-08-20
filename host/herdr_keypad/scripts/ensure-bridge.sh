@@ -78,8 +78,10 @@ if [ "${1:-}" = "run-exclusive" ]; then
     trap on_hup HUP
     trap on_int INT
     trap on_term TERM
+    set +e
     "$@"
     wrapped_status=$?
+    set -e
     exit "$wrapped_status"
 fi
 

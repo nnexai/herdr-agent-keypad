@@ -1,0 +1,84 @@
+{
+  "codex": {
+    "error_code": "E-2406",
+    "observation_age": "AGE N/A",
+    "primary": null,
+    "reached_limit": null,
+    "reset_text": "RESET N/A",
+    "secondary": null,
+    "source_state": "codex_offline"
+  },
+  "collector": {
+    "account_observed": false,
+    "child_exit": {
+      "code": 0,
+      "signal": null,
+      "state": "terminated"
+    },
+    "deadline_ms": 3000,
+    "elapsed_ms": 198,
+    "handshake": [],
+    "rate_limits_observed": false,
+    "redaction": {
+      "bucket_manifest": {
+        "key_prefixes": [],
+        "observed_key_count": 0,
+        "present": false,
+        "selected_key": null,
+        "truncated": false
+      },
+      "rejected_field_count": 0,
+      "result": "pass"
+    }
+  },
+  "deployment": {
+    "binary_sha256": "cb4a78c33cbb3c6dd432d20bd1b2319b79454703f440966650dd4a66c4481fb3",
+    "deployment_id": "ee667b4cd017226a1004c3b6819780d21c0498dbe77f68a89b548aa89edfa82d",
+    "fresh_boot_id": "0000fccb0deabf8c-0f166270",
+    "fresh_session_id": "session-99e43d9e48bfb608",
+    "hello_firmware": "phase1-bringup",
+    "paired_device_id": "0000fccb0deabf8c",
+    "platformio_environment": "selected-usb",
+    "upload_result": "pass"
+  },
+  "device_ack": {
+    "accepted": null,
+    "available": false,
+    "snapshot_revision": null
+  },
+  "error_code": "E-2406",
+  "final_evidence_refs": {
+    "child_exit": "/collector/child_exit",
+    "elapsed_ms": "/collector/elapsed_ms",
+    "redaction_result": "/redaction/result"
+  },
+  "hello": {
+    "boot_id": "0000fccb0deabf8c-0f166270",
+    "device_id": "0000fccb0deabf8c",
+    "firmware": "phase1-bringup",
+    "protocol": 1,
+    "session_id": "session-99e43d9e48bfb608"
+  },
+  "kind": "phase3-codex-tracer",
+  "redaction": {
+    "bucket_manifest": {
+      "key_prefixes": [],
+      "observed_key_count": 0,
+      "present": false,
+      "selected_key": null,
+      "truncated": false
+    },
+    "rejected_field_count": 0,
+    "result": "pass"
+  },
+  "rendered_frame": {
+    "available": false,
+    "source": "device-frame-not-returned"
+  },
+  "result": "fail",
+  "schema_version": 1,
+  "source": {
+    "fixtures": "separate-scripted-tests",
+    "live": "installed"
+  }
+}

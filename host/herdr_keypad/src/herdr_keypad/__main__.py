@@ -142,9 +142,11 @@ def smoke_mode(args: argparse.Namespace) -> int:
         "device_id_persisted": True,
     }
     if _codex_tracer_evidence(Path(args.evidence)):
+        codex_ok = bridge.codex_result is not None and bridge.codex_result.view.source_state == "current"
+        error_code = bridge.codex_result.view.error_code if bridge.codex_result is not None else "E-2410"
         write_codex_tracer_evidence(
             Path(args.evidence),
-            result="pass",
+            result="pass" if codex_ok else "fail",
             codex=bridge.codex_result,
             hello=bridge.usb.device.get("hello") if isinstance(bridge.usb.device, dict) else None,
             deployment={
@@ -153,8 +155,8 @@ def smoke_mode(args: argparse.Namespace) -> int:
                 "upload": os.environ.get("HERDR_DEPLOYED_UPLOAD", "pass"),
                 "firmware_sha256": _firmware_sha256(),
             },
+            error_code="" if codex_ok else error_code,
         )
-        codex_ok = bridge.codex_result is not None and bridge.codex_result.view.source_state == "current"
         print(f"Codex tracer {'passed' if codex_ok else 'failed'}: {bridge.codex_view.source_state}")
         return 0 if codex_ok else 1
     write_acceptance_evidence(Path(args.evidence), contract=contract, snapshot=snapshot, observed=observed)

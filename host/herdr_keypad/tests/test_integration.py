@@ -22,7 +22,7 @@ from herdr_keypad.bridge import (
 from herdr_keypad.__main__ import main
 from herdr_keypad.herdr import HerdrClient, HerdrError
 from herdr_keypad.projection import InboxProjection
-from herdr_keypad.usb import UsbDeviceSession
+from herdr_keypad.usb import UsbDeviceSession, UsbSessionError
 from phase1_bringup import protocol
 from phase1_bringup.discovery import Candidate
 from phase1_bringup.pairing import PairingBinding, PairingStore
@@ -168,6 +168,8 @@ class PluginLifecycleTests(unittest.TestCase):
         script = (ROOT / "host/herdr_keypad/scripts/ensure-bridge.sh").read_text()
         self.assertIn("flock -n 9", script)
         self.assertIn("stop-for-acceptance", script)
+        self.assertIn('set +e', script)
+        self.assertIn('exit "$wrapped_status"', script)
         self.assertNotIn("pkill", script)
 
     def test_subscribe_uses_installed_typed_public_schema(self):
@@ -531,6 +533,18 @@ class ExactUsbSessionTests(unittest.TestCase):
             self.assertEqual(session.candidate.device, "/dev/ttyACM-reenumerated")
             self.assertTrue(raws["/dev/ttyACM-wrong"].closed)
             session.close()
+    def test_fresh_hello_rejects_stale_firmware_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binding_path = Path(directory) / "binding.json"
+            PairingStore(binding_path).save(PairingBinding("paired-device", 1, "phase1-bringup"))
+            raw = self.Raw()
+            raw.firmware = "stale-firmware"
+            session = UsbDeviceSession(binding_path, ports=[self.Port()], opener=lambda _candidate: raw, timeout=0.1)
+            with self.assertRaises(UsbSessionError) as context:
+                session.connect()
+            self.assertEqual(context.exception.code, "firmware_mismatch")
+            self.assertTrue(raw.closed)
+
 
     class Raw:
         def __init__(self):
@@ -544,7 +558,7 @@ class ExactUsbSessionTests(unittest.TestCase):
             parsed = protocol.classify_line(data)
             if parsed.accepted and parsed.frame and parsed.frame["type"] == "hello":
                 request = parsed.frame
-                payload = {"accepted": True, "device_id": getattr(self, "device_id", "paired-device"), "firmware": "phase1-bringup", "protocol": 1}
+                payload = {"accepted": True, "device_id": getattr(self, "device_id", "paired-device"), "firmware": getattr(self, "firmware", "phase1-bringup"), "protocol": 1}
                 self.inbound.append(protocol.encode_frame(protocol.new_frame("hello_ack", "device-boot", request["session_id"], 1, payload, request["seq"])))
             else:
                 parsed_v2 = protocol.classify_v2_line(data)
@@ -575,6 +589,8 @@ class ExactUsbSessionTests(unittest.TestCase):
             session = UsbDeviceSession(binding_path, ports=[self.Port()], opener=lambda _candidate: raw, timeout=0.1)
             hello = session.connect()
             self.assertEqual(hello["hello"]["device_id"], "paired-device")
+            self.assertEqual(hello["hello"]["boot_id"], "device-boot")
+            self.assertTrue(hello["hello"]["session_id"])
             fixture = InboxProjection(host_epoch="epoch")
             payload = _projection_payload(fixture.refresh([], source_status="empty"))
             ack = session.publish_snapshot(payload)

@@ -31,8 +31,25 @@ class ChildExit:
     code: int | None = None
     signal: int | None = None
 
+    def __post_init__(self) -> None:
+        if self.state not in {"not_started", "running", "exited", "terminated", "killed"}:
+            raise ValueError("invalid child exit state")
+        if self.code is not None and (not isinstance(self.code, int) or isinstance(self.code, bool) or self.code < 0):
+            raise ValueError("child exit code must be a non-negative integer or null")
+        if self.signal is not None and (not isinstance(self.signal, int) or isinstance(self.signal, bool) or self.signal <= 0):
+            raise ValueError("child exit signal must be a positive integer or null")
+        if self.code is not None and self.signal is not None:
+            raise ValueError("child exit cannot contain both code and signal")
+        if self.state in {"not_started", "running"} and (self.code is not None or self.signal is not None):
+            raise ValueError("unfinished child exit cannot contain code or signal")
+        if self.state == "exited" and self.signal is not None:
+            raise ValueError("exited child cannot contain a signal")
+
     def as_dict(self) -> dict[str, Any]:
         return {"state": self.state, "code": self.code, "signal": self.signal}
+
+
+_MISSING = object()
 
 
 @dataclass(frozen=True)
@@ -124,9 +141,11 @@ class CodexResult:
 
 
 def _manifest(rate_limits_by_id: Any) -> BucketManifest:
-    if rate_limits_by_id is None:
+    if rate_limits_by_id is _MISSING:
         return BucketManifest()
-    if not isinstance(rate_limits_by_id, dict):
+    if rate_limits_by_id is None:
+        return BucketManifest(present=True)
+    if not isinstance(rate_limits_by_id, Mapping):
         return BucketManifest(present=True)
     keys = sorted(str(key) for key in rate_limits_by_id)
     prefixes = tuple(sorted(hashlib.sha256(key.encode("utf-8")).hexdigest()[:MAX_KEY_PREFIX] for key in keys[:MAX_BUCKET_KEYS]))
@@ -163,7 +182,7 @@ def _reset_text(rate_limits: Mapping[str, Any]) -> str:
 
 def normalize_rate_limits(response: Mapping[str, Any]) -> tuple[CodexView, Redaction]:
     """Normalize one complete response, selecting only top-level rateLimits."""
-    manifest = _manifest(response.get("rateLimitsByLimitId"))
+    manifest = _manifest(response["rateLimitsByLimitId"] if "rateLimitsByLimitId" in response else _MISSING)
     rate_limits = response.get("rateLimits")
     if not isinstance(rate_limits, Mapping):
         return CodexView(error_code="E-2401"), Redaction(bucket_manifest=manifest)
@@ -171,11 +190,13 @@ def normalize_rate_limits(response: Mapping[str, Any]) -> tuple[CodexView, Redac
     secondary = _window(rate_limits.get("secondary"))
     if any(window is not None and _window(window) is None for window in (rate_limits.get("primary"), rate_limits.get("secondary"))):
         return CodexView(error_code="E-2401"), Redaction(bucket_manifest=manifest)
+    if primary is None and secondary is None:
+        return CodexView(error_code="E-2401"), Redaction(bucket_manifest=manifest)
     reached = rate_limits.get("rateLimitReachedType")
     if reached is not None and not isinstance(reached, str):
         reached = None
     return CodexView(
-        source_state="current" if primary is not None or secondary is not None else "unavailable",
+        source_state="current",
         primary=primary,
         secondary=secondary,
         reset_text=_reset_text(rate_limits),

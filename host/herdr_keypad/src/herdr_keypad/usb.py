@@ -95,10 +95,15 @@ class UsbDeviceSession:
         hello = dict(session.device)
         if hello.get("device_id") != binding.device_id:
             link.close()
-            raise UsbSessionError("identity_mismatch", "application hello did not match the stored binding")
+            raise UsbSessionError("identity_mismatch", "application hello did not match the stored device binding")
+        if hello.get("firmware") != binding.firmware:
+            link.close()
+            raise UsbSessionError("firmware_mismatch", "application hello did not match the stored firmware binding")
         if hello.get("protocol") != 1:
             link.close()
             raise UsbSessionError("incompatible", "paired keypad did not acknowledge the Phase 1 protocol")
+        hello["boot_id"] = hello.get("device_boot_id", "unavailable")
+        hello["session_id"] = session.session_id
 
         self.candidate = selected
         self.link = link

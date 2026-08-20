@@ -1030,6 +1030,13 @@ def write_live_sync_evidence(path: Path, *, result: str, duration_seconds: float
     if _sha256(path) != checksum.read_text(encoding="ascii").split()[0]:
         raise V2ProtocolError("evidence_hash", "live smoke evidence checksum reopen failed")
 
+def _canonical_sha256(value: Mapping[str, Any]) -> str:
+    import hashlib
+
+    encoded = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def write_codex_tracer_evidence(
     path: Path,
     *,
@@ -1038,8 +1045,10 @@ def write_codex_tracer_evidence(
     hello: Mapping[str, Any] | None,
     deployment: Mapping[str, Any],
     error_code: str = "",
+    device_ack: Mapping[str, Any] | None = None,
+    rendered_frame: Mapping[str, Any] | None = None,
 ) -> Path:
-    """Persist closed Codex tracer facts and re-open their checksum."""
+    """Persist closed, installed-Codex tracer facts and re-open their checksum."""
     if result not in {"pass", "fail"}:
         raise V2ProtocolError("evidence_result", "Codex tracer result is not typed")
     hello = hello or {}
@@ -1048,14 +1057,19 @@ def write_codex_tracer_evidence(
         "firmware": hello.get("firmware") if isinstance(hello.get("firmware"), str) else "unavailable",
         "protocol": hello.get("protocol") if isinstance(hello.get("protocol"), int) else None,
         "boot_id": hello.get("boot_id") if isinstance(hello.get("boot_id"), str) else "unavailable",
+        "session_id": hello.get("session_id") if isinstance(hello.get("session_id"), str) else "unavailable",
     }
     deployment_record = {
-        "environment": deployment.get("environment", "selected-usb"),
-        "build": deployment.get("build", "unavailable"),
-        "upload": deployment.get("upload", "unavailable"),
-        "firmware_sha256": deployment.get("firmware_sha256", "unavailable"),
+        "platformio_environment": str(deployment.get("environment", "selected-usb"))[:32],
+        "binary_sha256": str(deployment.get("firmware_sha256", "unavailable"))[:64],
+        "hello_firmware": hello_record["firmware"],
+        "paired_device_id": hello_record["device_id"],
+        "fresh_boot_id": hello_record["boot_id"],
+        "fresh_session_id": hello_record["session_id"],
+        "upload_result": str(deployment.get("upload", "unavailable"))[:16],
     }
-    collection = codex.as_evidence() if codex is not None else {
+    deployment_record["deployment_id"] = _canonical_sha256(deployment_record)
+    collector = codex.as_evidence() if codex is not None else {
         "deadline_ms": 0,
         "elapsed_ms": 0,
         "child_exit": {"state": "not_started", "code": None, "signal": None},
@@ -1064,14 +1078,33 @@ def write_codex_tracer_evidence(
         "rate_limits_observed": False,
         "redaction": Redaction(result="fail").as_dict(),
     }
+    redaction = collector["redaction"]
+    ack = device_ack or {"available": False, "accepted": None}
+    frame = rendered_frame or {"available": False, "source": "device-frame-not-returned"}
     record = {
         "kind": "phase3-codex-tracer",
         "schema_version": 1,
         "result": result,
+        "source": {"live": "installed", "fixtures": "separate-scripted-tests"},
         "deployment": deployment_record,
         "hello": hello_record,
         "codex": codex.view.as_payload() if codex is not None else CodexView().as_payload(),
-        "collection": collection,
+        "collector": collector,
+        "redaction": redaction,
+        "device_ack": {
+            "available": bool(ack.get("available", False)),
+            "accepted": ack.get("accepted") if isinstance(ack.get("accepted"), bool) else None,
+            "snapshot_revision": ack.get("snapshot_revision") if isinstance(ack.get("snapshot_revision"), int) else None,
+        },
+        "rendered_frame": {
+            "available": bool(frame.get("available", False)),
+            "source": str(frame.get("source", "unavailable"))[:32],
+        },
+        "final_evidence_refs": {
+            "elapsed_ms": "/collector/elapsed_ms",
+            "child_exit": "/collector/child_exit",
+            "redaction_result": "/redaction/result",
+        },
         "error_code": error_code[:16],
     }
     from .codex import redaction_passes
@@ -1082,11 +1115,10 @@ def write_codex_tracer_evidence(
     temporary.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(temporary, path)
     digest = _sha256(path)
-    checksum = path.with_suffix(".sha256")
+    checksum = Path(str(path) + ".sha256")
     checksum_tmp = checksum.with_name(f".{checksum.name}.tmp")
-    checksum_tmp.write_text(f"{digest}  {path.name}\n", encoding="ascii")
+    checksum_tmp.write_text(f"{digest}  {path.as_posix() if not path.is_absolute() else path.name}\n", encoding="ascii")
     os.replace(checksum_tmp, checksum)
     if _sha256(path) != checksum.read_text(encoding="ascii").split()[0]:
         raise V2ProtocolError("evidence_hash", "Codex tracer evidence checksum reopen failed")
-    return path
     return path
