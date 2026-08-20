@@ -9,7 +9,6 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import tomllib
-
 from herdr_keypad.bridge import (
     PermanentBridge,
     V2ProtocolError,
@@ -19,6 +18,7 @@ from herdr_keypad.bridge import (
     verify_contract_inputs,
     write_live_sync_evidence,
 )
+from herdr_keypad.codex import ChildExit, CodexResult, CodexView, Redaction
 from herdr_keypad.__main__ import main
 from herdr_keypad.herdr import HerdrClient, HerdrError
 from herdr_keypad.projection import InboxProjection
@@ -158,6 +158,22 @@ class RecordingEventStream:
 
     def poll(self):
         return None
+class FakeCodexCollector:
+    def __init__(self, view: CodexView | None = None):
+        self._view = view or CodexView(source_state="current", primary=11)
+        self.collect_calls = 0
+        self.poll = False
+
+    def collect(self):
+        self.collect_calls += 1
+        return CodexResult(
+            self._view, (), 1000, 0, ChildExit("terminated", 0, None), Redaction()
+        )
+
+    def should_poll(self, now=None):
+        return self.poll
+
+
 class PluginLifecycleTests(unittest.TestCase):
     def test_manifest_is_startup_only_and_guard_is_flock_based(self):
         manifest = tomllib.loads((ROOT / "host/herdr_keypad/herdr-plugin.toml").read_text())
@@ -213,6 +229,44 @@ class PluginLifecycleTests(unittest.TestCase):
             [{"subscriptions": expected_subscriptions}] * 2,
         )
         self.assertEqual(len(usb.published), 1)
+    def test_codex_only_refresh_preserves_agents_bindings_and_focus_allowlist(self):
+        fake = FakeHerdr()
+        usb = FakeUsb()
+        codex = FakeCodexCollector()
+        bridge = PermanentBridge(
+            HerdrClient(requester=fake.request),
+            usb,
+            InboxProjection(host_epoch="epoch-fixed"),
+            codex_collector=codex,
+        )
+        bridge.bootstrap()
+        before_agents = tuple(usb.published[-1]["agents"])
+        before_binding = bridge.projection.binding(0)
+        self.assertEqual(bridge.refresh_codex().source_state, "current")
+        self.assertEqual(tuple(usb.published[-1]["agents"]), before_agents)
+        self.assertEqual(bridge.projection.binding(0), before_binding)
+        codex._view = CodexView(source_state="auth_required")
+        bridge.refresh_codex()
+        self.assertEqual(tuple(usb.published[-1]["agents"]), before_agents)
+        self.assertEqual(bridge.projection.binding(0), before_binding)
+        self.assertEqual(usb.published[-1]["diagnostics"]["codex_status"], "auth_required")
+        self.assertEqual(usb.published[-1]["diagnostics"]["link_status"], "current")
+
+    def test_link_loss_does_not_relabel_codex_authentication(self):
+        fake = FakeHerdr()
+        usb = FakeUsb()
+        codex = FakeCodexCollector(CodexView(source_state="auth_required"))
+        bridge = PermanentBridge(
+            HerdrClient(requester=fake.request),
+            usb,
+            InboxProjection(host_epoch="epoch-fixed"),
+            codex_collector=codex,
+        )
+        bridge.bootstrap()
+        usb.fail_poll = True if hasattr(usb, "fail_poll") else False
+        bridge._disconnect("offline", bridge._clock())
+        self.assertEqual(bridge.codex_view.source_state, "auth_required")
+        self.assertNotEqual(bridge.codex_view.source_state, "host_offline")
 
     def test_contract_drift_blocks_startup_before_usb(self):
         fake = FakeHerdr()

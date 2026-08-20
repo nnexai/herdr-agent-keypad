@@ -78,6 +78,14 @@ class ProjectionTests(unittest.TestCase):
         self.assertIsNot(second, third)
         self.assertEqual(third.snapshot_revision, 2)
 
+    def test_snapshot_carries_bounded_independent_health_defaults(self):
+        projection = InboxProjection(host_epoch="epoch")
+        snapshot = projection.refresh([row("p1", "0", 1)])
+        self.assertEqual(snapshot.herdr_status, "current")
+        self.assertEqual(snapshot.codex_status, "unavailable")
+        self.assertEqual(snapshot.link_status, "offline")
+        self.assertEqual(snapshot.sync_age, "AGE N/A")
+        self.assertEqual(snapshot.codex_age, "AGE N/A")
 
 if __name__ == "__main__":
     unittest.main()
