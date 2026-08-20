@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03
 current_phase_name: Truthful Codex Capacity and Device Menu
 status: executing
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-08-20T21:47:24.287Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-08-20T22:10:14.971Z"
 last_activity: 2026-08-20
 last_activity_desc: Completed Phase 03 Plan 01 truthful Codex tracer
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 35
-  completed_plans: 28
+  completed_plans: 29
 ---
 
 Total Phases: 6
@@ -28,7 +28,7 @@ stopped_at: Completed 03-01-PLAN.md
 last_updated: "2026-08-20T21:31:39.312Z"
 last_activity: 2026-08-20
 last_activity_desc: "Completed Phase 03 Plan 01 truthful Codex tracer"
-progress:[████████░░] 80%
+progress:[████████░░] 83%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03 — Truthful Codex Capacity and Device Menu
-Plan: 3 of 09
+Plan: 4 of 09
 Status: Ready to execute
 Last activity: 2026-08-20 — Completed Phase 03 Plan 01 truthful Codex tracer
 
@@ -93,6 +93,7 @@ Progress: [████████░░] 77%
 | Phase 02.2 P05 | 15min | 2 tasks | 6 files |
 | Phase 03 P01 | 120 | 3 tasks | 9 files |
 | Phase 03 P02 | 16min | 2 tasks | 6 files |
+| Phase 03 P03 | 3min | 2 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Only documented top-level rateLimits supplies capacity; map-only and unusable shapes remain unavailable with E-2401.
 - [Phase ?]: Sparse updates require a known baseline, preserve omissions and metadata nulls, and schedule one coalesced full refetch.
 - [Phase ?]: Codex-only publications preserve Herdr generation, identities, bindings, pending focus, and focus authorization.
+- [Phase ?]: Closed v2 agent_snapshot now requires complete Codex and diagnostics objects with E-2401 allowlisted bucket-unavailable semantics.
+- [Phase ?]: Firmware stages complete Codex and diagnostics into a local Generation candidate and exposes one committed shared RenderState.
 
 ### Pending Todos
 
@@ -182,5 +185,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-20T21:47:24.276Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-08-20T22:10:14.959Z
+Stopped at: Completed 03-03-PLAN.md
