@@ -203,7 +203,7 @@ Plans:
   4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
   5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
 
-**Plans:** 3/9 plans executed
+**Plans:** 4/9 plans executed
 
 Plans:
 
@@ -221,7 +221,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 03-04-PLAN.md — Render the complete truthful Codex state matrix in all four themes.
+- [x] 03-04-PLAN.md — Render the complete truthful Codex state matrix in all four themes.
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
