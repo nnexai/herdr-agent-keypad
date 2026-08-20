@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03.1
-current_phase_name: High-Fidelity Animation and Interaction Polish
-status: planning
-stopped_at: Phase 03.1 context gathered
-last_updated: "2026-08-20T19:40:28.743Z"
+current_phase: 03
+current_phase_name: Truthful Codex Capacity and Device Menu
+status: executing
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-08-20T21:31:39.312Z"
 last_activity: 2026-08-20
-last_activity_desc: "Completed quick task 260820-sp6: automatic bridge recovery after USB CDC communication reset"
+last_activity_desc: "Completed Phase 03 Plan 01 truthful Codex tracer"
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 35
-  completed_plans: 26
+  completed_plans: 27
 ---
 
 Total Phases: 6
@@ -21,14 +21,14 @@ Total Phases: 6
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03.1
-current_phase_name: High-Fidelity Animation and Interaction Polish
-status: planning
-stopped_at: Phase 03.1 context gathered
-last_updated: "2026-08-20T19:31:54.419Z"
+current_phase: 03
+current_phase_name: Truthful Codex Capacity and Device Menu
+status: executing
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-08-20T21:31:39.312Z"
 last_activity: 2026-08-20
-last_activity_desc: Inserted Phase 03.1 high-fidelity animation and interaction polish after Phase 03
-progress:
+last_activity_desc: "Completed Phase 03 Plan 01 truthful Codex tracer"
+progress:[████████░░] 77%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -42,16 +42,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-20)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 03.1 — High-Fidelity Animation and Interaction Polish
+**Current focus:** Phase 03 — Truthful Codex Capacity and Device Menu
 
 ## Current Position
 
-Phase: 03.1 — High-Fidelity Animation and Interaction Polish
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-08-20 — Completed quick task 260820-sp6: automatic bridge recovery after USB CDC communication reset
+Phase: 03 — Truthful Codex Capacity and Device Menu
+Plan: 02 of 09
+Status: Ready to execute
+Last activity: 2026-08-20 — Completed Phase 03 Plan 01 truthful Codex tracer
 
-Progress: [██████████] 100%
+Progress: [████████░░] 77%
 
 ## Performance Metrics
 
@@ -91,6 +91,7 @@ Progress: [██████████] 100%
 | Phase 02.1 P01 | 35min | 3 tasks | 6 files |
 | Phase 02.1 P02 | 25min | 2 tasks | 7 files |
 | Phase 02.2 P05 | 15min | 2 tasks | 6 files |
+| Phase 03 P01 | 120 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 02.2]: Grammar B (Exception Channel) gets a minimal bounded press blink to satisfy D-08 while keeping its darkness philosophy.
 - [Phase ?]: Plan 05 accepted under the user's explicit waiver: fresh-erase or invalid/missing stored-settings fallback to Signal Edge + Rail Echo, including no-write-back physical proof, was not run and remains deferred/open.
 - [Phase ?]: 02.2 device evidence uses accepted-with-deferred overall disposition while retaining the fallback sighting as pending/deferred rather than a physical pass.
+- [Phase ?]: Exact fresh hello matched stored device and firmware identity; tracer records the committed snapshot ACK.
+- [Phase ?]: Installed E-2406 request failure is CODEX OFFLINE without quota claims; bucket maps remain redacted manifest-only.
 
 ### Pending Todos
 
@@ -173,7 +176,7 @@ None yet.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/03.1-high-fidelity-animation-and-interaction-polish/03.1-CONTEXT.md
+**Resume file:** None
 
-Last session: 2026-08-20T18:50:54.441Z
-Stopped at: Phase 03.1 context gathered
+Last session: 2026-08-20T21:31:39.299Z
+Stopped at: Completed 03-01-PLAN.md

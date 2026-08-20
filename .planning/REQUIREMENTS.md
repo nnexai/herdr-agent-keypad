@@ -29,18 +29,18 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Codex Usage
 
-- [ ] **CODEX-01**: The fourth display remains dedicated to read-only Codex subscription usage and shows both primary and secondary usage-window percentages when the installed account supplies them.
-- [ ] **CODEX-02**: The fourth display shows the nearest relevant reset information and a reached-limit indication when those values are supplied.
-- [ ] **CODEX-03**: The fourth display preserves absent or null usage fields as unavailable rather than zero and visibly distinguishes current, stale, unavailable, authentication-failed, and host-offline data.
-- [ ] **CODEX-04**: The fourth display shows observation age or equivalent last-updated information so cached subscription usage cannot appear live.
+- [x] **CODEX-01**: The fourth display remains dedicated to read-only Codex subscription usage and shows both primary and secondary usage-window percentages when the installed account supplies them.
+- [x] **CODEX-02**: The fourth display shows the nearest relevant reset information and a reached-limit indication when those values are supplied.
+- [x] **CODEX-03**: The fourth display preserves absent or null usage fields as unavailable rather than zero and visibly distinguishes current, stale, unavailable, authentication-failed, and host-offline data.
+- [x] **CODEX-04**: The fourth display shows observation age or equivalent last-updated information so cached subscription usage cannot appear live.
 
 ### Synchronization and Safety
 
 - [ ] **SYNC-01**: After device, bridge, herdr, Codex, or link startup or reconnection, the user receives a complete authoritative four-tile snapshot before any agent key is enabled.
 - [x] **SYNC-02**: The device replaces snapshots atomically so the rendered pixels of any *actionable* key binding always represent exactly one logical host epoch and revision. Bindings deactivate at stage time and activate only after every panel has flushed; ordinary refreshes may reveal per panel (old complete frame to new complete frame, sequential, target ≤ 250 ms total) during which no binding is actionable. Boot, session reset, and failure paths retain the all-panel SYNC presentation. *(Amended 2026-08-18, Phase 02.2 — per-panel progressive reveal per 02.2-CONTEXT D-16 and 02.2-RESEARCH R-2; original all-panel pixel atomicity superseded, safety intent preserved.)*
-- [ ] **SYNC-03**: Agent-inbox freshness, Codex freshness, and device-link health are tracked and rendered independently.
+- [x] **SYNC-03**: Agent-inbox freshness, Codex freshness, and device-link health are tracked and rendered independently.
 - [ ] **SYNC-04**: A keypress made while disconnected or against an uncertain result is never queued, replayed, or optimistically retried after reconnection.
-- [ ] **SAFE-01**: Herdr and Codex credentials remain on the host; firmware receives only bounded normalized display data, opaque identities, freshness metadata, and focus results.
+- [x] **SAFE-01**: Herdr and Codex credentials remain on the host; firmware receives only bounded normalized display data, opaque identities, freshness metadata, and focus results.
 - [x] **SAFE-02**: The device can request only the typed focus action for its currently displayed binding and cannot invoke arbitrary herdr methods, host commands, or provider APIs.
 
 ### Rotary Menu
@@ -104,15 +104,15 @@ Every v1 requirement maps to exactly one roadmap phase.
 | FOCS-02 | Phase 2 | Complete |
 | FOCS-03 | Phase 2 | Complete |
 | FOCS-04 | Phase 2 | Complete |
-| CODEX-01 | Phase 3 | Pending |
-| CODEX-02 | Phase 3 | Pending |
-| CODEX-03 | Phase 3 | Pending |
-| CODEX-04 | Phase 3 | Pending |
+| CODEX-01 | Phase 3 | Complete |
+| CODEX-02 | Phase 3 | Complete |
+| CODEX-03 | Phase 3 | Complete |
+| CODEX-04 | Phase 3 | Complete |
 | SYNC-01 | Phase 4 | Pending |
 | SYNC-02 | Phase 2 | Complete |
-| SYNC-03 | Phase 3 | Pending |
+| SYNC-03 | Phase 3 | Complete |
 | SYNC-04 | Phase 4 | Pending |
-| SAFE-01 | Phase 3 | Pending |
+| SAFE-01 | Phase 3 | Complete |
 | SAFE-02 | Phase 2 | Complete |
 | MENU-01 | Phase 3 | Pending |
 | MENU-02 | Phase 3 | Pending |

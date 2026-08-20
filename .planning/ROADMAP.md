@@ -203,13 +203,13 @@ Plans:
   4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
   5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
 
-**Plans:** 9 plans
+**Plans:** 1/9 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Trace the installed Codex success or typed failure through PermanentBridge, sole v2 protocol, staged firmware, and Signal Edge.
+- [x] 03-01-PLAN.md — Trace the installed Codex success or typed failure through PermanentBridge, sole v2 protocol, staged firmware, and Signal Edge.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -299,7 +299,7 @@ Plans:
 | 2. Authoritative Agent Projection and Exact Focus | 4/5 | In Progress|  |
 | 02.1 Reliable Live Synchronization, Focus, and Flicker-Free Rendering | 3/3 | Complete | 2026-08-17 |
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
-| 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
+| 3. Truthful Codex Capacity and Device Menu | 1/9 | In Progress|  |
 | 03.1 High-Fidelity Animation and Interaction Polish | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 
@@ -312,4 +312,5 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (promote with $gsd-review-backlog when ready)
