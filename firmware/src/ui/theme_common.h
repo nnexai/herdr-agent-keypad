@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdio>
 #include <stdint.h>
 #include <string.h>
 
@@ -103,8 +104,9 @@ inline const char* grammarName(LedGrammarId id) {
 // allocates; `capacity` includes the terminator.
 inline void ellipsize(char* destination, size_t capacity, const char* source) {
   if (destination == nullptr || capacity == 0) return;
+  if (source == nullptr) source = "";
   const size_t budget = capacity - 1;
-  const size_t length = source != nullptr ? strlen(source) : 0;
+  const size_t length = strlen(source);
   if (length <= budget) {
     memcpy(destination, source, length);
     destination[length] = '\0';
@@ -127,6 +129,171 @@ inline int32_t rightAlignedX(const char* text, int32_t right = kSafeRight) {
 inline int32_t centeredX(const char* text) {
   const size_t length = text != nullptr ? strlen(text) : 0;
   return (128 - static_cast<int32_t>(length) * kGlyphCellWidth) / 2;
+}
+
+inline const char* codexStateWord(CodexSourceState state) {
+  switch (state) {
+    case CodexSourceState::Current: return "CURRENT";
+    case CodexSourceState::Stale: return "STALE";
+    case CodexSourceState::AuthRequired: return "AUTH REQUIRED";
+    case CodexSourceState::CodexOffline: return "CODEX OFFLINE";
+    case CodexSourceState::HostOffline: return "HOST OFFLINE";
+    case CodexSourceState::Unavailable:
+    default: return "UNAVAILABLE";
+  }
+}
+
+inline bool codexHasLimit(const CodexRenderView& view) {
+  return view.reached_limit == 1;
+}
+
+inline bool codexClearsValues(const CodexRenderView& view) {
+  return view.source_state == CodexSourceState::AuthRequired ||
+         view.source_state == CodexSourceState::Unavailable;
+}
+
+inline bool codexVeiled(const CodexRenderView& view) {
+  return view.source_state == CodexSourceState::Stale ||
+         view.source_state == CodexSourceState::CodexOffline ||
+         view.source_state == CodexSourceState::HostOffline;
+}
+
+inline bool codexNeedsHatch(const CodexRenderView& view) {
+  return view.source_state == CodexSourceState::Unavailable ||
+         view.source_state == CodexSourceState::Stale;
+}
+
+inline bool codexIsOffline(const CodexRenderView& view) {
+  return view.source_state == CodexSourceState::CodexOffline ||
+         view.source_state == CodexSourceState::HostOffline;
+}
+
+inline int16_t codexValue(const CodexRenderView& view, bool primary) {
+  if (codexClearsValues(view)) return -1;
+  return primary ? view.primary : view.secondary;
+}
+
+inline void formatCodexPercent(char* destination, size_t capacity, int16_t value) {
+  if (destination == nullptr || capacity == 0) return;
+  if (value < 0) {
+    ellipsize(destination, capacity, "N/A");
+    return;
+  }
+  if (value > 100) value = 100;
+  snprintf(destination, capacity, "%d%%", static_cast<int>(value));
+}
+
+inline void formatCodexText(char* destination, size_t capacity, const char* source,
+                            const char* fallback) {
+  if (destination == nullptr || capacity == 0) return;
+  const char* value = source != nullptr && source[0] != '\0' ? source : fallback;
+  ellipsize(destination, capacity, value);
+}
+
+inline void formatCodexReset(char* destination, size_t capacity,
+                             const CodexRenderView& view) {
+  formatCodexText(destination, capacity,
+                  codexClearsValues(view) ? nullptr : view.reset_text, "RESET N/A");
+}
+
+inline void formatCodexAge(char* destination, size_t capacity,
+                           const CodexRenderView& view) {
+  formatCodexText(destination, capacity, view.observation_age, "AGE N/A");
+}
+
+inline void formatCodexLabeledPercent(char* destination, size_t capacity,
+                                      const char* label, int16_t value) {
+  if (destination == nullptr || capacity == 0) return;
+  char percent[8] = {};
+  formatCodexPercent(percent, sizeof(percent), value);
+  snprintf(destination, capacity, "%s %s", label, percent);
+}
+
+inline uint16_t codexValueColor(const CodexRenderView& view) {
+  return codexVeiled(view) || view.source_state == CodexSourceState::Unavailable
+             ? kSettled
+             : kMetadata;
+}
+
+inline uint16_t codexStateColor(const CodexRenderView& view) {
+  return view.source_state == CodexSourceState::Current ? kMetadata : kDestructive;
+}
+
+inline void drawCodexRowsText(LGFX_Sprite& sprite, const CodexRenderView& view,
+                              int32_t label_x, int32_t value_right, int32_t primary_y,
+                              int32_t secondary_y) {
+  char primary[8] = {};
+  char secondary[8] = {};
+  formatCodexPercent(primary, sizeof(primary), codexValue(view, true));
+  formatCodexPercent(secondary, sizeof(secondary), codexValue(view, false));
+  sprite.setTextColor(codexValueColor(view), kBackground);
+  sprite.drawString("5H", label_x, primary_y);
+  sprite.drawString(primary, rightAlignedX(primary, value_right), primary_y);
+  sprite.drawString("WEEK", label_x, secondary_y);
+  sprite.drawString(secondary, rightAlignedX(secondary, value_right), secondary_y);
+}
+
+inline void drawCodexMetaText(LGFX_Sprite& sprite, const CodexRenderView& view,
+                              int32_t reset_x, int32_t reset_y, int32_t age_x,
+                              int32_t age_y, bool centered = false) {
+  char reset[19] = {};
+  char age[19] = {};
+  formatCodexReset(reset, sizeof(reset), view);
+  formatCodexAge(age, sizeof(age), view);
+  sprite.setTextColor(codexValueColor(view), kBackground);
+  sprite.drawString(reset, centered ? centeredX(reset) : reset_x, reset_y);
+  sprite.drawString(age, centered ? centeredX(age) : age_x, age_y);
+}
+
+inline void drawCodexStateText(LGFX_Sprite& sprite, const CodexRenderView& view,
+                               int32_t x, int32_t y, bool centered) {
+  const char* word = codexStateWord(view.source_state);
+  sprite.setTextColor(codexStateColor(view), kBackground);
+  sprite.drawString(word, centered ? centeredX(word) : x, y);
+}
+
+inline void drawHatchedTrack(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w,
+                             int32_t h, uint16_t color) {
+  sprite.drawRect(x, y, w, h, color);
+  for (int32_t start = x + 2; start < x + w - 2; start += 7) {
+    const int32_t end = start + 5 < x + w - 1 ? start + 5 : x + w - 1;
+    sprite.drawLine(start, y + h - 2, end, y + 1, color);
+  }
+}
+
+inline void drawCodexTrack(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w,
+                           int32_t h, int16_t value, uint16_t fill_color,
+                           uint16_t outline_color) {
+  if (value < 0) {
+    drawHatchedTrack(sprite, x, y, w, h, outline_color);
+    return;
+  }
+  if (value > 100) value = 100;
+  sprite.drawRect(x, y, w, h, outline_color);
+  const int32_t fill_width = (w * value) / 100;
+  if (fill_width > 0) sprite.fillRect(x, y, fill_width, h, fill_color);
+}
+
+inline void drawCodexTrackVeil(LGFX_Sprite& sprite, const CodexRenderView& view,
+                               int32_t x, int32_t y, int32_t w, int32_t h) {
+  if (codexNeedsHatch(view)) {
+    for (int32_t start = x + 3; start < x + w - 2; start += 9) {
+      const int32_t end = start + 5 < x + w - 1 ? start + 5 : x + w - 1;
+      sprite.drawLine(start, y + h - 2, end, y + 1, kSettled);
+    }
+  }
+  if (codexIsOffline(view)) {
+    const int32_t mid = x + w / 2;
+    sprite.drawLine(mid - 6, y + h / 2, mid - 2, y + h / 2, kDestructive);
+    sprite.drawLine(mid + 2, y + h / 2, mid + 6, y + h / 2, kDestructive);
+  }
+}
+
+inline void drawCodexLimitHeader(LGFX_Sprite& sprite, const CodexRenderView& view,
+                                 int32_t x, int32_t y) {
+  if (!codexHasLimit(view)) return;
+  sprite.setTextColor(kDestructive, kBackground);
+  sprite.drawString("LIMIT", x, y);
 }
 
 }  // namespace theme_common

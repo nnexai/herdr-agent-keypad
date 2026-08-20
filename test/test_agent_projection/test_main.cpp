@@ -116,6 +116,29 @@ size_t logTextCount(const char* word) {
   return count;
 }
 
+bool logContainsTextAt(const char* text, int32_t x, int32_t y) {
+  const std::string needle = std::string("textAt:") + text + ":" +
+                             std::to_string(x) + ":" + std::to_string(y);
+  for (const auto& entry : g_render_log) if (entry == needle) return true;
+  return false;
+}
+
+void assertPanelTextBounded() {
+  for (const auto& entry : g_render_log) {
+    if (entry.rfind("textAt:", 0) != 0) continue;
+    const size_t y_separator = entry.rfind(':');
+    const size_t x_separator = entry.rfind(':', y_separator - 1);
+    const std::string text = entry.substr(7, x_separator - 7);
+    const int32_t x = std::stoi(entry.substr(x_separator + 1,
+                                             y_separator - x_separator - 1));
+    const int32_t y = std::stoi(entry.substr(y_separator + 1));
+    TEST_ASSERT_TRUE_MESSAGE(x >= 4, entry.c_str());
+    TEST_ASSERT_TRUE_MESSAGE(x + static_cast<int32_t>(text.size()) * 6 <= 124,
+                             entry.c_str());
+    TEST_ASSERT_TRUE_MESSAGE(y >= 4 && y <= 114, entry.c_str());
+  }
+}
+
 std::vector<int> pushOrder() {
   std::vector<int> order;
   for (const auto& entry : g_render_log) {
@@ -712,6 +735,226 @@ void test_panel4_compositions_are_honest() {
   }
 }
 
+namespace {
+ThemeRenderer* codexThemes[] = {
+    &signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme(),
+};
+
+void renderCodex(ThemeRenderer& theme, const CodexRenderView& codex) {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.codex = codex;
+  resetLog();
+  theme.composePanel4(sprite, state);
+}
+}  // namespace
+
+void test_codex_rows_preserve_null_zero_partial_and_populated_values() {
+  for (ThemeRenderer* theme : codexThemes) {
+    CodexRenderView codex;
+    codex.source_state = CodexSourceState::Current;
+    codex.primary = 0;
+    codex.secondary = -1;
+    codex.reset_text = "RESET N/A";
+    codex.observation_age = "AGE 0M";
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsAny("0%"));
+    TEST_ASSERT_TRUE(logContainsAny("N/A"));
+    TEST_ASSERT_TRUE(logContainsText("RESET N/A"));
+    TEST_ASSERT_TRUE(logContainsText("AGE 0M"));
+    TEST_ASSERT_TRUE(logContainsText("CURRENT"));
+    TEST_ASSERT_FALSE(logContainsText("OK"));
+    TEST_ASSERT_FALSE(logContainsText("CLEAR"));
+    TEST_ASSERT_FALSE(logContainsText("LIMIT"));
+
+    codex.primary = 17;
+    codex.secondary = 98;
+    codex.reset_text = "RESET WEEK 2D";
+    codex.observation_age = "AGE 14M";
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsAny("17%"));
+    TEST_ASSERT_TRUE(logContainsAny("98%"));
+    TEST_ASSERT_TRUE(logContainsText("RESET WEEK 2D"));
+    TEST_ASSERT_TRUE(logContainsText("AGE 14M"));
+  }
+}
+
+void test_codex_source_precedence_clears_or_retains_values_truthfully() {
+  const struct {
+    CodexSourceState state;
+    const char* word;
+    bool retains_cache;
+  } cases[] = {
+      {CodexSourceState::Stale, "STALE", true},
+      {CodexSourceState::AuthRequired, "AUTH REQUIRED", false},
+      {CodexSourceState::CodexOffline, "CODEX OFFLINE", true},
+      {CodexSourceState::HostOffline, "HOST OFFLINE", true},
+      {CodexSourceState::Unavailable, "UNAVAILABLE", false},
+  };
+  for (ThemeRenderer* theme : codexThemes) {
+    for (const auto& entry : cases) {
+      CodexRenderView codex;
+      codex.source_state = entry.state;
+      codex.primary = 44;
+      codex.secondary = 55;
+      codex.reset_text = "RESET 5H 01:20";
+      codex.observation_age = "AGE 2H";
+      renderCodex(*theme, codex);
+      TEST_ASSERT_TRUE_MESSAGE(logContainsText(entry.word), entry.word);
+      TEST_ASSERT_TRUE(logContainsText("AGE 2H"));
+      if (entry.retains_cache) {
+        TEST_ASSERT_TRUE(logContainsAny("44%"));
+        TEST_ASSERT_TRUE(logContainsAny("55%"));
+        TEST_ASSERT_TRUE(logContainsText("RESET 5H 01:20"));
+      } else {
+        TEST_ASSERT_FALSE(logContainsAny("44%"));
+        TEST_ASSERT_FALSE(logContainsAny("55%"));
+        TEST_ASSERT_TRUE(logContainsAny("N/A"));
+        TEST_ASSERT_TRUE(logContainsText("RESET N/A"));
+      }
+
+      codex.primary = -1;
+      codex.secondary = -1;
+      codex.reset_text = "RESET N/A";
+      renderCodex(*theme, codex);
+      TEST_ASSERT_TRUE(logContainsText(entry.word));
+      TEST_ASSERT_TRUE(logContainsAny("N/A"));
+    }
+  }
+}
+
+void test_codex_limit_layers_without_hiding_source_state() {
+  for (ThemeRenderer* theme : codexThemes) {
+    CodexRenderView codex;
+    codex.source_state = CodexSourceState::Current;
+    codex.primary = 100;
+    codex.secondary = 81;
+    codex.reset_text = "RESET 5H 01:20";
+    codex.observation_age = "AGE 0M";
+    codex.reached_limit = -1;
+    renderCodex(*theme, codex);
+    TEST_ASSERT_FALSE(logContainsText("LIMIT"));
+    TEST_ASSERT_FALSE(logContainsText("OK"));
+
+    codex.reached_limit = 1;
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsText("LIMIT"));
+
+    codex.source_state = CodexSourceState::Stale;
+    codex.observation_age = "AGE 1H";
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsText("STALE"));
+    TEST_ASSERT_TRUE(logContainsText("LIMIT"));
+
+    codex.source_state = CodexSourceState::CodexOffline;
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsText("CODEX OFFLINE"));
+    TEST_ASSERT_TRUE(logContainsText("LIMIT"));
+
+    codex.source_state = CodexSourceState::HostOffline;
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsText("HOST OFFLINE"));
+    TEST_ASSERT_TRUE(logContainsText("LIMIT"));
+
+    codex.source_state = CodexSourceState::AuthRequired;
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsText("AUTH REQUIRED"));
+    TEST_ASSERT_TRUE(logContainsText("LIMIT"));
+    TEST_ASSERT_FALSE(logContainsAny("100%"));
+  }
+}
+
+void test_codex_exact_theme_geometry_and_shared_baselines() {
+  CodexRenderView codex;
+  codex.source_state = CodexSourceState::Current;
+  codex.primary = 17;
+  codex.secondary = 83;
+  codex.reset_text = "RESET 5H 01:20";
+  codex.observation_age = "AGE 14M";
+
+  renderCodex(signalEdgeTheme(), codex);
+  TEST_ASSERT_TRUE(logContainsTextAt("CODEX", 16, 4));
+  TEST_ASSERT_TRUE(logContainsTextAt("5H", 16, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("17%", 102, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("WEEK", 16, 50));
+  TEST_ASSERT_TRUE(logContainsTextAt("RESET 5H 01:20", 16, 70));
+  TEST_ASSERT_TRUE(logContainsTextAt("AGE 14M", 16, 86));
+  TEST_ASSERT_TRUE(logContainsTextAt("CURRENT", 16, 114));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:16:32:108:8"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:16:52:108:8"));
+
+  renderCodex(ledgerTheme(), codex);
+  TEST_ASSERT_TRUE(logContainsTextAt("CODEX", 6, 4));
+  TEST_ASSERT_TRUE(logContainsTextAt("5H", 6, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("17%", 102, 30));
+  TEST_ASSERT_TRUE(logContainsAny("drawLine:4:38:124:38"));
+  TEST_ASSERT_TRUE(logContainsAny("drawLine:4:58:124:58"));
+  TEST_ASSERT_TRUE(logContainsTextAt("RESET 5H 01:20", 6, 70));
+  TEST_ASSERT_TRUE(logContainsTextAt("AGE 14M", 6, 86));
+  TEST_ASSERT_TRUE(logContainsTextAt("CURRENT", 6, 114));
+
+  renderCodex(beaconTheme(), codex);
+  TEST_ASSERT_TRUE(logContainsTextAt("CODEX", 49, 4));
+  TEST_ASSERT_TRUE(logContainsTextAt("5H 17%", 46, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("WEEK 83%", 40, 50));
+  TEST_ASSERT_TRUE(logContainsAny("drawCircle:64:40:19"));
+  TEST_ASSERT_TRUE(logContainsAny("drawCircle:64:40:12"));
+  TEST_ASSERT_TRUE(logContainsTextAt("RESET 5H 01:20", 22, 70));
+  TEST_ASSERT_TRUE(logContainsTextAt("AGE 14M", 43, 86));
+  TEST_ASSERT_TRUE(logContainsTextAt("CURRENT", 43, 114));
+
+  renderCodex(instrumentTheme(), codex);
+  TEST_ASSERT_TRUE(logContainsTextAt("CODEX", 49, 4));
+  TEST_ASSERT_TRUE(logContainsTextAt("5H", 8, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("WEEK", 8, 50));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:8:32:112:8"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:8:52:112:8"));
+  TEST_ASSERT_TRUE(logContainsTextAt("RESET 5H 01:20", 22, 70));
+  TEST_ASSERT_TRUE(logContainsTextAt("AGE 14M", 43, 86));
+  TEST_ASSERT_TRUE(logContainsTextAt("CURRENT", 43, 114));
+}
+
+void test_codex_copy_is_tail_ellipsized_inside_safe_inset() {
+  CodexRenderView codex;
+  codex.source_state = CodexSourceState::Current;
+  codex.primary = 1;
+  codex.secondary = 2;
+  codex.reset_text = "RESET WEEK ABCDEFGHIJKLMNOP";
+  codex.observation_age = "AGE ABCDEFGHIJKLMNOPQRST";
+  for (ThemeRenderer* theme : codexThemes) {
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsText("RESET WEEK ABCD..."));
+    TEST_ASSERT_TRUE(logContainsText("AGE ABCDEFGHIJK..."));
+    TEST_ASSERT_FALSE(logContainsAny("EFGHIJKLMNOP"));
+    assertPanelTextBounded();
+  }
+}
+
+void test_codex_only_redraw_preserves_agents_bindings_and_snapshot_identity() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(7);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const std::string title = projection.title(0);
+  const std::string discriminator = projection.discriminator(0);
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+
+  MenuState menu;
+  menu.open = false;
+  resetLog();
+  projection.renderMenu(board, beaconTheme(), menu);
+  const std::vector<int> order = pushOrder();
+  TEST_ASSERT_EQUAL_UINT32(1, order.size());
+  TEST_ASSERT_EQUAL_INT(3, order[0]);
+  TEST_ASSERT_EQUAL_STRING(title.c_str(), projection.title(0));
+  TEST_ASSERT_EQUAL_STRING(discriminator.c_str(), projection.discriminator(0));
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "codex-only", intent.to<JsonObject>()));
+  TEST_ASSERT_EQUAL_UINT32(7, intent["snapshot_revision"].as<uint32_t>());
+}
+
 void test_feedback_and_sync_copy_is_not_duplicated() {
   AgentProjection projection;
   ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
@@ -771,8 +1014,8 @@ void test_usage_placeholders_follow_theme_geometry() {
   TEST_ASSERT_TRUE(logContainsText("WEEK"));
   TEST_ASSERT_EQUAL_UINT32(2, logTextCount("N/A"));
   TEST_ASSERT_EQUAL_UINT32(0, logTextCount("NO VALUES"));
-  TEST_ASSERT_TRUE(logContainsAny("drawRect:16:40:108:12"));
-  TEST_ASSERT_TRUE(logContainsAny("drawRect:16:72:108:12"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:16:32:108:8"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:16:52:108:8"));
 
   resetLog();
   instrumentTheme().composePanel4(sprite, state);
@@ -780,8 +1023,8 @@ void test_usage_placeholders_follow_theme_geometry() {
   TEST_ASSERT_TRUE(logContainsText("WEEK"));
   TEST_ASSERT_EQUAL_UINT32(2, logTextCount("N/A"));
   TEST_ASSERT_EQUAL_UINT32(0, logTextCount("NO VALUES"));
-  TEST_ASSERT_TRUE(logContainsAny("drawRect:8:32:112:10"));
-  TEST_ASSERT_TRUE(logContainsAny("drawRect:8:64:112:10"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:8:32:112:8"));
+  TEST_ASSERT_TRUE(logContainsAny("drawRect:8:52:112:8"));
   TEST_ASSERT_FALSE(logContainsAny("drawCircle:"));
 }
 
@@ -1106,6 +1349,12 @@ int runAllTests() {
   RUN_TEST(test_theme_by_id_dispatches_all_four);
   RUN_TEST(test_ledger_empty_and_blocked_inversion);
   RUN_TEST(test_panel4_compositions_are_honest);
+  RUN_TEST(test_codex_rows_preserve_null_zero_partial_and_populated_values);
+  RUN_TEST(test_codex_source_precedence_clears_or_retains_values_truthfully);
+  RUN_TEST(test_codex_limit_layers_without_hiding_source_state);
+  RUN_TEST(test_codex_exact_theme_geometry_and_shared_baselines);
+  RUN_TEST(test_codex_copy_is_tail_ellipsized_inside_safe_inset);
+  RUN_TEST(test_codex_only_redraw_preserves_agents_bindings_and_snapshot_identity);
   RUN_TEST(test_feedback_and_sync_copy_is_not_duplicated);
   RUN_TEST(test_signal_edge_polish_geometry);
   RUN_TEST(test_usage_placeholders_follow_theme_geometry);

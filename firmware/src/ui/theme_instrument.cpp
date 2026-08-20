@@ -220,15 +220,48 @@ class InstrumentTheme final : public ThemeRenderer {
     sprite.drawString(row, centeredX(row), 112);
   }
 
-  void composePanel4(LGFX_Sprite& sprite, const RenderState&) override {
+  void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
+    const CodexRenderView& codex = state.codex;
     sprite.fillScreen(kBackground);
-    drawBezelTicks(sprite, kSettled);
+    const uint16_t bezel_color =
+        codex.source_state == CodexSourceState::Current && !codexHasLimit(codex)
+            ? kSettled
+            : kDestructive;
+    drawBezelTicks(sprite, bezel_color);
     sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("CODEX", centeredX("CODEX"), 5);
-    drawUsageGauge(sprite, 32, "5H");
-    drawUsageGauge(sprite, 64, "WEEK");
-    sprite.setTextColor(kDestructive, kBackground);
-    sprite.drawString("UNAVAILABLE", centeredX("UNAVAILABLE"), 100);
+    sprite.drawString("CODEX", centeredX("CODEX"), 4);
+    if (codexHasLimit(codex) &&
+        codex.source_state != CodexSourceState::Current) {
+      drawCodexLimitHeader(sprite, codex, 94, 4);
+    }
+
+    drawCodexRowsText(sprite, codex, 8, 120, 30, 50);
+    const uint16_t gauge_color =
+        codex.source_state == CodexSourceState::Current
+            ? (codexHasLimit(codex) ? kDestructive : kAccent)
+            : kSettled;
+    drawCodexTrack(sprite, 8, 32, 112, 8, codexValue(codex, true),
+                   gauge_color, kSettled);
+    drawCodexTrack(sprite, 8, 52, 112, 8, codexValue(codex, false),
+                   gauge_color, kSettled);
+    drawCodexTrackVeil(sprite, codex, 8, 32, 112, 8);
+    drawCodexTrackVeil(sprite, codex, 8, 52, 112, 8);
+    const uint16_t warning_color = codexHasLimit(codex) ? kDestructive : kBlocked;
+    sprite.fillRect(92, 31, 2, 10, warning_color);
+    sprite.fillRect(92, 51, 2, 10, warning_color);
+    if (codex.source_state == CodexSourceState::AuthRequired) {
+      sprite.drawLine(8, 20, 120, 59, kDestructive);
+      sprite.drawLine(120, 20, 8, 59, kDestructive);
+    }
+
+    drawCodexMetaText(sprite, codex, 0, 70, 0, 86, true);
+    if (codexHasLimit(codex) &&
+        codex.source_state == CodexSourceState::Current) {
+      sprite.setTextColor(kDestructive, kBackground);
+      sprite.drawString("LIMIT", centeredX("LIMIT"), 114);
+    } else {
+      drawCodexStateText(sprite, codex, 0, 114, true);
+    }
   }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {

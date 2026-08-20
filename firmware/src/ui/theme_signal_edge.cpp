@@ -202,44 +202,52 @@ class SignalEdgeTheme final : public ThemeRenderer {
   }
 
   void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
+    const CodexRenderView& codex = state.codex;
     sprite.fillScreen(kBackground);
     sprite.fillRect(0, 0, 8, 128, kSettled);
     sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("CODEX", 16, 6);
-    char primary[8] = "N/A";
-    char secondary[8] = "N/A";
-    if (state.codex.primary >= 0) snprintf(primary, sizeof(primary), "%d%%", state.codex.primary);
-    if (state.codex.secondary >= 0) snprintf(secondary, sizeof(secondary), "%d%%", state.codex.secondary);
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("5H", 16, 28);
-    sprite.drawString(primary, rightAlignedX(primary), 28);
-    sprite.drawString("WEEK", 16, 48);
-    sprite.drawString(secondary, rightAlignedX(secondary), 48);
-    if (state.codex.primary >= 0) {
-      sprite.fillRect(16, 32, 108 * state.codex.primary / 100, 8, kAccent);
-      sprite.drawRect(16, 32, 108, 8, kSettled);
-    } else {
-      drawHatchedGauge(sprite, 16, 32, 108, 8);
+    sprite.drawString("CODEX", 16, 4);
+
+    drawCodexRowsText(sprite, codex, 16, 120, 30, 50);
+    const uint16_t gauge_color =
+        codex.source_state == CodexSourceState::Current
+            ? (codexHasLimit(codex) ? kDestructive : kAccent)
+            : kSettled;
+    drawCodexTrack(sprite, 16, 32, 108, 8, codexValue(codex, true),
+                   gauge_color, kSettled);
+    drawCodexTrack(sprite, 16, 52, 108, 8, codexValue(codex, false),
+                   gauge_color, kSettled);
+    drawCodexTrackVeil(sprite, codex, 16, 32, 108, 8);
+    drawCodexTrackVeil(sprite, codex, 16, 52, 108, 8);
+    drawCodexMetaText(sprite, codex, 16, 70, 16, 86);
+
+    if (codex.source_state == CodexSourceState::AuthRequired) {
+      sprite.drawLine(16, 20, 124, 59, kDestructive);
+      sprite.drawLine(124, 20, 16, 59, kDestructive);
+    } else if (codex.source_state == CodexSourceState::HostOffline) {
+      sprite.fillRect(0, 0, 128, 2, kDestructive);
     }
-    if (state.codex.secondary >= 0) {
-      sprite.fillRect(16, 52, 108 * state.codex.secondary / 100, 8, kAccent);
-      sprite.drawRect(16, 52, 108, 8, kSettled);
+
+    const bool alert = codex.source_state != CodexSourceState::Current ||
+                       codexHasLimit(codex);
+    if (alert) {
+      sprite.fillRect(0, 104, 128, 24, kDestructive);
+      sprite.setTextColor(kBackground, kDestructive);
+      const char* footer = codex.source_state == CodexSourceState::Current
+                               ? "LIMIT"
+                               : codexStateWord(codex.source_state);
+      sprite.drawString(footer, 16, 114);
+      if (codexHasLimit(codex)) {
+        sprite.drawLine(6, 108, 6, 119, kBackground);
+        sprite.fillCircle(6, 123, 2, kBackground);
+      }
     } else {
-      drawHatchedGauge(sprite, 16, 52, 108, 8);
+      drawCodexStateText(sprite, codex, 16, 114, false);
     }
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString(state.codex.reset_text, 16, 70);
-    sprite.drawString(state.codex.observation_age, 16, 86);
-    const char* status = state.codex.source_state == CodexSourceState::Current ? "CURRENT" :
-                         state.codex.source_state == CodexSourceState::Stale ? "STALE" :
-                         state.codex.source_state == CodexSourceState::AuthRequired ? "AUTH REQUIRED" :
-                         state.codex.source_state == CodexSourceState::CodexOffline ? "CODEX OFFLINE" :
-                         state.codex.source_state == CodexSourceState::HostOffline ? "HOST OFFLINE" :
-                         "UNAVAILABLE";
-    sprite.fillRect(0, 104, 128, 24, state.codex.reached_limit == 1 ? kDestructive : kDestructive);
-    sprite.setTextColor(kBackground, kDestructive);
-    sprite.drawString(status, 16, 114);
-    if (state.codex.reached_limit == 1) sprite.drawString("LIMIT", 88, 6);
+    if (codexHasLimit(codex) &&
+        codex.source_state != CodexSourceState::Current) {
+      drawCodexLimitHeader(sprite, codex, 94, 4);
+    }
   }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {

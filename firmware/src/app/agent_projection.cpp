@@ -341,7 +341,8 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board) {
   // reset, and any compose/flush failure keep the SYNC presentation.
   disableActive(nullptr);
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
-    if (!renderTile(board, slot, staged_.tiles[slot], Feedback::Disabled)) {
+    if (!renderTile(board, theme(), staged_, slot, staged_.tiles[slot],
+                    Feedback::Disabled)) {
       staged_valid_ = false;
       syncing_ = true;
       renderSync(board);  // best-effort fail-closed SYNC on all panels
@@ -370,15 +371,21 @@ bool AgentProjection::renderSync(BoardAdapter& board) const {
 
 bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile,
                                   Feedback feedback) const {
-  return renderTile(board, theme(), slot, tile, feedback);
+  return renderTile(board, theme(), committed_generation_, slot, tile, feedback);
 }
 
 bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer, uint8_t slot,
                                   const Tile& tile, Feedback feedback) const {
+  return renderTile(board, renderer, committed_generation_, slot, tile, feedback);
+}
+
+bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
+                                  const Generation& generation, uint8_t slot,
+                                  const Tile& tile, Feedback feedback) const {
   Display* display = board.displayAt(slot);
   if (display == nullptr || !ensureComposition()) return false;
   RenderState state;
-  state.source_status = committed_generation_.source_status;
+  state.source_status = generation.source_status;
   state.syncing = syncing_;
   state.blocked_pulse_high = animation_.blockedPulseHigh(micros());
   RenderState::Slot& out = state.slots[slot];
@@ -388,30 +395,30 @@ bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer, u
   out.since = tile.since;
   out.age = tile.age;
   out.state = tile.state;
-  state.codex.source_state = strcmp(committed_generation_.codex_source_state, "current") == 0 ? CodexSourceState::Current :
-                             strcmp(committed_generation_.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
-                             strcmp(committed_generation_.codex_source_state, "auth_required") == 0 ? CodexSourceState::AuthRequired :
-                             strcmp(committed_generation_.codex_source_state, "codex_offline") == 0 ? CodexSourceState::CodexOffline :
-                             strcmp(committed_generation_.codex_source_state, "host_offline") == 0 ? CodexSourceState::HostOffline :
+  state.codex.source_state = strcmp(generation.codex_source_state, "current") == 0 ? CodexSourceState::Current :
+                             strcmp(generation.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
+                             strcmp(generation.codex_source_state, "auth_required") == 0 ? CodexSourceState::AuthRequired :
+                             strcmp(generation.codex_source_state, "codex_offline") == 0 ? CodexSourceState::CodexOffline :
+                             strcmp(generation.codex_source_state, "host_offline") == 0 ? CodexSourceState::HostOffline :
                              CodexSourceState::Unavailable;
-  state.codex.primary = committed_generation_.codex_primary;
-  state.codex.secondary = committed_generation_.codex_secondary;
-  state.codex.reset_text = committed_generation_.codex_reset_text;
-  state.codex.observation_age = committed_generation_.codex_observation_age;
-  state.codex.reached_limit = committed_generation_.codex_reached_limit;
-  state.codex.error_code = committed_generation_.codex_error_code;
-  state.diagnostics.link_status = committed_generation_.diagnostics_link_status;
-  state.diagnostics.herdr_status = committed_generation_.diagnostics_herdr_status;
-  state.diagnostics.codex_status = committed_generation_.diagnostics_codex_status;
-  state.diagnostics.sync_age = committed_generation_.diagnostics_sync_age;
-  state.diagnostics.codex_age = committed_generation_.diagnostics_codex_age;
-  state.diagnostics.firmware_version = committed_generation_.diagnostics_firmware_version;
-  state.diagnostics.protocol_version = committed_generation_.diagnostics_protocol_version;
-  state.diagnostics.bridge_version = committed_generation_.diagnostics_bridge_version;
-  state.diagnostics.device_suffix = committed_generation_.diagnostics_device_suffix;
-  state.diagnostics.session_suffix = committed_generation_.diagnostics_session_suffix;
-  state.diagnostics.revision_suffix = committed_generation_.diagnostics_revision_suffix;
-  state.diagnostics.error_code = committed_generation_.diagnostics_error_code;
+  state.codex.primary = generation.codex_primary;
+  state.codex.secondary = generation.codex_secondary;
+  state.codex.reset_text = generation.codex_reset_text;
+  state.codex.observation_age = generation.codex_observation_age;
+  state.codex.reached_limit = generation.codex_reached_limit;
+  state.codex.error_code = generation.codex_error_code;
+  state.diagnostics.link_status = generation.diagnostics_link_status;
+  state.diagnostics.herdr_status = generation.diagnostics_herdr_status;
+  state.diagnostics.codex_status = generation.diagnostics_codex_status;
+  state.diagnostics.sync_age = generation.diagnostics_sync_age;
+  state.diagnostics.codex_age = generation.diagnostics_codex_age;
+  state.diagnostics.firmware_version = generation.diagnostics_firmware_version;
+  state.diagnostics.protocol_version = generation.diagnostics_protocol_version;
+  state.diagnostics.bridge_version = generation.diagnostics_bridge_version;
+  state.diagnostics.device_suffix = generation.diagnostics_device_suffix;
+  state.diagnostics.session_suffix = generation.diagnostics_session_suffix;
+  state.diagnostics.revision_suffix = generation.diagnostics_revision_suffix;
+  state.diagnostics.error_code = generation.diagnostics_error_code;
   out.feedback = feedback;
   renderer.composeTile(g_composition, slot, state);
   g_composition.pushSprite(display, 0, 0);

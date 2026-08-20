@@ -143,6 +143,9 @@ class AgentProjection final {
   bool renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile, Feedback feedback) const;
   bool renderTile(BoardAdapter& board, ThemeRenderer& theme, uint8_t slot,
                   const Tile& tile, Feedback feedback) const;
+  bool renderTile(BoardAdapter& board, ThemeRenderer& theme,
+                  const Generation& generation, uint8_t slot,
+                  const Tile& tile, Feedback feedback) const;
   bool renderSync(BoardAdapter& board) const;
 
   Generation staged_{};

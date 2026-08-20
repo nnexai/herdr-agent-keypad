@@ -147,23 +147,76 @@ class LedgerTheme final : public ThemeRenderer {
     }
   }
 
-  void composePanel4(LGFX_Sprite& sprite, const RenderState&) override {
-    // Ledger numbers page in honest UNAVAILABLE form: explicit ASCII N/A
-    // values, never fabricated numbers.
+  void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
+    const CodexRenderView& codex = state.codex;
     sprite.fillScreen(kBackground);
     sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("CODEX", 6, 7);
-    sprite.drawLine(4, 18, 124, 18, kSettled);
-    const char* labels[] = {"5H", "WEEKLY", "RESET"};
-    for (uint8_t line = 0; line < 3; ++line) {
-      const int32_t y = 30 + line * 20;
-      sprite.setTextColor(kMetadata, kBackground);
-      sprite.drawString(labels[line], 6, y);
-      sprite.drawString("N/A", 96, y);
-      sprite.drawLine(4, y + 14, 124, y + 14, kSettled);
+    sprite.drawString("CODEX", 6, 4);
+    if (codex.source_state != CodexSourceState::Current) {
+      sprite.fillRect(4, 4, 120, 14, kDestructive);
+      sprite.setTextColor(kBackground, kDestructive);
+      sprite.drawString("CODEX", 6, 4);
     }
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("UNAVAILABLE", 6, 112);
+    if (codexHasLimit(codex) &&
+        codex.source_state != CodexSourceState::Current) {
+      drawCodexLimitHeader(sprite, codex, 90, 4);
+    }
+    sprite.drawLine(4, 18, 124, 18, kSettled);
+
+    char primary[8] = {};
+    char secondary[8] = {};
+    formatCodexPercent(primary, sizeof(primary), codexValue(codex, true));
+    formatCodexPercent(secondary, sizeof(secondary), codexValue(codex, false));
+    const bool invert_rows = codexHasLimit(codex) &&
+                             codex.source_state == CodexSourceState::Current;
+    if (invert_rows && codexValue(codex, true) >= 0) {
+      sprite.fillRect(4, 20, 120, 18, kBlocked);
+    }
+    if (invert_rows && codexValue(codex, false) >= 0) {
+      sprite.fillRect(4, 40, 120, 18, kBlocked);
+    }
+    const uint16_t row_color = codexValueColor(codex);
+    sprite.setTextColor(invert_rows ? kBackground : row_color,
+                        invert_rows ? kBlocked : kBackground);
+    sprite.drawString("5H", 6, 30);
+    sprite.drawString(primary, rightAlignedX(primary, 120), 30);
+    sprite.drawString("WEEK", 6, 50);
+    sprite.drawString(secondary, rightAlignedX(secondary, 120), 50);
+    sprite.drawLine(4, 38, 124, 38, kSettled);
+    sprite.drawLine(4, 58, 124, 58, kSettled);
+    if (codexNeedsHatch(codex)) {
+      sprite.drawLine(4, 38, 24, 20, kSettled);
+      sprite.drawLine(28, 38, 48, 20, kSettled);
+      sprite.drawLine(4, 58, 24, 40, kSettled);
+      sprite.drawLine(28, 58, 48, 40, kSettled);
+    }
+    if (codex.source_state == CodexSourceState::AuthRequired) {
+      sprite.drawLine(4, 20, 124, 59, kDestructive);
+      sprite.drawLine(124, 20, 4, 59, kDestructive);
+    } else if (codex.source_state == CodexSourceState::CodexOffline) {
+      sprite.drawLine(54, 38, 60, 38, kDestructive);
+      sprite.drawLine(68, 38, 74, 38, kDestructive);
+    }
+
+    drawCodexMetaText(sprite, codex, 6, 70, 6, 86);
+    sprite.drawLine(4, 78, 124, 78, kSettled);
+
+    const bool state_alert = codex.source_state != CodexSourceState::Current ||
+                             codexHasLimit(codex);
+    if (state_alert) {
+      const uint16_t band = codex.source_state == CodexSourceState::Current
+                                ? kBlocked
+                                : kDestructive;
+      sprite.fillRect(4, 102, 120, 22, band);
+      sprite.setTextColor(kBackground, band);
+      if (codex.source_state == CodexSourceState::Current) {
+        sprite.drawString("LIMIT", 6, 114);
+      } else {
+        sprite.drawString(codexStateWord(codex.source_state), 6, 114);
+      }
+    } else {
+      drawCodexStateText(sprite, codex, 6, 114, false);
+    }
   }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {

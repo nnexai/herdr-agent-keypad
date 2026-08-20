@@ -144,6 +144,39 @@ void drawFeedbackGlyph(LGFX_Sprite& sprite, TileFeedback feedback, uint16_t colo
   }
 }
 
+static constexpr int8_t kCodexRingPoints[][2] = {
+    {0, -19}, {7, -18}, {13, -13}, {18, -7},
+    {19, 0}, {18, 7}, {13, 13}, {7, 18},
+    {0, 19}, {-7, 18}, {-13, 13}, {-18, 7},
+    {-19, 0}, {-18, -7}, {-13, -13}, {-7, -18},
+};
+
+void drawCodexRing(LGFX_Sprite& sprite, int32_t radius, int16_t value,
+                   uint16_t color, bool broken) {
+  sprite.drawCircle(64, 40, radius, color);
+  if (value >= 0) {
+    const uint8_t segments = static_cast<uint8_t>((value * 16) / 100);
+    for (uint8_t segment = 0; segment < segments; ++segment) {
+      const uint8_t next = static_cast<uint8_t>((segment + 1) & 0x0F);
+      const int32_t scale = radius;
+      const int32_t x0 = 64 + kCodexRingPoints[segment][0] * scale / 19;
+      const int32_t y0 = 40 + kCodexRingPoints[segment][1] * scale / 19;
+      const int32_t x1 = 64 + kCodexRingPoints[next][0] * scale / 19;
+      const int32_t y1 = 40 + kCodexRingPoints[next][1] * scale / 19;
+      sprite.drawLine(x0, y0, x1, y1, color);
+    }
+  } else {
+    for (uint8_t point = 0; point < 16; point += 3) {
+      sprite.fillCircle(64 + kCodexRingPoints[point][0] * radius / 19,
+                        40 + kCodexRingPoints[point][1] * radius / 19, 1, color);
+    }
+  }
+  if (broken) {
+    sprite.drawLine(64 - radius, 40 - radius, 64 + radius, 40 + radius, color);
+    sprite.drawLine(64 + radius, 40 - radius, 64 - radius, 40 + radius, color);
+  }
+}
+
 class BeaconTheme final : public ThemeRenderer {
  public:
   void composeTile(LGFX_Sprite& sprite, uint8_t slot, const RenderState& state) override {
@@ -220,24 +253,51 @@ class BeaconTheme final : public ThemeRenderer {
     }
   }
 
-  void composePanel4(LGFX_Sprite& sprite, const RenderState&) override {
-    // Hatched conic dial in honest UNAVAILABLE form.
+  void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
+    const CodexRenderView& codex = state.codex;
     sprite.fillScreen(kBackground);
     sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("CODEX", centeredX("CODEX"), 8);
-    sprite.drawCircle(64, 60, 34, kSettled);
-    sprite.drawCircle(64, 60, 33, kSettled);
-    for (int32_t y = 29; y <= 91; ++y) {
-      const int32_t dy = y - 60;
-      for (int32_t x = 33; x <= 95; ++x) {
-        const int32_t dx = x - 64;
-        if (dx * dx + dy * dy <= 31 * 31 && ((x + y) % 9) == 0) {
-          sprite.drawPixel(x, y, kSettled);
-        }
-      }
+    sprite.drawString("CODEX", centeredX("CODEX"), 4);
+    if (codexHasLimit(codex) &&
+        codex.source_state != CodexSourceState::Current) {
+      drawCodexLimitHeader(sprite, codex, 94, 4);
     }
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("UNAVAILABLE", centeredX("UNAVAILABLE"), 110);
+
+    const uint16_t ring_color = codexHasLimit(codex)
+                                    ? kDestructive
+                                    : codex.source_state == CodexSourceState::Current
+                                          ? kAccent
+                                          : kSettled;
+    const bool broken = codex.source_state == CodexSourceState::Stale ||
+                        codexIsOffline(codex) ||
+                        codex.source_state == CodexSourceState::AuthRequired;
+    drawCodexRing(sprite, 19, codexValue(codex, true), ring_color, broken);
+    drawCodexRing(sprite, 12, codexValue(codex, false), ring_color,
+                  codex.source_state == CodexSourceState::HostOffline);
+    if (codex.source_state == CodexSourceState::AuthRequired) {
+      sprite.drawLine(45, 21, 83, 59, kDestructive);
+      sprite.drawLine(83, 21, 45, 59, kDestructive);
+    } else if (codex.source_state == CodexSourceState::HostOffline) {
+      sprite.fillRect(4, 16, 120, 2, kDestructive);
+    }
+
+    char primary[14] = {};
+    char secondary[14] = {};
+    formatCodexLabeledPercent(primary, sizeof(primary), "5H",
+                              codexValue(codex, true));
+    formatCodexLabeledPercent(secondary, sizeof(secondary), "WEEK",
+                              codexValue(codex, false));
+    sprite.setTextColor(codexValueColor(codex), kBackground);
+    sprite.drawString(primary, centeredX(primary), 30);
+    sprite.drawString(secondary, centeredX(secondary), 50);
+    drawCodexMetaText(sprite, codex, 0, 70, 0, 86, true);
+
+    if (codexHasLimit(codex) &&
+        codex.source_state == CodexSourceState::Current) {
+      sprite.setTextColor(kDestructive, kBackground);
+      sprite.drawString("LIMIT", centeredX("LIMIT"), 40);
+    }
+    drawCodexStateText(sprite, codex, 0, 114, true);
   }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {

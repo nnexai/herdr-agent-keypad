@@ -38,11 +38,14 @@ class LGFX_Sprite {
   void fillScreen(uint16_t) { g_render_log.push_back("fillScreen"); }
   void setTextColor(uint16_t, uint16_t) {}
   void setTextSize(uint8_t) {}
-  void drawString(const char* value, int32_t, int32_t) {
+  void drawString(const char* value, int32_t x, int32_t y) {
     if (value != nullptr && (std::strcmp(value, "SYNC") == 0 || std::strcmp(value, "UPDATING") == 0)) {
       ++g_sync_draw_count;
     }
-    g_render_log.push_back(std::string("text:") + (value != nullptr ? value : ""));
+    const char* text = value != nullptr ? value : "";
+    g_render_log.push_back(std::string("text:") + text);
+    g_render_log.push_back(std::string("textAt:") + text + ":" +
+                           std::to_string(x) + ":" + std::to_string(y));
   }
   void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint16_t) {
     g_render_log.push_back("drawRect:" + std::to_string(x) + ":" + std::to_string(y) + ":" +
