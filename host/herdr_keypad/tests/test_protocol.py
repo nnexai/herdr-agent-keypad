@@ -47,6 +47,50 @@ class V2ProtocolTests(unittest.TestCase):
             protocol.validate_v2_payload("agent_snapshot", {**snapshot, "unexpected": 1})
         self.assertEqual(unknown.exception.code, "unknown_field")
 
+    def test_v2_codex_and_diagnostics_presence_matrix_is_closed(self) -> None:
+        snapshot = make_snapshot(host_epoch="epoch-a").as_payload()
+        snapshot.update(
+            codex={
+                "source_state": "unavailable",
+                "primary": None,
+                "secondary": None,
+                "reset_text": "RESET N/A",
+                "observation_age": "AGE N/A",
+                "reached_limit": None,
+                "error_code": "E-2401",
+            },
+            diagnostics={
+                "link_status": "current",
+                "herdr_status": "current",
+                "codex_status": "unavailable",
+                "sync_age": "AGE 0M",
+                "codex_age": "AGE N/A",
+                "firmware_version": "phase1",
+                "protocol_version": 2,
+                "bridge_version": "0.1.0",
+                "device_suffix": "ABC123",
+                "session_suffix": "DEF456",
+                "revision_suffix": "000001",
+                "error_code": "E-2401",
+            },
+        )
+        protocol.validate_v2_payload("agent_snapshot", snapshot)
+        for state in ("current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"):
+            current = {**snapshot, "codex": {**snapshot["codex"], "source_state": state}}
+            protocol.validate_v2_payload("agent_snapshot", current)
+        for primary, secondary in ((None, None), (0, None), (100, 0), (37, 88)):
+            current = {**snapshot, "codex": {**snapshot["codex"], "primary": primary, "secondary": secondary}}
+            protocol.validate_v2_payload("agent_snapshot", current)
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", {**snapshot, "codex": {**snapshot["codex"], "error_code": "E-9999"}})
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", {**snapshot, "codex": {**snapshot["codex"], "selected_key": None}})
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", {**snapshot, "diagnostics": {**snapshot["diagnostics"], "account_email": "user@example.com"}})
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", {**snapshot, "diagnostics": {**snapshot["diagnostics"], "protocol_version": "2"}})
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", {**snapshot, "diagnostics": {**snapshot["diagnostics"], "device_suffix": "é"}})
     def test_generation_and_focus_result_are_fail_closed(self) -> None:
         projection = AgentProjection()
         projection.stage(make_snapshot(host_epoch="epoch-a"))
