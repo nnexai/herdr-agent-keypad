@@ -510,12 +510,17 @@ void test_settings_confirm_rejects_out_of_range() {
 }
 
 void test_settings_failed_replacement_never_loads_hybrid_pair() {
-  SettingsStore initial;
-  TEST_ASSERT_TRUE(initial.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension));
   for (int32_t failure = 0; failure < 4; ++failure) {
+    g_nvs_fail_on_write = -1;
+    g_nvs_write_attempt = 0;
+    SettingsStore initial;
+    TEST_ASSERT_TRUE(initial.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension));
+
     g_nvs_fail_on_write = failure;
     g_nvs_write_attempt = 0;
     SettingsStore replacement;
+    TEST_ASSERT_FALSE(replacement.confirm(ThemeId::Instrument, LedGrammarId::MeterLamps));
+
     SettingsStore reloaded;
     if (failure == 0) {
       TEST_ASSERT_TRUE(reloaded.load());
@@ -526,9 +531,16 @@ void test_settings_failed_replacement_never_loads_hybrid_pair() {
       TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::SignalEdge), static_cast<int>(reloaded.theme()));
       TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::RailEcho), static_cast<int>(reloaded.ledGrammar()));
     }
-    g_nvs_write_attempt = 0;
-    TEST_ASSERT_TRUE(initial.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension));
   }
+
+  g_nvs_fail_on_write = -1;
+  g_nvs_write_attempt = 0;
+  SettingsStore replacement;
+  TEST_ASSERT_TRUE(replacement.confirm(ThemeId::Instrument, LedGrammarId::MeterLamps));
+  SettingsStore reloaded;
+  TEST_ASSERT_TRUE(reloaded.load());
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Instrument), static_cast<int>(reloaded.theme()));
+  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::MeterLamps), static_cast<int>(reloaded.ledGrammar()));
 }
 
 // --- Plan 02: three more themes -------------------------------------------
