@@ -42,12 +42,14 @@
     },
     "agent": {
       "type": "object", "additionalProperties": false,
-      "required": ["slot", "entry_id", "title", "discriminator", "state", "pane_id", "terminal_id", "agent_session", "source_revision"],
+      "required": ["slot", "entry_id", "title", "discriminator", "since", "age", "state", "pane_id", "terminal_id", "agent_session", "source_revision"],
       "properties": {
         "slot": {"type": "integer", "minimum": 0, "maximum": 2},
         "entry_id": {"type": "string", "maxLength": 64, "pattern": "^[\\u0021-\\u007E]*$"},
         "title": {"$ref": "#/$defs/title"},
         "discriminator": {"$ref": "#/$defs/discriminator"},
+        "since": {"type": "string", "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "age": {"type": "string", "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
         "state": {"type": "string", "enum": ["empty", "working", "idle", "blocked", "finished", "settled", "unknown"]},
         "pane_id": {"type": "string", "maxLength": 64, "pattern": "^[\\u0021-\\u007E]*$"},
         "terminal_id": {"type": "string", "maxLength": 64, "pattern": "^[\\u0021-\\u007E]*$"},
@@ -62,7 +64,34 @@
         "host_epoch": {"$ref": "#/$defs/host_epoch"},
         "snapshot_revision": {"type": "integer", "minimum": 1, "maximum": 4294967295},
         "source_status": {"type": "string", "enum": ["current", "empty", "stale", "unavailable", "offline"]},
-        "agents": {"type": "array", "prefixItems": [{"$ref": "#/$defs/agent"}, {"$ref": "#/$defs/agent"}, {"$ref": "#/$defs/agent"}], "items": false, "minItems": 3, "maxItems": 3}
+        "agents": {"type": "array", "prefixItems": [{"$ref": "#/$defs/agent"}, {"$ref": "#/$defs/agent"}, {"$ref": "#/$defs/agent"}], "items": false, "minItems": 3, "maxItems": 3},
+        "codex": {"$ref": "#/$defs/codex"},
+        "diagnostics": {"$ref": "#/$defs/diagnostics"}
+      }
+    },
+    "codex": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_state", "primary", "secondary", "reset_text", "observation_age", "reached_limit", "error_code"],
+      "properties": {
+        "source_state": {"type": "string", "enum": ["current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"]},
+        "primary": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
+        "secondary": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
+        "reset_text": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[\\u0000-\\u007F]*$"},
+        "observation_age": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "reached_limit": {"type": ["boolean", "null"]},
+        "error_code": {"type": "string", "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"}
+      }
+    },
+    "diagnostics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["link_status", "herdr_status", "codex_status", "sync_age", "codex_age", "error_code"],
+      "properties": {
+        "link_status": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "herdr_status": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "codex_status": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "sync_age": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "codex_age": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "error_code": {"type": "string", "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"}
       }
     },
     "snapshot_ack": {

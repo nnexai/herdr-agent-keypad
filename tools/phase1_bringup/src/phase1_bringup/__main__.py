@@ -19,7 +19,7 @@ from .discovery import discovery_check
 from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, _sha256, archive_phase1, build_selected, parse_group_responses, resolve_qualification_pointer, select_transport, selection_self_check, self_check_roundtrip, verify_archive_lock, verify_build_lock, verify_machine_run, verify_physical_evidence, verify_physical_lock, verify_recovery_lock, verify_qualification_lock, verify_selection_lock
 from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, RECOVERY_TOUR_STEPS, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check, recovery_tour_check, recovery_ui_check
 from .pairing import pairing_check
-from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, decode_frame, encode_frame, new_frame, protocol_bootstrap_check, protocol_golden_check, validate_frame
+from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, V2_FRAME_TYPES, decode_frame, encode_frame, new_frame, protocol_bootstrap_check, protocol_golden_check, validate_frame
 from .serial_link import RECOVERY_ACTIONS, canonical_recovery_action, reconnect_exact, recovery_action_matrix_check, serial_reconnect_check, udev_rule_check, validate_recovery_action_event
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
  
@@ -182,9 +182,11 @@ def load_schema(path: Path) -> dict[str, Any]:
         raise ValueError("schema does not freeze the 4096-byte including-LF bound")
     if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
         raise ValueError("schema must declare Draft 2020-12")
-    if schema.get("properties", {}).get("v", {}).get("const") != PROTOCOL_VERSION:
-        raise ValueError("schema does not freeze protocol v1")
-    if set(schema.get("properties", {}).get("type", {}).get("enum", [])) != FRAME_TYPES:
+    version = schema.get("properties", {}).get("v", {}).get("const")
+    if version not in {PROTOCOL_VERSION, 2}:
+        raise ValueError("schema does not freeze a supported protocol version")
+    expected_types = FRAME_TYPES if version == PROTOCOL_VERSION else V2_FRAME_TYPES
+    if set(schema.get("properties", {}).get("type", {}).get("enum", [])) != expected_types:
         raise ValueError("schema frame type set is not closed")
     if schema.get("additionalProperties") is not False:
         raise ValueError("schema envelope must reject unknown properties")

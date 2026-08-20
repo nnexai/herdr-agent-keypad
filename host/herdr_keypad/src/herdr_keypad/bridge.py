@@ -165,105 +165,12 @@ class FocusResult:
         }
 
 
-def _bounded_text(value: Any, name: str, maximum: int, *, allow_empty: bool = False) -> str:
-    if not isinstance(value, str) or len(value) > maximum or any(ord(char) >= 0x80 for char in value):
-        raise V2ProtocolError("invalid_shape", f"{name} must be bounded ASCII text")
-    if not allow_empty and not value:
-        raise V2ProtocolError("invalid_shape", f"{name} must not be empty")
-    return value
-
-
-def _opaque(value: Any, name: str, *, allow_empty: bool = False) -> str:
-    value = _bounded_text(value, name, 64, allow_empty=allow_empty)
-    if value and any(char in "\r\n\t" or ord(char) < 0x21 for char in value):
-        raise V2ProtocolError("invalid_identifier", f"{name} contains disallowed opaque bytes")
-    return value
-
-def _uint(value: Any, name: str, *, zero: bool = False) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value < (0 if zero else 1) or value > 0xFFFFFFFF:
-        raise V2ProtocolError("invalid_shape", f"{name} must be a bounded uint32")
-    return value
-
-
-def _identity(payload: Mapping[str, Any], *, empty: bool = False) -> Identity:
-    pane = _opaque(payload.get("pane_id"), "pane_id", allow_empty=empty)
-    terminal = _opaque(payload.get("terminal_id"), "terminal_id", allow_empty=empty)
-    session = payload.get("agent_session")
-    if session is not None:
-        session = _opaque(session, "agent_session")
-    revision = _uint(payload.get("source_revision"), "source_revision", zero=empty)
-    if not empty and (not pane or not terminal or revision == 0):
-        raise V2ProtocolError("invalid_identity", "occupied identity is incomplete")
-    return Identity(pane, terminal, session, revision)
-
-
 def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
-    """Validate the closed v2 payload vocabulary before frame admission."""
-    if not isinstance(payload, dict):
-        raise V2ProtocolError("invalid_payload", "v2 payload must be an object")
-    expected: dict[str, set[str]] = {
-        "agent_snapshot": {"host_epoch", "snapshot_revision", "source_status", "agents"},
-        "snapshot_ack": {"accepted", "host_epoch", "snapshot_revision", "source_status", "reason"},
-        "focus_intent": {"action_id", "host_epoch", "snapshot_revision", "slot", "entry_id", "pane_id", "terminal_id", "agent_session", "source_revision"},
-        "focus_result": {"action_id", "outcome", "host_epoch", "snapshot_revision", "slot", "entry_id", "pane_id", "terminal_id", "agent_session", "source_revision", "focused"},
-    }
-    if frame_type not in expected:
-        raise V2ProtocolError("unknown_type", "v2 type is not in the closed product set")
-    if set(payload) != expected[frame_type]:
-        raise V2ProtocolError("unknown_field" if not set(payload).issubset(expected[frame_type]) else "invalid_shape", "v2 payload is closed")
-    _opaque(payload["host_epoch"], "host_epoch")
-    _uint(payload["snapshot_revision"], "snapshot_revision")
-    if frame_type in {"agent_snapshot", "snapshot_ack"}:
-        if payload["source_status"] not in SOURCE_STATUSES:
-            raise V2ProtocolError("invalid_shape", "source_status is invalid")
-    if frame_type == "agent_snapshot":
-        agents = payload["agents"]
-        if not isinstance(agents, list) or len(agents) != MAX_SLOTS:
-            raise V2ProtocolError("invalid_shape", "agent_snapshot requires exactly three slots")
-        seen: set[int] = set()
-        for agent in agents:
-            if not isinstance(agent, dict):
-                raise V2ProtocolError("invalid_shape", "agent slot must be an object")
-            required = {"slot", "entry_id", "title", "discriminator", "since", "age", "state", "pane_id", "terminal_id", "agent_session", "source_revision"}
-            if set(agent) != required:
-                raise V2ProtocolError("unknown_field", "agent slot is closed")
-            slot = agent["slot"]
-            if not isinstance(slot, int) or isinstance(slot, bool) or not 0 <= slot < MAX_SLOTS or slot in seen:
-                raise V2ProtocolError("invalid_shape", "agent slot must be unique in 0..2")
-            seen.add(slot)
-            state = agent["state"]
-            if state not in AGENT_STATES:
-                raise V2ProtocolError("invalid_shape", "agent state is invalid")
-            empty = state == "empty"
-            _opaque(agent["entry_id"], "entry_id", allow_empty=empty)
-            _bounded_text(agent["title"], "title", 64)
-            _bounded_text(agent["discriminator"], "discriminator", 32)
-            _bounded_text(agent["since"], "since", 16, allow_empty=True)
-            _bounded_text(agent["age"], "age", 16, allow_empty=True)
-            _identity(agent, empty=empty)
-        if seen != set(range(MAX_SLOTS)):
-            raise V2ProtocolError("invalid_shape", "agent slots must be 0, 1, and 2")
-    elif frame_type == "snapshot_ack":
-        if not isinstance(payload["accepted"], bool):
-            raise V2ProtocolError("invalid_shape", "snapshot_ack accepted must be boolean")
-        _bounded_text(payload["reason"], "reason", 64)
-    elif frame_type == "focus_intent":
-        _opaque(payload["action_id"], "action_id")
-        if not isinstance(payload["slot"], int) or isinstance(payload["slot"], bool) or not 0 <= payload["slot"] < MAX_SLOTS:
-            raise V2ProtocolError("invalid_shape", "focus slot must be 0..2")
-        _opaque(payload["entry_id"], "entry_id")
-        _identity(payload)
-    elif frame_type == "focus_result":
-        _opaque(payload["action_id"], "action_id")
-        if payload["outcome"] not in OUTCOMES:
-            raise V2ProtocolError("invalid_shape", "focus outcome is invalid")
-        if not isinstance(payload["focused"], bool):
-            raise V2ProtocolError("invalid_shape", "focused acknowledgement must be boolean")
-        if not isinstance(payload["slot"], int) or isinstance(payload["slot"], bool) or not 0 <= payload["slot"] < MAX_SLOTS:
-            raise V2ProtocolError("invalid_shape", "focus result slot must be 0..2")
-        _opaque(payload["entry_id"], "entry_id")
-        _identity(payload)
-    return payload
+    """Adapt the sole Phase 1 validator without duplicating its rules."""
+    try:
+        return v1_protocol.validate_v2_payload(frame_type, payload)
+    except v1_protocol.ProtocolError as exc:
+        raise V2ProtocolError(exc.code, str(exc)) from exc
 
 
 def _frame(frame_type: str, payload: dict[str, Any], *, boot_id: str = "host", session_id: str = "session", seq: int = 1, reply_to: int | None = None) -> bytes:

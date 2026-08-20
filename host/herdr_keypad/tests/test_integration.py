@@ -686,3 +686,74 @@ class HerdrEventContractTests(unittest.TestCase):
             import hashlib
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), checksum)
 
+class Phase3ProtocolAdmissionTests(unittest.TestCase):
+    def extended_payload(self):
+        agents = []
+        for slot in range(3):
+            occupied = slot == 0
+            agents.append({
+                "slot": slot,
+                "entry_id": f"entry-{slot}" if occupied else "",
+                "title": "Agent" if occupied else "NO AGENT",
+                "discriminator": "repo" if occupied else "NO WORKSPACE",
+                "since": "1m" if occupied else "",
+                "age": "0m" if occupied else "",
+                "state": "working" if occupied else "empty",
+                "pane_id": f"pane-{slot}" if occupied else "",
+                "terminal_id": f"term-{slot}" if occupied else "",
+                "agent_session": None,
+                "source_revision": 1 if occupied else 0,
+            })
+        return {
+            "host_epoch": "epoch",
+            "snapshot_revision": 1,
+            "source_status": "current",
+            "agents": agents,
+            "codex": {
+                "source_state": "current",
+                "primary": 0,
+                "secondary": None,
+                "reset_text": "RESET 5H 01:20",
+                "observation_age": "AGE 0M",
+                "reached_limit": None,
+                "error_code": "",
+            },
+            "diagnostics": {
+                "link_status": "current",
+                "herdr_status": "current",
+                "codex_status": "current",
+                "sync_age": "AGE 0M",
+                "codex_age": "AGE 0M",
+                "error_code": "",
+            },
+        }
+
+    def test_extended_snapshot_is_admitted_by_the_sole_codec(self):
+        payload = self.extended_payload()
+        frame = protocol.new_v2_frame("agent_snapshot", "boot", "session", 1, payload)
+        self.assertEqual(frame["payload"]["codex"]["primary"], 0)
+        self.assertEqual(frame["payload"]["codex"]["secondary"], None)
+        self.assertEqual(protocol.validate_v2_payload("agent_snapshot", payload), payload)
+
+    def test_null_and_zero_are_distinct_and_bounds_are_closed(self):
+        payload = self.extended_payload()
+        self.assertIsNone(payload["codex"]["secondary"])
+        payload["codex"]["primary"] = 100
+        protocol.validate_v2_payload("agent_snapshot", payload)
+        payload["codex"]["primary"] = 101
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", payload)
+        payload = self.extended_payload()
+        payload["codex"]["unexpected"] = 1
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", payload)
+
+    def test_extended_frame_retains_4096_byte_bound(self):
+        payload = self.extended_payload()
+        payload["codex"]["reset_text"] = "R" * 32
+        frame = protocol.new_v2_frame("agent_snapshot", "boot", "session", 1, payload)
+        encoded = protocol.encode_v2_frame(frame)
+        self.assertLessEqual(len(encoded), protocol.MAX_LINE_BYTES)
+        payload["diagnostics"]["error_code"] = "E" * 16
+        frame = protocol.new_v2_frame("agent_snapshot", "boot", "session", 1, payload)
+        self.assertLessEqual(len(protocol.encode_v2_frame(frame)), protocol.MAX_LINE_BYTES)

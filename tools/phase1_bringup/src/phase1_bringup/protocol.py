@@ -232,7 +232,11 @@ def new_frame(
 V2_PROTOCOL_VERSION = 2
 V2_FRAME_TYPES = {"agent_snapshot", "snapshot_ack", "focus_intent", "focus_result"}
 V2_SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
+V2_CODEX_STATES = {"current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"}
 V2_OUTCOMES = {"accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"}
+V2_AGENT_SNAPSHOT_FIELDS = {"host_epoch", "snapshot_revision", "source_status", "agents"}
+V2_CODEX_FIELDS = {"source_state", "primary", "secondary", "reset_text", "observation_age", "reached_limit", "error_code"}
+V2_DIAGNOSTIC_FIELDS = {"link_status", "herdr_status", "codex_status", "sync_age", "codex_age", "error_code"}
 
 
 def _v2_text(value: Any, name: str, maximum: int, *, allow_empty: bool = False) -> None:
@@ -258,11 +262,42 @@ def _v2_identity(payload: dict[str, Any], *, empty: bool = False) -> None:
     _v2_uint(payload["source_revision"], "source_revision", zero=empty)
     if not empty and (not payload["pane_id"] or not payload["terminal_id"] or payload["source_revision"] == 0):
         raise ProtocolError("invalid_identity", "occupied identity is incomplete")
+def _v2_percent(value: Any, name: str) -> None:
+    if value is not None and (not _is_int(value) or not 0 <= value <= 100):
+        raise ProtocolError("invalid_shape", f"{name} must be null or an integer percentage")
+
+
+def _v2_status(value: Any, name: str, allowed: set[str]) -> None:
+    if not isinstance(value, str) or value not in allowed:
+        raise ProtocolError("invalid_shape", f"{name} is invalid")
+
+
+def _v2_codex(value: Any) -> None:
+    if not isinstance(value, dict) or set(value) != V2_CODEX_FIELDS:
+        raise ProtocolError("unknown_field", "codex view is closed")
+    _v2_status(value["source_state"], "codex source_state", V2_CODEX_STATES)
+    _v2_percent(value["primary"], "codex primary")
+    _v2_percent(value["secondary"], "codex secondary")
+    _v2_text(value["reset_text"], "codex reset_text", 32)
+    _v2_text(value["observation_age"], "codex observation_age", 16)
+    if value["reached_limit"] is not None and not isinstance(value["reached_limit"], bool):
+        raise ProtocolError("invalid_shape", "codex reached_limit must be null or boolean")
+    _v2_text(value["error_code"], "codex error_code", 16, allow_empty=True)
+
+
+def _v2_diagnostics(value: Any) -> None:
+    if not isinstance(value, dict) or set(value) != V2_DIAGNOSTIC_FIELDS:
+        raise ProtocolError("unknown_field", "diagnostics view is closed")
+    for key in ("link_status", "herdr_status", "codex_status"):
+        _v2_text(value[key], f"diagnostics {key}", 16)
+    _v2_text(value["sync_age"], "diagnostics sync_age", 16)
+    _v2_text(value["codex_age"], "diagnostics codex_age", 16)
+    _v2_text(value["error_code"], "diagnostics error_code", 16, allow_empty=True)
 
 
 def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
     expected = {
-        "agent_snapshot": {"host_epoch", "snapshot_revision", "source_status", "agents"},
+        "agent_snapshot": V2_AGENT_SNAPSHOT_FIELDS,
         "snapshot_ack": {"accepted", "host_epoch", "snapshot_revision", "source_status", "reason"},
         "focus_intent": {"action_id", "host_epoch", "snapshot_revision", "slot", "entry_id", "pane_id", "terminal_id", "agent_session", "source_revision"},
         "focus_result": {"action_id", "outcome", "host_epoch", "snapshot_revision", "slot", "entry_id", "pane_id", "terminal_id", "agent_session", "source_revision", "focused"},
@@ -271,8 +306,13 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
         raise ProtocolError("unknown_type", "v2 type is not in the closed product set")
     if not isinstance(payload, dict):
         raise ProtocolError("invalid_payload", "v2 payload must be an object")
-    if set(payload) != expected[frame_type]:
-        raise ProtocolError("unknown_field" if not set(payload).issubset(expected[frame_type]) else "invalid_shape", "v2 payload is closed")
+    allowed = expected[frame_type]
+    if frame_type == "agent_snapshot":
+        extended = V2_AGENT_SNAPSHOT_FIELDS | {"codex", "diagnostics"}
+        if set(payload) != V2_AGENT_SNAPSHOT_FIELDS and set(payload) != extended:
+            raise ProtocolError("unknown_field" if set(payload).issubset(extended) else "invalid_shape", "v2 payload is closed")
+    elif set(payload) != allowed:
+        raise ProtocolError("unknown_field" if not set(payload).issubset(allowed) else "invalid_shape", "v2 payload is closed")
     _v2_opaque(payload["host_epoch"], "host_epoch")
     _v2_uint(payload["snapshot_revision"], "snapshot_revision")
     if frame_type in {"agent_snapshot", "snapshot_ack"}:
@@ -283,7 +323,7 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
         if not isinstance(agents, list) or len(agents) != 3:
             raise ProtocolError("invalid_shape", "agent_snapshot requires exactly three slots")
         seen: set[int] = set()
-        required = {"slot", "entry_id", "title", "discriminator", "state", "pane_id", "terminal_id", "agent_session", "source_revision"}
+        required = {"slot", "entry_id", "title", "discriminator", "since", "age", "state", "pane_id", "terminal_id", "agent_session", "source_revision"}
         for agent in agents:
             if not isinstance(agent, dict) or set(agent) != required:
                 raise ProtocolError("unknown_field", "agent slot is closed")
@@ -297,9 +337,14 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
             _v2_opaque(agent["entry_id"], "entry_id", allow_empty=empty)
             _v2_text(agent["title"], "title", 64)
             _v2_text(agent["discriminator"], "discriminator", 32)
+            _v2_text(agent["since"], "since", 16, allow_empty=True)
+            _v2_text(agent["age"], "age", 16, allow_empty=True)
             _v2_identity(agent, empty=empty)
         if seen != {0, 1, 2}:
             raise ProtocolError("invalid_shape", "agent slots must be 0, 1, and 2")
+        if set(payload) == V2_AGENT_SNAPSHOT_FIELDS | {"codex", "diagnostics"}:
+            _v2_codex(payload["codex"])
+            _v2_diagnostics(payload["diagnostics"])
     elif frame_type == "snapshot_ack":
         if not isinstance(payload["accepted"], bool):
             raise ProtocolError("invalid_shape", "snapshot_ack accepted must be boolean")
@@ -592,14 +637,15 @@ def protocol_golden_check(fixture_path: Any, schema_path: Any) -> int:
         raise AssertionError("golden fixture is empty")
     for vector in vectors:
         line_value = vector.get("line")
+        schema_outcome = "not_evaluated"
         if line_value == "synthetic:oversized":
             line = b"x" * MAX_LINE_BYTES + b"\n"
+            schema_outcome = "invalid"
         elif isinstance(line_value, str):
             line = line_value.encode("utf-8")
         else:
             raise AssertionError(f"{vector.get('id')}: missing line")
         expected = vector["expected"]
-        schema_outcome = "not_evaluated"
         try:
             parsed = _load_json(line[:-1].decode("utf-8")) if line.endswith(b"\n") else None
         except (UnicodeDecodeError, json.JSONDecodeError, DuplicateKeyError, RecursionError):
