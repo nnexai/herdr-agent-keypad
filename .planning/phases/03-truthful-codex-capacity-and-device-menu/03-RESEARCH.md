@@ -49,7 +49,7 @@ The generated installed schema is precise enough to plan normalization: top-leve
 - Herdr remains the inbox authority; the device must not invent lifecycle/order semantics. [VERIFIED: `AGENTS.md:13-22`]
 - Provider credentials and authenticated Codex access stay on the host; firmware receives device-scoped normalized data only. [VERIFIED: `AGENTS.md:19-22`]
 - Offline, unavailable, and stale data must be visibly distinguishable. [VERIFIED: `AGENTS.md:19-22`]
-- This assignment is research-only; Phase 3 source, Phase 1/2 plans/source, and shared tracking files are not implementation targets. [VERIFIED: task scope]
+- Planning consumes this research without changing Phase 1/2 authority: implementation extends the permanent Phase 2 bridge/protocol/rendering seams and keeps Phase 1 hardware/transport evidence intact.
 
 ## Standard Stack
 
@@ -79,7 +79,7 @@ The generated installed schema is precise enough to plan normalization: top-leve
 |---|---|---|
 | Local app-server JSONL | Direct ChatGPT backend HTTP | Rejected: private backend/auth contract and credentials would move into the bridge/device boundary; app-server is the supported local protocol. [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md] |
 | Full read + sparse merge | Treat every `updated` notification as a replacement | Rejected: loses omitted fields and can falsely clear known metadata; official schema explicitly calls updates sparse. [VERIFIED: `/tmp/codex-schema-01470/v2/AccountRateLimitsUpdatedNotification.json:191-201`] |
-| Host-owned freshness timestamp | Use `resetsAt` or `windowDurationMins` as TTL | Rejected: reset is provider quota timing, not observation age. [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md; `[ASSUMED]` product threshold remains open] |
+| Host-owned freshness timestamp | Use `resetsAt` or `windowDurationMins` as TTL | Rejected: reset is provider quota timing, not observation age. D-05 fixes full polling at 300 seconds and staleness at 900 seconds. |
 | Fixed firmware menu | Encoder-required browsing for agent tiles | Rejected by Phase 3/PROJECT constraints; agent keys must remain direct and non-modal. [VERIFIED: `.planning/ROADMAP.md:121-125`; `.planning/PROJECT.md:47-56`] |
 | Separate brightness settings record | Store brightness in snapshot or bindings | Rejected: couples user preference to authoritative inbox generation and risks changing focus semantics. |
 
@@ -147,7 +147,7 @@ Reset-credit detail rows require opaque `id`, `resetType`, `status`, and `grante
 
 ### Freshness and source-status policy
 
-The project requirements mandate visible `current`, `stale`, `unavailable`, `authentication-failed`, and `host-offline` distinctions [VERIFIED: `.planning/REQUIREMENTS.md:32-35`]. Codex does not supply a product observation timestamp or these product statuses, so the bridge must add them. Use the following prescriptive state machine, with the exact duration threshold frozen during implementation after evidence collection (the threshold is an open decision, not a Codex fact):
+The project requirements mandate visible `current`, `stale`, `unavailable`, `authentication-failed`, and `host-offline` distinctions [VERIFIED: `.planning/REQUIREMENTS.md:32-35`]. Codex does not supply a product observation timestamp or these product statuses, so the bridge must add them. Use the following prescriptive state machine. Per D-05, poll for a complete limits snapshot every 300 seconds and mark a cached observation stale at 900 seconds without a valid full read or valid sparse merge. These values are product policy, not Codex facts.
 
 | Host state | Entry condition | Allowed display | Recovery |
 |---|---|---|---|
@@ -157,7 +157,7 @@ The project requirements mandate visible `current`, `stale`, `unavailable`, `aut
 | `authentication-failed` | `account/read` reports `account: null` with `requiresOpenaiAuth: true`, a login/auth JSON-RPC error is observed, or a backend response explicitly reports unauthorized. | Show `AUTH REQUIRED`/bounded equivalent; do not expose login URLs, tokens, or email. | Host-only account refresh/re-auth; then perform a new full read. |
 | `host-offline` | Bridge cannot spawn/read app-server, the JSONL process exits, transport/read timeout occurs, or local host connectivity is unavailable. | Show `OFFLINE` separately from stale cached values; preserve observation age if a cached value remains. | Restart/reinitialize app-server and require a successful full read before current. |
 
-The `authentication-failed` and `host-offline` categories above are bridge classifications, not Codex enum values; a timeout must not be relabeled as auth failure. [ASSUMED: exact JSON-RPC error taxonomy and timeout duration need an implementation fixture.] Open Codex issue reports provide risk evidence that an offline startup prefetch may remain empty after reconnect until restart (#26789) and that a first status read may show stale rate limits (#33897); these reports are not protocol guarantees and should motivate an explicit retry/refetch path rather than reliance on undocumented pollers [CITED: https://github.com/openai/codex/issues/26789; https://github.com/openai/codex/issues/33897].
+The `authentication-failed` and `host-offline` categories above are bridge classifications, not Codex enum values. A timeout must not be relabeled as auth failure. The executable classifier admits `authentication-failed` only from `account: null` with `requiresOpenaiAuth: true` or a structured unauthorized response observed by the bounded collector. Process exit, malformed or oversized JSONL, correlation failure, request error without auth evidence, and timeout map to `host-offline`/the device copy `CODEX OFFLINE` with one allowlisted error code. Deterministic fixtures exercise each branch without guessing raw error strings. Open Codex issue reports provide risk evidence that an offline startup prefetch may remain empty after reconnect until restart (#26789) and that a first status read may show stale rate limits (#33897); these reports are not protocol guarantees and motivate the explicit retry/refetch path [CITED: https://github.com/openai/codex/issues/26789; https://github.com/openai/codex/issues/33897].
 
 ### Host-only credential boundary
 
@@ -269,13 +269,13 @@ The method and request shape are present in the installed `ClientRequest` schema
 
 ### Menu and brightness risks
 
-1. **Direct-key regression:** A global menu/modal flag could accidentally route keys 1–3 into navigation. Keep agent key dispatch ahead of or independent from menu state, and verify direct focus while menu is open/closed [VERIFIED: `ROADMAP.md:121-125`; `[ASSUMED]` exact firmware event precedence requires implementation fixture].
+1. **Direct-key regression:** A global menu/modal flag could accidentally route keys 1–3 into navigation. Keep `reportAgentKey()` immediately after `board.update()` and before USB/menu polling; let `pollMenu()` consume encoder click logical key 4 and encoder delta only. Plan 06 production-loop tests exercise direct focus in every menu state and prove key presses do not alter cursor or deadline [VERIFIED: D-11, D-12; existing `firmware/src/main.cpp` order].
 2. **Atomicity regression:** Sequential panel drawing can expose a new Codex panel beside old agent panels if the renderer mutates live state in place. Stage complete snapshots and make the same revision visible to all four panel render calls [VERIFIED: `.planning/research/ARCHITECTURE.md:241-245`; Phase 1 one-panel-at-a-time seam].
-3. **Brightness persistence coupling:** There is no inspected NVS/Preferences settings adapter. Adding persistence to snapshot storage could accidentally persist credentials/bindings or alter host authority. Add a brightness-only bounded record and apply it at boot/menu change [VERIFIED: inspected `firmware/src` tree and BoardAdapter; `[ASSUMED]` storage API choice].
+3. **Brightness persistence coupling:** Use the existing `SettingsStore` `Preferences` namespace and marker-last record replacement. Read schema version 1 without writing, supply brightness 80% in memory, and write the complete schema-version-2 theme/LED/brightness record only after explicit confirmation. This keeps writes out of boot and preview paths and prevents snapshot, binding, credential, or provider data from entering NVS [VERIFIED: `firmware/src/app/settings_store.{h,cpp}`; D-14].
 4. **Offline write replay:** A brightness action sent during disconnect can be stale or duplicated after reconnect. Reject/uncertain states must not auto-replay; require a fresh encoder action [VERIFIED: `SYNC-04` and out-of-scope queued/replayed actions].
 5. **Protocol budget:** A verbose menu diagnostic or raw Codex error can exceed the 4096-byte line bound or leak paths. Use bounded enums/codes, short version strings, age seconds, and suffix IDs; reject/clip before allocation [VERIFIED: Phase 1 schema bound].
 6. **Null and missing collapse:** Deserializing absent/null into numeric zero would violate CODEX-03. Use presence-aware normalization and separate `has_*`/status fields before device encoding [VERIFIED: installed schemas and CODEX-03].
-7. **Reset-vs-observation confusion:** `resetsAt` is provider quota timing, not freshness. Show both reset information and bridge observation age [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md; `[ASSUMED]` visual copy/threshold].
+7. **Reset-vs-observation confusion:** `resetsAt` is provider quota timing, not freshness. Show reset information and bridge observation age separately using the approved fixed rows, bounded copy, and exact-device 10% long-text checkpoint [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md; VERIFIED: `03-UI-SPEC.md:101-144,300-315`].
 8. **Plan/account mismatch:** API-key, Bedrock, personal-token, and ChatGPT modes do not all imply ChatGPT subscription windows. Gate the subscription tile on observed account mode and actual full limits response [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md; VERIFIED: installed account schemas].
 
 ## Don't Hand-Roll
@@ -285,7 +285,7 @@ The method and request shape are present in the installed `ClientRequest` schema
 | Codex auth/token handling | Read auth.json tokens or implement OAuth/API login in the bridge/device | Local Codex app-server account boundary | Codex owns managed token persistence/refresh; copying secrets violates SAFE-01 [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md]. |
 | Rate-limit schema | Hand-copy a response type from upstream `main` | Generate stable JSON Schema from the installed binary and pin its hash/version | App-server docs promise version-specific generated artifacts; installed schema has nullable/new fields [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md]. |
 | Sparse updates | Replace full snapshot with each notification | Presence-aware merge into a known full snapshot or refetch | Omitted fields are not changes; official schema explicitly says sparse [VERIFIED: installed notification schema]. |
-| Freshness | Use quota window duration as TTL or infer current from link health | Bridge-owned observed timestamp and explicit source status | Provider reset semantics and observation freshness are different concepts [VERIFIED: project architecture; `[ASSUMED]` threshold]. |
+| Freshness | Use quota window duration as TTL or infer current from link health | Bridge-owned observed timestamp, explicit source status, 300-second full poll, and 900-second stale boundary | Provider reset semantics and observation freshness are different concepts [VERIFIED: project architecture; D-05]. |
 | Provider calls | Call private ChatGPT backend or screen-scrape Codex TUI | Stable app-server stdio JSONL | Private routes/auth and UI text are brittle and leak the credential boundary [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md]. |
 | Display driver | Raw GPIO/panel CS or a second display stack | Existing official Pro `BoardAdapter` and sequential panel API | STM32 multiplexing and panel sequencing are already isolated by Phase 1 [VERIFIED: `firmware/src/board/board_adapter.cpp:81-89`]. |
 | Menu command routing | Generic `{method, params}` proxy | Typed allowlisted diagnostics/brightness messages | Generic proxy expands device authority and risks credentials/host actions [VERIFIED: `SAFE-01`, `SAFE-02`]. |
@@ -351,7 +351,7 @@ The method and request shape are present in the installed `ClientRequest` schema
 {"method":"account/rateLimits/read","id":3}
 ```
 
-The first two messages and method names are documented by the official protocol; `refreshToken` is the installed `GetAccountParams` field [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md; VERIFIED: `/tmp/codex-schema-01470/v2/GetAccountParams.json:3-10`]. The client name/version above is a project-owned example and should be frozen with the bridge identity before implementation [ASSUMED].
+The first two messages and method names are documented by the official protocol; `refreshToken` is the installed `GetAccountParams` field [CITED: https://github.com/openai/codex/blob/main/codex-rs/app-server/README.md; VERIFIED: `/tmp/codex-schema-01470/v2/GetAccountParams.json:3-10`]. Freeze client name as bounded `herdr_keypad_bridge`, title as `Herdr Keypad Bridge`, and derive the bounded version from the installed host package metadata. Protocol tests reject missing, unbounded, or free-form identity fields; no account or host identity is used.
 
 ### Normalized device-facing shape (project-owned, not Codex wire schema)
 
@@ -380,7 +380,7 @@ The first two messages and method names are documented by the official protocol;
 }
 ```
 
-This is deliberately a **planning skeleton**, not an observed protocol enum. The field names are derived from project requirements and existing conceptual architecture [VERIFIED: `.planning/research/ARCHITECTURE.md:150-179`], while exact enum strings, numeric bounds, and whether missing fields are represented by nullable values or explicit presence bits require the Phase 3 protocol fixture task [ASSUMED].
+This is a **planning shape**, not an observed Codex wire schema. Phase 3 extends the existing closed project protocol version 2 `agent_snapshot` payload. The protocol fixture task freezes exact enums, integer bounds, presence representation, and rejection parity before broad renderer work; it does not introduce another message family or parser [VERIFIED: `.planning/research/ARCHITECTURE.md:150-179`; D-17].
 
 ### Sparse merge rule
 
@@ -409,7 +409,7 @@ The merge/refetch behavior is directly stated by the installed notification sche
 | Node.js | Codex npm entrypoint/tooling | ✓ | `v26.7.0` | Existing installed runtime |
 | Connected keypad | Device menu/brightness acceptance | Existing Phase 1 USB qualification artifact | Exact hardware baseline recorded in Phase 1 artifacts | Use selected USB lock and real-device acceptance; no mock can close MENU-04 |
 
-**Missing dependencies with no fallback:** None for research and host-only schema work. A successful real rate-limit backend response and connected-device menu proof remain acceptance prerequisites, not installable dependencies.
+**Missing dependencies with no fallback:** None. The bounded production tracer must record either a schema-valid real full-read success or the exact typed, evidence-backed failure observed from the installed account. Backend success is not required to invent or claim live quota values. The connected-device menu and optical checks remain acceptance prerequisites.
 
 ## Security Domain
 
@@ -438,26 +438,26 @@ Security enforcement is enabled in `.planning/config.json` (`security_enforcemen
 
 ## Assumptions Log
 
-| # | Claim | Section | Risk if Wrong |
+| # | Resolved disposition | Section | Verification consequence |
 |---|---|---|---|
-| A1 | A bridge-owned freshness threshold can classify current vs stale without a provider-supplied TTL. | Freshness policy | Too-short or too-long threshold makes truthful values appear stale or current incorrectly; freeze from measured behavior and document. |
-| A2 | The bridge can receive and correlate JSON-RPC errors/timeouts sufficiently to distinguish auth failure from host offline. | Freshness policy | Ambiguous errors may require an explicit `unknown` intermediate state rather than overclaiming auth/offline. |
-| A3 | A bounded project-owned normalized payload can represent all required fields within the existing 4096-byte frame limit. | Code examples/protocol | Long diagnostics or reset-credit details may require stricter field selection or a schema-bound payload budget. |
-| A4 | A local firmware settings mechanism such as NVS/Preferences is acceptable for one brightness value. | Existing firmware seams | Storage wear, reset behavior, or project policy could require another persistence approach; verify on the exact board/build. |
-| A5 | The current Codex 0.147.0 account/backend will return quota data under a future bounded probe. | Environment availability | The real account may lack the endpoint/permissions or backend may remain unavailable; Phase 3 must remain truthful and cannot claim CODEX-01/02 pass. |
-| A6 | Product menu text and exact status enum strings can fit the 128×128 panel using fixed short labels. | Firmware menu | Actual legibility may require fewer fields or a multi-page menu while keeping agent keys direct. |
+| A1 | Poll at 300 seconds and mark stale at 900 seconds per D-05. The bridge clock remains independent of provider reset time. | Freshness policy | Fake-clock tests cover both boundaries and recovery after a later valid observation. |
+| A2 | Admit auth failure only from structured account-null/auth evidence. Map every other bounded process, transport, JSONL, correlation, or deadline failure to Codex offline with an allowlisted code. | Freshness policy | Scripted fixtures and the installed tracer record the selected branch without committing raw errors. |
+| A3 | Extend only the closed protocol version 2 `agent_snapshot`; reject any normalized snapshot that exceeds the existing 4096-byte including-LF bound. | Code examples/protocol | Host/native golden vectors cover near-limit acceptance and over-limit rejection before renderer expansion. |
+| A4 | Store brightness in the existing `Preferences`-backed `SettingsStore` schema version 2. Read version 1 without a boot write; use 80% only in memory; write marker last only on confirmation. | Existing firmware seams | Native persistence tests cover legacy read, invalid/missing fallback, interrupted replacement, and reboot reload. |
+| A5 | Do not assume the active account will return quota values. The tracer accepts a schema-valid full response or a typed evidence-backed failure and never fills absent live fields from fixtures. | Environment availability | Live evidence identifies outcome kind; deterministic fixtures prove supplied-value rendering separately. |
+| A6 | Use the approved fixed theme/menu geometry and bounded copy in `03-UI-SPEC.md`. The exact paired device at 10% brightness is the blocking optical backstop. | Firmware menu | Framebuffer contacts prove pixels; human observations separately prove long-text legibility, clipping, and bezel clearance. |
 
-## Open Questions
+## Resolved questions and executable dispositions
 
-1. Why did the authenticated `account/rateLimits/read` request remain unanswered for 90 seconds while `account/read` succeeded? Capture stderr, JSON-RPC error/timeout, and a successful online full-read response before claiming any real quota bucket or reset data.
-2. Does this account return one `rateLimits` bucket, a `rateLimitsByLimitId` map (and which actual key), or both? Record the exact response, including null/missing fields, without inserting sample values.
-3. Which primary/secondary windows are supplied for the active `prolite` account, and does the backend supply `windowDurationMins`, `resetsAt`, credits, spend-control, plan, reached-limit, or reset-credit fields? This remains unresolved because no rate response was observed.
-4. What exact error does the installed app-server produce for expired ChatGPT credentials, provider unauthorized, and network timeout? Build host fixtures from observed errors; do not classify by string guesses.
-5. What freshness threshold is defensible for this product? Measure polling latency/backend cadence and choose a threshold independent of quota reset duration; document why it is safe.
-6. Does an `account/rateLimits/updated` notification arrive before any full read on this installation? If so, reject/hold it until a baseline exists or refetch; never treat it as a first snapshot.
-7. What is the exact Phase 2 normalized snapshot protocol shape and how will Phase 3 extend its type enum while preserving atomic four-tile replacement and direct focus semantics? Phase 3 planning must consume the Phase 2 implementation rather than create parallel framing.
-8. Which firmware persistence API and wear policy should store brightness, and what is the power-on/default behavior after reset? Phase 1 visual checks passed sample stimuli but the accepted evidence records machine brightness values as unavailable; persistence was not part of Phase 1.
-9. What bounded menu page/row layout is physically legible on the accepted unit while showing all required diagnostics? Validate on the real connected keypad; do not close MENU-02/03 with mock screenshots.
+1. **Authenticated full-read timeout.** The first production tracer starts the installed `codex app-server --stdio`, completes the correlated initialize/initialized/account handshake, and requests `account/rateLimits/read` under a hard deadline. It records either a schema-valid normalized success or a typed failure code with elapsed time, child-exit state, and redaction result. Raw stderr and JSON-RPC content stay ephemeral and never enter the device or committed evidence. Either outcome passes the integration contract; only a real success may populate live percentages, resets, or reached state.
+2. **Single bucket versus `rateLimitsByLimitId`.** The tracer records a redacted structural manifest containing only presence/null markers and bounded observed map keys. A top-level bucket, a map, both, or neither is valid only when the installed schema admits it. The collector selects no undocumented map key. An unusable or absent shape produces normalized unavailable data and an evidence-backed code rather than sample values.
+3. **Active-account fields and values.** Real primary/secondary windows, duration, reset, credits, spend-control, plan, reached-limit, and reset-credit outcomes remain unknown until the bounded tracer. The normalizer preserves each supplied field, null, and omission independently. Deterministic fixtures prove every rendering branch but are labeled fixture data and cannot satisfy the live-account evidence row.
+4. **Auth and transport error taxonomy.** The collector maps `account: null` with `requiresOpenaiAuth: true` and structured unauthorized responses to `AUTH REQUIRED`. Process exit, line overflow, malformed JSONL, ID mismatch, request error without auth evidence, and deadline expiry map to `CODEX OFFLINE` plus an allowlisted `E-####` code. Tests use structured scripted responses, not guessed error text; the tracer records which evidence-backed branch the installed process produced.
+5. **Freshness threshold.** Per D-05, request a full snapshot every 300 seconds and mark data stale at 900 seconds without a valid full read or valid sparse merge. Fake-clock tests prove the exact edges. Provider reset timestamps never influence this clock.
+6. **Sparse notification before full read.** Before a known full baseline, reject the notification as a publishable observation, leave values and observation age unchanged, and schedule one coalesced immediate full refetch. After a baseline, merge present fields with installed-schema null semantics, preserve omitted fields, update observation age, and schedule the same nonblocking refetch per D-06 and D-18.
+7. **Phase 2 protocol extension.** Extend only the existing protocol version 2 `agent_snapshot`, `PermanentBridge`, host validator/codec, firmware `FrameCodec`/`ProtocolSession`, staged `AgentProjection::Generation`, shared `RenderState`, and current renderer family. Golden host/native vectors freeze the closed additions. No parallel framing, snapshot message, parser, projection, or focus path is permitted.
+8. **Brightness storage and wear policy.** Extend the existing `Preferences`-backed `SettingsStore`. Load schema version 1 theme/LED unchanged with brightness 80% in memory and zero writes. Preview through `BoardAdapter::setBrightness()`. Write the complete schema version 2 record with the marker last only after explicit confirmation; no boot, rotation, close, timeout, or host update writes NVS.
+9. **Physically legible menu layout.** Implement the approved six-row root, three-row viewport, fixed HEALTH/ABOUT rows, title metrics, bounds, and tail ellipsis from `03-UI-SPEC.md`. Generate exact 128x128 contact sheets for all themes and long-text states, then block phase completion on exact-paired-device observations at 10% brightness for legibility, clipping, bezel clearance, direct keys, timeout, brightness, LED, and reboot behavior. Framebuffer captures cannot close optical or interaction rows.
 
 ## Sources
 

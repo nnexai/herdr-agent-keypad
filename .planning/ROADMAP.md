@@ -203,21 +203,45 @@ Plans:
   4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
   5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
 
-**Plans:** 3 plans
+**Plans:** 9 plans
 
 Plans:
 
 **Wave 1**
 
-- [ ] 03-01-PLAN.md — Prove the installed Codex app-server full-read outcome through the permanent bridge, sole protocol, staged firmware, and Signal Edge.
+- [ ] 03-01-PLAN.md — Trace the installed Codex success or typed failure through PermanentBridge, sole v2 protocol, staged firmware, and Signal Edge.
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 03-02-PLAN.md — Complete presence-aware freshness, all Codex states, four theme renderers, and four usage LED grammars.
+- [ ] 03-02-PLAN.md — Complete the known-full sparse merge, account invalidation, fixed freshness policy, and independent host clocks.
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 03-03-PLAN.md — Deliver the six-row menu, local brightness migration, full contract tests, and exact-device screenshot/interaction proof.
+- [ ] 03-03-PLAN.md — Freeze the closed host/native protocol and one staged shared RenderState.
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 03-04-PLAN.md — Render the complete truthful Codex state matrix in all four themes.
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 03-05-PLAN.md — Map Codex usage and source health through all four existing LED grammars.
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 03-06-PLAN.md — Extend the one menu controller and settings store for non-modal direct keys and persistent local brightness.
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 03-07-PLAN.md — Render the six-row root, previews, HEALTH, and ABOUT in all four themes.
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 03-08-PLAN.md — Complete the acceptance matrix, contact sheets, and strict pending exact-device evidence.
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 03-09-PLAN.md — Close the blocking exact-paired-device 10% long-text and interaction checkpoint.
 
 **UI hint:** yes
 
