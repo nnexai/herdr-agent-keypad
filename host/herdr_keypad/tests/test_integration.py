@@ -801,6 +801,12 @@ class Phase3ProtocolAdmissionTests(unittest.TestCase):
                 "codex_status": "current",
                 "sync_age": "AGE 0M",
                 "codex_age": "AGE 0M",
+                "firmware_version": "phase1",
+                "protocol_version": 2,
+                "bridge_version": "0.1.0",
+                "device_suffix": "ABC123",
+                "session_suffix": "DEF456",
+                "revision_suffix": "000001",
                 "error_code": "",
             },
         }
@@ -825,12 +831,11 @@ class Phase3ProtocolAdmissionTests(unittest.TestCase):
         with self.assertRaises(protocol.ProtocolError):
             protocol.validate_v2_payload("agent_snapshot", payload)
 
-    def test_extended_frame_retains_4096_byte_bound(self):
         payload = self.extended_payload()
         payload["codex"]["reset_text"] = "R" * 32
         frame = protocol.new_v2_frame("agent_snapshot", "boot", "session", 1, payload)
         encoded = protocol.encode_v2_frame(frame)
         self.assertLessEqual(len(encoded), protocol.MAX_LINE_BYTES)
-        payload["diagnostics"]["error_code"] = "E" * 16
+        payload["diagnostics"]["error_code"] = "E-2410"
         frame = protocol.new_v2_frame("agent_snapshot", "boot", "session", 1, payload)
         self.assertLessEqual(len(protocol.encode_v2_frame(frame)), protocol.MAX_LINE_BYTES)

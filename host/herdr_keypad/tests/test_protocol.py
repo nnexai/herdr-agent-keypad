@@ -20,8 +20,8 @@ class V2ProtocolTests(unittest.TestCase):
 
     def test_v2_golden_vectors_have_host_results(self) -> None:
         fixture = json.loads((ROOT / "protocol/fixtures/v2-golden.json").read_text())
-        self.assertEqual(fixture["schema_version"], 1)
-        self.assertGreaterEqual(len(fixture["vectors"]), 4)
+        self.assertEqual(fixture["schema_version"], 2)
+        self.assertGreaterEqual(len(fixture["vectors"]), 6)
         for vector in fixture["vectors"]:
             line = vector["line"]
             if line == "synthetic:oversized":
@@ -74,13 +74,16 @@ class V2ProtocolTests(unittest.TestCase):
                 "error_code": "E-2401",
             },
         )
-        protocol.validate_v2_payload("agent_snapshot", snapshot)
+        base_codex = {**snapshot["codex"], "error_code": ""}
         for state in ("current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"):
-            current = {**snapshot, "codex": {**snapshot["codex"], "source_state": state}}
+            current = {**snapshot, "codex": {**base_codex, "source_state": state}}
             protocol.validate_v2_payload("agent_snapshot", current)
         for primary, secondary in ((None, None), (0, None), (100, 0), (37, 88)):
-            current = {**snapshot, "codex": {**snapshot["codex"], "primary": primary, "secondary": secondary}}
+            current = {**snapshot, "codex": {**base_codex, "primary": primary, "secondary": secondary}}
             protocol.validate_v2_payload("agent_snapshot", current)
+        protocol.validate_v2_payload("agent_snapshot", {**snapshot, "codex": {**base_codex, "error_code": "E-2401", "source_state": "unavailable"}})
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", {**snapshot, "codex": {**base_codex, "error_code": "E-2401", "source_state": "unavailable", "primary": 0}})
         with self.assertRaises(protocol.ProtocolError):
             protocol.validate_v2_payload("agent_snapshot", {**snapshot, "codex": {**snapshot["codex"], "error_code": "E-9999"}})
         with self.assertRaises(protocol.ProtocolError):

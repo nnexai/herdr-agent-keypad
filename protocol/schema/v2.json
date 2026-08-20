@@ -59,7 +59,7 @@
     },
     "agent_snapshot": {
       "type": "object", "additionalProperties": false,
-      "required": ["host_epoch", "snapshot_revision", "source_status", "agents"],
+      "required": ["host_epoch", "snapshot_revision", "source_status", "agents", "codex", "diagnostics"],
       "properties": {
         "host_epoch": {"$ref": "#/$defs/host_epoch"},
         "snapshot_revision": {"type": "integer", "minimum": 1, "maximum": 4294967295},
@@ -79,19 +79,25 @@
         "reset_text": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[\\u0000-\\u007F]*$"},
         "observation_age": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
         "reached_limit": {"type": ["boolean", "null"]},
-        "error_code": {"type": "string", "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"}
+        "error_code": {"type": "string", "maxLength": 16, "pattern": "^(|E-24(0[0-9]|10))$"}
       }
     },
     "diagnostics": {
       "type": "object", "additionalProperties": false,
-      "required": ["link_status", "herdr_status", "codex_status", "sync_age", "codex_age", "error_code"],
+      "required": ["link_status", "herdr_status", "codex_status", "sync_age", "codex_age", "firmware_version", "protocol_version", "bridge_version", "device_suffix", "session_suffix", "revision_suffix", "error_code"],
       "properties": {
-        "link_status": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
-        "herdr_status": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
-        "codex_status": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "link_status": {"type": "string", "enum": ["current", "offline"]},
+        "herdr_status": {"type": "string", "enum": ["current", "empty", "stale", "unavailable", "offline"]},
+        "codex_status": {"type": "string", "enum": ["current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"]},
         "sync_age": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
         "codex_age": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
-        "error_code": {"type": "string", "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"}
+        "firmware_version": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "protocol_version": {"type": "integer", "const": 2},
+        "bridge_version": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "device_suffix": {"type": "string", "minLength": 1, "maxLength": 6, "pattern": "^[A-Z0-9]+$"},
+        "session_suffix": {"type": "string", "minLength": 1, "maxLength": 6, "pattern": "^[A-Z0-9]+$"},
+        "revision_suffix": {"type": "string", "minLength": 1, "maxLength": 6, "pattern": "^[A-Z0-9]+$"},
+        "error_code": {"type": "string", "maxLength": 16, "pattern": "^(|E-24(0[0-9]|10))$"}
       }
     },
     "snapshot_ack": {

@@ -324,6 +324,182 @@ bool valid_agent_state(const char* value) {
          std::strcmp(value, "unknown") == 0;
 }
 
+bool valid_codex_state(const char* value) {
+  return std::strcmp(value, "current") == 0 || std::strcmp(value, "stale") == 0 ||
+         std::strcmp(value, "unavailable") == 0 || std::strcmp(value, "auth_required") == 0 ||
+         std::strcmp(value, "codex_offline") == 0 || std::strcmp(value, "host_offline") == 0;
+}
+
+bool valid_link_state(const char* value) {
+  return std::strcmp(value, "current") == 0 || std::strcmp(value, "offline") == 0;
+}
+
+bool valid_error_code(const char* value) {
+  if (value[0] == '\0') return true;
+  if (std::strlen(value) != 6 || value[0] != 'E' || value[1] != '-') return false;
+  uint32_t code = 0;
+  for (uint8_t index = 2; index < 6; ++index) {
+    if (value[index] < '0' || value[index] > '9') return false;
+    code = code * 10U + static_cast<uint32_t>(value[index] - '0');
+  }
+  return code >= 2400 && code <= 2410;
+}
+
+bool valid_suffix(const char* value) {
+  const std::size_t length = std::strlen(value);
+  if (length == 0 || length > 6) return false;
+  for (std::size_t index = 0; index < length; ++index) {
+    const char c = value[index];
+    if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9'))) return false;
+  }
+  return true;
+}
+
+RejectReason parse_v2_codex(Cursor& cursor) {
+  if (!cursor.take('{')) return RejectReason::InvalidShape;
+  uint32_t mask = 0;
+  char source_state[20] = {};
+  char reset_text[33] = {};
+  char observation_age[17] = {};
+  char error_code[17] = {};
+  bool reached = false;
+  bool reached_present = false;
+  bool primary_present = false;
+  bool secondary_present = false;
+  bool primary_claim = false;
+  bool secondary_claim = false;
+  while (true) {
+    cursor.ws();
+    if (cursor.take('}')) break;
+    char key[32] = {};
+    if (!cursor.string(key, sizeof(key)) || !cursor.take(':')) return RejectReason::InvalidJson;
+    uint32_t bit = 0;
+    if (std::strcmp(key, "source_state") == 0) bit = 1U << 0;
+    else if (std::strcmp(key, "primary") == 0) bit = 1U << 1;
+    else if (std::strcmp(key, "secondary") == 0) bit = 1U << 2;
+    else if (std::strcmp(key, "reset_text") == 0) bit = 1U << 3;
+    else if (std::strcmp(key, "observation_age") == 0) bit = 1U << 4;
+    else if (std::strcmp(key, "reached_limit") == 0) bit = 1U << 5;
+    else if (std::strcmp(key, "error_code") == 0) bit = 1U << 6;
+    else return RejectReason::UnknownField;
+    if ((mask & bit) != 0) return RejectReason::DuplicateKey;
+    mask |= bit;
+    if (bit == (1U << 0)) {
+      if (!cursor.string(source_state, sizeof(source_state)) || !valid_codex_state(source_state)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 1)) {
+      primary_present = true;
+      cursor.ws();
+      if (cursor.p < cursor.end && *cursor.p == 'n') {
+        if (!cursor.null_value()) return RejectReason::InvalidShape;
+      } else {
+        uint32_t value = 0;
+        if (!cursor.uint32(value) || value > 100) return RejectReason::InvalidShape;
+        primary_claim = true;
+      }
+    } else if (bit == (1U << 2)) {
+      secondary_present = true;
+      cursor.ws();
+      if (cursor.p < cursor.end && *cursor.p == 'n') {
+        if (!cursor.null_value()) return RejectReason::InvalidShape;
+      } else {
+        uint32_t value = 0;
+        if (!cursor.uint32(value) || value > 100) return RejectReason::InvalidShape;
+        secondary_claim = true;
+      }
+    } else if (bit == (1U << 3)) {
+      if (!cursor.string(reset_text, sizeof(reset_text)) || std::strlen(reset_text) == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 4)) {
+      if (!cursor.string(observation_age, sizeof(observation_age)) || std::strlen(observation_age) == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 5)) {
+      reached_present = true;
+      cursor.ws();
+      if (cursor.p < cursor.end && *cursor.p == 'n') {
+        if (!cursor.null_value()) return RejectReason::InvalidShape;
+      } else if (!cursor.boolean(reached)) {
+        return RejectReason::InvalidShape;
+      }
+    } else if (!cursor.string(error_code, sizeof(error_code)) || !valid_error_code(error_code)) {
+      return RejectReason::InvalidShape;
+    }
+    cursor.ws();
+    if (cursor.take('}')) break;
+    if (!cursor.take(',')) return RejectReason::InvalidJson;
+  }
+  if (mask != 0x7fU || !primary_present || !secondary_present || !reached_present) return RejectReason::InvalidShape;
+  if (std::strcmp(error_code, "E-2401") == 0 &&
+      (std::strcmp(source_state, "unavailable") != 0 || primary_claim || secondary_claim ||
+       std::strcmp(reset_text, "RESET N/A") != 0 || reached)) return RejectReason::InvalidShape;
+  return RejectReason::Ok;
+}
+
+RejectReason parse_v2_diagnostics(Cursor& cursor) {
+  if (!cursor.take('{')) return RejectReason::InvalidShape;
+  uint32_t mask = 0;
+  char link_status[16] = {};
+  char herdr_status[16] = {};
+  char codex_status[20] = {};
+  char sync_age[17] = {};
+  char codex_age[17] = {};
+  char firmware_version[17] = {};
+  char bridge_version[17] = {};
+  char device_suffix[7] = {};
+  char session_suffix[7] = {};
+  char revision_suffix[7] = {};
+  char error_code[17] = {};
+  while (true) {
+    cursor.ws();
+    if (cursor.take('}')) break;
+    char key[32] = {};
+    if (!cursor.string(key, sizeof(key)) || !cursor.take(':')) return RejectReason::InvalidJson;
+    uint32_t bit = 0;
+    if (std::strcmp(key, "link_status") == 0) bit = 1U << 0;
+    else if (std::strcmp(key, "herdr_status") == 0) bit = 1U << 1;
+    else if (std::strcmp(key, "codex_status") == 0) bit = 1U << 2;
+    else if (std::strcmp(key, "sync_age") == 0) bit = 1U << 3;
+    else if (std::strcmp(key, "codex_age") == 0) bit = 1U << 4;
+    else if (std::strcmp(key, "firmware_version") == 0) bit = 1U << 5;
+    else if (std::strcmp(key, "protocol_version") == 0) bit = 1U << 6;
+    else if (std::strcmp(key, "bridge_version") == 0) bit = 1U << 7;
+    else if (std::strcmp(key, "device_suffix") == 0) bit = 1U << 8;
+    else if (std::strcmp(key, "session_suffix") == 0) bit = 1U << 9;
+    else if (std::strcmp(key, "revision_suffix") == 0) bit = 1U << 10;
+    else if (std::strcmp(key, "error_code") == 0) bit = 1U << 11;
+    else return RejectReason::UnknownField;
+    if ((mask & bit) != 0) return RejectReason::DuplicateKey;
+    mask |= bit;
+    if (bit == (1U << 0)) {
+      if (!cursor.string(link_status, sizeof(link_status)) || !valid_link_state(link_status)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 1)) {
+      if (!cursor.string(herdr_status, sizeof(herdr_status)) || !valid_source_status(herdr_status)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 2)) {
+      if (!cursor.string(codex_status, sizeof(codex_status)) || !valid_codex_state(codex_status)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 3)) {
+      if (!cursor.string(sync_age, sizeof(sync_age)) || std::strlen(sync_age) == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 4)) {
+      if (!cursor.string(codex_age, sizeof(codex_age)) || std::strlen(codex_age) == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 5)) {
+      if (!cursor.string(firmware_version, sizeof(firmware_version)) || std::strlen(firmware_version) == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 6)) {
+      uint32_t value = 0;
+      if (!cursor.uint32(value) || value != 2) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 7)) {
+      if (!cursor.string(bridge_version, sizeof(bridge_version)) || std::strlen(bridge_version) == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 8)) {
+      if (!cursor.string(device_suffix, sizeof(device_suffix)) || !valid_suffix(device_suffix)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 9)) {
+      if (!cursor.string(session_suffix, sizeof(session_suffix)) || !valid_suffix(session_suffix)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 10)) {
+      if (!cursor.string(revision_suffix, sizeof(revision_suffix)) || !valid_suffix(revision_suffix)) return RejectReason::InvalidShape;
+    } else if (!cursor.string(error_code, sizeof(error_code)) || !valid_error_code(error_code)) {
+      return RejectReason::InvalidShape;
+    }
+    cursor.ws();
+    if (cursor.take('}')) break;
+    if (!cursor.take(',')) return RejectReason::InvalidJson;
+  }
+  return mask == 0xfffU ? RejectReason::Ok : RejectReason::InvalidShape;
+}
+
 RejectReason parse_v2_agent(Cursor& cursor) {
   if (!cursor.take('{')) return RejectReason::InvalidPayload;
   uint32_t mask = 0;
@@ -456,12 +632,12 @@ RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_
         }
       }
     } else if (bit == (1U << 15)) {
-      cursor.ws();
-      if (cursor.p >= cursor.end || *cursor.p != '{' || !cursor.value()) return RejectReason::InvalidShape;
+      const RejectReason codex_reason = parse_v2_codex(cursor);
+      if (codex_reason != RejectReason::Ok) return codex_reason;
       has_codex = true;
     } else if (bit == (1U << 16)) {
-      cursor.ws();
-      if (cursor.p >= cursor.end || *cursor.p != '{' || !cursor.value()) return RejectReason::InvalidShape;
+      const RejectReason diagnostics_reason = parse_v2_diagnostics(cursor);
+      if (diagnostics_reason != RejectReason::Ok) return diagnostics_reason;
       has_diagnostics = true;
     } else if (bit == (1U << 4)) {
       if (!cursor.boolean(accepted)) return RejectReason::InvalidShape;

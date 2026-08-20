@@ -233,15 +233,23 @@ V2_PROTOCOL_VERSION = 2
 V2_FRAME_TYPES = {"agent_snapshot", "snapshot_ack", "focus_intent", "focus_result"}
 V2_SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
 V2_CODEX_STATES = {"current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"}
+V2_LINK_STATES = {"current", "offline"}
 V2_OUTCOMES = {"accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"}
 V2_AGENT_SNAPSHOT_FIELDS = {"host_epoch", "snapshot_revision", "source_status", "agents"}
 V2_CODEX_FIELDS = {"source_state", "primary", "secondary", "reset_text", "observation_age", "reached_limit", "error_code"}
-V2_DIAGNOSTIC_FIELDS = {"link_status", "herdr_status", "codex_status", "sync_age", "codex_age", "error_code"}
+V2_DIAGNOSTIC_FIELDS = {
+    "link_status", "herdr_status", "codex_status", "sync_age", "codex_age",
+    "firmware_version", "protocol_version", "bridge_version",
+    "device_suffix", "session_suffix", "revision_suffix", "error_code",
+}
+V2_ERROR_CODES = {""} | {f"E-{number:04d}" for number in range(2400, 2411)}
 
 
 def _v2_text(value: Any, name: str, maximum: int, *, allow_empty: bool = False) -> None:
     if not isinstance(value, str) or len(value) > maximum or (not allow_empty and not value) or any(ord(char) >= 0x80 for char in value):
         raise ProtocolError("invalid_shape", f"{name} must be bounded ASCII text")
+
+
 def _v2_opaque(value: Any, name: str, *, allow_empty: bool = False) -> None:
     _v2_text(value, name, 64, allow_empty=allow_empty)
     if value and any(char in "\r\n\t" or ord(char) < 0x21 for char in value):
@@ -262,6 +270,8 @@ def _v2_identity(payload: dict[str, Any], *, empty: bool = False) -> None:
     _v2_uint(payload["source_revision"], "source_revision", zero=empty)
     if not empty and (not payload["pane_id"] or not payload["terminal_id"] or payload["source_revision"] == 0):
         raise ProtocolError("invalid_identity", "occupied identity is incomplete")
+
+
 def _v2_percent(value: Any, name: str) -> None:
     if value is not None and (not _is_int(value) or not 0 <= value <= 100):
         raise ProtocolError("invalid_shape", f"{name} must be null or an integer percentage")
@@ -270,6 +280,18 @@ def _v2_percent(value: Any, name: str) -> None:
 def _v2_status(value: Any, name: str, allowed: set[str]) -> None:
     if not isinstance(value, str) or value not in allowed:
         raise ProtocolError("invalid_shape", f"{name} is invalid")
+
+
+def _v2_error_code(value: Any, name: str) -> None:
+    _v2_text(value, name, 16, allow_empty=True)
+    if value not in V2_ERROR_CODES:
+        raise ProtocolError("invalid_shape", f"{name} is not an allowlisted diagnostic code")
+
+
+def _v2_suffix(value: Any, name: str) -> None:
+    _v2_text(value, name, 6)
+    if any(char not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" for char in value):
+        raise ProtocolError("invalid_shape", f"{name} must be an uppercase bounded suffix")
 
 
 def _v2_codex(value: Any) -> None:
@@ -282,17 +304,32 @@ def _v2_codex(value: Any) -> None:
     _v2_text(value["observation_age"], "codex observation_age", 16)
     if value["reached_limit"] is not None and not isinstance(value["reached_limit"], bool):
         raise ProtocolError("invalid_shape", "codex reached_limit must be null or boolean")
-    _v2_text(value["error_code"], "codex error_code", 16, allow_empty=True)
+    _v2_error_code(value["error_code"], "codex error_code")
+    if value["error_code"] == "E-2401" and (
+        value["source_state"] != "unavailable"
+        or value["primary"] is not None
+        or value["secondary"] is not None
+        or value["reset_text"] != "RESET N/A"
+        or value["reached_limit"] is not None
+    ):
+        raise ProtocolError("invalid_shape", "bucket-unavailable Codex state cannot claim capacity")
 
 
 def _v2_diagnostics(value: Any) -> None:
     if not isinstance(value, dict) or set(value) != V2_DIAGNOSTIC_FIELDS:
         raise ProtocolError("unknown_field", "diagnostics view is closed")
-    for key in ("link_status", "herdr_status", "codex_status"):
-        _v2_text(value[key], f"diagnostics {key}", 16)
+    _v2_status(value["link_status"], "diagnostics link_status", V2_LINK_STATES)
+    _v2_status(value["herdr_status"], "diagnostics herdr_status", V2_SOURCE_STATUSES)
+    _v2_status(value["codex_status"], "diagnostics codex_status", V2_CODEX_STATES)
     _v2_text(value["sync_age"], "diagnostics sync_age", 16)
     _v2_text(value["codex_age"], "diagnostics codex_age", 16)
-    _v2_text(value["error_code"], "diagnostics error_code", 16, allow_empty=True)
+    _v2_text(value["firmware_version"], "diagnostics firmware_version", 16)
+    if not _is_int(value["protocol_version"]) or value["protocol_version"] != V2_PROTOCOL_VERSION:
+        raise ProtocolError("invalid_shape", "diagnostics protocol_version must be v2")
+    _v2_text(value["bridge_version"], "diagnostics bridge_version", 16)
+    for key in ("device_suffix", "session_suffix", "revision_suffix"):
+        _v2_suffix(value[key], f"diagnostics {key}")
+    _v2_error_code(value["error_code"], "diagnostics error_code")
 
 
 def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
@@ -309,8 +346,8 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
     allowed = expected[frame_type]
     if frame_type == "agent_snapshot":
         extended = V2_AGENT_SNAPSHOT_FIELDS | {"codex", "diagnostics"}
-        if set(payload) != V2_AGENT_SNAPSHOT_FIELDS and set(payload) != extended:
-            raise ProtocolError("unknown_field" if set(payload).issubset(extended) else "invalid_shape", "v2 payload is closed")
+        if set(payload) != extended:
+            raise ProtocolError("unknown_field" if set(payload) - extended else "invalid_shape", "v2 payload is closed")
     elif set(payload) != allowed:
         raise ProtocolError("unknown_field" if not set(payload).issubset(allowed) else "invalid_shape", "v2 payload is closed")
     _v2_opaque(payload["host_epoch"], "host_epoch")
@@ -366,6 +403,7 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
         _v2_opaque(payload["entry_id"], "entry_id")
         _v2_identity(payload)
     return payload
+
 
 
 def new_v2_frame(

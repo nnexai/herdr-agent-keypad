@@ -135,7 +135,7 @@ void test_v2_fixture_vectors(void) {
     TEST_ASSERT_EQUAL_STRING(expected.c_str(), phase1::protocol::rejection_name(result.reason));
     ++count;
   }
-  TEST_ASSERT_EQUAL_UINT(4, count);
+  TEST_ASSERT_EQUAL_UINT(6, count);
 }
 
 void test_valid_encode_decode_and_reset(void) {

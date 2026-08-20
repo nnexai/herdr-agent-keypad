@@ -32,9 +32,25 @@ from phase1_bringup import protocol as v1_protocol  # noqa: E402
 MAX_LINE_BYTES = v1_protocol.MAX_LINE_BYTES
 MAX_SLOTS = 3
 V2 = 2
+BRIDGE_VERSION = "0.1.0"
 SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
 AGENT_STATES = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"}
 OUTCOMES = {"accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"}
+V2_SUFFIX_FALLBACK = "UNAVAL"
+V2_DIAGNOSTIC_DEFAULTS: dict[str, Any] = {
+    "link_status": "offline",
+    "herdr_status": "unavailable",
+    "codex_status": "unavailable",
+    "sync_age": "AGE N/A",
+    "codex_age": "AGE N/A",
+    "firmware_version": "UNAVAL",
+    "protocol_version": V2,
+    "bridge_version": BRIDGE_VERSION,
+    "device_suffix": V2_SUFFIX_FALLBACK,
+    "session_suffix": V2_SUFFIX_FALLBACK,
+    "revision_suffix": V2_SUFFIX_FALLBACK,
+    "error_code": "",
+}
 FOCUS_RESULT_GRACE_SECONDS = 1.0
 RECONNECT_INITIAL_DELAY_SECONDS = 0.5
 RECONNECT_MAX_DELAY_SECONDS = 8.0
@@ -101,13 +117,27 @@ class Snapshot:
     snapshot_revision: int
     source_status: str
     agents: tuple[AgentEntry, ...]
+    codex: CodexView = field(default_factory=CodexView)
+    diagnostics: Mapping[str, Any] = field(default_factory=lambda: dict(V2_DIAGNOSTIC_DEFAULTS))
 
     def as_payload(self) -> dict[str, Any]:
+        codex = self.codex.as_payload()
+        diagnostics = dict(V2_DIAGNOSTIC_DEFAULTS)
+        diagnostics.update(self.diagnostics)
+        diagnostics.update(
+            {
+                "herdr_status": self.source_status if self.source_status in SOURCE_STATUSES else "unavailable",
+                "codex_status": codex["source_state"],
+                "error_code": codex["error_code"],
+            }
+        )
         return {
             "host_epoch": self.host_epoch,
             "snapshot_revision": self.snapshot_revision,
             "source_status": self.source_status,
             "agents": [agent.as_payload() for agent in self.agents],
+            "codex": codex,
+            "diagnostics": diagnostics,
         }
 
 
@@ -364,7 +394,7 @@ def _wire_focus_result(intent: FocusIntent, outcome: Any) -> FocusResult:
         str(getattr(outcome, "reason", ""))[:64],
     )
 def _projection_payload(snapshot: Any, *, codex: CodexView | None = None,
-                        diagnostics: Mapping[str, str] | None = None) -> dict[str, Any]:
+                        diagnostics: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Translate normalized Herdr plus bounded Codex state to v2."""
     agents = []
     for entry in snapshot.entries:
@@ -385,25 +415,29 @@ def _projection_payload(snapshot: Any, *, codex: CodexView | None = None,
             }
         )
     codex = codex or CodexView()
-    diagnostics = diagnostics or {
-        "link_status": getattr(snapshot, "link_status", "current"),
-        "herdr_status": getattr(snapshot, "herdr_status", "current" if snapshot.source_status == "current" else "offline"),
-        "codex_status": getattr(snapshot, "codex_status", codex.source_state),
-        "sync_age": getattr(snapshot, "sync_age", "AGE N/A"),
-        "codex_age": getattr(snapshot, "codex_age", codex.observation_age),
-        "error_code": getattr(snapshot, "error_code", codex.error_code),
-    }
+    merged_diagnostics: dict[str, Any] = dict(V2_DIAGNOSTIC_DEFAULTS)
+    merged_diagnostics.update(
+        {
+            "link_status": getattr(snapshot, "link_status", merged_diagnostics["link_status"]),
+            "herdr_status": getattr(snapshot, "herdr_status", "current" if snapshot.source_status == "current" else "offline"),
+            "codex_status": getattr(snapshot, "codex_status", codex.source_state),
+            "sync_age": getattr(snapshot, "sync_age", "AGE N/A"),
+            "codex_age": getattr(snapshot, "codex_age", codex.observation_age),
+            "error_code": getattr(snapshot, "error_code", codex.error_code),
+        }
+    )
+    if diagnostics:
+        merged_diagnostics.update(diagnostics)
     payload = {
         "host_epoch": snapshot.host_epoch,
         "snapshot_revision": snapshot.snapshot_revision,
         "source_status": snapshot.source_status,
         "agents": agents,
         "codex": codex.as_payload(),
-        "diagnostics": dict(diagnostics),
+        "diagnostics": merged_diagnostics,
     }
     validate_v2_payload("agent_snapshot", payload)
     return payload
-
 
 def _age_text(clock: Callable[[], float], observed_at: float | None) -> str:
     if observed_at is None:
@@ -658,19 +692,35 @@ class PermanentBridge:
         self._drain_deferred_focus(joined)
         return joined
 
-    def _diagnostics(self, snapshot: Any) -> dict[str, str]:
+    def _diagnostics(self, snapshot: Any) -> dict[str, Any]:
         herdr_status = getattr(snapshot, "source_status", "unavailable")
         if herdr_status not in SOURCE_STATUSES:
             herdr_status = "unavailable"
         codex_status = self.codex_view.source_state
-        return {
-            "link_status": self._link_status,
-            "herdr_status": herdr_status,
-            "codex_status": codex_status,
-            "sync_age": _age_text(self._clock, self._sync_observed_at),
-            "codex_age": self.codex_view.observation_age,
-            "error_code": self.codex_view.error_code,
-        }
+        hello = self.usb.device.get("hello", {}) if isinstance(getattr(self.usb, "device", None), Mapping) else {}
+        firmware_version = hello.get("firmware", V2_DIAGNOSTIC_DEFAULTS["firmware_version"])
+        device_id = hello.get("device_id", "")
+        session_id = getattr(self.usb, "session_id", None) or ""
+        def suffix(value: Any) -> str:
+            text = str(value).upper()
+            text = "".join(char for char in text if char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+            return (text[-6:] or V2_SUFFIX_FALLBACK)
+        diagnostics = dict(V2_DIAGNOSTIC_DEFAULTS)
+        diagnostics.update(
+            {
+                "link_status": self._link_status,
+                "herdr_status": herdr_status,
+                "codex_status": codex_status,
+                "sync_age": _age_text(self._clock, self._sync_observed_at),
+                "codex_age": self.codex_view.observation_age,
+                "firmware_version": firmware_version if isinstance(firmware_version, str) else V2_SUFFIX_FALLBACK,
+                "device_suffix": suffix(device_id),
+                "session_suffix": suffix(session_id),
+                "revision_suffix": suffix(f"{getattr(snapshot, 'snapshot_revision', 0):06X}"),
+                "error_code": self.codex_view.error_code,
+            }
+        )
+        return diagnostics
 
     def _join_health(self, snapshot: Any) -> Any:
         if hasattr(snapshot, "with_health"):
