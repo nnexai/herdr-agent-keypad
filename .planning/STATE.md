@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 Phase: 03.1 — High-Fidelity Animation and Interaction Polish
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-20 — Phase 03.1 inserted after Phase 03; ready for planning
+Last activity: 2026-08-20 — Completed quick task 260820-sp6: automatic bridge recovery after USB CDC communication reset
 
 Progress: [██████████] 100%
 
@@ -149,6 +149,7 @@ None yet.
 | Task | Date | Status |
 |------|------|--------|
 | Archive two design-study HTML pages in `.planning/research/` | 2026-08-17 | complete |
+| [260820-sp6 — Fix bridge automatic recovery after USB CDC communication reset](./quick/260820-sp6-fix-bridge-automatic-recovery-after-usb-/) | 2026-08-20 | complete — `db5c880` |
 
 ## Session Continuity
 
