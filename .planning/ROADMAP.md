@@ -149,7 +149,7 @@ Plans:
 
 ### Phase 02.2: Firmware Themes, LED Bars, and Device Selection Menu (INSERTED)
 
-**Goal:** The firmware exposes the four design-proposal display languages and four LED grammars as complete, selectable modes, while preserving the existing authoritative snapshot, focus-only input, freshness fencing, and compose-then-flush rendering contracts.
+**Goal:** As a Herdr user, I want to select any of four complete display themes and LED grammars from the keypad encoder, so that I can customize presentation without weakening authoritative snapshots, direct focus, freshness fencing, or compose-then-flush rendering.
 **Mode:** mvp
 **Depends on:** Phase 02.1
 **Requirements:** TBD — this inserted phase is an initial design scope; requirement IDs and exact acceptance thresholds will be established during discussion and planning.
