@@ -168,6 +168,10 @@ class InstrumentTheme final : public ThemeRenderer {
       drawInnerGlyph(sprite, TileState::Empty, kEmptyEdge);
       sprite.setTextColor(kMetadata, kBackground);
       sprite.drawString("NO AGENT", centeredX("NO AGENT"), 89);
+      if (fence != nullptr) {
+        sprite.setTextColor(kDestructive, kBackground);
+        sprite.drawString(fence, centeredX(fence), 100);
+      }
       return;
     }
 

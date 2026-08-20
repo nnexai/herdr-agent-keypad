@@ -565,6 +565,8 @@ void assertThemeVocabulary(ThemeRenderer& theme) {
     BoardAdapter board;
     commitThroughTheme(theme, projection, board, revision++, "working", entry.status);
     TEST_ASSERT_TRUE_MESSAGE(logContainsText(entry.word), entry.word);
+    // The fixture has two empty slots; each must carry the same source fence.
+    TEST_ASSERT_TRUE(logTextCount(entry.word) >= 3);
     TEST_ASSERT_FALSE(projection.hasBinding(0));
   }
   // Feedback words: PENDING and REJECTED through the real focus path.

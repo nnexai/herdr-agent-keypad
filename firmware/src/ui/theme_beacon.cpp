@@ -169,47 +169,46 @@ class BeaconTheme final : public ThemeRenderer {
       drawCenterGlyph(sprite, TileState::Empty, kEmptyEdge);
       sprite.setTextColor(kMetadata, kBackground);
       sprite.drawString("NO AGENT", centeredX("NO AGENT"), 96);
-      return;
-    }
-
-    // Field: active states get the stepped radial field, calm states stay
-    // flat black; fences desaturate everything.
-    if (fence == nullptr && feedback == nullptr && activeField(tile.state)) {
-      // BLOCKED field+glyph breathe in the 1.2 s pulse; other active states
-      // render a steady field.
-      const bool low = tile.state == TileState::Blocked && !state.blocked_pulse_high;
-      drawField(sprite, low ? scale565(base.color, 12) : base.color);
-    } else if (feedback != nullptr && activeField(tile.state)) {
-      drawField(sprite, scale565(base.color, 12));  // dimmed field under takeover
-    }
-
-    if (feedback != nullptr) {
-      drawFeedbackGlyph(sprite, tile.feedback, feedback->color, state.blocked_pulse_high);
-      sprite.setTextColor(feedback->color, kBackground);
-      sprite.drawString(feedback->word, centeredX(feedback->word), 76);
-      if (tile.feedback == TileFeedback::Pending) {
-        sprite.setTextColor(kMetadata, kBackground);
-        sprite.drawString("FOCUS SENT", centeredX("FOCUS SENT"), 88);
-      }
     } else {
-      drawCenterGlyph(sprite, tile.state, content);
-      sprite.setTextColor(content, kBackground);
-      sprite.drawString(base.word, centeredX(base.word), 73);
-    }
+      // Field: active states get the stepped radial field, calm states stay
+      // flat black; fences desaturate everything.
+      if (fence == nullptr && feedback == nullptr && activeField(tile.state)) {
+        // BLOCKED field+glyph breathe in the 1.2 s pulse; other active states
+        // render a steady field.
+        const bool low = tile.state == TileState::Blocked && !state.blocked_pulse_high;
+        drawField(sprite, low ? scale565(base.color, 12) : base.color);
+      } else if (feedback != nullptr && activeField(tile.state)) {
+        drawField(sprite, scale565(base.color, 12));  // dimmed field under takeover
+      }
 
-    // Opaque title strip prevents the radial field from bleeding behind text.
-    sprite.fillRect(0, 96, 128, 32, kBackground);
-    // Title strip y:100..122 — one title line + one identity line, centered.
-    sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
-    char since[6] = {};
-    ellipsize(since, sizeof(since), tile.since);
-    sprite.drawString(since, rightAlignedX(since), 8);
-    ellipsize(row, 17, tile.title);
-    sprite.setTextColor(fence != nullptr ? kSettled : kPrimary, kBackground);
-    sprite.drawString(row, centeredX(row), 100);
-    ellipsize(row, 17, tile.discriminator);
-    sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
-    sprite.drawString(row, centeredX(row), 112);
+      if (feedback != nullptr) {
+        drawFeedbackGlyph(sprite, tile.feedback, feedback->color, state.blocked_pulse_high);
+        sprite.setTextColor(feedback->color, kBackground);
+        sprite.drawString(feedback->word, centeredX(feedback->word), 76);
+        if (tile.feedback == TileFeedback::Pending) {
+          sprite.setTextColor(kMetadata, kBackground);
+          sprite.drawString("FOCUS SENT", centeredX("FOCUS SENT"), 88);
+        }
+      } else {
+        drawCenterGlyph(sprite, tile.state, content);
+        sprite.setTextColor(content, kBackground);
+        sprite.drawString(base.word, centeredX(base.word), 73);
+      }
+
+      // Opaque title strip prevents the radial field from bleeding behind text.
+      sprite.fillRect(0, 96, 128, 32, kBackground);
+      // Title strip y:100..122 — one title line + one identity line, centered.
+      sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
+      char since[6] = {};
+      ellipsize(since, sizeof(since), tile.since);
+      sprite.drawString(since, rightAlignedX(since), 8);
+      ellipsize(row, 17, tile.title);
+      sprite.setTextColor(fence != nullptr ? kSettled : kPrimary, kBackground);
+      sprite.drawString(row, centeredX(row), 100);
+      ellipsize(row, 17, tile.discriminator);
+      sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
+      sprite.drawString(row, centeredX(row), 112);
+    }
 
     if (fence != nullptr) {
       // Bottom fence line with the reason word; offline adds a red top
