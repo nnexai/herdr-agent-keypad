@@ -117,6 +117,7 @@ def smoke_mode(args: argparse.Namespace) -> int:
                     "upload": os.environ.get("HERDR_DEPLOYED_UPLOAD", "pass"),
                     "firmware_sha256": _firmware_sha256(),
                 },
+                device_ack=bridge.last_snapshot_ack,
                 error_code=getattr(exc, "reason", "E-2410"),
             )
         else:
@@ -155,6 +156,7 @@ def smoke_mode(args: argparse.Namespace) -> int:
                 "upload": os.environ.get("HERDR_DEPLOYED_UPLOAD", "pass"),
                 "firmware_sha256": _firmware_sha256(),
             },
+            device_ack=bridge.last_snapshot_ack,
             error_code="" if codex_ok else error_code,
         )
         print(f"Codex tracer {'passed' if codex_ok else 'failed'}: {bridge.codex_view.source_state}")

@@ -16,7 +16,7 @@
       "state": "terminated"
     },
     "deadline_ms": 3000,
-    "elapsed_ms": 198,
+    "elapsed_ms": 184,
     "handshake": [],
     "rate_limits_observed": false,
     "redaction": {
@@ -33,18 +33,18 @@
   },
   "deployment": {
     "binary_sha256": "cb4a78c33cbb3c6dd432d20bd1b2319b79454703f440966650dd4a66c4481fb3",
-    "deployment_id": "ee667b4cd017226a1004c3b6819780d21c0498dbe77f68a89b548aa89edfa82d",
+    "deployment_id": "500789af6f20b17d451d99ab3c58c8289c976b6d167d1f24f77426813e74561d",
     "fresh_boot_id": "0000fccb0deabf8c-0f166270",
-    "fresh_session_id": "session-99e43d9e48bfb608",
+    "fresh_session_id": "session-849f9279b704a0ae",
     "hello_firmware": "phase1-bringup",
     "paired_device_id": "0000fccb0deabf8c",
     "platformio_environment": "selected-usb",
     "upload_result": "pass"
   },
   "device_ack": {
-    "accepted": null,
-    "available": false,
-    "snapshot_revision": null
+    "accepted": true,
+    "available": true,
+    "snapshot_revision": 1
   },
   "error_code": "E-2406",
   "final_evidence_refs": {
@@ -57,7 +57,7 @@
     "device_id": "0000fccb0deabf8c",
     "firmware": "phase1-bringup",
     "protocol": 1,
-    "session_id": "session-99e43d9e48bfb608"
+    "session_id": "session-849f9279b704a0ae"
   },
   "kind": "phase3-codex-tracer",
   "redaction": {

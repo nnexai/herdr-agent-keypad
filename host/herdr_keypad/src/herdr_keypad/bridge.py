@@ -491,6 +491,7 @@ class PermanentBridge:
         self.codex_collector = codex_collector
         self.codex_result: CodexResult | None = None
         self.codex_view = CodexView()
+        self.last_snapshot_ack: dict[str, Any] | None = None
         self.ready = False
         self.last_error = ""
         self.focus = None
@@ -623,6 +624,11 @@ class PermanentBridge:
             or ack.get("snapshot_revision") != snapshot.snapshot_revision
         ):
             raise V2ProtocolError("snapshot_rejected", "keypad did not acknowledge the complete generation")
+        self.last_snapshot_ack = {
+            "available": True,
+            "accepted": ack.get("accepted"),
+            "snapshot_revision": ack.get("snapshot_revision"),
+        }
         self.publication_count += 1
         ready = snapshot.source_status == "current" and not self.projection.complete_refresh_required()
         if not ready:
