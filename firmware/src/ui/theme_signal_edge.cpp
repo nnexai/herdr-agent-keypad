@@ -1,4 +1,4 @@
-#include <TKeyboardS3Pro.h>
+#include <cstdio>
 
 #include <string.h>
 
@@ -201,23 +201,45 @@ class SignalEdgeTheme final : public ThemeRenderer {
     }
   }
 
-  void composePanel4(LGFX_Sprite& sprite, const RenderState&) override {
+  void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
     sprite.fillScreen(kBackground);
     sprite.fillRect(0, 0, 8, 128, kSettled);
     sprite.setTextColor(kPrimary, kBackground);
     sprite.drawString("CODEX", 16, 6);
-
+    char primary[8] = "N/A";
+    char secondary[8] = "N/A";
+    if (state.codex.primary >= 0) snprintf(primary, sizeof(primary), "%d%%", state.codex.primary);
+    if (state.codex.secondary >= 0) snprintf(secondary, sizeof(secondary), "%d%%", state.codex.secondary);
     sprite.setTextColor(kMetadata, kBackground);
     sprite.drawString("5H", 16, 28);
-    sprite.drawString("N/A", rightAlignedX("N/A"), 28);
-    drawHatchedGauge(sprite, 16, 40, 108, 12);
-    sprite.drawString("WEEK", 16, 60);
-    sprite.drawString("N/A", rightAlignedX("N/A"), 60);
-    drawHatchedGauge(sprite, 16, 72, 108, 12);
-
-    sprite.drawLine(16, 98, 124, 98, kSettled);
-    sprite.setTextColor(kDestructive, kBackground);
-    sprite.drawString("UNAVAILABLE", 16, 108);
+    sprite.drawString(primary, rightAlignedX(primary), 28);
+    sprite.drawString("WEEK", 16, 48);
+    sprite.drawString(secondary, rightAlignedX(secondary), 48);
+    if (state.codex.primary >= 0) {
+      sprite.fillRect(16, 32, 108 * state.codex.primary / 100, 8, kAccent);
+      sprite.drawRect(16, 32, 108, 8, kSettled);
+    } else {
+      drawHatchedGauge(sprite, 16, 32, 108, 8);
+    }
+    if (state.codex.secondary >= 0) {
+      sprite.fillRect(16, 52, 108 * state.codex.secondary / 100, 8, kAccent);
+      sprite.drawRect(16, 52, 108, 8, kSettled);
+    } else {
+      drawHatchedGauge(sprite, 16, 52, 108, 8);
+    }
+    sprite.setTextColor(kMetadata, kBackground);
+    sprite.drawString(state.codex.reset_text, 16, 70);
+    sprite.drawString(state.codex.observation_age, 16, 86);
+    const char* status = state.codex.source_state == CodexSourceState::Current ? "CURRENT" :
+                         state.codex.source_state == CodexSourceState::Stale ? "STALE" :
+                         state.codex.source_state == CodexSourceState::AuthRequired ? "AUTH REQUIRED" :
+                         state.codex.source_state == CodexSourceState::CodexOffline ? "CODEX OFFLINE" :
+                         state.codex.source_state == CodexSourceState::HostOffline ? "HOST OFFLINE" :
+                         "UNAVAILABLE";
+    sprite.fillRect(0, 104, 128, 24, state.codex.reached_limit == 1 ? kDestructive : kDestructive);
+    sprite.setTextColor(kBackground, kDestructive);
+    sprite.drawString(status, 16, 114);
+    if (state.codex.reached_limit == 1) sprite.drawString("LIMIT", 88, 6);
   }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {

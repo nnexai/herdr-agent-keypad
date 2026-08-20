@@ -18,8 +18,8 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping
-
 from .herdr import HerdrClient
+from .codex import CodexResult, CodexView
 # Reuse the Phase 1 codec/session seam instead of introducing another transport
 # or frame parser.  The repository root is added only for the source checkout
 # invocation used by the tracer command.
@@ -363,8 +363,9 @@ def _wire_focus_result(intent: FocusIntent, outcome: Any) -> FocusResult:
         wire_outcome == "accepted" and bool(getattr(outcome, "success", False)),
         str(getattr(outcome, "reason", ""))[:64],
     )
-def _projection_payload(snapshot: Any) -> dict[str, Any]:
-    """Translate the production normalized projection to the v2 wire shape."""
+def _projection_payload(snapshot: Any, *, codex: CodexView | None = None,
+                        diagnostics: Mapping[str, str] | None = None) -> dict[str, Any]:
+    """Translate normalized Herdr plus bounded Codex state to v2."""
     agents = []
     for entry in snapshot.entries:
         identity = entry.identity
@@ -383,15 +384,25 @@ def _projection_payload(snapshot: Any) -> dict[str, Any]:
                 "source_revision": identity.source_revision if identity else 0,
             }
         )
+    codex = codex or CodexView()
+    diagnostics = diagnostics or {
+        "link_status": "current",
+        "herdr_status": "current" if snapshot.source_status == "current" else "offline",
+        "codex_status": codex.source_state,
+        "sync_age": "AGE N/A",
+        "codex_age": codex.observation_age,
+        "error_code": codex.error_code,
+    }
     payload = {
         "host_epoch": snapshot.host_epoch,
         "snapshot_revision": snapshot.snapshot_revision,
         "source_status": snapshot.source_status,
         "agents": agents,
+        "codex": codex.as_payload(),
+        "diagnostics": dict(diagnostics),
     }
     validate_v2_payload("agent_snapshot", payload)
     return payload
-
 
 def _sha256(path: Path) -> str:
     import hashlib
@@ -470,12 +481,16 @@ class PermanentBridge:
         *,
         contract_root: Path | None = None,
         clock: Callable[[], float] | None = None,
+        codex_collector: Any | None = None,
     ) -> None:
         self.client = client
         self.usb = usb
         self.projection = projection
         self.contract_root = contract_root or _ROOT
         self._clock = clock or time.monotonic
+        self.codex_collector = codex_collector
+        self.codex_result: CodexResult | None = None
+        self.codex_view = CodexView()
         self.ready = False
         self.last_error = ""
         self.focus = None
@@ -601,7 +616,7 @@ class PermanentBridge:
             frame for frame in self._deferred_focus
             if self._focus_matches_snapshot(frame, snapshot)
         ]
-        ack = self.usb.publish_snapshot(_projection_payload(snapshot))
+        ack = self.usb.publish_snapshot(_projection_payload(snapshot, codex=self.codex_view))
         if (
             ack.get("accepted") is not True
             or ack.get("host_epoch") != snapshot.host_epoch
@@ -616,6 +631,16 @@ class PermanentBridge:
         self.ready_transitions += 1
         self._drain_deferred_focus(snapshot)
         return snapshot
+
+    def _collect_codex(self) -> CodexResult | None:
+        if self.codex_collector is None:
+            return None
+        result = self.codex_collector.collect()
+        if not isinstance(result, CodexResult):
+            raise V2ProtocolError("codex_invalid", "collector returned an invalid normalized result")
+        self.codex_result = result
+        self.codex_view = result.view
+        return result
 
     def _publish_refresh(self, *, force: bool = False) -> Any:
         before = getattr(self.projection, "snapshot_revision", 0)
@@ -703,6 +728,7 @@ class PermanentBridge:
         try:
             before = getattr(self.projection, "snapshot_revision", 0)
             snapshot = self.projection.bootstrap(self.client)
+            self._collect_codex()
             self.usb.connect()
             self._configure_runtime(snapshot)
             if getattr(snapshot, "snapshot_revision", before) != before:
@@ -1003,4 +1029,64 @@ def write_live_sync_evidence(path: Path, *, result: str, duration_seconds: float
     os.replace(checksum_tmp, checksum)
     if _sha256(path) != checksum.read_text(encoding="ascii").split()[0]:
         raise V2ProtocolError("evidence_hash", "live smoke evidence checksum reopen failed")
+
+def write_codex_tracer_evidence(
+    path: Path,
+    *,
+    result: str,
+    codex: CodexResult | None,
+    hello: Mapping[str, Any] | None,
+    deployment: Mapping[str, Any],
+    error_code: str = "",
+) -> Path:
+    """Persist closed Codex tracer facts and re-open their checksum."""
+    if result not in {"pass", "fail"}:
+        raise V2ProtocolError("evidence_result", "Codex tracer result is not typed")
+    hello = hello or {}
+    hello_record = {
+        "device_id": hello.get("device_id") if isinstance(hello.get("device_id"), str) else "unavailable",
+        "firmware": hello.get("firmware") if isinstance(hello.get("firmware"), str) else "unavailable",
+        "protocol": hello.get("protocol") if isinstance(hello.get("protocol"), int) else None,
+        "boot_id": hello.get("boot_id") if isinstance(hello.get("boot_id"), str) else "unavailable",
+    }
+    deployment_record = {
+        "environment": deployment.get("environment", "selected-usb"),
+        "build": deployment.get("build", "unavailable"),
+        "upload": deployment.get("upload", "unavailable"),
+        "firmware_sha256": deployment.get("firmware_sha256", "unavailable"),
+    }
+    collection = codex.as_evidence() if codex is not None else {
+        "deadline_ms": 0,
+        "elapsed_ms": 0,
+        "child_exit": {"state": "not_started", "code": None, "signal": None},
+        "handshake": [],
+        "account_observed": False,
+        "rate_limits_observed": False,
+        "redaction": Redaction(result="fail").as_dict(),
+    }
+    record = {
+        "kind": "phase3-codex-tracer",
+        "schema_version": 1,
+        "result": result,
+        "deployment": deployment_record,
+        "hello": hello_record,
+        "codex": codex.view.as_payload() if codex is not None else CodexView().as_payload(),
+        "collection": collection,
+        "error_code": error_code[:16],
+    }
+    from .codex import redaction_passes
+    if not redaction_passes(record):
+        raise V2ProtocolError("evidence_redaction", "Codex tracer evidence contains rejected fields")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    temporary.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+    digest = _sha256(path)
+    checksum = path.with_suffix(".sha256")
+    checksum_tmp = checksum.with_name(f".{checksum.name}.tmp")
+    checksum_tmp.write_text(f"{digest}  {path.name}\n", encoding="ascii")
+    os.replace(checksum_tmp, checksum)
+    if _sha256(path) != checksum.read_text(encoding="ascii").split()[0]:
+        raise V2ProtocolError("evidence_hash", "Codex tracer evidence checksum reopen failed")
+    return path
     return path

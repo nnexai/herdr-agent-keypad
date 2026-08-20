@@ -400,6 +400,8 @@ RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_
   uint32_t source_revision = 0;
   bool accepted = false;
   bool focused = false;
+  bool has_codex = false;
+  bool has_diagnostics = false;
   char host_epoch[kMaxIdentifierBytes + 1] = {};
   char source_status[16] = {};
   char reason[kMaxPayloadStringBytes + 1] = {};
@@ -430,6 +432,8 @@ RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_
     else if (std::strcmp(key, "agent_session") == 0) bit = 1U << 12;
     else if (std::strcmp(key, "source_revision") == 0) bit = 1U << 13;
     else if (std::strcmp(key, "focused") == 0) bit = 1U << 14;
+    else if (std::strcmp(key, "codex") == 0) bit = 1U << 15;
+    else if (std::strcmp(key, "diagnostics") == 0) bit = 1U << 16;
     else return RejectReason::UnknownField;
     if ((mask & bit) != 0) return RejectReason::DuplicateKey;
     mask |= bit;
@@ -451,6 +455,14 @@ RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_
           return RejectReason::InvalidShape;
         }
       }
+    } else if (bit == (1U << 15)) {
+      cursor.ws();
+      if (cursor.p >= cursor.end || *cursor.p != '{' || !cursor.value()) return RejectReason::InvalidShape;
+      has_codex = true;
+    } else if (bit == (1U << 16)) {
+      cursor.ws();
+      if (cursor.p >= cursor.end || *cursor.p != '{' || !cursor.value()) return RejectReason::InvalidShape;
+      has_diagnostics = true;
     } else if (bit == (1U << 4)) {
       if (!cursor.boolean(accepted)) return RejectReason::InvalidShape;
     } else if (bit == (1U << 5)) {
@@ -479,8 +491,11 @@ RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_
     if (!cursor.take(',')) return RejectReason::InvalidJson;
   }
   uint32_t expected = 0;
-  if (std::strcmp(frame.type, "agent_snapshot") == 0) expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 3);
-  else if (std::strcmp(frame.type, "snapshot_ack") == 0) expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 4) | (1U << 5);
+  if (std::strcmp(frame.type, "agent_snapshot") == 0) {
+    expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 3);
+    if (has_codex != has_diagnostics) return RejectReason::InvalidShape;
+    if (has_codex) expected |= (1U << 15) | (1U << 16);
+  } else if (std::strcmp(frame.type, "snapshot_ack") == 0) expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 4) | (1U << 5);
   else if (std::strcmp(frame.type, "focus_intent") == 0) expected = (1U << 0) | (1U << 1) | (1U << 6) | (1U << 8) | (1U << 9) | (1U << 10) | (1U << 11) | (1U << 12) | (1U << 13);
   else if (std::strcmp(frame.type, "focus_result") == 0) expected = (1U << 0) | (1U << 1) | (1U << 6) | (1U << 7) | (1U << 8) | (1U << 9) | (1U << 10) | (1U << 11) | (1U << 12) | (1U << 13) | (1U << 14);
   else return RejectReason::UnknownType;

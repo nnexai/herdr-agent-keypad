@@ -114,6 +114,13 @@ class AgentProjection final {
     uint32_t snapshot_revision = 0;
     char source_status[16] = {};
     Tile tiles[kSlotCount] = {};
+    char codex_source_state[20] = "unavailable";
+    int16_t codex_primary = -1;
+    int16_t codex_secondary = -1;
+    char codex_reset_text[33] = "RESET N/A";
+    char codex_observation_age[17] = "AGE N/A";
+    int8_t codex_reached_limit = -1;
+    char codex_error_code[17] = {};
   };
 
   bool copyBounded(char* destination, size_t capacity, const char* source, bool allow_empty) const;

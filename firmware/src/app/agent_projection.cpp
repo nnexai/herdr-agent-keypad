@@ -9,6 +9,7 @@
 namespace {
 constexpr const char* kSourceStatuses[] = {"current", "empty", "stale", "unavailable", "offline"};
 constexpr const char* kStates[] = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"};
+constexpr const char* kCodexStates[] = {"current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"};
 constexpr uint16_t kBackground = 0x0862;  // #0B0F14
 
 LGFX_Sprite g_composition;
@@ -163,6 +164,47 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
     return false;
   }
   staged_.snapshot_revision = revision;
+  staged_.codex_source_state[0] = '\0';
+  copyBounded(staged_.codex_source_state, sizeof(staged_.codex_source_state), "unavailable", false);
+  staged_.codex_primary = -1;
+  staged_.codex_secondary = -1;
+  copyBounded(staged_.codex_reset_text, sizeof(staged_.codex_reset_text), "RESET N/A", false);
+  copyBounded(staged_.codex_observation_age, sizeof(staged_.codex_observation_age), "AGE N/A", false);
+  staged_.codex_reached_limit = -1;
+  staged_.codex_error_code[0] = '\0';
+  JsonObjectConst codex = payload["codex"].as<JsonObjectConst>();
+  if (!codex.isNull()) {
+    const char* codex_state = codex["source_state"].as<const char*>();
+    const char* error_code = codex["error_code"].as<const char*>();
+    if (!codex_state || !listed(codex_state, kCodexStates, sizeof(kCodexStates) / sizeof(kCodexStates[0])) ||
+        !copyBounded(staged_.codex_source_state, sizeof(staged_.codex_source_state), codex_state, false) ||
+        !copyDisplay(staged_.codex_reset_text, sizeof(staged_.codex_reset_text), codex["reset_text"].as<const char*>(), "RESET N/A") ||
+        !copyDisplay(staged_.codex_observation_age, sizeof(staged_.codex_observation_age), codex["observation_age"].as<const char*>(), "AGE N/A") ||
+        (error_code != nullptr && error_code[0] != '\0' && !copyBounded(staged_.codex_error_code, sizeof(staged_.codex_error_code), error_code, false))) {
+      staged_valid_ = false;
+      return false;
+    }
+    for (int16_t* target : {&staged_.codex_primary, &staged_.codex_secondary}) {
+      const char* key = target == &staged_.codex_primary ? "primary" : "secondary";
+      JsonVariantConst value = codex[key];
+      if (!value.isNull()) {
+        const int16_t percent = value.as<int16_t>();
+        if (value.is<bool>() || percent < 0 || percent > 100) {
+          staged_valid_ = false;
+          return false;
+        }
+        *target = percent;
+      }
+    }
+    JsonVariantConst reached = codex["reached_limit"];
+    if (!reached.isNull()) {
+      if (!reached.is<bool>()) {
+        staged_valid_ = false;
+        return false;
+      }
+      staged_.codex_reached_limit = reached.as<bool>() ? 1 : 0;
+    }
+  }
   bool seen[kSlotCount] = {};
   for (JsonObjectConst agent : agents) {
     const uint8_t slot = agent["slot"].as<uint8_t>();
@@ -286,6 +328,18 @@ bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer, u
   out.since = tile.since;
   out.age = tile.age;
   out.state = tile.state;
+  state.codex.source_state = strcmp(committed_generation_.codex_source_state, "current") == 0 ? CodexSourceState::Current :
+                             strcmp(committed_generation_.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
+                             strcmp(committed_generation_.codex_source_state, "auth_required") == 0 ? CodexSourceState::AuthRequired :
+                             strcmp(committed_generation_.codex_source_state, "codex_offline") == 0 ? CodexSourceState::CodexOffline :
+                             strcmp(committed_generation_.codex_source_state, "host_offline") == 0 ? CodexSourceState::HostOffline :
+                             CodexSourceState::Unavailable;
+  state.codex.primary = committed_generation_.codex_primary;
+  state.codex.secondary = committed_generation_.codex_secondary;
+  state.codex.reset_text = committed_generation_.codex_reset_text;
+  state.codex.observation_age = committed_generation_.codex_observation_age;
+  state.codex.reached_limit = committed_generation_.codex_reached_limit;
+  state.codex.error_code = committed_generation_.codex_error_code;
   out.feedback = feedback;
   renderer.composeTile(g_composition, slot, state);
   g_composition.pushSprite(display, 0, 0);
@@ -417,6 +471,18 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
     output.state = tile.state;
     output.feedback = feedback_[slot];
   }
+  state.codex.source_state = strcmp(committed_generation_.codex_source_state, "current") == 0 ? CodexSourceState::Current :
+                             strcmp(committed_generation_.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
+                             strcmp(committed_generation_.codex_source_state, "auth_required") == 0 ? CodexSourceState::AuthRequired :
+                             strcmp(committed_generation_.codex_source_state, "codex_offline") == 0 ? CodexSourceState::CodexOffline :
+                             strcmp(committed_generation_.codex_source_state, "host_offline") == 0 ? CodexSourceState::HostOffline :
+                             CodexSourceState::Unavailable;
+  state.codex.primary = committed_generation_.codex_primary;
+  state.codex.secondary = committed_generation_.codex_secondary;
+  state.codex.reset_text = committed_generation_.codex_reset_text;
+  state.codex.observation_age = committed_generation_.codex_observation_age;
+  state.codex.reached_limit = committed_generation_.codex_reached_limit;
+  state.codex.error_code = committed_generation_.codex_error_code;
   return state;
 }
 

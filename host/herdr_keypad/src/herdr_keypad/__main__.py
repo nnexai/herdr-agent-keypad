@@ -1,7 +1,7 @@
 """CLI for the installed herdr-keypad plugin and bounded acceptance modes."""
 from __future__ import annotations
-
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -14,9 +14,33 @@ from .bridge import (
     V2ProtocolError,
     verify_contract_inputs,
     write_acceptance_evidence,
+    write_codex_tracer_evidence,
     write_live_sync_evidence,
     _projection_payload,
 )
+from .codex import CodexCollector
+from .herdr import HerdrClient
+from .projection import InboxProjection
+from .usb import UsbDeviceSession, binding_is_stable
+
+
+ROOT = Path(__file__).resolve().parents[4]
+DEFAULT_BINDING = Path(os.path.expanduser("~/.config/herdr/keypad-binding.json"))
+
+
+def _codex_tracer_evidence(path: Path) -> bool:
+    return path.name == "03-CODEX-TRACER.json"
+
+
+def _firmware_sha256() -> str:
+    path = ROOT / ".pio" / "build" / "selected-usb" / "firmware.bin"
+    if not path.is_file():
+        return "unavailable"
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 from .herdr import HerdrClient
 from .projection import InboxProjection
 from .usb import UsbDeviceSession, binding_is_stable
@@ -30,7 +54,8 @@ def _bridge(args: argparse.Namespace) -> PermanentBridge:
     client = HerdrClient(args.herdr_socket, timeout=args.timeout)
     usb = UsbDeviceSession(args.binding, timeout=args.timeout)
     projection = InboxProjection(host_epoch=f"host-{os.getpid()}-{int(time.time())}")
-    return PermanentBridge(client, usb, projection, contract_root=ROOT)
+    collector = CodexCollector(deadline_ms=max(1000, int(args.timeout * 1000)))
+    return PermanentBridge(client, usb, projection, contract_root=ROOT, codex_collector=collector)
 
 
 def inspect_mode(args: argparse.Namespace) -> int:
@@ -80,18 +105,33 @@ def smoke_mode(args: argparse.Namespace) -> int:
         snapshot = bridge.bootstrap()
     except Exception as exc:
         snapshot = bridge.projection.invalidate("offline")
-        write_acceptance_evidence(
-            Path(args.evidence),
-            contract=contract,
-            snapshot=snapshot,
-            observed={
-                "mode": "selected-usb-snapshot-ack",
-                "physical_press_observed": False,
-                "focus_invoked": False,
-                "snapshot_acknowledged": False,
-                "error": str(exc)[:160],
-            },
-        )
+        if _codex_tracer_evidence(Path(args.evidence)):
+            write_codex_tracer_evidence(
+                Path(args.evidence),
+                result="fail",
+                codex=bridge.codex_result,
+                hello=bridge.usb.device.get("hello") if isinstance(bridge.usb.device, dict) else None,
+                deployment={
+                    "environment": os.environ.get("HERDR_DEPLOYED_ENV", "selected-usb"),
+                    "build": os.environ.get("HERDR_DEPLOYED_BUILD", "pass"),
+                    "upload": os.environ.get("HERDR_DEPLOYED_UPLOAD", "pass"),
+                    "firmware_sha256": _firmware_sha256(),
+                },
+                error_code=getattr(exc, "reason", "E-2410"),
+            )
+        else:
+            write_acceptance_evidence(
+                Path(args.evidence),
+                contract=contract,
+                snapshot=snapshot,
+                observed={
+                    "mode": "selected-usb-snapshot-ack",
+                    "physical_press_observed": False,
+                    "focus_invoked": False,
+                    "snapshot_acknowledged": False,
+                    "error": str(exc)[:160],
+                },
+            )
         print(f"snapshot acknowledgement unavailable: {str(exc)[:120]}", file=sys.stderr)
         return 1
     observed = {
@@ -101,6 +141,22 @@ def smoke_mode(args: argparse.Namespace) -> int:
         "snapshot_acknowledged": True,
         "device_id_persisted": True,
     }
+    if _codex_tracer_evidence(Path(args.evidence)):
+        write_codex_tracer_evidence(
+            Path(args.evidence),
+            result="pass",
+            codex=bridge.codex_result,
+            hello=bridge.usb.device.get("hello") if isinstance(bridge.usb.device, dict) else None,
+            deployment={
+                "environment": os.environ.get("HERDR_DEPLOYED_ENV", "selected-usb"),
+                "build": os.environ.get("HERDR_DEPLOYED_BUILD", "pass"),
+                "upload": os.environ.get("HERDR_DEPLOYED_UPLOAD", "pass"),
+                "firmware_sha256": _firmware_sha256(),
+            },
+        )
+        codex_ok = bridge.codex_result is not None and bridge.codex_result.view.source_state == "current"
+        print(f"Codex tracer {'passed' if codex_ok else 'failed'}: {bridge.codex_view.source_state}")
+        return 0 if codex_ok else 1
     write_acceptance_evidence(Path(args.evidence), contract=contract, snapshot=snapshot, observed=observed)
     print(f"snapshot acknowledged: epoch={snapshot.host_epoch} revision={snapshot.snapshot_revision} slots=3")
     return 0

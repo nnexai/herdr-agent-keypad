@@ -24,6 +24,20 @@ enum class TileFeedback : uint8_t {
   Offline, Uncertain, Failed,
 };
 
+enum class CodexSourceState : uint8_t {
+  Unavailable = 0, Current, Stale, AuthRequired, CodexOffline, HostOffline,
+};
+
+struct CodexRenderView {
+  CodexSourceState source_state = CodexSourceState::Unavailable;
+  int16_t primary = -1;
+  int16_t secondary = -1;
+  const char* reset_text = "RESET N/A";
+  const char* observation_age = "AGE N/A";
+  int8_t reached_limit = -1;
+  const char* error_code = "";
+};
+
 struct RenderState {
   static constexpr uint8_t kSlotCount = 3;
 
@@ -36,6 +50,7 @@ struct RenderState {
     TileState state = TileState::Empty;
     TileFeedback feedback = TileFeedback::Disabled;
   };
+  CodexRenderView codex;
 
   Slot slots[kSlotCount];
   const char* source_status = "";
