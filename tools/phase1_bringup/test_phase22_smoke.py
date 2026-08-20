@@ -218,18 +218,36 @@ def test_session_rejects_short_serial_write() -> None:
 
 
 def test_session_rejects_bad_digest_and_mismatched_identity() -> None:
-    bad = json.loads(metrics_ack_frame())
-    bad["digest"] = "0" * 16
-    connection = FragmentedConnection([(json.dumps(bad) + "\n").encode("ascii")])
-    session = DeviceSession(connection, timeout=0.01)
-    session.session_id = "host-session"
-    with pytest.raises(TimeoutError):
-        session.request("metrics", {"request": "proof"}, version=1)
-
-    for boot_id, session_id in (("other-boot", "host-session"), ("device-boot", "other-session")):
-        connection = FragmentedConnection([metrics_ack_frame(boot_id=boot_id, session_id=session_id)])
-        session = DeviceSession(connection, timeout=0.01)
+    def session_after_hello(response: bytes) -> DeviceSession:
+        hello_ack = encode_frame(
+            "hello_ack",
+            "device-boot",
+            "host-session",
+            1,
+            {
+                "accepted": True,
+                "device_id": "phase22-device",
+                "firmware": "phase22-firmware",
+                "protocol": 1,
+            },
+            version=1,
+            reply_to=1,
+        )
+        session = DeviceSession(FragmentedConnection([hello_ack, response]), timeout=0.01)
         session.session_id = "host-session"
+        assert session.hello()["boot_id"] == "device-boot"
+        return session
+
+    bad = json.loads(metrics_ack_frame(reply_to=2))
+    bad["digest"] = "0" * 16
+    invalid_responses = (
+        (json.dumps(bad) + "\n").encode("ascii"),
+        metrics_ack_frame(boot_id="other-boot", reply_to=2),
+        metrics_ack_frame(session_id="other-session", reply_to=2),
+    )
+
+    for response in invalid_responses:
+        session = session_after_hello(response)
         with pytest.raises(TimeoutError):
             session.request("metrics", {"request": "proof"}, version=1)
 
