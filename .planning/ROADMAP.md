@@ -2,7 +2,7 @@
 
 ## Overview
 
-Herdr Agent Keypad reaches its first usable release through six roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, approves, or invokes arbitrary actions.
+Herdr Agent Keypad reaches its first usable release through seven roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; raise animation and interaction quality to a measured high-fidelity bar; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, approves, or invokes arbitrary actions.
 
 ## Phases
 
@@ -13,6 +13,7 @@ Herdr Agent Keypad reaches its first usable release through six roadmap phases: 
 - [ ] **Phase 02.1: Reliable Live Synchronization, Focus, and Flicker-Free Rendering** - Live Herdr changes converge to complete ACKed generations and composed panel images without unsafe focus or black flashes.
 - [x] **Phase 02.2: Firmware Themes, LED Bars, and Device Selection Menu** - All four proposed display languages and LED grammars are implemented in firmware and selectable from the encoder menu without weakening direct agent focus. (completed 2026-08-20)
 - [ ] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness.
+- [ ] **Phase 03.1: High-Fidelity Animation and Interaction Polish** - Smooth and stable motion, transitions, and feedback are measured and refined on the actual keypad without weakening semantic clarity, input responsiveness, or focus safety. (INSERTED)
 - [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
 
 ## Phase Details
@@ -202,19 +203,53 @@ Plans:
   4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
   5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
 
+**Plans:** 3 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Prove the installed Codex app-server full-read outcome through the permanent bridge, sole protocol, staged firmware, and Signal Edge.
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — Complete presence-aware freshness, all Codex states, four theme renderers, and four usage LED grammars.
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-03-PLAN.md — Deliver the six-row menu, local brightness migration, full contract tests, and exact-device screenshot/interaction proof.
+
+**UI hint:** yes
+
+### Phase 03.1: High-Fidelity Animation and Interaction Polish (INSERTED)
+
+**Goal:** The keypad feels responsive and polished rather than stop-motion: animation, transitions, and interaction feedback are smooth, stable, and intentional across the four display themes and LED grammars, while semantic states remain immediately legible and direct agent focus remains unchanged.
+**Mode:** mvp
+**Depends on:** Phase 3
+**Requirements:** TBD — establish animation-quality requirements during discussion and planning.
+**Research flag:** Mandatory exact-device profiling must measure frame time, reveal timing, input latency, dropped/degraded frames, memory/power headroom, and behavior under concurrent Herdr/Codex updates before animation budgets are finalized.
+**Success Criteria** (what must be TRUE):
+
+  1. Existing ambient motion, menu transitions, brightness previews, focus feedback, blocked motion, stale/offline fences, and sync transitions are inventoried and assigned explicit motion behavior or an intentional static treatment.
+  2. On the connected keypad, animation remains smooth and stable within measured resource and timing budgets: no tearing, black flashes, mixed generations, unsafe binding windows, unbounded allocation, or input starvation.
+  3. Encoder and agent-key interactions remain responsive during animation; direct agent keys 1–3 retain their immediate focus-only path in every menu and animation state.
+  4. Motion improves hierarchy and feedback without making state meaning depend on movement, color, timing, or animation completion; reduced/degraded/static modes remain truthful and visually coherent.
+  5. All four themes and four LED grammars receive exact-device visual checks under normal refresh, rapid interaction, live data changes, stale/offline transitions, and reconnect/reset conditions, with measured evidence for the accepted quality bar.
+
 **Plans:** TBD
 
 Plans:
 
-- [ ] 03-01: TBD during phase planning
+- [ ] 03.1-01: TBD during phase planning
 
 **UI hint:** yes
+**Depends on:** Phase 03.1
 
 ### Phase 4: Independent Recovery and Actual-Device Acceptance
 
 **Goal:** The user can rely on the complete keypad workflow after real component failures, restarts, and reconnections on the actual Herdr setup.
 **Mode:** mvp
-**Depends on:** Phase 3
+**Depends on:** Phase 03.1
 **Requirements:** HARD-02, SYNC-01, SYNC-04, E2E-01
 **Research flag:** Planning must turn the selected transport and measured device behavior into physical recovery and soak thresholds; acceptance evidence must come from the connected unit and installed Herdr/Codex accounts, not mocks.
 **Success Criteria** (what must be TRUE):
@@ -241,4 +276,5 @@ Plans:
 | 02.1 Reliable Live Synchronization, Focus, and Flicker-Free Rendering | 3/3 | Complete | 2026-08-17 |
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
+| 03.1 High-Fidelity Animation and Interaction Polish | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
