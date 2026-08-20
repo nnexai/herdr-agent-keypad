@@ -355,8 +355,8 @@ class CodexCollector:
             self._state = "unavailable"
             self._error_code = "E-2401"
             self._internal_reason = "bucket_unavailable"
-            self._baseline_known = False
-            self._cache = None
+            if not self._baseline_known:
+                self._cache = None
             return self.view()
         try:
             cache = _cache_from_full(rate_limits)

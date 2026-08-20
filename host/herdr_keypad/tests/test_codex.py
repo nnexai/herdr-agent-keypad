@@ -241,7 +241,7 @@ class CodexCollectorTests(unittest.TestCase):
         }}))
         self.assertEqual(collector.view().primary, 0)
         self.assertIsNone(collector.view().secondary)
-        self.assertIsNone(collector.view().reached_limit)
+        self.assertTrue(collector.view().reached_limit)
         self.assertTrue(collector.refetch_pending)
         self.assertEqual(collector.consume_refetch(), True)
         self.assertEqual(collector.consume_refetch(), False)
