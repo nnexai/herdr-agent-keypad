@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
-current_phase_name: Truthful Codex Capacity and Device Menu
+current_phase: 03.1
+current_phase_name: High-Fidelity Animation and Interaction Polish
 status: planning
-stopped_at: Phase 02.2 verified and complete; Phase 03 ready for discussion
-last_updated: "2026-08-20T16:38:57.124Z"
+stopped_at: Phase 03.1 context gathered
+last_updated: "2026-08-20T18:50:54.465Z"
 last_activity: 2026-08-20
-last_activity_desc: Phase 02.2 verified complete; advanced to Phase 03 with one accepted deferred fallback observation
+last_activity_desc: Inserted Phase 03.1 high-fidelity animation and interaction polish after Phase 03
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 4
   total_plans: 26
   completed_plans: 26
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-20)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 03 — Truthful Codex Capacity and Device Menu
+**Current focus:** Phase 03.1 — High-Fidelity Animation and Interaction Polish
 
 ## Current Position
 
-Phase: 03 — Truthful Codex Capacity and Device Menu
+Phase: 03.1 — High-Fidelity Animation and Interaction Polish
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-08-20 — Phase 02.2 complete, transitioned to Phase 03
+Last activity: 2026-08-20 — Phase 03.1 inserted after Phase 03; ready for planning
 
 Progress: [██████████] 100%
 
@@ -136,6 +136,7 @@ None yet.
 
 - Phase 02.1 inserted after Phase 2: Reliable Live Synchronization, Focus, and Flicker-Free Rendering (URGENT)
 - Phase 02.2 inserted after Phase 02.1: Firmware Themes, LED Bars, and Device Selection Menu (URGENT)
+- Phase 03.1 inserted after Phase 3: High-Fidelity Animation and Interaction Polish (URGENT)
 
 ## Deferred Items
 
@@ -151,7 +152,7 @@ None yet.
 
 ## Session Continuity
 
-**Resume file:** None
+**Resume file:** .planning/phases/03.1-high-fidelity-animation-and-interaction-polish/03.1-CONTEXT.md
 
-Last session: 2026-08-20T16:40:00Z
-Stopped at: Phase 02.2 verified and complete; Phase 03 ready for discussion
+Last session: 2026-08-20T18:50:54.441Z
+Stopped at: Phase 03.1 context gathered
