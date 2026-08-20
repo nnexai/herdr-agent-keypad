@@ -853,7 +853,6 @@ void test_led_grammars_and_policy() {
   }
   TEST_ASSERT_TRUE(saw_health);
 }
-
 void test_led_policy_clamps_bright_led_count_and_all_off() {
   struct Overbright final : public LedGrammar {
     size_t frame(const RenderState&, const LedEvents&, uint32_t,
@@ -884,7 +883,6 @@ void test_led_policy_clamps_bright_led_count_and_all_off() {
   TEST_ASSERT_EQUAL_UINT16(0x3FFF, g_led_calls[0].mask);
   TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
 }
-
 void test_led_grammar_scene_masks() {
   RenderState state;
   state.source_status = "current";
@@ -898,14 +896,41 @@ void test_led_grammar_scene_masks() {
   TEST_ASSERT_EQUAL_UINT32(3, rail_count);
   TEST_ASSERT_EQUAL_UINT16(1U << 13, segments[2].mask);
   state.slots[0].feedback = TileFeedback::Pending;
-  const size_t field_count = fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
+  const size_t field_count =
+      fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
   TEST_ASSERT_TRUE(field_count >= 2);
   TEST_ASSERT_EQUAL_UINT16(1U, segments[0].mask);
   TEST_ASSERT_EQUAL_UINT8(45, segments[0].brightness);
-  const size_t meter_count = meterLampsGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
+  LedEvents field_menu;
+  field_menu.menu_open = true;
+  const size_t field_menu_count =
+      fieldExtensionGrammar().frame(state, field_menu, 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_TRUE(field_menu_count > field_count);
+  TEST_ASSERT_EQUAL_UINT16(1U << 13, segments[field_menu_count - 1].mask);
+  state.source_status = "stale";
+  state.blocked_pulse_high = true;
+  const size_t health_high =
+      fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_EQUAL_UINT32(1, health_high);
+  TEST_ASSERT_EQUAL_UINT8(10, segments[0].brightness);
+  state.blocked_pulse_high = false;
+  fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_EQUAL_UINT8(3, segments[0].brightness);
+  state.source_status = "current";
+  state.slots[0].feedback = TileFeedback::Disabled;
+  state.slots[0].state = TileState::Blocked;
+  state.blocked_pulse_high = true;
+  fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_EQUAL_UINT8(38, segments[0].brightness);
+  state.blocked_pulse_high = false;
+  fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_EQUAL_UINT8(8, segments[0].brightness);
+  const size_t meter_count =
+      meterLampsGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
   TEST_ASSERT_TRUE(meter_count > 0);
   for (size_t index = 0; index < meter_count; ++index) {
-    TEST_ASSERT_EQUAL_UINT16(0, static_cast<uint16_t>(segments[index].mask & ((1U << 0) | (1U << 2) | (1U << 3) | (1U << 6))));
+    TEST_ASSERT_EQUAL_UINT16(
+        0, static_cast<uint16_t>(segments[index].mask & ((1U << 0) | (1U << 2) | (1U << 3) | (1U << 6))));
   }
 }
 

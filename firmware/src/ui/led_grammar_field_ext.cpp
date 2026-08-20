@@ -9,6 +9,7 @@ constexpr uint16_t kKeyMasks[3] = {(1U << 0) | (1U << 1) | (1U << 2),
 constexpr uint16_t kCenterMasks[3] = {(1U << 1), (1U << 4), (1U << 7)};
 constexpr uint16_t kUsageMask = (1U << 9) | (1U << 10) | (1U << 11);
 constexpr uint16_t kHealthPair = (1U << 12) | (1U << 13);
+constexpr uint16_t kL13 = 1U << 13;
 
 void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
          uint16_t hue, uint8_t saturation, uint8_t brightness) {
@@ -16,9 +17,9 @@ void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
   out[count++] = {mask, hue, saturation, brightness};
 }
 
-uint8_t level(TileState state) {
+uint8_t level(TileState state, bool pulse_high) {
   switch (state) {
-    case TileState::Blocked: return 38;
+    case TileState::Blocked: return pulse_high ? 38 : 8;
     case TileState::Unseen: return 28;
     case TileState::Working: return 16;
     case TileState::Idle: return 8;
@@ -44,11 +45,13 @@ bool unhealthy(const char* status) {
 
 class FieldExtension final : public LedGrammar {
  public:
-  size_t frame(const RenderState& state, const LedEvents&, uint32_t now_us,
+  size_t frame(const RenderState& state, const LedEvents& events, uint32_t now_us,
                LedSegment* out, size_t capacity) const override {
     size_t count = 0;
-    if (unhealthy(state.source_status)) {
-      add(out, count, capacity, kHealthPair, 0, 100, 10);
+    const bool health = unhealthy(state.source_status);
+    if (health) {
+      const uint8_t brightness = state.blocked_pulse_high ? 10 : 3;
+      add(out, count, capacity, kHealthPair, 0, 100, brightness);
       return count;
     }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
@@ -69,7 +72,7 @@ class FieldExtension final : public LedGrammar {
             static_cast<uint8_t>(tile.feedback == TileFeedback::Success ? 45 : 30));
         continue;
       }
-      const uint8_t brightness = level(tile.state);
+      const uint8_t brightness = level(tile.state, state.blocked_pulse_high);
       if (brightness == 0) continue;
       const uint16_t color = hue(tile.state);
       add(out, count, capacity, kCenterMasks[slot], color, 100, brightness);
@@ -77,6 +80,7 @@ class FieldExtension final : public LedGrammar {
           static_cast<uint8_t>((brightness * 60U) / 100U));
     }
     (void)kUsageMask;  // Usage is intentionally dark until Phase 3 data exists.
+    if (events.menu_open) add(out, count, capacity, kL13, 180, 100, 25);
     return count;
   }
 };
