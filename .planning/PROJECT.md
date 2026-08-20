@@ -14,13 +14,13 @@ The device must make agents that need attention immediately visible and let the 
 
 ### Validated
 
-(None yet — ship to validate)
+- [x] The connected keypad shows the authoritative one-to-three highest-priority Herdr inbox entries. Validated through Phases 2, 02.1, and 02.2.
+- [x] Each agent tile communicates identity, state, source health, and focus feedback on the physical device. Validated through Phases 2 and 02.2.
+- [x] Each agent display key focuses only its exact generation-bound Herdr agent. Validated through Phases 2, 02.1, and 02.2.
+- [x] Four display themes and four LED grammars are selectable from a non-modal encoder menu without weakening direct focus or freshness fencing. Validated in Phase 02.2.
 
 ### Active
 
-- [ ] The connected LILYGO T-Keyboard S3 Pro shows the one to three highest-priority dynamic entries from the existing herdr agent inbox.
-- [ ] Each displayed agent entry communicates enough identity and state to choose the correct agent at a glance.
-- [ ] Pressing an agent's display key focuses that agent in herdr without implicitly settling, dismissing, or otherwise mutating the inbox entry.
 - [ ] The fourth display shows current Codex subscription-limit information and makes unavailable or stale data explicit.
 - [ ] The firmware and herdr plugin/bridge communicate reliably and recover visibly from disconnects or stale data.
 - [ ] The physical device works end to end on the user's actual herdr setup.
@@ -87,4 +87,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-16 after Plan 01-06 USB qualification*
+*Last updated: 2026-08-20 after Phase 02.2 theme, LED, menu, and exact-device verification*
