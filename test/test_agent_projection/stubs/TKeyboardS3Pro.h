@@ -86,6 +86,8 @@ static TKeyboardS3ProClass TKeyboardS3Pro;
 // firmware uses.  g_nvs survives across Preferences instances like real NVS.
 inline std::map<std::string, uint32_t> g_nvs;
 inline uint32_t g_nvs_write_count = 0;
+inline int32_t g_nvs_fail_on_write = -1;
+inline uint32_t g_nvs_write_attempt = 0;
 
 class Preferences {
  public:
@@ -105,12 +107,20 @@ class Preferences {
   }
   size_t putUInt(const char* key, uint32_t value) {
     if (!open_ || read_only_) return 0;
+    if (g_nvs_fail_on_write >= 0 &&
+        g_nvs_write_attempt++ == static_cast<uint32_t>(g_nvs_fail_on_write)) {
+      return 0;
+    }
     g_nvs[key] = value;
     ++g_nvs_write_count;
     return sizeof(uint32_t);
   }
   size_t putUChar(const char* key, uint8_t value) {
     if (!open_ || read_only_) return 0;
+    if (g_nvs_fail_on_write >= 0 &&
+        g_nvs_write_attempt++ == static_cast<uint32_t>(g_nvs_fail_on_write)) {
+      return 0;
+    }
     g_nvs[key] = value;
     ++g_nvs_write_count;
     return sizeof(uint8_t);

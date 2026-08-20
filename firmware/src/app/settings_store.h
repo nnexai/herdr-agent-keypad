@@ -21,9 +21,9 @@ class SettingsStore final {
   ThemeId theme() const { return theme_; }
   LedGrammarId ledGrammar() const { return grammar_; }
 
-  // The only write path: called on explicit menu confirmation.  Writes the
-  // schema version first, then both enums, and updates the in-memory
-  // selection.  Returns false when any write failed.
+  // The only write path: called on explicit menu confirmation.  The committed
+  // schema marker is invalidated before replacing either enum and written last,
+  // so a failed write cannot make a hybrid pair look valid after reboot.
   bool confirm(ThemeId theme, LedGrammarId grammar);
 
  private:

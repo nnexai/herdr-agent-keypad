@@ -122,6 +122,9 @@ void setUp() {}
 void tearDown() {
   missing_panel = false;
   g_nvs.clear();
+  g_nvs_write_count = 0;
+  g_nvs_fail_on_write = -1;
+  g_nvs_write_attempt = 0;
   resetLog();
   g_led_calls.clear();
   g_sync_draw_count = 0;
@@ -506,6 +509,28 @@ void test_settings_confirm_rejects_out_of_range() {
   TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
 }
 
+void test_settings_failed_replacement_never_loads_hybrid_pair() {
+  SettingsStore initial;
+  TEST_ASSERT_TRUE(initial.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension));
+  for (int32_t failure = 0; failure < 4; ++failure) {
+    g_nvs_fail_on_write = failure;
+    g_nvs_write_attempt = 0;
+    SettingsStore replacement;
+    SettingsStore reloaded;
+    if (failure == 0) {
+      TEST_ASSERT_TRUE(reloaded.load());
+      TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon), static_cast<int>(reloaded.theme()));
+      TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::FieldExtension), static_cast<int>(reloaded.ledGrammar()));
+    } else {
+      TEST_ASSERT_FALSE(reloaded.load());
+      TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::SignalEdge), static_cast<int>(reloaded.theme()));
+      TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::RailEcho), static_cast<int>(reloaded.ledGrammar()));
+    }
+    g_nvs_write_attempt = 0;
+    TEST_ASSERT_TRUE(initial.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension));
+  }
+}
+
 // --- Plan 02: three more themes -------------------------------------------
 
 namespace {
@@ -888,7 +913,7 @@ void test_menu_controller_clamps_previews_and_persists_only_on_confirm() {
   TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
   TEST_ASSERT_TRUE(menu.click());
   TEST_ASSERT_FALSE(menu.editing());
-  TEST_ASSERT_EQUAL_UINT32(3, g_nvs_write_count);
+  TEST_ASSERT_EQUAL_UINT32(4, g_nvs_write_count);
   TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::Exception), static_cast<int>(menu.storedGrammar()));
   TEST_ASSERT_TRUE(menu.click());
   TEST_ASSERT_FALSE(menu.open());
@@ -964,6 +989,7 @@ int runAllTests() {
   RUN_TEST(test_settings_corrupt_version_falls_back_without_write);
   RUN_TEST(test_settings_out_of_range_enum_falls_back_without_write);
   RUN_TEST(test_settings_confirm_rejects_out_of_range);
+  RUN_TEST(test_settings_failed_replacement_never_loads_hybrid_pair);
   RUN_TEST(test_ledger_full_vocabulary);
   RUN_TEST(test_beacon_full_vocabulary);
   RUN_TEST(test_instrument_full_vocabulary);

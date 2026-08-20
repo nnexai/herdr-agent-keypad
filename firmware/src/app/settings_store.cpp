@@ -33,9 +33,12 @@ bool SettingsStore::confirm(ThemeId theme, LedGrammarId grammar) {
   if (static_cast<uint8_t>(theme) >= kThemeCount || static_cast<uint8_t>(grammar) >= kLedGrammarCount) return false;
   Preferences preferences;
   if (!preferences.begin(kNamespace, false)) return false;
-  const bool written = preferences.putUInt(kVersionKey, kSchemaVersion) != 0 &&
+  // Keep the record invalid until both enum values have been replaced.  The
+  // marker is deliberately committed last so reboot cannot accept a hybrid.
+  const bool written = preferences.putUInt(kVersionKey, 0) != 0 &&
                        preferences.putUChar(kThemeKey, static_cast<uint8_t>(theme)) != 0 &&
-                       preferences.putUChar(kGrammarKey, static_cast<uint8_t>(grammar)) != 0;
+                       preferences.putUChar(kGrammarKey, static_cast<uint8_t>(grammar)) != 0 &&
+                       preferences.putUInt(kVersionKey, kSchemaVersion) != 0;
   preferences.end();
   if (!written) return false;
   theme_ = theme;
