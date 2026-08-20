@@ -302,3 +302,14 @@ Plans:
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
 | 03.1 High-Fidelity Animation and Interaction Polish | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
+
+## Backlog
+
+### Phase 999.1: Production End-user Herdr Bridge (BACKLOG)
+
+**Goal:** Replace the development Python bridge with a portable, low-overhead, production-distribution bridge once keypad functionality and protocol behavior are stable.
+**Requirements:** TBD
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (promote with $gsd-review-backlog when ready)

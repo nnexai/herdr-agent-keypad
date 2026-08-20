@@ -6,13 +6,32 @@ current_phase: 03.1
 current_phase_name: High-Fidelity Animation and Interaction Polish
 status: planning
 stopped_at: Phase 03.1 context gathered
-last_updated: "2026-08-20T18:50:54.465Z"
+last_updated: "2026-08-20T19:40:28.743Z"
 last_activity: 2026-08-20
-last_activity_desc: Inserted Phase 03.1 high-fidelity animation and interaction polish after Phase 03
+last_activity_desc: "Completed quick task 260820-sp6: automatic bridge recovery after USB CDC communication reset"
 progress:
   total_phases: 6
   completed_phases: 4
-  total_plans: 26
+  total_plans: 35
+  completed_plans: 26
+---
+
+Total Phases: 6
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+current_phase: 03.1
+current_phase_name: High-Fidelity Animation and Interaction Polish
+status: planning
+stopped_at: Phase 03.1 context gathered
+last_updated: "2026-08-20T19:31:54.419Z"
+last_activity: 2026-08-20
+last_activity_desc: Inserted Phase 03.1 high-fidelity animation and interaction polish after Phase 03
+progress:
+  total_phases: 7
+  completed_phases: 4
+  total_plans: 35
   completed_plans: 26
 ---
 
@@ -137,6 +156,7 @@ None yet.
 - Phase 02.1 inserted after Phase 2: Reliable Live Synchronization, Focus, and Flicker-Free Rendering (URGENT)
 - Phase 02.2 inserted after Phase 02.1: Firmware Themes, LED Bars, and Device Selection Menu (URGENT)
 - Phase 03.1 inserted after Phase 3: High-Fidelity Animation and Interaction Polish (URGENT)
+- Phase 03.2 inserted after Phase 3: Production Rust Herdr Bridge (URGENT)
 
 ## Deferred Items
 
