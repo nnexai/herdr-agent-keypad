@@ -76,6 +76,7 @@ class FakeUsb:
         self.session_id = "fake-session"
         self.published: list[dict] = []
         self.results: list[dict] = []
+        self.pending_focus = None
 
     def connect(self):
         self.connected = True
@@ -93,6 +94,9 @@ class FakeUsb:
 
     def close(self):
         self.connected = False
+
+    def clear_pending_focus(self):
+        self.pending_focus = None
 
 
 class ManualClock:
@@ -247,6 +251,9 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertEqual(bridge.projection.binding(0), before_binding)
         codex._view = CodexView(source_state="auth_required")
         bridge.refresh_codex()
+        usb.pending_focus = {"action_id": "pending-focus"}
+        bridge.refresh_codex()
+        self.assertEqual(usb.pending_focus, {"action_id": "pending-focus"})
         self.assertEqual(tuple(usb.published[-1]["agents"]), before_agents)
         self.assertEqual(bridge.projection.binding(0), before_binding)
         self.assertEqual(usb.published[-1]["diagnostics"]["codex_status"], "auth_required")

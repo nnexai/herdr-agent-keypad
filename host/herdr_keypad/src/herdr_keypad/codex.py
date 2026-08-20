@@ -378,6 +378,11 @@ class CodexCollector:
         return self.view()
 
     def apply_sparse_update(self, update: Mapping[str, Any]) -> bool:
+        if isinstance(update, Mapping) and update.get("method") == "account/rateLimits/updated":
+            params = update.get("params")
+            if not isinstance(params, Mapping):
+                return False
+            update = params
         if not self._baseline_known or not isinstance(update, Mapping):
             self._schedule_refetch()
             return False

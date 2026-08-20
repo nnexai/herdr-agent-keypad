@@ -623,9 +623,10 @@ class PermanentBridge:
         except Exception:
             pass
 
-    def _publish_snapshot(self, snapshot: Any) -> Any:
+    def _publish_snapshot(self, snapshot: Any, *, preserve_focus: bool = False) -> Any:
         self.ready = False
-        self._clear_usb_pending_focus()
+        if not preserve_focus:
+            self._clear_usb_pending_focus()
         self._deferred_focus = [
             frame for frame in self._deferred_focus
             if self._focus_matches_snapshot(frame, snapshot)
@@ -700,7 +701,7 @@ class PermanentBridge:
         self._collect_codex()
         snapshot = getattr(self.projection, "current", None)
         if snapshot is not None and getattr(self.usb, "connected", False):
-            self._publish_snapshot(snapshot)
+            self._publish_snapshot(snapshot, preserve_focus=True)
         return self.codex_view
 
     def apply_codex_sparse(self, update: Mapping[str, Any]) -> bool:
@@ -714,7 +715,7 @@ class PermanentBridge:
         self._codex_observed_at = observed_at if isinstance(observed_at, (int, float)) else self._clock()
         snapshot = getattr(self.projection, "current", None)
         if snapshot is not None and getattr(self.usb, "connected", False):
-            self._publish_snapshot(snapshot)
+            self._publish_snapshot(snapshot, preserve_focus=True)
         return True
 
     def account_changed(self, *, auth_required: bool = False) -> CodexView:
@@ -725,7 +726,7 @@ class PermanentBridge:
         self._codex_observed_at = None
         snapshot = getattr(self.projection, "current", None)
         if snapshot is not None and getattr(self.usb, "connected", False):
-            self._publish_snapshot(snapshot)
+            self._publish_snapshot(snapshot, preserve_focus=True)
         return self.codex_view
 
     def _publish_refresh(self, *, force: bool = False) -> Any:
