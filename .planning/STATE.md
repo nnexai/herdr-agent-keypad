@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 02.2
 current_phase_name: firmware-themes-led-bars-and-device-selection-menu
 status: executing
-stopped_at: Phase 02.2 Plans 01–04 implemented and committed; Plan 05 exact-device smoke is awaiting human observations
-last_updated: "2026-08-18T13:20:00.000Z"
-last_activity: 2026-08-18
-last_activity_desc: Phase 02.2 themes, LED grammars, encoder menu, smoke driver, and selected USB firmware implemented
+stopped_at: Completed 02.2-05-PLAN.md under explicit deferred fallback waiver; Phase 02.2 awaits verification
+last_updated: "2026-08-20T15:48:33.819Z"
+last_activity: 2026-08-20
+last_activity_desc: Plan 05 exact-device evidence accepted with the fresh-erase/settings fallback explicitly deferred and ledgered
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 26
-  completed_plans: 24
+  completed_plans: 26
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (updated 2026-08-16)
 
 Phase: 02.2 (firmware-themes-led-bars-and-device-selection-menu) — EXECUTING
 Plan: 5 of 5
-Status: Plan 05 exact-device smoke awaiting human checkpoint
-Last activity: 2026-08-18 — Plans 02.2-01 through 02.2-04 complete; smoke driver flashed and interactive run is waiting for operator input
+Status: Plan 05 complete under explicit deferred fallback waiver; Phase 02.2 awaits verification
+Last activity: 2026-08-20 — Plan 05 closeout recorded accepted-with-deferred evidence; fallback physical proof remains open
 
-Progress: [█████████░] 96%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Progress: [█████████░] 96%
 | Phase 02 P03 | 3600 | 2 tasks | 3 files |
 | Phase 02.1 P01 | 35min | 3 tasks | 6 files |
 | Phase 02.1 P02 | 25min | 2 tasks | 7 files |
+| Phase 02.2 P05 | 15min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 02.2]: SYNC-02 amended (R-2): bindings stay all-panel atomic; pixels may reveal per panel (≤250 ms, keys fenced during reveal); SYNC veil retained for boot/reset/failure.
 - [Phase 02.2]: Theme/LED grammar persistence uses NVS Preferences with schema version; invalid values fall back to Signal Edge + Rail Echo without write-back.
 - [Phase 02.2]: Grammar B (Exception Channel) gets a minimal bounded press blink to satisfy D-08 while keeping its darkness philosophy.
+- [Phase ?]: Plan 05 accepted under the user's explicit waiver: fresh-erase or invalid/missing stored-settings fallback to Signal Edge + Rail Echo, including no-write-back physical proof, was not run and remains deferred/open.
+- [Phase ?]: 02.2 device evidence uses accepted-with-deferred overall disposition while retaining the fallback sighting as pending/deferred rather than a physical pass.
 
 ### Pending Todos
 
@@ -147,7 +150,7 @@ None yet.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/02.2-firmware-themes-led-bars-and-device-selection-menu/02.2-05-PLAN.md
+**Resume file:** None
 
-Last session: 2026-08-18T13:20:00.000Z
-Stopped at: Plan 05 smoke is running on the flashed keypad and is awaiting the operator's focus-feedback and physical-sighting confirmations.
+Last session: 2026-08-20T15:48:33.808Z
+Stopped at: Completed 02.2-05-PLAN.md under explicit deferred fallback waiver; Phase 02.2 awaits verification

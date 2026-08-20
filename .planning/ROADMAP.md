@@ -118,7 +118,6 @@ Plans:
 
 **UI hint:** yes
 
-
 ### Phase 02.1: Reliable Live Synchronization, Focus, and Flicker-Free Rendering (INSERTED)
 
 **Goal:** As a user of the delivered keypad, I want live Herdr changes to converge to one ACKed authoritative generation with exact focus fenced during refresh and each tile painted as one composed image, so that the physical inbox stays current, safe, and visually stable.
@@ -165,7 +164,7 @@ Plans:
   6. Every visible state is composed into the existing bounded frame buffer and flushed without black flashes or partial-generation frames; persistent BLOCKED motion and transient feedback use bounded discrete frames and remain synchronized between displays and LEDs.
   7. Focused native checks plus an exact-device smoke exercise every theme/LED combination, menu selection, reboot persistence, stale/offline fencing, and focus feedback on the connected keypad; evidence records the final physical mapping and resource bounds.
 
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans executed
 
 Plans:
 
@@ -184,7 +183,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 02.2-05-PLAN.md — Exact-device smoke: 16 combinations, persistence/fallback, fencing/feedback/LED sightings, hardware-question observations.
+- [x] 02.2-05-PLAN.md — Exact-device smoke: 16 combinations, persistence/fallback, fencing/feedback/LED sightings, hardware-question observations.
 
 **UI hint:** yes
 
@@ -240,6 +239,6 @@ Plans:
 | 1. Physical Keypad and Proven Transport | 10/13 | In Progress|  |
 | 2. Authoritative Agent Projection and Exact Focus | 4/5 | In Progress|  |
 | 02.1 Reliable Live Synchronization, Focus, and Flicker-Free Rendering | 3/3 | Complete | 2026-08-17 |
-| 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 4/5 | In Progress |  |
+| 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | In Progress|  |
 | 3. Truthful Codex Capacity and Device Menu | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
