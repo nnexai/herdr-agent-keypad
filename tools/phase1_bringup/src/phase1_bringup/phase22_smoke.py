@@ -16,7 +16,20 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any
+
+from .evidence import atomic_write_pair
+from .protocol import (
+    MAX_LINE_BYTES,
+    ProtocolError,
+    classify_line,
+    encode_frame as encode_v1_frame,
+    encode_v2_frame,
+    new_frame,
+    new_v2_frame,
+)
+from .pairing import PairingStore
+from .serial_link import SerialLink
 
 THEMES = ("SIGNAL EDGE", "LEDGER", "BEACON", "INSTRUMENT")
 GRAMMARS = ("RAIL ECHO", "EXCEPTION", "FIELD EXT", "METER+LAMPS")
@@ -33,7 +46,7 @@ def fnv1a64(payload: bytes) -> str:
 
 
 def canonical_payload(payload: dict[str, Any]) -> bytes:
-    return json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")
 
 
 def encode_frame(frame_type: str, boot_id: str, session_id: str, sequence: int,
@@ -132,20 +145,27 @@ class SmokeEvidence:
         }
 
     def write(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        content = json.dumps(self.as_dict(), indent=2, sort_keys=True) + "\n"
-        path.write_text(content, encoding="utf-8")
-        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        path.with_suffix(path.suffix + ".sha256").write_text(digest + "\n", encoding="ascii")
-
+        content = (json.dumps(self.as_dict(), indent=2, sort_keys=True) + "\n").encode("utf-8")
+        digest = hashlib.sha256(content).hexdigest().encode("ascii") + b"\n"
+        atomic_write_pair(path, content, digest)
 
 class DeviceSession:
+    _RESPONSE_TYPES = {
+        "hello": {"hello_ack"},
+        "agent_snapshot": {"snapshot_ack"},
+        "metrics": {"metrics_ack"},
+    }
+
     def __init__(self, connection: Any, *, timeout: float = 2.0) -> None:
         self.connection = connection
+        self._link = SerialLink(connection)
         self.timeout = timeout
         self.boot_id = "host-boot"
+        self._device_boot_id: str | None = None
         self.session_id = "host-session-" + secrets.token_hex(6)
         self.sequence = 0
+        self._last_received_seq = 0
+        self._seen_received: deque[int] = deque(maxlen=16)
         self._rx_buffer = bytearray()
         self._pending_focus_intents: deque[dict[str, Any]] = deque(maxlen=16)
 
@@ -153,31 +173,48 @@ class DeviceSession:
         while time.monotonic() < deadline:
             newline = self._rx_buffer.find(b"\n")
             if newline >= 0:
-                line = bytes(self._rx_buffer[:newline])
+                line = bytes(self._rx_buffer[:newline + 1])
                 del self._rx_buffer[:newline + 1]
-                try:
-                    frame = json.loads(line.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
+                result = classify_line(line)
+                if not result.accepted or result.frame is None:
+                    if result.reason == "line_too_long":
+                        raise ProtocolError(result.reason)
                     continue
-                if isinstance(frame, dict):
-                    return frame
-                continue
-            chunk = self.connection.readline()
+                frame = result.frame
+                if frame["session_id"] != self.session_id:
+                    continue
+                if self._device_boot_id is None:
+                    self._device_boot_id = frame["boot_id"]
+                if frame["boot_id"] != self._device_boot_id:
+                    continue
+                sequence = frame["seq"]
+                if sequence <= self._last_received_seq or sequence in self._seen_received:
+                    continue
+                self._last_received_seq = sequence
+                self._seen_received.append(sequence)
+                return frame
+            chunk = self._link.readline()
             if not chunk:
                 continue
             self._rx_buffer.extend(chunk)
+            if len(self._rx_buffer) > MAX_LINE_BYTES:
+                raise ProtocolError("line_too_long")
         raise TimeoutError("timed out waiting for keypad frame")
-
 
     def discard_pending_input(self) -> None:
         self._rx_buffer.clear()
         self._pending_focus_intents.clear()
         self.connection.reset_input_buffer()
 
-
     def send(self, frame_type: str, payload: dict[str, Any], *, version: int = 2) -> int:
         self.sequence += 1
-        self.connection.write(encode_frame(frame_type, self.boot_id, self.session_id, self.sequence, payload, version=version))
+        if version == 2:
+            frame = new_v2_frame(frame_type, self.boot_id, self.session_id, self.sequence, payload)
+            encoded = encode_v2_frame(frame)
+        else:
+            frame = new_frame(frame_type, self.boot_id, self.session_id, self.sequence, payload)
+            encoded = encode_v1_frame(frame)
+        self._link.write(encoded)
         return self.sequence
 
     def wait_for_type(self, frame_type: str, timeout: float) -> dict[str, Any]:
@@ -186,28 +223,33 @@ class DeviceSession:
         deadline = time.monotonic() + timeout
         while True:
             frame = self._read_frame(deadline)
-            if frame.get("type") == frame_type:
+            if frame["type"] == frame_type:
                 return frame
-            if frame.get("type") == "focus_intent":
+            if frame["type"] == "focus_intent":
                 self._pending_focus_intents.append(frame)
 
     def request(self, frame_type: str, payload: dict[str, Any], *, version: int = 2) -> dict[str, Any]:
         sequence = self.send(frame_type, payload, version=version)
         deadline = time.monotonic() + self.timeout
+        allowed = self._RESPONSE_TYPES.get(frame_type, set())
         while True:
             frame = self._read_frame(deadline)
-            if frame.get("reply_to") == sequence:
-                if frame.get("type") == "error":
-                    raise RuntimeError(f"device rejected {frame_type}: {frame.get('payload')}")
-                return frame
-            if frame.get("type") == "focus_intent":
+            if frame["type"] == "focus_intent":
                 self._pending_focus_intents.append(frame)
+                continue
+            if frame["type"] == "error":
+                raise RuntimeError(f"device rejected {frame_type}: {frame['payload']}")
+            if frame["type"] in allowed and frame["reply_to"] == sequence:
+                return frame
 
     def hello(self) -> dict[str, Any]:
-        response = self.request("hello", {"device_id": "phase22-smoke", "firmware": "phase22-smoke", "protocol": 1}, version=1)
-        self.boot_id = str(response.get("boot_id", ""))
-        if not self.boot_id:
-            raise RuntimeError("hello_ack did not provide device boot identity")
+        response = self.request(
+            "hello",
+            {"device_id": "phase22-smoke", "firmware": "phase22-smoke", "protocol": 1},
+            version=1,
+        )
+        self.boot_id = str(response["boot_id"])
+        self._device_boot_id = self.boot_id
         return response
 
 
@@ -228,12 +270,19 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def run_device(port: str, output: Path, firmware: Path | None = None) -> int:
+def run_device(port: str, output: Path, firmware: Path | None = None,
+               binding_path: Path | None = None) -> int:
     evidence = SmokeEvidence.skeleton()
     if firmware is not None:
         evidence.binary_sha256 = sha256_file(firmware)
+    expected_device_id = None
+    if binding_path is not None:
+        binding = PairingStore(binding_path).load()
+        if binding is None:
+            raise RuntimeError("no paired keypad binding exists; pair the device before smoke")
+        expected_device_id = binding.device_id
     try:
-        return _run_device(port, output, evidence)
+        return _run_device(port, output, evidence, expected_device_id=expected_device_id)
     except (EOFError, TimeoutError) as exc:
         evidence.machine_facts["checkpoint"] = {
             "status": "incomplete",
@@ -245,7 +294,8 @@ def run_device(port: str, output: Path, firmware: Path | None = None) -> int:
         return 2
 
 
-def _run_device(port: str, output: Path, evidence: SmokeEvidence) -> int:
+def _run_device(port: str, output: Path, evidence: SmokeEvidence,
+                *, expected_device_id: str | None = None) -> int:
     try:
         import serial  # type: ignore
     except ImportError as exc:
@@ -253,7 +303,12 @@ def _run_device(port: str, output: Path, evidence: SmokeEvidence) -> int:
     with serial.Serial(port, 115200, timeout=0.25) as connection:
         session = DeviceSession(connection)
         hello = session.hello()
-        evidence.machine_facts["hello_ack"] = hello.get("payload", {})
+        hello_payload = hello.get("payload", {})
+        if expected_device_id is not None and hello_payload.get("device_id") != expected_device_id:
+            raise RuntimeError("connected keypad does not match the paired device identity")
+        evidence.machine_facts["hello_ack"] = hello_payload
+        if expected_device_id is not None:
+            evidence.machine_facts["paired_device_id"] = expected_device_id
         host_epoch = "phase22-smoke-" + secrets.token_hex(8)
         revision = 1
         for state in STATES:
@@ -311,6 +366,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", help="explicit /dev/serial/by-id path; required for hardware run")
     parser.add_argument("--firmware", type=Path, help="flashed firmware.bin for SHA-256 lineage")
+    parser.add_argument("--binding", type=Path,
+                        default=Path.home() / ".config" / "herdr" / "keypad-binding.json",
+                        help="paired keypad binding used to authorize the hardware run")
     parser.add_argument("--output", type=Path, required=True, help="JSON evidence output path")
     parser.add_argument("--skeleton", action="store_true", help="write a pending evidence skeleton without opening hardware")
     args = parser.parse_args(argv)
@@ -319,7 +377,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.port:
         parser.error("--port is required unless --skeleton is used")
-    return run_device(args.port, args.output, args.firmware)
+    return run_device(args.port, args.output, args.firmware, args.binding)
 
 
 if __name__ == "__main__":

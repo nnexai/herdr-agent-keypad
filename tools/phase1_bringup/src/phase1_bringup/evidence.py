@@ -517,6 +517,55 @@ def _atomic_bytes(path: Path, content: bytes) -> None:
     finally:
         temporary_path.unlink(missing_ok=True)
 
+def atomic_write_pair(path: Path, content: bytes, digest: bytes) -> None:
+    """Replace an evidence file and its checksum as one verified operation."""
+    path = Path(path)
+    sidecar = path.with_suffix(path.suffix + ".sha256")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    old_content = path.read_bytes() if path.exists() else None
+    old_digest = sidecar.read_bytes() if sidecar.exists() else None
+    content_fd, content_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    digest_fd, digest_name = tempfile.mkstemp(prefix=f".{sidecar.name}.", dir=path.parent)
+    content_temp = Path(content_name)
+    digest_temp = Path(digest_name)
+    replaced_content = False
+    replaced_digest = False
+    try:
+        with os.fdopen(content_fd, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        with os.fdopen(digest_fd, "wb") as stream:
+            stream.write(digest)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(content_temp, path)
+        replaced_content = True
+        _fsync_directory(path.parent)
+        os.replace(digest_temp, sidecar)
+        replaced_digest = True
+        _fsync_directory(path.parent)
+        if hashlib.sha256(path.read_bytes()).hexdigest().encode("ascii") != sidecar.read_bytes().strip():
+            raise EvidenceError("evidence/checksum pair verification failed")
+    except Exception:
+        try:
+            if replaced_content:
+                if old_content is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _atomic_bytes(path, old_content)
+            if replaced_digest:
+                if old_digest is None:
+                    sidecar.unlink(missing_ok=True)
+                else:
+                    _atomic_bytes(sidecar, old_digest)
+        except Exception:
+            pass
+        raise
+    finally:
+        content_temp.unlink(missing_ok=True)
+        digest_temp.unlink(missing_ok=True)
+
 
 def _validate_json_object(path: Path, expected_kind: str) -> dict[str, Any]:
     try:

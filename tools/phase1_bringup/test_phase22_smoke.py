@@ -5,7 +5,9 @@ import sys
 import types
 from pathlib import Path
 from unittest.mock import patch
+import pytest
 
+import phase1_bringup.evidence as evidence_module
 import phase1_bringup.phase22_smoke as smoke
 
 from phase1_bringup.phase22_smoke import (
@@ -20,6 +22,7 @@ from phase1_bringup.phase22_smoke import (
     fnv1a64,
     snapshot_payload,
 )
+from phase1_bringup.serial_link import SerialLinkError
 
 
 def test_frame_digest_matches_payload_bytes() -> None:
@@ -115,6 +118,30 @@ def test_evidence_skeleton_is_complete_but_never_fabricates_passes(tmp_path) -> 
     assert loaded["status"] == "pending"
     assert len(loaded["combinations"]) == 16
 
+def test_evidence_pair_replacement_rolls_back_on_interruption(tmp_path) -> None:
+    path = tmp_path / "evidence.json"
+    original = SmokeEvidence.skeleton()
+    original.write(path)
+    old_content = path.read_bytes()
+    old_digest = path.with_suffix(".json.sha256").read_bytes()
+    replacement = SmokeEvidence.skeleton()
+    replacement.machine_facts["replacement"] = True
+    real_replace = evidence_module.os.replace
+    calls = 0
+
+    def interrupt_second_replace(source, destination):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated interruption")
+        return real_replace(source, destination)
+
+    with patch.object(evidence_module.os, "replace", side_effect=interrupt_second_replace):
+        with pytest.raises(OSError):
+            replacement.write(path)
+    assert path.read_bytes() == old_content
+    assert path.with_suffix(".json.sha256").read_bytes() == old_digest
+
 
 def test_vocabulary_is_explicit() -> None:
     assert len(THEMES) == 4
@@ -144,6 +171,77 @@ class FragmentedConnection:
     def feed(self, *chunks: bytes) -> None:
         self.chunks.extend(chunks)
 
+def metrics_ack_frame(*, boot_id: str = "device-boot", session_id: str = "host-session",
+                      sequence: int = 2, reply_to: int = 1) -> bytes:
+    return encode_frame(
+        "metrics_ack",
+        boot_id,
+        session_id,
+        sequence,
+        {
+            "acknowledged": 1,
+            "digest_mismatch": 0,
+            "duplicate": 0,
+            "largest_free_block": 1,
+            "malformed": 0,
+            "max_display_flush_us": 1,
+            "max_key_poll_gap_us": 1,
+            "minimum_free_heap": 1,
+            "out_of_order": 0,
+            "parser_high_water": 1,
+            "queue_high_water": 1,
+            "received": 1,
+            "rejected": 0,
+            "sent": 1,
+            "watchdog_reset": 0,
+        },
+        version=1,
+        reply_to=reply_to,
+    )
+
+
+def test_session_rejects_unterminated_oversized_frame() -> None:
+    session = DeviceSession(FragmentedConnection([b"x" * (smoke.MAX_LINE_BYTES + 1)]), timeout=0.01)
+    with pytest.raises(SerialLinkError):
+        session.wait_for_type("focus_intent", 0.01)
+
+
+def test_session_rejects_short_serial_write() -> None:
+    class ShortWrite(FragmentedConnection):
+        def write(self, data: bytes) -> int:
+            self.writes.append(data)
+            return max(0, len(data) - 1)
+
+    session = DeviceSession(ShortWrite([]), timeout=0.01)
+    with pytest.raises(SerialLinkError):
+        session.send("metrics", {"request": "proof"}, version=1)
+
+
+def test_session_rejects_bad_digest_and_mismatched_identity() -> None:
+    bad = json.loads(metrics_ack_frame())
+    bad["digest"] = "0" * 16
+    connection = FragmentedConnection([(json.dumps(bad) + "\n").encode("ascii")])
+    session = DeviceSession(connection, timeout=0.01)
+    session.session_id = "host-session"
+    with pytest.raises(TimeoutError):
+        session.request("metrics", {"request": "proof"}, version=1)
+
+    for boot_id, session_id in (("other-boot", "host-session"), ("device-boot", "other-session")):
+        connection = FragmentedConnection([metrics_ack_frame(boot_id=boot_id, session_id=session_id)])
+        session = DeviceSession(connection, timeout=0.01)
+        session.session_id = "host-session"
+        with pytest.raises(TimeoutError):
+            session.request("metrics", {"request": "proof"}, version=1)
+
+
+def test_session_rejects_stale_matching_reply_sequence() -> None:
+    connection = FragmentedConnection([metrics_ack_frame(sequence=1, reply_to=1)])
+    session = DeviceSession(connection, timeout=0.01)
+    session.session_id = "host-session"
+    session._last_received_seq = 1
+    with pytest.raises(TimeoutError):
+        session.request("metrics", {"request": "proof"}, version=1)
+
 
 def focus_intent_frame(action_id: str = "action-1") -> bytes:
     return encode_frame(
@@ -169,6 +267,7 @@ def test_focus_intent_survives_fragmented_usb_line() -> None:
     frame = focus_intent_frame()
     split = len(frame) // 2
     session = DeviceSession(FragmentedConnection([frame[:split], frame[split:]]), timeout=0.05)
+    session.session_id = "host-session"
 
     assert session.wait_for_type("focus_intent", 0.05) == json.loads(frame)
 
@@ -178,6 +277,7 @@ def test_pre_arm_discard_removes_stale_complete_and_partial_intents() -> None:
     fresh = focus_intent_frame("fresh-action")
     connection = FragmentedConnection([stale[31:]])
     session = DeviceSession(connection, timeout=0.05)
+    session.session_id = "host-session"
     session._rx_buffer.extend(stale[:31])
 
     session.discard_pending_input()
@@ -195,12 +295,29 @@ def test_request_preserves_unmatched_focus_intent_for_later_wait() -> None:
         "device-boot",
         "host-session",
         38,
-        {"received": 1},
+        {
+            "acknowledged": 1,
+            "digest_mismatch": 0,
+            "duplicate": 0,
+            "largest_free_block": 1,
+            "malformed": 0,
+            "max_display_flush_us": 1,
+            "max_key_poll_gap_us": 1,
+            "minimum_free_heap": 1,
+            "out_of_order": 0,
+            "parser_high_water": 1,
+            "queue_high_water": 1,
+            "received": 1,
+            "rejected": 0,
+            "sent": 1,
+            "watchdog_reset": 0,
+        },
         version=1,
         reply_to=1,
     )
     connection = FragmentedConnection([intent + metrics_ack])
     session = DeviceSession(connection, timeout=0.05)
+    session.session_id = "host-session"
 
     response = session.request("metrics", {"request": "proof"}, version=1)
     preserved = session.wait_for_type("focus_intent", 0.05)
@@ -244,6 +361,7 @@ def test_focus_intent_replay_covers_serial_read_boundaries() -> None:
     }
     for chunks in cases:
         session = DeviceSession(FragmentedConnection(chunks), timeout=0.05)
+        session.session_id = "host-session"
         actual = session.wait_for_type("focus_intent", 0.05)
         assert actual == expected
         assert actual["v"] == 2
