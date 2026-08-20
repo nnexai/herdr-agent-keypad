@@ -208,5 +208,94 @@ class CodexCollectorTests(unittest.TestCase):
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             self.assertEqual(digest, Path(str(path) + ".sha256").read_text().split()[0])
 
+    def test_full_baseline_sparse_merge_and_freshness_edges(self):
+        clock = ManualClock()
+        collector = CodexCollector(clock=clock)
+        full = {"rateLimits": {
+            "primary": {"usedPercent": 10, "resetsAt": 4_102_444_800},
+            "secondary": {"usedPercent": 20},
+            "rateLimitReachedType": "primary",
+            "planType": "pro",
+        }}
+        self.assertFalse(collector.apply_sparse_update({"rateLimits": {"primary": {"usedPercent": 99}}}))
+        self.assertIsNone(collector.last_full_observed_at)
+        self.assertIsNone(collector.view().primary)
+        self.assertTrue(collector.refetch_pending)
+        self.assertEqual(collector.view().observation_age, "AGE N/A")
+        collector.apply_full_response(full)
+        self.assertEqual(collector.view().primary, 10)
+        self.assertEqual(collector.view().secondary, 20)
+        self.assertTrue(collector.view().reached_limit)
+        self.assertEqual(collector.view().observation_age, "AGE 0M")
+        self.assertFalse(collector.should_poll())
+        clock.advance(299)
+        self.assertEqual(collector.view().source_state, "current")
+        self.assertFalse(collector.should_poll())
+        clock.advance(1)
+        self.assertTrue(collector.should_poll())
+        self.assertTrue(collector.apply_sparse_update({"rateLimits": {
+            "primary": {"usedPercent": 0},
+            "secondary": None,
+            "rateLimitReachedType": None,
+            "planType": None,
+        }}))
+        self.assertEqual(collector.view().primary, 0)
+        self.assertIsNone(collector.view().secondary)
+        self.assertIsNone(collector.view().reached_limit)
+        self.assertTrue(collector.refetch_pending)
+        self.assertEqual(collector.consume_refetch(), True)
+        self.assertEqual(collector.consume_refetch(), False)
+        clock.advance(899)
+        self.assertEqual(collector.view().source_state, "current")
+        clock.advance(1)
+        self.assertEqual(collector.view().source_state, "stale")
+
+    def test_sparse_metadata_omission_preserves_and_invalid_is_transactional(self):
+        clock = ManualClock()
+        collector = CodexCollector(clock=clock)
+        collector.apply_full_response({"rateLimits": {
+            "primary": {"usedPercent": 12},
+            "secondary": {"usedPercent": 34},
+            "rateLimitReachedType": "primary",
+            "planType": "pro",
+        }})
+        before = collector.view()
+        before_age = collector.last_observed_at
+        self.assertFalse(collector.apply_sparse_update({"rateLimits": {
+            "primary": {"resetsAt": 4_102_444_800},
+            "secondary": {},
+            "rateLimitReachedType": None,
+        }}))
+        self.assertEqual(collector.view(), before)
+        self.assertEqual(collector.last_observed_at, before_age)
+        self.assertFalse(collector.apply_sparse_update({"rateLimits": {
+            "primary": {"usedPercent": 77},
+            "secondary": {"usedPercent": "bad"},
+        }}))
+        self.assertEqual(collector.view(), before)
+
+    def test_account_change_clears_cache_without_retaining_identity(self):
+        collector = CodexCollector()
+        collector.apply_full_response({"rateLimits": {"primary": {"usedPercent": 12}}})
+        collector.account_changed(auth_required=True, account={"email": "secret@example.test"})
+        view = collector.view()
+        self.assertEqual(view.source_state, "auth_required")
+        self.assertIsNone(view.primary)
+        self.assertIsNone(view.secondary)
+        self.assertIsNone(collector.last_full_observed_at)
+        self.assertNotIn("secret@example", repr(collector.__dict__))
+
+
+class ManualClock:
+    def __init__(self):
+        self.value = 0.0
+
+    def __call__(self):
+        return self.value
+
+    def advance(self, seconds):
+        self.value += seconds
+
+
 if __name__ == "__main__":
     unittest.main()
