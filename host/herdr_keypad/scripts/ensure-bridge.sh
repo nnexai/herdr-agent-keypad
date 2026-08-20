@@ -59,7 +59,8 @@ if [ "${1:-}" = "run-exclusive" ]; then
             if [ -s "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null &&
                 [ -r "/proc/$(cat "$PIDFILE")/fd/9" ] &&
                 [ "$(readlink "/proc/$(cat "$PIDFILE")/fd/9" 2>/dev/null)" = "$LOCK" ]; then
-                wait "$restart_pid" 2>/dev/null
+                # The restarted guard deliberately remains the long-lived owner.
+                # Waiting for its process would make every successful cleanup hang.
                 exit "$wrapped_status"
             fi
             if ! kill -0 "$restart_pid" 2>/dev/null; then break; fi
