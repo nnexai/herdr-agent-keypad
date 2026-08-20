@@ -1,0 +1,294 @@
+{
+  "combinations": [
+    {
+      "grammar": "RAIL ECHO",
+      "notes": "",
+      "result": "pending",
+      "theme": "SIGNAL EDGE"
+    },
+    {
+      "grammar": "EXCEPTION",
+      "notes": "",
+      "result": "pending",
+      "theme": "SIGNAL EDGE"
+    },
+    {
+      "grammar": "FIELD EXT",
+      "notes": "",
+      "result": "pending",
+      "theme": "SIGNAL EDGE"
+    },
+    {
+      "grammar": "METER+LAMPS",
+      "notes": "",
+      "result": "pending",
+      "theme": "SIGNAL EDGE"
+    },
+    {
+      "grammar": "RAIL ECHO",
+      "notes": "",
+      "result": "pending",
+      "theme": "LEDGER"
+    },
+    {
+      "grammar": "EXCEPTION",
+      "notes": "",
+      "result": "pending",
+      "theme": "LEDGER"
+    },
+    {
+      "grammar": "FIELD EXT",
+      "notes": "",
+      "result": "pending",
+      "theme": "LEDGER"
+    },
+    {
+      "grammar": "METER+LAMPS",
+      "notes": "",
+      "result": "pending",
+      "theme": "LEDGER"
+    },
+    {
+      "grammar": "RAIL ECHO",
+      "notes": "",
+      "result": "pending",
+      "theme": "BEACON"
+    },
+    {
+      "grammar": "EXCEPTION",
+      "notes": "",
+      "result": "pending",
+      "theme": "BEACON"
+    },
+    {
+      "grammar": "FIELD EXT",
+      "notes": "",
+      "result": "pending",
+      "theme": "BEACON"
+    },
+    {
+      "grammar": "METER+LAMPS",
+      "notes": "",
+      "result": "pending",
+      "theme": "BEACON"
+    },
+    {
+      "grammar": "RAIL ECHO",
+      "notes": "",
+      "result": "pending",
+      "theme": "INSTRUMENT"
+    },
+    {
+      "grammar": "EXCEPTION",
+      "notes": "",
+      "result": "pending",
+      "theme": "INSTRUMENT"
+    },
+    {
+      "grammar": "FIELD EXT",
+      "notes": "",
+      "result": "pending",
+      "theme": "INSTRUMENT"
+    },
+    {
+      "grammar": "METER+LAMPS",
+      "notes": "",
+      "result": "pending",
+      "theme": "INSTRUMENT"
+    }
+  ],
+  "focus_feedback": [],
+  "capture_inspection": {
+    "count": 76,
+    "fixture": "CAPTURE:N theme/scene deterministic framebuffer; RGB565 logical pixels only",
+    "issue_list": [],
+    "manifest_sha256": "34e4eecda788e130da5056bfc7ed209ac298f015040f207a20daf9ae3a0f255e",
+    "menu_scenes": ["menu-theme", "menu-led"],
+    "semantic_scenes": ["blocked", "unseen", "working", "idle", "settled", "unknown", "empty", "stale", "offline", "unavailable", "pending", "focused", "rejected", "vanished", "uncertain", "failed", "sync"],
+    "status": "all four themes and all 17 semantic scenes plus both menu scenes captured and inspected; no proven renderer defect",
+    "themes": ["signal-edge", "ledger", "beacon", "instrument"]
+  },
+  "lineage": {
+    "binary_sha256": "fce6221f14b2718ac225fb098274c9f594ccf6326cdcdda027d8969cf3fa7297",
+    "firmware_commit": "931688d5a118ef9b3b54cffde4eac632c8d189"
+  },
+  "machine_facts": {
+    "checkpoint": {
+      "operator_action": "rerun after completing the requested physical interaction",
+      "reason": "EOF when reading a line",
+      "status": "incomplete"
+    },
+    "capture_smoke": {
+      "all_screens_captured": true,
+      "device_id": "0000fccb0deabf8c",
+      "firmware_binary_sha256": "fce6221f14b2718ac225fb098274c9f594ccf6326cdcdda027d8969cf3fa7297",
+      "native_tests": "44/44 passed",
+      "selected_build": "passed",
+      "upload": "passed"
+    },
+    "current_snapshot": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 11,
+      "source_status": "current"
+    },
+    "fence_offline": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 9,
+      "source_status": "offline"
+    },
+    "fence_stale": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 8,
+      "source_status": "stale"
+    },
+    "fence_unavailable": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 10,
+      "source_status": "unavailable"
+    },
+    "hello_ack": {
+      "accepted": true,
+      "device_id": "0000fccb0deabf8c",
+      "firmware": "phase1-bringup",
+      "protocol": 1
+    },
+    "snapshot_blocked": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 1,
+      "source_status": "current"
+    },
+    "snapshot_empty": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 7,
+      "source_status": "current"
+    },
+    "snapshot_finished": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 2,
+      "source_status": "current"
+    },
+    "snapshot_idle": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 4,
+      "source_status": "current"
+    },
+    "snapshot_settled": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 5,
+      "source_status": "current"
+    },
+    "snapshot_unknown": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 6,
+      "source_status": "current"
+    },
+    "snapshot_working": {
+      "accepted": true,
+      "host_epoch": "phase22-smoke-epoch",
+      "reason": "committed",
+      "snapshot_revision": 3,
+      "source_status": "current"
+    },
+    "metrics": {
+      "acknowledged": 154,
+      "digest_mismatch": 0,
+      "duplicate": 0,
+      "largest_free_block": 8257524,
+      "malformed": 0,
+      "max_display_flush_us": 139713,
+      "max_key_poll_gap_us": 130012,
+      "minimum_free_heap": 305676,
+      "out_of_order": 0,
+      "parser_high_water": 982,
+      "queue_high_water": 1,
+      "received": 167,
+      "rejected": 0,
+      "sent": 166,
+      "watchdog_reset": 0
+    }
+  },
+  "schema": "phase22-device-evidence-v1",
+  "sightings": [
+    {
+      "expected": "All four themes keep titles, states, and 8 px metadata legible.",
+      "id": "legibility",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "Instrument ring strokes and gaps are clean on the physical panels.",
+      "id": "instrument-arcs",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "LED ladder is perceptible and comfortable under USB power.",
+      "id": "brightness-ladder",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "Beacon stepped field has acceptable RGB565 banding.",
+      "id": "beacon-banding",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "Inter-key and above-key accents are physically attributable.",
+      "id": "accent-attribution",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "Theme changes, menu overlay, refresh, and animation show no black flash or mixed actionable generation.",
+      "id": "no-black-flash",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "BLOCKED display motion and LED pulse remain visibly in phase.",
+      "id": "blocked-phase",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "STALE/OFFLINE/UNAVAILABLE visibly fence the old content.",
+      "id": "fence",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "A confirmed non-default pair survives reboot.",
+      "id": "persistence",
+      "notes": "",
+      "result": "pending"
+    },
+    {
+      "expected": "Invalid stored values fall back to Signal Edge + Rail Echo without write-back.",
+      "id": "fallback",
+      "notes": "",
+      "result": "pending"
+    }
+  ],
+  "status": "pending"
+}
