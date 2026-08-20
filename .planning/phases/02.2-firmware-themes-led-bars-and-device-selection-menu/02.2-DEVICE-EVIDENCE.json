@@ -1,103 +1,181 @@
 {
+  "evidence_legend": {
+    "machine": "Machine proof is recorded in capture_inspection, lineage, and machine_facts; it does not auto-pass physical rows.",
+    "human_y": "An explicit human Y is recorded as result Y with source human on combinations, focus_feedback, menu_rows, and completed sightings.",
+    "deferred": "The fallback row remains result pending because the destructive fresh-erase observation was explicitly deferred."
+  },
   "combinations": [
     {
       "grammar": "RAIL ECHO",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "SIGNAL EDGE"
     },
     {
       "grammar": "EXCEPTION",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "SIGNAL EDGE"
     },
     {
       "grammar": "FIELD EXT",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "SIGNAL EDGE"
     },
     {
       "grammar": "METER+LAMPS",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "SIGNAL EDGE"
     },
     {
       "grammar": "RAIL ECHO",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "LEDGER"
     },
     {
       "grammar": "EXCEPTION",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "LEDGER"
     },
     {
       "grammar": "FIELD EXT",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "LEDGER"
     },
     {
       "grammar": "METER+LAMPS",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "LEDGER"
     },
     {
       "grammar": "RAIL ECHO",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "BEACON"
     },
     {
       "grammar": "EXCEPTION",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "BEACON"
     },
     {
       "grammar": "FIELD EXT",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "BEACON"
     },
     {
       "grammar": "METER+LAMPS",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "BEACON"
     },
     {
       "grammar": "RAIL ECHO",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "INSTRUMENT"
     },
     {
       "grammar": "EXCEPTION",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "INSTRUMENT"
     },
     {
       "grammar": "FIELD EXT",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "INSTRUMENT"
     },
     {
       "grammar": "METER+LAMPS",
-      "notes": "",
-      "result": "pending",
+      "notes": "Human Y — physically observed; no overlap, clipping, stale pixels, or LED attribution defect was reported.",
+      "result": "Y",
+      "source": "human",
       "theme": "INSTRUMENT"
     }
   ],
-  "focus_feedback": [],
+  "focus_feedback": [
+    {
+      "cue": "LED cue visible",
+      "expected_feedback": "FOCUSED",
+      "id": "focused-success",
+      "notes": "Human Y — one valid FOCUSED result with LED cue was observed.",
+      "result": "Y",
+      "source": "human"
+    },
+    {
+      "cue": "LED cue visible",
+      "expected_feedback": "failure result",
+      "id": "focus-failure",
+      "notes": "Human Y — one failure result with LED cue was observed.",
+      "result": "Y",
+      "source": "human"
+    },
+    {
+      "cue": "LED cue visible",
+      "expected_feedback": "PENDING -> FOCUSED",
+      "fix_commit": "53d8dc6",
+      "id": "armed-key-1-focused",
+      "notes": "Human Y — after host fix 53d8dc6, an armed single KEY-1 click showed PENDING→FOCUSED.",
+      "result": "Y",
+      "source": "human"
+    },
+    {
+      "cue": "LED cue visible and distinguishable",
+      "expected_feedback": "UNCERTAIN",
+      "id": "focus-uncertain",
+      "notes": "Human Y — UNCERTAIN feedback and its LED cue were visible and distinguishable.",
+      "result": "Y",
+      "source": "human"
+    }
+  ],
+  "menu_rows": [
+    {
+      "expected": "An unconfirmed preview reverts on close.",
+      "id": "preview-reverts-on-close",
+      "notes": "Human Y — unconfirmed preview reverted on close.",
+      "result": "Y",
+      "source": "human"
+    },
+    {
+      "expected": "KEY-1 remains direct while the menu is open.",
+      "id": "key-1-direct-while-menu-open",
+      "notes": "Human Y — KEY-1 remained direct while the menu was open.",
+      "result": "Y",
+      "source": "human"
+    },
+    {
+      "expected": "Row selection clamps at the ends and does not wrap.",
+      "id": "row-selection-clamps",
+      "notes": "Human Y — row selection clamped and did not wrap.",
+      "result": "Y",
+      "source": "human"
+    }
+  ],
   "capture_inspection": {
     "count": 76,
     "fixture": "CAPTURE:N theme/scene deterministic framebuffer; RGB565 logical pixels only",
@@ -105,18 +183,25 @@
     "manifest_sha256": "34e4eecda788e130da5056bfc7ed209ac298f015040f207a20daf9ae3a0f255e",
     "menu_scenes": ["menu-theme", "menu-led"],
     "semantic_scenes": ["blocked", "unseen", "working", "idle", "settled", "unknown", "empty", "stale", "offline", "unavailable", "pending", "focused", "rejected", "vanished", "uncertain", "failed", "sync"],
+    "source": "machine",
     "status": "all four themes and all 17 semantic scenes plus both menu scenes captured and inspected; no proven renderer defect",
     "themes": ["signal-edge", "ledger", "beacon", "instrument"]
   },
   "lineage": {
     "binary_sha256": "fce6221f14b2718ac225fb098274c9f594ccf6326cdcdda027d8969cf3fa7297",
-    "firmware_commit": "931688d5a118ef9b3b54cffde4eac632c8d189"
+    "firmware_commit": "931688d5a118ef9b3b54cffde4eac632c8d189",
+    "host_reliability_commits": ["6bc68ce", "9c81a74", "3bf647a", "53d8dc6"],
+    "prior_machine_evidence_commit": "2da9421",
+    "successful_guided_observation_fix_commit": "53d8dc6"
   },
   "machine_facts": {
     "checkpoint": {
-      "operator_action": "rerun after completing the requested physical interaction",
-      "reason": "EOF when reading a line",
-      "status": "incomplete"
+      "next_action": "One bounded erase/reflash/fallback observation; do not repeat passed rows.",
+      "operator_action": "record successful guided physical acceptance observations; defer fresh-erase fallback",
+      "reason": "operator deferred destructive fresh erase",
+      "session_date": "2026-08-20",
+      "source": "user-guided physical acceptance session",
+      "status": "pending_fallback_only"
     },
     "capture_smoke": {
       "all_screens_captured": true,
@@ -153,6 +238,13 @@
       "reason": "committed",
       "snapshot_revision": 10,
       "source_status": "unavailable"
+    },
+    "guided_observation": {
+      "fix_commit": "53d8dc6",
+      "observation": "After the fresh-epoch and focus-intent queue/arming host fix, an armed single KEY-1 click showed PENDING→FOCUSED.",
+      "session_date": "2026-08-20",
+      "source": "user-guided physical acceptance session",
+      "status": "human-confirmed"
     },
     "hello_ack": {
       "accepted": true,
@@ -232,62 +324,73 @@
     {
       "expected": "All four themes keep titles, states, and 8 px metadata legible.",
       "id": "legibility",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — 8 px legibility was confirmed in all themes.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "Instrument ring strokes and gaps are clean on the physical panels.",
       "id": "instrument-arcs",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — Instrument arc quality was acceptable.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "LED ladder is perceptible and comfortable under USB power.",
       "id": "brightness-ladder",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — the USB LED ladder was comfortable and distinct.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "Beacon stepped field has acceptable RGB565 banding.",
       "id": "beacon-banding",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — Beacon banding was acceptable.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "Inter-key and above-key accents are physically attributable.",
       "id": "accent-attribution",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — inter-key and above-key attribution was correct.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "Theme changes, menu overlay, refresh, and animation show no black flash or mixed actionable generation.",
       "id": "no-black-flash",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — no black flashes, mixed frames, or partial frames were seen during matrix/menu interaction.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "BLOCKED display motion and LED pulse remain visibly in phase.",
       "id": "blocked-phase",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — the BLOCKED panel and LED pulse were in phase.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "STALE/OFFLINE/UNAVAILABLE visibly fence the old content.",
       "id": "fence",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — STALE/OFFLINE/UNAVAILABLE fences were visible and truthful.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "A confirmed non-default pair survives reboot.",
       "id": "persistence",
-      "notes": "",
-      "result": "pending"
+      "notes": "Human Y — Instrument + Meter+Lamps persisted across a verified selected-usb upload/reboot.",
+      "result": "Y",
+      "source": "human"
     },
     {
       "expected": "Invalid stored values fall back to Signal Edge + Rail Echo without write-back.",
       "id": "fallback",
-      "notes": "",
-      "result": "pending"
+      "notes": "Default Signal Edge + Rail Echo and no-write-back physical proof remain unobserved.",
+      "reason": "operator deferred destructive fresh erase",
+      "result": "pending",
+      "source": "deferred"
     }
   ],
   "status": "pending"
