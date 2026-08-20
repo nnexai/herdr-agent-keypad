@@ -41,6 +41,27 @@ JsonDocument snapshot_document(uint32_t revision, const char* state0 = "working"
     agent["workspace_id"] = nullptr;
     agent["tab_id"] = nullptr;
   }
+  JsonObject codex = root["codex"].to<JsonObject>();
+  codex["source_state"] = "current";
+  codex["primary"] = 0;
+  codex["secondary"] = nullptr;
+  codex["reset_text"] = "RESET 5H 01:20";
+  codex["observation_age"] = "AGE 0M";
+  codex["reached_limit"] = nullptr;
+  codex["error_code"] = "";
+  JsonObject diagnostics = root["diagnostics"].to<JsonObject>();
+  diagnostics["link_status"] = "current";
+  diagnostics["herdr_status"] = "current";
+  diagnostics["codex_status"] = "current";
+  diagnostics["sync_age"] = "AGE 0M";
+  diagnostics["codex_age"] = "AGE 0M";
+  diagnostics["firmware_version"] = "phase1";
+  diagnostics["protocol_version"] = 2;
+  diagnostics["bridge_version"] = "0.1.0";
+  diagnostics["device_suffix"] = "ABC123";
+  diagnostics["session_suffix"] = "DEF456";
+  diagnostics["revision_suffix"] = "000001";
+  diagnostics["error_code"] = "";
   return document;
 }
 
@@ -174,6 +195,38 @@ void test_snapshot_commit_keeps_visible_sync_cutout_hidden() {
   TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
   TEST_ASSERT_TRUE(projection.commitSnapshot(board));
   TEST_ASSERT_EQUAL_UINT32(0, g_sync_draw_count);
+}
+void test_committed_render_state_exposes_one_codex_and_diagnostics_view() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const RenderState state = projection.renderState(0);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(CodexSourceState::Current), static_cast<int>(state.codex.source_state));
+  TEST_ASSERT_EQUAL_INT(0, state.codex.primary);
+  TEST_ASSERT_EQUAL_INT(-1, state.codex.secondary);
+  TEST_ASSERT_EQUAL_STRING("RESET 5H 01:20", state.codex.reset_text);
+  TEST_ASSERT_EQUAL_STRING("current", state.diagnostics.codex_status);
+  TEST_ASSERT_EQUAL_STRING("phase1", state.diagnostics.firmware_version);
+  TEST_ASSERT_EQUAL_UINT8(2, state.diagnostics.protocol_version);
+  TEST_ASSERT_EQUAL_STRING("ABC123", state.diagnostics.device_suffix);
+}
+
+void test_rejected_diagnostics_preserve_committed_generation_and_binding() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument first = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(first.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+  JsonDocument rejected = snapshot_document(2);
+  rejected["diagnostics"]["protocol_version"] = 1;
+  TEST_ASSERT_FALSE(projection.stageSnapshot(rejected.as<JsonObjectConst>()));
+  const RenderState state = projection.renderState(0);
+  TEST_ASSERT_EQUAL_UINT32(1, state.diagnostics.protocol_version == 2 ? 1 : 0);
+  TEST_ASSERT_EQUAL_STRING("phase1", state.diagnostics.firmware_version);
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
 }
 
 // --- Theme seam ------------------------------------------------------------
@@ -1024,6 +1077,8 @@ int runAllTests() {
   RUN_TEST(test_null_panel_fails_closed);
   RUN_TEST(test_generation_replacement_clears_feedback);
   RUN_TEST(test_snapshot_commit_keeps_visible_sync_cutout_hidden);
+  RUN_TEST(test_committed_render_state_exposes_one_codex_and_diagnostics_view);
+  RUN_TEST(test_rejected_diagnostics_preserve_committed_generation_and_binding);
   RUN_TEST(test_flush_ordering_one_push_per_panel_sequential);
   RUN_TEST(test_theme_dispatch_renders_through_injected_theme);
   RUN_TEST(test_signal_edge_renders_literal_state_words);
