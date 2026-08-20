@@ -17,7 +17,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .herdr import HerdrClient
 # Reuse the Phase 1 codec/session seam instead of introducing another transport
@@ -36,6 +36,9 @@ SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
 AGENT_STATES = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"}
 OUTCOMES = {"accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"}
 FOCUS_RESULT_GRACE_SECONDS = 1.0
+RECONNECT_INITIAL_DELAY_SECONDS = 0.5
+RECONNECT_MAX_DELAY_SECONDS = 8.0
+
 
 
 class V2ProtocolError(ValueError):
@@ -548,13 +551,24 @@ class PermanentBridge:
         "workspace.closed",
         "tab.closed",
     )
+    RECONNECT_INITIAL_DELAY_SECONDS = RECONNECT_INITIAL_DELAY_SECONDS
     STATUS_EVENT_TYPE = "pane.agent_status_changed"
+    RECONNECT_MAX_DELAY_SECONDS = RECONNECT_MAX_DELAY_SECONDS
 
-    def __init__(self, client: Any, usb: Any, projection: Any, *, contract_root: Path | None = None) -> None:
+    def __init__(
+        self,
+        client: Any,
+        usb: Any,
+        projection: Any,
+        *,
+        contract_root: Path | None = None,
+        clock: Callable[[], float] | None = None,
+    ) -> None:
         self.client = client
         self.usb = usb
         self.projection = projection
         self.contract_root = contract_root or _ROOT
+        self._clock = clock or time.monotonic
         self.ready = False
         self.last_error = ""
         self.focus = None
@@ -572,9 +586,11 @@ class PermanentBridge:
         self.last_focus: dict[str, Any] | None = None
         self._deferred_focus: list[dict[str, Any]] = []
         self._focus_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="herdr-focus")
-        self._focus_jobs: list[tuple[Future[Any], FocusIntent]] = []
+        self._focus_jobs: list[tuple[Future[Any], FocusIntent, int, str | None]] = []
+        self._focus_generation = 0
         self._focus_result_grace_until = 0.0
-
+        self._reconnect_delay = self.RECONNECT_INITIAL_DELAY_SECONDS
+        self._reconnect_due: float | None = None
 
     def _clear_usb_pending_focus(self) -> None:
         clear = getattr(self.usb, "clear_pending_focus", None)
@@ -584,6 +600,49 @@ class PermanentBridge:
     def _clear_pending_focus(self) -> None:
         self._clear_usb_pending_focus()
         self._deferred_focus.clear()
+
+    def _close_event_stream(self) -> None:
+        stream, self._event_stream = self._event_stream, None
+        self.intake_mode = "unclassified"
+        if stream is not None:
+            close = getattr(stream, "close", None)
+            if callable(close):
+                close()
+
+    def _fence_focus(self) -> None:
+        self._focus_generation += 1
+        for future, _intent, _generation, _session_id in self._focus_jobs:
+            future.cancel()
+        self._focus_jobs.clear()
+        self.focus = None
+        self._clear_pending_focus()
+
+    def _schedule_reconnect(self, now: float) -> None:
+        if self._reconnect_due is not None:
+            return
+        self._reconnect_due = now + self._reconnect_delay
+        self._reconnect_delay = min(
+            self._reconnect_delay * 2,
+            self.RECONNECT_MAX_DELAY_SECONDS,
+        )
+
+    def _disconnect(self, reason: str, now: float) -> None:
+        if self._reconnect_due is None:
+            self._fence_disconnected(reason)
+            try:
+                self.usb.close()
+            except Exception:
+                pass
+            self._schedule_reconnect(now)
+
+    def _fence_disconnected(self, reason: str) -> None:
+        self.last_error = reason
+        if self.ready:
+            self.ready_transitions += 1
+        self.ready = False
+        self._fence_focus()
+        self._close_event_stream()
+
 
     def _focus_matches_snapshot(self, frame: Mapping[str, Any], snapshot: Any) -> bool:
         payload = frame.get("payload")
@@ -608,7 +667,6 @@ class PermanentBridge:
         capacity = min(16, max(1, int(getattr(self.usb, "pending_focus_capacity", 16))))
         if len(self._deferred_focus) < capacity:
             self._deferred_focus.append(dict(frame))
-
     def _drain_deferred_focus(self, snapshot: Any) -> None:
         pending, self._deferred_focus = self._deferred_focus, []
         for frame in pending:
@@ -620,7 +678,8 @@ class PermanentBridge:
         if self.ready:
             self.ready_transitions += 1
         self.ready = False
-        self._clear_pending_focus()
+        self._fence_focus()
+        self._close_event_stream()
         try:
             stale = self.projection.invalidate(reason if reason in {"offline", "unavailable"} else "stale")
             if getattr(self.usb, "connected", False):
@@ -651,45 +710,96 @@ class PermanentBridge:
         self._drain_deferred_focus(snapshot)
         return snapshot
 
-    def _publish_refresh(self) -> Any:
+    def _publish_refresh(self, *, force: bool = False) -> Any:
         before = getattr(self.projection, "snapshot_revision", 0)
         snapshot = self.projection.bootstrap(self.client)
-        if getattr(snapshot, "snapshot_revision", before) == before:
+        if not force and getattr(snapshot, "snapshot_revision", before) == before:
             return snapshot
         return self._publish_snapshot(snapshot)
+
+    def _configure_runtime(self, snapshot: Any) -> None:
+        from .focus import FocusExecutor
+
+        subscriptions = [{"type": event_type} for event_type in self.GLOBAL_EVENT_TYPES]
+        status_panes = {
+            entry.identity.pane_id
+            for entry in snapshot.entries
+            if entry.identity is not None and entry.identity.pane_id
+        }
+        subscriptions.extend(
+            {"type": self.STATUS_EVENT_TYPE, "pane_id": pane_id}
+            for pane_id in sorted(status_panes)
+        )
+        self._close_event_stream()
+        stream_factory = getattr(self.client, "event_stream_factory", None)
+        if callable(stream_factory):
+            self._event_stream = stream_factory()
+        else:
+            self._event_stream = getattr(self.client, "event_stream", None)
+        if self._event_stream is not None:
+            probe = getattr(self._event_stream, "probe", None)
+            if callable(probe):
+                self.intake_mode = probe(deadline_seconds=min(5.0, getattr(self.client, "timeout", 1.0)))
+            else:
+                self.client.subscribe(subscriptions=subscriptions)
+                self.intake_mode = "poll"
+        elif isinstance(self.client, HerdrClient) and getattr(self.client, "_requester", None) is None:
+            from .herdr import HerdrEventStream
+
+            self._event_stream = HerdrEventStream(self.client, subscriptions)
+            self.intake_mode = self._event_stream.probe(deadline_seconds=min(5.0, self.client.timeout))
+        else:
+            self.client.subscribe(subscriptions=subscriptions)
+            self.intake_mode = "poll"
+        if self.intake_mode == "push" and self._event_stream is not None and self._event_stream.typed_event is not None:
+            self._dirty = True
+            self.invalidation_count += 1
+        self.focus = FocusExecutor(
+            self.client,
+            self.projection,
+            device_session=getattr(self.usb, "session_id", None),
+        )
+
+    def _rebuild_after_connect(self, *, force_publish: bool) -> Any:
+        if getattr(getattr(self.projection, "current", None), "source_status", None) != "current":
+            self.projection.current = None
+        snapshot = self.projection.bootstrap(self.client)
+        self._configure_runtime(snapshot)
+        return self._publish_snapshot(snapshot) if force_publish else snapshot
+
+    def _try_reconnect(self, now: float) -> bool:
+        if getattr(self.usb, "connected", False):
+            return False
+        if self._reconnect_due is None:
+            self._disconnect("offline", now)
+        if self._reconnect_due is None or now < self._reconnect_due:
+            return False
+        self._reconnect_due = None
+        try:
+            self.usb.connect()
+            self._rebuild_after_connect(force_publish=True)
+        except Exception as exc:
+            self._fence_disconnected("offline" if "socket" in str(exc).lower() else "unavailable")
+            try:
+                self.usb.close()
+            except Exception:
+                pass
+            self._schedule_reconnect(now)
+            return False
+        self._reconnect_delay = self.RECONNECT_INITIAL_DELAY_SECONDS
+        self._reconnect_due = None
+        return True
 
     def bootstrap(self) -> Any:
         self._clear_pending_focus()
         verify_contract_inputs(self.contract_root)
-        from .focus import FocusExecutor
         try:
             before = getattr(self.projection, "snapshot_revision", 0)
             snapshot = self.projection.bootstrap(self.client)
             self.usb.connect()
+            self._configure_runtime(snapshot)
             if getattr(snapshot, "snapshot_revision", before) != before:
                 self._publish_snapshot(snapshot)
-            subscriptions = [{"type": event_type} for event_type in self.GLOBAL_EVENT_TYPES]
-            status_panes = {
-                entry.identity.pane_id
-                for entry in snapshot.entries
-                if entry.identity is not None and entry.identity.pane_id
-            }
-            subscriptions.extend(
-                {"type": self.STATUS_EVENT_TYPE, "pane_id": pane_id}
-                for pane_id in sorted(status_panes)
-            )
-            self._event_stream = getattr(self.client, "event_stream", None)
-            if self._event_stream is None and isinstance(self.client, HerdrClient) and getattr(self.client, "_requester", None) is None:
-                from .herdr import HerdrEventStream
-                self._event_stream = HerdrEventStream(self.client, subscriptions)
-                self.intake_mode = self._event_stream.probe(deadline_seconds=min(5.0, self.client.timeout))
-            else:
-                self.client.subscribe(subscriptions=subscriptions)
-                self.intake_mode = "poll"
-            if self.intake_mode == "push" and self._event_stream is not None and self._event_stream.typed_event is not None:
-                self._dirty = True
-                self.invalidation_count += 1
-            self.focus = FocusExecutor(self.client, self.projection, device_session=getattr(self.usb, "session_id", None))
             return snapshot
         except Exception as exc:
             self._mark_unavailable("offline" if "socket" in str(exc).lower() else "unavailable")
@@ -733,7 +843,23 @@ class PermanentBridge:
             incoming = canonical
         return FocusIntent(intent_payload["action_id"], incoming)
 
-    def _finish_focus(self, intent: FocusIntent, outcome: Any) -> Any:
+    def _finish_focus(
+        self,
+        intent: FocusIntent,
+        outcome: Any,
+        *,
+        generation: int | None = None,
+        session_id: str | None = None,
+    ) -> Any:
+        if (
+            generation is not None
+            and (
+                generation != self._focus_generation
+                or session_id != getattr(self.usb, "session_id", None)
+                or not self.ready
+            )
+        ):
+            return None
         result = _wire_focus_result(intent, outcome)
         self.last_focus = {
             "status": getattr(outcome, "status", "failed"),
@@ -743,7 +869,7 @@ class PermanentBridge:
             "snapshot_revision": intent.binding.snapshot_revision,
         }
         self.usb.send_focus_result(result.as_payload())
-        self._focus_result_grace_until = time.monotonic() + FOCUS_RESULT_GRACE_SECONDS
+        self._focus_result_grace_until = self._clock() + FOCUS_RESULT_GRACE_SECONDS
         if outcome.status == "source_revision_changed":
             if self._focus_jobs:
                 self._dirty = True
@@ -751,18 +877,26 @@ class PermanentBridge:
                 self._publish_refresh()
         return outcome
 
-    def _execute_focus(self, intent: FocusIntent) -> Any:
+    def _execute_focus(self, intent: FocusIntent, executor: Any | None = None) -> Any:
         from .focus import FocusOutcome
         try:
-            assert self.focus is not None
-            return self.focus.execute(intent)
+            target = executor if executor is not None else self.focus
+            assert target is not None
+            return target.execute(intent)
         except Exception as exc:
             return FocusOutcome("failed", intent.action_id, str(exc)[:160] or "focus worker failed")
 
+
     def _drain_focus_jobs(self) -> None:
         while self._focus_jobs and self._focus_jobs[0][0].done():
-            future, intent = self._focus_jobs.pop(0)
-            self._finish_focus(intent, future.result())
+            future, intent, generation, session_id = self._focus_jobs.pop(0)
+            if (
+                generation != self._focus_generation
+                or session_id != getattr(self.usb, "session_id", None)
+                or not self.ready
+            ):
+                continue
+            self._finish_focus(intent, future.result(), generation=generation, session_id=session_id)
 
     def _queue_focus_frame(self, frame: Mapping[str, Any]) -> bool:
         intent = self._focus_intent_from_frame(frame)
@@ -771,7 +905,17 @@ class PermanentBridge:
         capacity = max(1, int(getattr(self.usb, "pending_focus_capacity", 16)))
         if len(self._focus_jobs) >= capacity:
             return False
-        self._focus_jobs.append((self._focus_pool.submit(self._execute_focus, intent), intent))
+        generation = self._focus_generation
+        session_id = getattr(self.usb, "session_id", None)
+        executor = self.focus
+        self._focus_jobs.append(
+            (
+                self._focus_pool.submit(self._execute_focus, intent, executor),
+                intent,
+                generation,
+                session_id,
+            )
+        )
         return True
 
     def handle_frame(self, frame: Mapping[str, Any]) -> Any:
@@ -798,7 +942,7 @@ class PermanentBridge:
         try:
             return self._publish_refresh()
         except Exception as exc:
-            self._mark_unavailable("offline" if "socket" in str(exc).lower() else "stale")
+            self._disconnect("offline" if "socket" in str(exc).lower() else "stale", now)
             return None
         finally:
             self._refresh_active = False
@@ -835,17 +979,19 @@ class PermanentBridge:
                         self._dirty = True
 
     def run_once(self) -> Any:
-        now = time.monotonic()
+        now = self._clock()
+        if not getattr(self.usb, "connected", False):
+            self._try_reconnect(now)
+            return None
         self._drain_focus_jobs()
         self._consume_events(now)
-        if getattr(self.usb, "connected", False):
-            try:
-                frame = self.usb.poll()
-                if frame is not None and frame.get("type") == "focus_intent":
-                    self._queue_focus_frame(frame)
-            except Exception:
-                self._mark_unavailable("offline")
-                return None
+        try:
+            frame = self.usb.poll()
+            if frame is not None and frame.get("type") == "focus_intent":
+                self._queue_focus_frame(frame)
+        except Exception:
+            self._disconnect("offline", now)
+            return None
         self._drain_focus_jobs()
         return self._refresh_if_dirty(now)
 

@@ -95,6 +95,69 @@ class FakeUsb:
         self.connected = False
 
 
+class ManualClock:
+    def __init__(self) -> None:
+        self.value = 0.0
+
+    def __call__(self) -> float:
+        return self.value
+
+    def advance(self, seconds: float) -> None:
+        self.value += seconds
+
+
+class RecoveringUsb(FakeUsb):
+    def __init__(self, *, unavailable_attempts: int = 0):
+        super().__init__()
+        self.session_id = "session-0"
+        self.connect_attempts = 0
+        self.unavailable_attempts = unavailable_attempts
+        self.fail_poll = False
+        self.connect_calls: list[str] = []
+        self.poll_calls = 0
+        self.close_calls = 0
+
+    def connect(self):
+        self.connect_attempts += 1
+        self.connect_calls.append(self.session_id)
+        if self.unavailable_attempts:
+            self.unavailable_attempts -= 1
+            self.connected = False
+            raise RuntimeError("CDC endpoint has not re-enumerated")
+        self.session_id = f"session-{self.connect_attempts}"
+        self.connected = True
+        return {"hello": {"device_id": "paired"}}
+
+    def poll(self):
+        self.poll_calls += 1
+        if self.fail_poll:
+            self.fail_poll = False
+            raise RuntimeError("stale descriptor")
+        return None
+
+    def close(self):
+        self.close_calls += 1
+        super().close()
+
+
+class RecordingEventStream:
+    def __init__(self):
+        self.mode = "push"
+        self.typed_event = None
+        self.close_calls = 0
+        self.probe_calls = 0
+
+    def close(self):
+        self.close_calls += 1
+        self.mode = "closed"
+
+    def probe(self, **_kwargs):
+        self.probe_calls += 1
+        self.mode = "push"
+        return self.mode
+
+    def poll(self):
+        return None
 class PluginLifecycleTests(unittest.TestCase):
     def test_manifest_is_startup_only_and_guard_is_flock_based(self):
         manifest = tomllib.loads((ROOT / "host/herdr_keypad/herdr-plugin.toml").read_text())
@@ -298,6 +361,132 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertEqual(fresh_outcome.status, "accepted")
         self.assertEqual(usb.results[-1]["outcome"], "accepted")
         self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
+    def test_alive_bridge_reconnects_and_acks_complete_snapshot_before_ready(self):
+        clock = ManualClock()
+        fake = FakeHerdr()
+        usb = RecoveringUsb()
+        bridge = PermanentBridge(
+            HerdrClient(requester=fake.request),
+            usb,
+            InboxProjection(host_epoch="epoch-fixed"),
+        )
+        bridge._clock = clock
+        bridge.bootstrap()
+        old_session = usb.session_id
+        old_epoch = bridge.projection.current.host_epoch
+        old_revision = bridge.projection.current.snapshot_revision
+        usb.fail_poll = True
+
+        bridge.run_once()
+        self.assertFalse(bridge.ready)
+        self.assertFalse(usb.connected)
+        self.assertEqual(usb.connect_attempts, 1)
+
+        clock.advance(PermanentBridge.RECONNECT_INITIAL_DELAY_SECONDS)
+        bridge.run_once()
+        self.assertTrue(bridge.ready)
+        self.assertTrue(usb.connected)
+        self.assertNotEqual(usb.session_id, old_session)
+        self.assertEqual(bridge.projection.current.snapshot_revision, old_revision)
+        self.assertEqual(bridge.projection.current.host_epoch, old_epoch)
+        self.assertEqual([agent["slot"] for agent in usb.published[-1]["agents"]], [0, 1, 2])
+        self.assertEqual(usb.published[-1]["host_epoch"], old_epoch)
+        self.assertEqual(
+            usb.published[-1]["snapshot_revision"],
+            bridge.projection.current.snapshot_revision,
+        )
+
+        binding = bridge.projection.binding(0)
+        payload = {
+            "action_id": "fresh-after-recovery",
+            "host_epoch": binding.host_epoch,
+            "snapshot_revision": binding.snapshot_revision,
+            "slot": binding.slot,
+            "entry_id": binding.entry_id,
+            **binding.identity.as_payload(),
+        }
+        outcome = bridge.handle_frame(protocol.new_v2_frame("focus_intent", "boot", usb.session_id, 1, payload))
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
+
+    def test_recovery_rebuilds_event_stream_and_discards_old_focus_intake(self):
+        clock = ManualClock()
+        fake = FakeHerdr()
+        streams: list[RecordingEventStream] = []
+
+        def make_stream():
+            stream = RecordingEventStream()
+            streams.append(stream)
+            return stream
+
+        client = HerdrClient(requester=fake.request)
+        client.event_stream_factory = make_stream
+        usb = RecoveringUsb()
+        bridge = PermanentBridge(client, usb, InboxProjection(host_epoch="epoch-fixed"), clock=clock)
+        bridge.bootstrap()
+        self.assertEqual(len(streams), 1)
+        binding = bridge.projection.binding(0)
+        payload = {
+            "action_id": "stale-before-disconnect",
+            "host_epoch": binding.host_epoch,
+            "snapshot_revision": binding.snapshot_revision,
+            "slot": binding.slot,
+            "entry_id": binding.entry_id,
+            **binding.identity.as_payload(),
+        }
+        bridge.ready = False
+        bridge.handle_frame(protocol.new_v2_frame("focus_intent", "boot", usb.session_id, 1, payload))
+        self.assertEqual(len(bridge._deferred_focus), 1)
+
+        usb.fail_poll = True
+        bridge.ready = True
+        bridge.run_once()
+        self.assertEqual(streams[0].close_calls, 1)
+        self.assertEqual(bridge._deferred_focus, [])
+
+        clock.advance(PermanentBridge.RECONNECT_INITIAL_DELAY_SECONDS)
+        bridge.run_once()
+        self.assertEqual(len(streams), 2)
+        self.assertGreaterEqual(streams[1].probe_calls, 1)
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 0)
+
+
+    def test_usb_reconnect_backoff_is_single_attempt_and_capped(self):
+        clock = ManualClock()
+        usb = RecoveringUsb()
+        bridge = PermanentBridge(
+            HerdrClient(requester=FakeHerdr().request),
+            usb,
+            InboxProjection(host_epoch="epoch-fixed"),
+        )
+        bridge._clock = clock
+        bridge.bootstrap()
+        usb.fail_poll = True
+        usb.unavailable_attempts = 2
+        bridge.run_once()
+
+        initial_delay = 0.5
+        clock.advance(initial_delay - 0.001)
+        bridge.run_once()
+        self.assertEqual(usb.connect_attempts, 1)
+        clock.advance(0.001)
+        bridge.run_once()
+        self.assertEqual(usb.connect_attempts, 2)
+        bridge.run_once()
+        self.assertEqual(usb.connect_attempts, 2)
+        clock.advance(initial_delay * 2)
+        bridge.run_once()
+        self.assertEqual(usb.connect_attempts, 3)
+        self.assertFalse(bridge.ready)
+
+        clock.advance(initial_delay * 4)
+        bridge.run_once()
+        self.assertEqual(usb.connect_attempts, 4)
+        self.assertTrue(bridge.ready)
+        self.assertEqual(bridge._reconnect_delay, initial_delay)
+        self.assertIsNone(bridge._reconnect_due)
+
+
 
 
 class ExactUsbSessionTests(unittest.TestCase):
@@ -310,6 +499,38 @@ class ExactUsbSessionTests(unittest.TestCase):
         manufacturer = "Espressif"
         product = "USB JTAG"
         interface = "if00"
+    def test_reenumerated_usb_keeps_exact_stored_device_identity(self):
+        class Port:
+            def __init__(self, device: str):
+                self.device = device
+                self.vid = 0x303A
+                self.pid = 0x1001
+                self.serial_number = "usb-serial"
+                self.location = device
+                self.manufacturer = "Espressif"
+                self.product = "USB JTAG"
+                self.interface = "if00"
+
+        with tempfile.TemporaryDirectory() as directory:
+            binding_path = Path(directory) / "binding.json"
+            PairingStore(binding_path).save(PairingBinding("paired-device", 1, "phase1-bringup"))
+            raws = {
+                "/dev/ttyACM-wrong": self.Raw(),
+                "/dev/ttyACM-reenumerated": self.Raw(),
+            }
+            raws["/dev/ttyACM-wrong"].device_id = "lookalike"
+            raws["/dev/ttyACM-reenumerated"].device_id = "paired-device"
+            session = UsbDeviceSession(
+                binding_path,
+                ports=[Port("/dev/ttyACM-wrong"), Port("/dev/ttyACM-reenumerated")],
+                opener=lambda candidate: raws[candidate.device],
+                timeout=0.1,
+            )
+            hello = session.connect()
+            self.assertEqual(hello["hello"]["device_id"], "paired-device")
+            self.assertEqual(session.candidate.device, "/dev/ttyACM-reenumerated")
+            self.assertTrue(raws["/dev/ttyACM-wrong"].closed)
+            session.close()
 
     class Raw:
         def __init__(self):
@@ -323,7 +544,7 @@ class ExactUsbSessionTests(unittest.TestCase):
             parsed = protocol.classify_line(data)
             if parsed.accepted and parsed.frame and parsed.frame["type"] == "hello":
                 request = parsed.frame
-                payload = {"accepted": True, "device_id": "paired-device", "firmware": "phase1-bringup", "protocol": 1}
+                payload = {"accepted": True, "device_id": getattr(self, "device_id", "paired-device"), "firmware": "phase1-bringup", "protocol": 1}
                 self.inbound.append(protocol.encode_frame(protocol.new_frame("hello_ack", "device-boot", request["session_id"], 1, payload, request["seq"])))
             else:
                 parsed_v2 = protocol.classify_v2_line(data)
