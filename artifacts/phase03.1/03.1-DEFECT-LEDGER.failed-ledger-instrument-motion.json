@@ -1,0 +1,24 @@
+{
+  "defects": [
+    {
+      "after_observation_ids": [],
+      "before_observation_ids": [
+        "matrix-signal-edge-rail-echo-1787314598541"
+      ],
+      "defect_id": "defect-81e0968066a22224",
+      "deployment_id": "1c1b05584799b129edc34e6f451a05b1391409e77ccd3a2cda286ff5d73f2ded",
+      "deployment_lock_sha256": "170dea28d665b62d244aa53147d2053f4de681cc267a1c7d127d047d7d1234a4",
+      "disposition": "blocking",
+      "logical_manifest_sha256": "31b2b6cc5dd3d059b76a724cdc0a95b29dd78e646533b2f614b33f95c7c71ada",
+      "reason": "typed physical result failed; acceptance remains blocked",
+      "row_id": "matrix-signal-edge-rail-echo",
+      "status": "open"
+    }
+  ],
+  "deployment_id": "1c1b05584799b129edc34e6f451a05b1391409e77ccd3a2cda286ff5d73f2ded",
+  "deployment_lock_sha256": "170dea28d665b62d244aa53147d2053f4de681cc267a1c7d127d047d7d1234a4",
+  "kind": "phase03.1-defect-ledger",
+  "logical_manifest_sha256": "31b2b6cc5dd3d059b76a724cdc0a95b29dd78e646533b2f614b33f95c7c71ada",
+  "schema_version": 1,
+  "status": "blocked"
+}

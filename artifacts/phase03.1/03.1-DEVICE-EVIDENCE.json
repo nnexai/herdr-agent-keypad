@@ -5,35 +5,35 @@
   },
   "deployment": {
     "binary_path": ".pio/build/selected-usb/firmware.bin",
-    "binary_sha256": "2c8dc7a30308f315d37d22645ec1406055fe6fd988b3ef167138dfdb24d12073",
-    "boot_id": "0000fccb0deabf8c-b35d3218",
-    "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-    "firmware_sha256": "2c8dc7a30308f315d37d22645ec1406055fe6fd988b3ef167138dfdb24d12073",
-    "fresh_boot_id": "0000fccb0deabf8c-b35d3218",
-    "fresh_session_id": "session-d567c0ac864276e2",
+    "binary_sha256": "6cc53735a272d356dc5243a2dc0eabaa4786b98cf28a3e8b34430ea5be4b8271",
+    "boot_id": "0000fccb0deabf8c-7d0e3e57",
+    "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+    "firmware_sha256": "6cc53735a272d356dc5243a2dc0eabaa4786b98cf28a3e8b34430ea5be4b8271",
+    "fresh_boot_id": "0000fccb0deabf8c-7d0e3e57",
+    "fresh_session_id": "session-9fb0c3edce100777",
     "hello_firmware": "phase1-bringup",
     "kind": "phase03.1-final-deployment",
-    "observed_at_unix_ms": 1787314973241,
+    "observed_at_unix_ms": 1787329583443,
     "pair_identity_digest": "9c17862634774f714a6304e206a77d8ac06de6df04df53e28584edfd6f351f06",
     "paired_device_id": "0000fccb0deabf8c",
     "platformio_environment": "selected-usb",
     "protocol_version": 1,
     "schema_version": 1,
-    "session_id": "session-d567c0ac864276e2",
+    "session_id": "session-9fb0c3edce100777",
     "upload_result": "pass",
     "usb_serial": "8C:BF:EA:0D:CB:FC"
   },
-  "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+  "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
   "deployment_transitions": [
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "from_boot_id": "0000fccb0deabf8c-b35d3218",
-      "from_session_id": "session-f4cf8d7470f6c18c",
-      "id": "transition-1787319322961307557",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "from_boot_id": "0000fccb0deabf8c-7d0e3e57",
+      "from_session_id": "session-a80b867247a22a2f",
+      "id": "transition-1787336784270784358",
       "kind": "explicit-reconnect-or-reset",
-      "publication_sha256": "8d449ad7838fab7ce2a0f668e82257915708243916d9fd8b39435fc518ce55b3",
-      "to_boot_id": "0000fccb0deabf8c-c3faf192",
-      "to_session_id": "session-aa26e5e3e0a4c22d"
+      "publication_sha256": "77c96463f02ac1f35d5e00a8b92f3d71ab0c3b771fb372866c949221eff9f2bb",
+      "to_boot_id": "0000fccb0deabf8c-3963e9c5",
+      "to_session_id": "session-54043e2c64ec517e"
     }
   ],
   "evidence_boundary": {
@@ -43,60 +43,115 @@
   },
   "exact_pair": {
     "device_id": "0000fccb0deabf8c",
-    "firmware_sha256": "2c8dc7a30308f315d37d22645ec1406055fe6fd988b3ef167138dfdb24d12073",
+    "firmware_sha256": "6cc53735a272d356dc5243a2dc0eabaa4786b98cf28a3e8b34430ea5be4b8271",
     "pair_identity_digest": "9c17862634774f714a6304e206a77d8ac06de6df04df53e28584edfd6f351f06",
     "protocol": 1
   },
   "kind": "phase03.1-device-evidence",
-  "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+  "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
   "machine_measurements": [
     {
       "data": {
         "metrics": {
+          "allocation_stable": 1,
+          "animation_duty_max_percent": 14,
+          "compose_flush_max_us": 107837,
+          "degraded_frames": 9663,
+          "first_encoder_response_us": 36247,
+          "first_press_response_us": 16250,
+          "frame_count": 9664,
+          "full_frames": 1,
+          "half_frames": 1,
           "largest_free_block": 8257524,
-          "max_display_flush_us": 140342,
-          "max_key_poll_gap_us": 48009,
-          "minimum_free_heap": 306644,
-          "parser_high_water": 232,
-          "queue_high_water": 1
+          "level_changes": 2,
+          "loop_wall_max_us": 124993,
+          "max_key_poll_gap_us": 47031,
+          "minimum_free_heap": 303356,
+          "parser_high_water": 1494,
+          "queue_high_water": 1,
+          "reveal_max_us": 109165,
+          "skipped_frames": 1320358,
+          "static_frames": 9662
         },
         "status": "pass"
       },
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
       "id": "measurement-preflight-metrics",
       "source": "machine"
     },
     {
       "data": {
         "metrics": {
+          "allocation_stable": 1,
+          "animation_duty_max_percent": 14,
+          "compose_flush_max_us": 107837,
+          "degraded_frames": 9663,
+          "first_encoder_response_us": 36247,
+          "first_press_response_us": 16250,
+          "frame_count": 9664,
+          "full_frames": 1,
+          "half_frames": 1,
           "largest_free_block": 8257524,
-          "max_display_flush_us": 140342,
-          "max_key_poll_gap_us": 125011,
-          "minimum_free_heap": 303272,
-          "parser_high_water": 1546,
-          "queue_high_water": 1
+          "level_changes": 2,
+          "loop_wall_max_us": 124993,
+          "max_key_poll_gap_us": 47031,
+          "minimum_free_heap": 303356,
+          "parser_high_water": 1494,
+          "queue_high_water": 1,
+          "reveal_max_us": 109165,
+          "skipped_frames": 6815325,
+          "static_frames": 9662
         },
         "status": "pass"
       },
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "id": "measurement-run-1787315102458467711",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "id": "measurement-run-1787336605219131564",
+      "source": "machine"
+    },
+    {
+      "data": {
+        "metrics": {
+          "allocation_stable": 1,
+          "animation_duty_max_percent": 14,
+          "compose_flush_max_us": 107837,
+          "degraded_frames": 9663,
+          "first_encoder_response_us": 36247,
+          "first_press_response_us": 16250,
+          "frame_count": 9664,
+          "full_frames": 1,
+          "half_frames": 1,
+          "largest_free_block": 8257524,
+          "level_changes": 2,
+          "loop_wall_max_us": 124993,
+          "max_key_poll_gap_us": 47031,
+          "minimum_free_heap": 303356,
+          "parser_high_water": 1494,
+          "queue_high_water": 1,
+          "reveal_max_us": 109167,
+          "skipped_frames": 6876657,
+          "static_frames": 9662
+        },
+        "status": "pass"
+      },
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "id": "measurement-run-1787336668788065067",
       "source": "machine"
     }
   ],
   "physical_observations": [
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "rail-echo",
       "id": "matrix-signal-edge-rail-echo",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-signal-edge-rail-echo"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787315177414,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621142,
         "physical_claims": true,
         "prompt": "Set THEME=SIGNAL EDGE and LEDS=RAIL ECHO. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -118,18 +173,18 @@
       "theme": "signal-edge"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "exception",
       "id": "matrix-signal-edge-exception",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-signal-edge-exception"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787315221766,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621155,
         "physical_claims": true,
         "prompt": "Set THEME=SIGNAL EDGE and LEDS=EXCEPTION. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -151,18 +206,18 @@
       "theme": "signal-edge"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "field-extension",
       "id": "matrix-signal-edge-field-extension",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-signal-edge-field-extension"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787315389389,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621158,
         "physical_claims": true,
         "prompt": "Set THEME=SIGNAL EDGE and LEDS=FIELD EXTENSION. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -184,18 +239,18 @@
       "theme": "signal-edge"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "meter-lamps",
       "id": "matrix-signal-edge-meter-lamps",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-signal-edge-meter-lamps"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787315539606,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621160,
         "physical_claims": true,
         "prompt": "Set THEME=SIGNAL EDGE and LEDS=METER LAMPS. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -217,18 +272,18 @@
       "theme": "signal-edge"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "rail-echo",
       "id": "matrix-ledger-rail-echo",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-ledger-rail-echo"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787315645254,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621163,
         "physical_claims": true,
         "prompt": "Set THEME=LEDGER and LEDS=RAIL ECHO. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -250,18 +305,18 @@
       "theme": "ledger"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "exception",
       "id": "matrix-ledger-exception",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-ledger-exception"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787315690411,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621165,
         "physical_claims": true,
         "prompt": "Set THEME=LEDGER and LEDS=EXCEPTION. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -283,18 +338,18 @@
       "theme": "ledger"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "field-extension",
       "id": "matrix-ledger-field-extension",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-ledger-field-extension"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787315768817,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621167,
         "physical_claims": true,
         "prompt": "Set THEME=LEDGER and LEDS=FIELD EXTENSION. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -316,18 +371,18 @@
       "theme": "ledger"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "meter-lamps",
       "id": "matrix-ledger-meter-lamps",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-ledger-meter-lamps"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787316999360,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621170,
         "physical_claims": true,
         "prompt": "Set THEME=LEDGER and LEDS=METER LAMPS. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -349,18 +404,18 @@
       "theme": "ledger"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "rail-echo",
       "id": "matrix-beacon-rail-echo",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-beacon-rail-echo"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787317260455,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621172,
         "physical_claims": true,
         "prompt": "Set THEME=BEACON and LEDS=RAIL ECHO. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -382,18 +437,18 @@
       "theme": "beacon"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "exception",
       "id": "matrix-beacon-exception",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-beacon-exception"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787318610744,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621175,
         "physical_claims": true,
         "prompt": "Set THEME=BEACON and LEDS=EXCEPTION. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -415,18 +470,18 @@
       "theme": "beacon"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "field-extension",
       "id": "matrix-beacon-field-extension",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-beacon-field-extension"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787318826366,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621177,
         "physical_claims": true,
         "prompt": "Set THEME=BEACON and LEDS=FIELD EXTENSION. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -448,18 +503,18 @@
       "theme": "beacon"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "meter-lamps",
       "id": "matrix-beacon-meter-lamps",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-beacon-meter-lamps"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787318882874,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621181,
         "physical_claims": true,
         "prompt": "Set THEME=BEACON and LEDS=METER LAMPS. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -481,18 +536,18 @@
       "theme": "beacon"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "rail-echo",
       "id": "matrix-instrument-rail-echo",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-instrument-rail-echo"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787318934508,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621184,
         "physical_claims": true,
         "prompt": "Set THEME=INSTRUMENT and LEDS=RAIL ECHO. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -514,18 +569,18 @@
       "theme": "instrument"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "exception",
       "id": "matrix-instrument-exception",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-instrument-exception"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787318977386,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621186,
         "physical_claims": true,
         "prompt": "Set THEME=INSTRUMENT and LEDS=EXCEPTION. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -547,18 +602,18 @@
       "theme": "instrument"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "field-extension",
       "id": "matrix-instrument-field-extension",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-instrument-field-extension"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319116968,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621189,
         "physical_claims": true,
         "prompt": "Set THEME=INSTRUMENT and LEDS=FIELD EXTENSION. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -580,18 +635,18 @@
       "theme": "instrument"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "meter-lamps",
       "id": "matrix-instrument-meter-lamps",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-matrix-instrument-meter-lamps"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319129509,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621191,
         "physical_claims": true,
         "prompt": "Set THEME=INSTRUMENT and LEDS=METER LAMPS. Exercise the complete bounded cell: ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; stale/offline and SYNC fences. Check exact orientation, 10% long text, brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete frames, immediate opaque focus only, no replay, and display/LED semantic alignment. Answer Y only for a physical pass, N for a visible defect, or R when the observation cannot be performed."
       },
@@ -613,18 +668,18 @@
       "theme": "instrument"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "stress-concurrent-herdr-codex",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-stress-concurrent-herdr-codex"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319269300,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621194,
         "physical_claims": true,
         "prompt": "With the guarded bridge live, cause simultaneous Herdr snapshot changes and Codex usage changes. Verify complete frames, no mixed generation, no remap, no input starvation, and exact focus identity."
       },
@@ -679,18 +734,18 @@
       "theme": "all"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "stress-stale-offline-recovery",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-stress-stale-offline-recovery"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319274773,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621196,
         "physical_claims": true,
         "prompt": "Exercise Herdr stale/offline and Codex stale/offline transitions, then restore fresh data. Verify immediate fences, no queued/replayed press, and complete recovery without optimistic success."
       },
@@ -745,18 +800,18 @@
       "theme": "all"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "stress-usb-reconnect",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-stress-usb-reconnect"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319281720,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621199,
         "physical_claims": true,
         "prompt": "Unplug/replug the USB data link once, then wait for the guarded bridge to republish. Verify all-panel SYNC, fresh hello/publication, and no stale action."
       },
@@ -811,18 +866,18 @@
       "theme": "all"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "stress-firmware-reset",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-stress-firmware-reset"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319290586,
+        "fresh_hello_session_id": "session-a80b867247a22a2f",
+        "observed_at_unix_ms": 1787336783037,
         "physical_claims": true,
         "prompt": "Use the normal firmware reset control. Verify all-panel SYNC through boot, fresh generation commit, unchanged deployment firmware/pair identity, and no focus replay."
       },
@@ -877,18 +932,18 @@
       "theme": "all"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "stress-generation-replacement",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-stress-generation-replacement"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319296467,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621203,
         "physical_claims": true,
         "prompt": "Replace a generation while an ordinary reveal and focus request are active. Verify the old generation is discarded, the new complete generation wins, and no old binding or press is replayed."
       },
@@ -943,18 +998,18 @@
       "theme": "all"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "stress-simultaneous-key-encoder",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-stress-simultaneous-key-encoder"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319303680,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621206,
         "physical_claims": true,
         "prompt": "Press direct keys 1-3 while turning/clicking the encoder on every menu page and animation state. Verify direct focus stays immediate and non-modal; menu cursor and preview remain causally correct."
       },
@@ -1009,18 +1064,18 @@
       "theme": "all"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "stress-resource-degradation",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-stress-resource-degradation"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319309939,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621208,
         "physical_claims": true,
         "prompt": "Exercise the busiest animation and update load. Verify measured Full\u2192Half\u2192Static degradation before budget violation, semantic frames retained, bounded queue, zero per-frame allocation, and no input starvation."
       },
@@ -1075,18 +1130,18 @@
       "theme": "all"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "backstop-long-text-10-percent",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-backstop-long-text-10-percent"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319315136,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621211,
         "physical_claims": true,
         "prompt": "At exact 10% brightness inspect every theme's longest title/discriminator, Codex reset/source/age, and ABOUT text. Verify 8 px metadata floor, ASCII ..., 4 px inset, no clipping, overlap, ticker, or bezel collision."
       },
@@ -1141,18 +1196,18 @@
       "theme": "all"
     },
     {
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
-      "deployment_lock_sha256": "d22f137250f1792e8491aedfc260dcc6a4fe4ddc61be6095479334e86cb4e5a7",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
       "grammar": "all",
       "id": "backstop-physical-quality",
-      "logical_manifest_sha256": "624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094",
+      "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
       "measurement_ids": [
         "measurement-backstop-physical-quality"
       ],
       "observation": {
         "answer": "Y",
-        "fresh_hello_session_id": "session-f4cf8d7470f6c18c",
-        "observed_at_unix_ms": 1787319321556,
+        "fresh_hello_session_id": "session-d4691ea5398064b7",
+        "observed_at_unix_ms": 1787336621213,
         "physical_claims": true,
         "prompt": "Inspect physical orientation, viewing angles, brightness/legibility, LED zones/alignment, blend artifacts, tearing, black flash, ghosting, smoothness, first press/encoder response, complete flush/reveal, cadence/duty, heap/block, queue, power method/headroom, and display/LED event alignment separately from machine framebuffer evidence."
       },
@@ -1209,40 +1264,40 @@
   ],
   "preflight": {
     "accepted": true,
-    "accepted_at_unix_ms": 1787315091693,
+    "accepted_at_unix_ms": 1787331110025,
     "final_publication": {
       "accepted": true,
-      "boot_id": "0000fccb0deabf8c-c3faf192",
-      "published_at_unix_ms": 1787319322922,
-      "receipt_sha256": "8d449ad7838fab7ce2a0f668e82257915708243916d9fd8b39435fc518ce55b3",
-      "session_id": "session-33230810f8f23957",
+      "boot_id": "0000fccb0deabf8c-3963e9c5",
+      "published_at_unix_ms": 1787336784266,
+      "receipt_sha256": "77c96463f02ac1f35d5e00a8b92f3d71ab0c3b771fb372866c949221eff9f2bb",
+      "session_id": "session-ee85384235f0042e",
       "snapshot_revision": 1
     },
     "guarded_publication": {
       "accepted": true,
-      "boot_id": "0000fccb0deabf8c-b35d3218",
-      "published_at_unix_ms": 1787315091680,
-      "receipt_sha256": "e62349e099ab96a6b896e4ec3d24c1204e3487817d62261ecea6d4a3fb5b4a87",
-      "session_id": "session-fd8c6d0e7b2a37fd",
+      "boot_id": "0000fccb0deabf8c-7d0e3e57",
+      "published_at_unix_ms": 1787331109984,
+      "receipt_sha256": "527000f32f44dc75ccd3d083fd24789736228a23eba8e3a52abc78a84d5ea2fa",
+      "session_id": "session-4e0ce45e4acfe255",
       "snapshot_revision": 1
     },
     "hello": {
-      "boot_id": "0000fccb0deabf8c-b35d3218",
+      "boot_id": "0000fccb0deabf8c-7d0e3e57",
       "device_id": "0000fccb0deabf8c",
       "firmware": "phase1-bringup",
       "protocol": 1,
-      "session_id": "session-117fb0827dcd129b"
+      "session_id": "session-da74017a40df5704"
     },
     "identity": {
-      "boot_id": "0000fccb0deabf8c-b35d3218",
-      "deployment_id": "875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e",
+      "boot_id": "0000fccb0deabf8c-7d0e3e57",
+      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
       "device_id": "0000fccb0deabf8c",
-      "publication_session_id": "session-fd8c6d0e7b2a37fd",
+      "publication_session_id": "session-4e0ce45e4acfe255",
       "publication_snapshot_revision": 1,
-      "session_id": "session-117fb0827dcd129b"
+      "session_id": "session-da74017a40df5704"
     }
   },
-  "run_id": "phase31-875577d8ec63c091",
+  "run_id": "phase31-d5b30141f12cd368",
   "schema_version": 1,
   "status": "pass"
 }
