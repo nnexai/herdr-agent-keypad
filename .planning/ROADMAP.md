@@ -203,7 +203,7 @@ Plans:
   4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
   5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
 
-**Plans:** 7/9 plans executed
+**Plans:** 8/9 plans executed
 
 Plans:
 
@@ -237,7 +237,7 @@ Plans:
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 03-08-PLAN.md — Complete the acceptance matrix, contact sheets, and strict pending exact-device evidence.
+- [x] 03-08-PLAN.md — Complete the acceptance matrix, contact sheets, and strict pending exact-device evidence.
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
