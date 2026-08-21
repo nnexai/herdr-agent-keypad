@@ -35,17 +35,11 @@ uint16_t hue(TileState state) {
   }
 }
 
-bool addFeedback(const RenderState& state, const LedEvents& events,
-                 const RenderState::Slot& tile, uint8_t slot,
-                 uint32_t now_us, LedSegment* out, size_t& count,
-                 size_t capacity) {
+bool addFeedback(const RenderState::Slot& tile, uint8_t slot,
+                 LedSegment* out, size_t& count, size_t capacity) {
   const uint16_t key = kKeyMasks[slot];
   if (tile.feedback == TileFeedback::Pending) {
-    const LedSemanticEvent event = ledSemanticEvent(state, events);
-    const uint8_t step =
-        (event == LedSemanticEvent::Press || event == LedSemanticEvent::Pending)
-            ? static_cast<uint8_t>(ledSemanticPhase(state, events) % 3U)
-            : static_cast<uint8_t>((now_us / 300000UL) % 3U);
+    const uint8_t step = static_cast<uint8_t>(tile.feedback_phase % 3U);
     const uint16_t pending_mask =
         static_cast<uint16_t>(1U << (slot * 3U + step));
     add(out, count, capacity, pending_mask, 185, 100, 45);
@@ -64,7 +58,7 @@ bool addFeedback(const RenderState& state, const LedEvents& events,
 
 class FieldExtension final : public LedGrammar {
  public:
-  size_t frame(const RenderState& state, const LedEvents& events, uint32_t now_us,
+  size_t frame(const RenderState& state, const LedEvents& events, uint32_t /*now_us*/,
                LedSegment* out, size_t capacity) const override {
     size_t count = 0;
     const bool health = ledPresentationUnhealthy(state);
@@ -72,15 +66,14 @@ class FieldExtension final : public LedGrammar {
       const uint8_t brightness = state.blocked_pulse_high ? 10 : 3;
       add(out, count, capacity, kHealthPair, 0, 100, brightness);
       for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
-        addFeedback(state, events, state.slots[slot], slot, now_us, out,
-                    count, capacity);
+        addFeedback(state.slots[slot], slot, out, count, capacity);
       }
       return count;
     }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
       const RenderState::Slot& tile = state.slots[slot];
       const uint16_t key = kKeyMasks[slot];
-      if (addFeedback(state, events, tile, slot, now_us, out, count, capacity)) continue;
+      if (addFeedback(tile, slot, out, count, capacity)) continue;
       const uint8_t brightness = level(tile.state, state.blocked_pulse_high);
       if (brightness == 0) continue;
       const uint16_t color = hue(tile.state);

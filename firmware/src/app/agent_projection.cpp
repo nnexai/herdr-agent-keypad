@@ -668,6 +668,7 @@ bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
   out.since = tile.since;
   out.age = tile.age;
   out.state = tile.state;
+  out.feedback_phase = feedback_phase_[slot];
   out.press_impulse = press_impulse_[slot];
   state.codex.source_state = strcmp(generation.codex_source_state, "current") == 0 ? CodexSourceState::Current :
                              strcmp(generation.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
@@ -873,7 +874,7 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
     output.since = tile.since;
     output.age = tile.age;
     output.state = tile.state;
-    output.feedback = feedback_[slot];
+    output.feedback_phase = feedback_phase_[slot];
     output.press_impulse = press_impulse_[slot];
   }
   state.codex.source_state = strcmp(committed_generation_.codex_source_state, "current") == 0 ? CodexSourceState::Current :

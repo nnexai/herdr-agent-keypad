@@ -393,10 +393,26 @@ void test_pending_feedback_advances_at_bounded_300ms_steps() {
   const uint32_t captured_at = micros();
   projection.renderFeedback(board, 0);  // consume the one-frame impulse
   resetLog();
+  RenderState pending_state = projection.renderState(captured_at);
+  pending_state.ambient_phase = 0;
+  LedSegment segments[kLedGrammarMaxSegments]{};
+  const size_t count = fieldExtensionGrammar().frame(
+      pending_state, LedEvents(), captured_at, segments,
+      kLedGrammarMaxSegments);
+  TEST_ASSERT_TRUE(count > 0);
+  TEST_ASSERT_EQUAL_UINT16(1U, segments[0].mask);
+  resetLog();
   projection.tick(board, captured_at + AgentProjection::kPendingStepUs);
   TEST_ASSERT_TRUE(countPushes() > 0);
   TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Pending),
                     static_cast<int>(projection.feedback(0)));
+  pending_state = projection.renderState(captured_at);
+  pending_state.ambient_phase = 0;
+  const size_t stepped_count = fieldExtensionGrammar().frame(
+      pending_state, LedEvents(), captured_at, segments,
+      kLedGrammarMaxSegments);
+  TEST_ASSERT_TRUE(stepped_count > 0);
+  TEST_ASSERT_EQUAL_UINT16(1U << 1, segments[0].mask);
 }
 
 
