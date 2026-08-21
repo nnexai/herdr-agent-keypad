@@ -356,6 +356,49 @@ void test_signal_edge_renders_feedback_words() {
   TEST_ASSERT_TRUE(logContainsText("REJECTED"));
 }
 
+void test_press_impulse_precedes_pending_render() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "impulse-action", intent.to<JsonObject>()));
+
+  resetLog();
+  projection.renderFeedback(board, 0);
+  // The first complete frame acknowledges physical detection with a localized
+  // cue, not an optimistic PENDING or FOCUSED result.
+  TEST_ASSERT_FALSE(logContainsText("PENDING"));
+  TEST_ASSERT_FALSE(logContainsText("FOCUSED"));
+  TEST_ASSERT_TRUE(logContainsAny("fillRect:0:0:16:128"));
+
+  resetLog();
+  projection.renderFeedback(board, 0);
+  TEST_ASSERT_TRUE(logContainsText("PENDING"));
+  TEST_ASSERT_FALSE(logContainsText("FOCUSED"));
+}
+
+void test_pending_feedback_advances_at_bounded_300ms_steps() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "cadence-action", intent.to<JsonObject>()));
+  projection.renderFeedback(board, 0);  // consume the one-frame impulse
+
+  resetLog();
+  projection.tick(board, 299999UL);
+  TEST_ASSERT_EQUAL_UINT32(0, countPushes());
+  projection.tick(board, 300000UL);
+  TEST_ASSERT_TRUE(countPushes() > 0);
+  TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Pending),
+                    static_cast<int>(projection.feedback(0)));
+}
+
+
 // --- Per-panel reveal fencing (R-2) ----------------------------------------
 
 void test_reveal_window_press_is_inert() {
@@ -2572,6 +2615,8 @@ int runAllTests() {
   RUN_TEST(test_half_samples_every_second_phase_and_static_keeps_semantics);
   RUN_TEST(test_signal_edge_transition_changes_only_rail_accent);
   RUN_TEST(test_signal_edge_and_ledger_phase_motion_is_distinct_and_semantically_fixed);
+  RUN_TEST(test_press_impulse_precedes_pending_render);
+  RUN_TEST(test_pending_feedback_advances_at_bounded_300ms_steps);
   RUN_TEST(test_signal_edge_and_ledger_fences_empty_and_codex_are_phase_static);
   RUN_TEST(test_render_state_transition_metadata_is_presentation_only);
   RUN_TEST(test_urgent_generation_cuts_transition_and_fences_bindings);
