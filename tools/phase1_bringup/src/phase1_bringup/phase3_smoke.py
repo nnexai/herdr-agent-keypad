@@ -270,6 +270,47 @@ PHASE31_HARD_CEILINGS = {
     "success_hold_us": 900_000,
     "animation_duty_percent": 30,
 }
+PHASE31_NONZERO_MACHINE_METRICS = (
+    "max_key_poll_gap_us",
+    "minimum_free_heap",
+    "largest_free_block",
+    "parser_high_water",
+    "queue_high_water",
+    "loop_wall_max_us",
+    "compose_flush_max_us",
+    "frame_count",
+    "full_frames",
+    "reveal_max_us",
+    "first_press_response_us",
+    "first_encoder_response_us",
+    "animation_duty_max_percent",
+)
+
+
+def _validate_phase31_machine_metrics(metrics: Mapping[str, int]) -> None:
+    if metrics["allocation_stable"] != 1:
+        raise ValueError("exact-device allocation stability is not passing")
+    if any(metrics[name] <= 0 for name in PHASE31_NONZERO_MACHINE_METRICS):
+        raise ValueError("exact-device metrics contain a missing or zero observation")
+    frame_levels = metrics["full_frames"] + metrics["half_frames"] + metrics["static_frames"]
+    if frame_levels != metrics["frame_count"]:
+        raise ValueError("animation cadence counters do not reconcile with frame_count")
+    if metrics["degraded_frames"] > metrics["frame_count"]:
+        raise ValueError("degraded frame count exceeds frame_count")
+    ceilings = (
+        ("compose_flush_max_us", PHASE31_HARD_CEILINGS["ordinary_transition_us"]),
+        ("reveal_max_us", PHASE31_HARD_CEILINGS["recovery_reveal_us"]),
+        ("first_press_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),
+        ("first_encoder_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),
+        ("animation_duty_max_percent", PHASE31_HARD_CEILINGS["animation_duty_percent"]),
+    )
+    violations = [
+        f"{name}={metrics[name]}>{ceiling}"
+        for name, ceiling in ceilings
+        if metrics[name] > ceiling
+    ]
+    if violations:
+        raise ValueError("exact-device metric ceiling violation: " + ", ".join(violations))
 
 
 def _phase31_metrics(payload: Mapping[str, Any]) -> dict[str, int]:
@@ -1518,16 +1559,11 @@ def phase31_guarded_bridge(
 def _phase31_machine_metrics(session: Any) -> dict[str, Any]:
     try:
         frame, _ = session.request("metrics", {"request": "proof"}, {"metrics_ack"})
-        payload = dict(frame["payload"])
+        metrics = _phase31_metrics(frame["payload"])
+        _validate_phase31_machine_metrics(metrics)
     except Exception as exc:
         return {"status": "unavailable", "error": str(exc)[:160]}
-    required = (
-        "max_display_flush_us", "minimum_free_heap", "largest_free_block",
-        "max_key_poll_gap_us", "parser_high_water", "queue_high_water",
-    )
-    if any(not isinstance(payload.get(name), int) or payload[name] < 0 for name in required):
-        return {"status": "unavailable", "error": "metrics payload is incomplete"}
-    return {"status": "pass", "metrics": {name: payload[name] for name in required}}
+    return {"status": "pass", "metrics": metrics}
 
 
 def _phase31_make_evidence(
@@ -2103,11 +2139,24 @@ def validate_phase31_device_evidence(
         for row in evidence["physical_observations"]
     ):
         raise ValueError("failed or unavailable physical observation blocks acceptance")
-    for measurement in evidence.get("machine_measurements", []):
-        if measurement.get("source") != "machine" or measurement.get("deployment_id") != deployment["deployment_id"]:
+    measurements = evidence.get("machine_measurements")
+    if not isinstance(measurements, list) or not measurements:
+        raise ValueError("complete machine metrics evidence is missing")
+    for measurement in measurements:
+        if (
+            not isinstance(measurement, Mapping)
+            or measurement.get("source") != "machine"
+            or measurement.get("deployment_id") != deployment["deployment_id"]
+        ):
             raise ValueError("machine measurement provenance is invalid")
-        if measurement.get("data", {}).get("status") != "pass" and not allow_pending:
+        data = measurement.get("data")
+        if not isinstance(data, Mapping) or data.get("status") != "pass":
             raise ValueError("machine measurement is unavailable")
+        try:
+            metrics = _phase31_metrics(data.get("metrics", {}))
+            _validate_phase31_machine_metrics(metrics)
+        except ValueError as exc:
+            raise ValueError(f"machine measurement is incomplete: {exc}") from exc
     publication = evidence.get("preflight", {}).get("guarded_publication")
     final_publication = evidence.get("preflight", {}).get("final_publication")
     if require_fresh_bridge_publication:

@@ -445,6 +445,7 @@ class Phase31ProfileTests(unittest.TestCase):
                 )
             },
             "observations": [
+
                 {
                     "id": observation_id,
                     "result": "unavailable" if observation_id == "brightness-power" else "pass",
@@ -461,6 +462,24 @@ class Phase31ProfileTests(unittest.TestCase):
         validate_phase31_baseline(baseline)
         with self.assertRaisesRegex(ValueError, "physical observation"):
             phase31_lock_from_baseline(baseline)
+    def test_phase31_machine_metrics_require_complete_safe_observations(self):
+        from phase1_bringup.phase3_smoke import (
+            PHASE31_METRIC_FIELDS, _phase31_metrics,
+            _validate_phase31_machine_metrics,
+        )
+        metrics = {name: 1 for name in PHASE31_METRIC_FIELDS}
+        metrics["frame_count"] = 3
+        metrics["full_frames"] = 1
+        metrics["half_frames"] = 1
+        metrics["static_frames"] = 1
+        _validate_phase31_machine_metrics(_phase31_metrics(metrics))
+        metrics["allocation_stable"] = 0
+        with self.assertRaisesRegex(ValueError, "allocation"):
+            _validate_phase31_machine_metrics(_phase31_metrics(metrics))
+        metrics["allocation_stable"] = 1
+        metrics["first_press_response_us"] = 120001
+        with self.assertRaisesRegex(ValueError, "ceiling"):
+            _validate_phase31_machine_metrics(_phase31_metrics(metrics))
 
 
 class Phase31BudgetLockTests(unittest.TestCase):
