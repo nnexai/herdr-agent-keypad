@@ -2727,8 +2727,7 @@ void test_led_semantic_events_align_grammar_starts_and_fences() {
   const size_t exception_count =
       exceptionChannelGrammar().frame(state, pending, 0, segments,
                                       kLedGrammarMaxSegments);
-  TEST_ASSERT_TRUE(exception_count > 0);
-  TEST_ASSERT_EQUAL_UINT8(0, segments[0].brightness);
+  TEST_ASSERT_EQUAL_UINT32(0, exception_count);
 
   state.slots[0].feedback = TileFeedback::Success;
   pending.semantic_event = LedSemanticEvent::Focused;
@@ -2737,10 +2736,10 @@ void test_led_semantic_events_align_grammar_starts_and_fences() {
   const size_t rail_count =
       railEchoGrammar().frame(state, pending, 0, segments,
                               kLedGrammarMaxSegments);
-  TEST_ASSERT_TRUE(rail_count > 0);
-  TEST_ASSERT_EQUAL_UINT8(0, segments[0].brightness);
+  TEST_ASSERT_EQUAL_UINT32(0, rail_count);
 
   state.source_status = "stale";
+  state.slots[0].feedback = TileFeedback::Disabled;
   state.codex.source_state = CodexSourceState::Stale;
   pending.semantic_event = LedSemanticEvent::Health;
   pending.semantic_epoch = 43;

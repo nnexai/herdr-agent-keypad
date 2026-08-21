@@ -23,10 +23,32 @@ bool active(TileFeedback feedback) {
   return feedback != TileFeedback::Disabled && feedback != TileFeedback::Ready;
 }
 
-Hsv feedbackHsv(TileFeedback feedback, uint32_t now_us) {
-  if (feedback == TileFeedback::Pending) return {185, 100, 45};
-  if (feedback == TileFeedback::Success) return {120, 100, 45};
-  const bool blink = ((now_us / 200000UL) & 1U) == 0;
+bool pulseHigh(const RenderState& state, const LedEvents& events,
+               TileFeedback feedback, uint32_t now_us) {
+  const LedSemanticEvent event = ledSemanticEvent(state, events);
+  if ((feedback == TileFeedback::Pending &&
+       (event == LedSemanticEvent::Press ||
+        event == LedSemanticEvent::Pending)) ||
+      (feedback == TileFeedback::Success &&
+       event == LedSemanticEvent::Focused) ||
+      (feedback != TileFeedback::Pending && feedback != TileFeedback::Success &&
+       event == LedSemanticEvent::Rejected)) {
+    return (ledSemanticPhase(state, events) & 1U) == 0;
+  }
+  return ((now_us / 200000UL) & 1U) == 0;
+}
+
+Hsv feedbackHsv(const RenderState& state, const LedEvents& events,
+                TileFeedback feedback, uint32_t now_us) {
+  if (feedback == TileFeedback::Pending) {
+    return {185, 100, static_cast<uint8_t>(
+        pulseHigh(state, events, feedback, now_us) ? 45 : 0)};
+  }
+  if (feedback == TileFeedback::Success) {
+    return {120, 100, static_cast<uint8_t>(
+        pulseHigh(state, events, feedback, now_us) ? 45 : 0)};
+  }
+  const bool blink = pulseHigh(state, events, feedback, now_us);
   return {0, 100, static_cast<uint8_t>(blink ? 45 : 0)};
 }
 
@@ -61,7 +83,7 @@ class RailEcho final : public LedGrammar {
       const TileFeedback feedback = state.slots[slot].feedback;
       if (active(feedback)) {
         add(out, count, capacity, kKeyMasks[slot],
-            feedbackHsv(feedback, now_us));
+            feedbackHsv(state, events, feedback, now_us));
       }
     }
     if (events.menu_open && !health) {

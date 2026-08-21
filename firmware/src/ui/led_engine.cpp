@@ -100,9 +100,23 @@ void LedEngine::apply(BoardAdapter& board) {
 
 void LedEngine::render(const RenderState& state, const LedEvents& events,
                        uint32_t now_us, BoardAdapter& board) {
+  LedEvents effective = events;
+  if (effective.semantic_epoch == 0) {
+    effective.semantic_epoch = state.semantic_event_epoch;
+  }
+  if (effective.semantic_event == LedSemanticEvent::None) {
+    effective.semantic_event = ledSemanticEvent(state, effective);
+  }
+  if (effective.semantic_event != LedSemanticEvent::None &&
+      effective.semantic_phase == 0) {
+    effective.semantic_phase = state.transition_phase;
+  }
   LedSegment segments[kLedGrammarMaxSegments]{};
-  const size_t count = grammar().frame(state, events, now_us, segments, kLedGrammarMaxSegments);
-  resolve(segments, count > kLedGrammarMaxSegments ? kLedGrammarMaxSegments : count, state, events);
+  const size_t count =
+      grammar().frame(state, effective, now_us, segments,
+                      kLedGrammarMaxSegments);
+  resolve(segments, count > kLedGrammarMaxSegments ? kLedGrammarMaxSegments : count,
+          state, effective);
   apply(board);
 }
 
