@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03.1
 current_phase_name: High-Fidelity Animation and Interaction Polish
 status: executing
-stopped_at: Completed 03.1-02-PLAN.md
-last_updated: "2026-08-21T09:21:02.543Z"
+stopped_at: Completed 03.1-03-PLAN.md
+last_updated: "2026-08-21T09:42:43.265Z"
 last_activity: 2026-08-21
 last_activity_desc: Completed Phase 03 Plan 08 exact-device capture and pending evidence
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 43
-  completed_plans: 37
+  completed_plans: 38
 ---
 
 Total Phases: 6
@@ -28,7 +28,7 @@ stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
 last_activity_desc: "Completed Phase 03 Plan 08 exact-device capture and pending evidence"
-progress:[█████████░] 86%
+progress:[█████████░] 88%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.1 (High-Fidelity Animation and Interaction Polish) — EXECUTING
-Plan: 3 of 8
+Plan: 4 of 8
 Status: Ready to execute
 Last activity: 2026-08-21 — Phase 03.1 execution started
 
@@ -102,6 +102,7 @@ Progress: [██████████] 97%
 | Phase 03 P09 | multi-session | 3 tasks | 19 files |
 | Phase 03.1 P01 | 55 | 2 tasks | 10 files |
 | Phase 03.1 P02 | 34min | 2 tasks | 8 files |
+| Phase 03.1 P03 | 1min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -166,6 +167,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Use UI-SPEC ceilings as target limits while retaining measured resource headroom.
 - [Phase ?]: Plan 03.1-02 uses a four-phase, 200 ms presentation transition and immediately interrupts it for newer generations or urgent source fences.
 - [Phase ?]: Animation duty is measured from complete compose/flush time over measured loop wall time; Static cancels queued decorative progress while retaining semantic frames.
+- [Phase ?]: Keep one shared scheduler and expose bounded ambient phase through RenderState; themes map it to distinct rail, record, field, and gauge primitives.
+- [Phase ?]: Use measured cadences: Signal Edge/Ledger/Instrument 33334 us and Beacon 66668 us; Half advances every second phase and Static stays neutral.
+- [Phase ?]: Keep EMPTY/NO AGENT, null Codex, and source fences truth-bearing static frames; only approved accents move.
 
 ### Pending Todos
 
@@ -202,5 +206,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-21T09:21:02.528Z
-Stopped at: Completed 03.1-02-PLAN.md
+Last session: 2026-08-21T09:42:43.251Z
+Stopped at: Completed 03.1-03-PLAN.md
