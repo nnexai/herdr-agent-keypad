@@ -21,6 +21,8 @@ class AnimationScheduler final {
   void setAmbientPeriod(uint32_t period_us) {
     ambient_period_us_ = period_us;
     next_ambient_us_ = 0;
+    last_frame_at_us_ = 0;
+    recovery_due_us_ = 0;
     ambient_phase_ = kNeutralPhase;
   }
 
@@ -30,9 +32,8 @@ class AnimationScheduler final {
       interruptTransition(transition_epoch_);
     }
   }
-  // Feed one measured complete compose+flush cost and the wall-time window in
-  // which it occurred. Degradation is sticky within a window and recovers
-  // toward Full only at half the allowed duty.
+  // Compatibility seam for deterministic tests that provide an explicit
+  // scheduling window.
   void observeFlushCost(uint32_t flush_us, uint32_t loop_window_us) {
     if (loop_window_us == 0) return;
     last_flush_us_ = flush_us;
@@ -44,12 +45,43 @@ class AnimationScheduler final {
         level_ = Level::Half;
       } else if (level_ == Level::Half) {
         level_ = Level::Static;
+        recovery_due_us_ = 0;
         interruptTransition(transition_epoch_);
       }
     } else if (last_duty_percent_ * 2U <= kBudgetPercent) {
       if (level_ == Level::Static) level_ = Level::Half;
       else if (level_ == Level::Half) level_ = Level::Full;
     }
+  }
+
+  // Measure against elapsed cadence between complete frames. The first
+  // sample uses the configured cadence rather than the frame's own loop.
+  void observeFlushCostAt(uint32_t flush_us, uint32_t now_us) {
+    uint32_t window = activePeriodUs();
+    if (last_frame_at_us_ != 0) {
+      window = now_us - last_frame_at_us_;
+    }
+    if (window == 0) window = 1;
+    last_frame_at_us_ = now_us;
+    observeFlushCost(flush_us, window);
+    if (level_ == Level::Static && recovery_due_us_ == 0) {
+      recovery_due_us_ = now_us + (ambient_period_us_ != 0 ? ambient_period_us_ : 1);
+    }
+  }
+
+  // Static mode must not deadlock waiting for another ambient frame. Cadence
+  // time itself advances recovery to Half; the next measured sample can then
+  // promote Half to Full.
+  void advanceCadence(uint32_t now_us) {
+    if (level_ != Level::Static) return;
+    if (recovery_due_us_ == 0) {
+      recovery_due_us_ = now_us + (ambient_period_us_ != 0 ? ambient_period_us_ : 1);
+      return;
+    }
+    if (static_cast<int32_t>(now_us - recovery_due_us_) < 0) return;
+    level_ = Level::Half;
+    next_ambient_us_ = now_us + activePeriodUs();
+    recovery_due_us_ = now_us + activePeriodUs();
   }
 
   Level level() const { return level_; }
@@ -185,6 +217,8 @@ class AnimationScheduler final {
   uint32_t last_flush_us_ = 0;
   uint32_t last_loop_window_us_ = 0;
   uint32_t last_duty_percent_ = 0;
+  uint32_t last_frame_at_us_ = 0;
+  uint32_t recovery_due_us_ = 0;
   uint32_t transition_started_us_ = 0;
   uint32_t transition_epoch_ = 0;
   uint8_t transition_last_phase_ = kNeutralPhase;
