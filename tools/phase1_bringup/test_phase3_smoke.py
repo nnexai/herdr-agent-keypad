@@ -480,6 +480,10 @@ class Phase31ProfileTests(unittest.TestCase):
         metrics["first_press_response_us"] = 120001
         with self.assertRaisesRegex(ValueError, "ceiling"):
             _validate_phase31_machine_metrics(_phase31_metrics(metrics))
+        metrics["first_press_response_us"] = 1
+        metrics["max_key_poll_gap_us"] = 120001
+        with self.assertRaisesRegex(ValueError, "ceiling"):
+            _validate_phase31_machine_metrics(_phase31_metrics(metrics))
 
 
 class Phase31BudgetLockTests(unittest.TestCase):

@@ -267,6 +267,7 @@ PHASE31_HARD_CEILINGS = {
     "menu_slide_us": 200_000,
     "recovery_reveal_us": 250_000,
     "press_response_us": 120_000,
+    "max_key_poll_gap_us": 120_000,
     "success_hold_us": 900_000,
     "animation_duty_percent": 30,
 }
@@ -302,6 +303,7 @@ def _validate_phase31_machine_metrics(metrics: Mapping[str, int]) -> None:
         ("reveal_max_us", PHASE31_HARD_CEILINGS["recovery_reveal_us"]),
         ("first_press_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),
         ("first_encoder_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),
+        ("max_key_poll_gap_us", PHASE31_HARD_CEILINGS["max_key_poll_gap_us"]),
         ("animation_duty_max_percent", PHASE31_HARD_CEILINGS["animation_duty_percent"]),
     )
     violations = [

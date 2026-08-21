@@ -568,12 +568,14 @@ void reportEncoderTransition(const char *direction) {
   sendFrame("event", 0, event.as<JsonObjectConst>());
 }
 
-void reportAgentKey(uint8_t key) {
+void reportAgentKey(uint8_t key, uint32_t edge_latched_at_us) {
   if (!agentProjection.committed() || !board.ready() ||
       key >= AgentProjection::kSlotCount) {
     return;
   }
   const uint32_t response_started = micros();
+  const uint32_t metric_started =
+      edge_latched_at_us != 0 ? edge_latched_at_us : response_started;
   char actionId[32] = {};
   std::snprintf(actionId, sizeof(actionId), "device-%lu-%u",
                 static_cast<unsigned long>(response_started),
@@ -582,7 +584,7 @@ void reportAgentKey(uint8_t key) {
   if (agentProjection.captureFocusIntent(key, actionId,
                                          intent.to<JsonObject>())) {
     agentProjection.renderFeedback(board, key);
-    proofMetrics.observeFirstPressResponse(micros() - response_started);
+    proofMetrics.observeFirstPressResponse(micros() - metric_started);
     sendFrame("focus_intent", 0, intent.as<JsonObjectConst>());
   }
 }
@@ -634,7 +636,7 @@ void refreshMenuPresentation() {
   }
 }
 
-ProductInputFrame captureProductInput() {
+ProductInputFrame captureProductInput(uint32_t now_us) {
   ProductInputFrame frame;
   if (!board.ready()) return frame;
   for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
@@ -642,6 +644,8 @@ ProductInputFrame captureProductInput() {
   }
   frame.encoder_clicked = board.consumePressed(4);
   frame.encoder_delta = static_cast<int32_t>(board.encoderDelta());
+  frame.latched_at_us = board.inputLatchedAt();
+  if (frame.latched_at_us == 0) frame.latched_at_us = now_us;
   return frame;
 }
 
@@ -653,23 +657,24 @@ void applyBrightnessIntent() {
 }
 
 void dispatchProductInput(const ProductInputActions& actions,
+                          const ProductInputFrame& input,
                           uint32_t now_us) {
   for (uint8_t index = 0; index < actions.count; ++index) {
     const ProductInputAction& action = actions[index];
     switch (action.kind) {
       case ProductInputActionKind::AgentSlot:
-        reportAgentKey(static_cast<uint8_t>(action.value));
+        reportAgentKey(static_cast<uint8_t>(action.value), input.latched_at_us);
         break;
       case ProductInputActionKind::EncoderClick:
         if (menuController.click(now_us)) {
           encoderResponsePending = true;
-          encoderInputAt = now_us;
+          encoderInputAt = input.latched_at_us;
         }
         break;
       case ProductInputActionKind::EncoderRotate:
         if (menuController.rotate(action.value, now_us)) {
           encoderResponsePending = true;
-          encoderInputAt = now_us;
+          encoderInputAt = input.latched_at_us;
         }
         break;
     }
@@ -703,13 +708,13 @@ void setup() {
 void loop() {
   const uint32_t loop_started = micros();
   const uint32_t now = loop_started;
-  board.update();
+  board.update(now);
   // Capture every product edge once immediately after the single hardware
   // poll. The pure router emits all displayed agent slots before either
   // secondary encoder action, including simultaneous frames.
-  const ProductInputFrame input = captureProductInput();
+  const ProductInputFrame input = captureProductInput(now);
   const ProductInputActions actions = ProductInputRouter::route(input);
-  dispatchProductInput(actions, now);
+  dispatchProductInput(actions, input, now);
   if (menuController.expire(now)) applyBrightnessIntent();
   readFrames();
   if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);

@@ -4,6 +4,7 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
   physical_map_ = &physical_map;
   ready_ = false;
   pressed_latch_ = 0;
+  input_latched_at_us_ = 0;
   if (!physical_map_->complete()) return false;
   BoardConfig config;
   config.enableDisplay = true;
@@ -12,10 +13,11 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
   return ready_;
 }
 
-void BoardAdapter::update() {
+void BoardAdapter::update(uint32_t now_us) {
   if (!ready_) return;
   // This is the single poll path for STM32 keys, ButtonSense, and encoder.
   board_.update();
+  input_latched_at_us_ = now_us;
   for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
     uint8_t library_index = 0;
     if (physical_map_->keyIndex(logical, library_index) && board_.key(library_index).wasPressed()) {

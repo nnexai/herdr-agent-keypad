@@ -12,7 +12,10 @@
 class BoardAdapter {
  public:
   bool begin(const PhysicalMap& physical_map);
-  void update();
+  // Capture the poll timestamp at the adapter's single hardware latch seam.
+  // Product input actions use this timestamp for edge-to-render evidence.
+  void update(uint32_t now_us = 0);
+  uint32_t inputLatchedAt() const { return input_latched_at_us_; }
   bool ready() const { return ready_; }
 
   Display* displayAt(uint8_t index);
@@ -35,4 +38,5 @@ class BoardAdapter {
   const PhysicalMap* physical_map_ = nullptr;
   bool ready_ = false;
   uint8_t pressed_latch_ = 0;
+  uint32_t input_latched_at_us_ = 0;
 };

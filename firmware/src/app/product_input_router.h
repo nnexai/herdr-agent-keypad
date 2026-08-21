@@ -8,6 +8,8 @@ struct ProductInputFrame {
   bool agent_pressed[kAgentSlotCount]{};
   bool encoder_clicked = false;
   int32_t encoder_delta = 0;
+  // Timestamp from the board adapter's single poll/latch seam.
+  uint32_t latched_at_us = 0;
 };
 
 enum class ProductInputActionKind : uint8_t {
