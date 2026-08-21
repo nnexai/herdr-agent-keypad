@@ -44,6 +44,7 @@ struct ProofMetrics {
   uint32_t first_press_response_us = 0;
   uint32_t first_encoder_response_us = 0;
   uint32_t animation_duty_max_percent = 0;
+  static constexpr uint32_t kAnimationDutyWindowUs = 1000000UL;
   uint32_t allocation_stable = 1;
 
   void recordSent() { ++sent; }
@@ -80,6 +81,8 @@ struct ProofMetrics {
     first_press_response_us = 0;
     first_encoder_response_us = 0;
     animation_duty_max_percent = 0;
+    animation_duty_cost_us_ = 0;
+    animation_duty_window_us_ = 0;
     allocation_stable = 1;
   }
 
@@ -100,9 +103,9 @@ struct ProofMetrics {
   void observeLoopWall(uint32_t elapsed_us) {
     if (elapsed_us > loop_wall_max_us) loop_wall_max_us = elapsed_us;
   }
-  // Record only a complete compose+flush transaction. The scheduler supplies
-  // a completion-to-completion window; clamp malformed shorter windows to the
-  // non-overlapping frame cost so reported duty remains physically bounded.
+  // Record complete compose+flush transactions. Completion-to-completion
+  // windows accumulate into a one-second duty sample so adjacent mandatory
+  // semantic frames do not masquerade as sustained animation load.
   void observeAnimationFrame(uint32_t compose_flush_us,
                              uint32_t loop_window_us,
                              uint8_t level) {
@@ -113,16 +116,27 @@ struct ProofMetrics {
     else ++static_frames;
     if (loop_window_us != 0) {
       if (loop_window_us < compose_flush_us) loop_window_us = compose_flush_us;
-      const uint32_t duty =
-          compose_flush_us >= loop_window_us
-              ? 100U
-              : static_cast<uint32_t>(
-                    (static_cast<uint64_t>(compose_flush_us) * 100U) /
-                    loop_window_us);
-      if (duty > animation_duty_max_percent) animation_duty_max_percent = duty;
+      animation_duty_cost_us_ += compose_flush_us;
+      animation_duty_window_us_ += loop_window_us;
+      if (animation_duty_window_us_ >= kAnimationDutyWindowUs) {
+        const uint32_t duty = animation_duty_cost_us_ >= animation_duty_window_us_
+                                  ? 100U
+                                  : static_cast<uint32_t>(
+                                        (animation_duty_cost_us_ * 100U) /
+                                        animation_duty_window_us_);
+        if (duty > animation_duty_max_percent) {
+          animation_duty_max_percent = duty;
+        }
+        animation_duty_cost_us_ = 0;
+        animation_duty_window_us_ = 0;
+      }
     }
   }
-  void beginAnimationLevelEpoch() { animation_duty_max_percent = 0; }
+  void beginAnimationLevelEpoch() {
+    animation_duty_max_percent = 0;
+    animation_duty_cost_us_ = 0;
+    animation_duty_window_us_ = 0;
+  }
   void recordAnimationLevelChange() { ++level_changes; }
   void recordSkippedFrame() { ++skipped_frames; }
   void recordDegradedFrame() { ++degraded_frames; }
@@ -146,6 +160,8 @@ struct ProofMetrics {
       allocation_stable = 0;
     }
   }
+  uint64_t animation_duty_cost_us_ = 0;
+  uint64_t animation_duty_window_us_ = 0;
 #ifdef ARDUINO
   void sampleRuntime() {
     const uint32_t free_heap = ESP.getFreeHeap();
