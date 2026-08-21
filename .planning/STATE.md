@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03.1
 current_phase_name: High-Fidelity Animation and Interaction Polish
-status: executing
-stopped_at: Completed 03.1-07-PLAN.md
-last_updated: "2026-08-21T10:45:41.327Z"
+status: verifying
+stopped_at: Completed 03.1-08-PLAN.md
+last_updated: "2026-08-21T13:38:25.717Z"
 last_activity: 2026-08-21
 last_activity_desc: Completed Phase 03 Plan 08 exact-device capture and pending evidence
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 43
-  completed_plans: 42
+  completed_plans: 43
 ---
 
 Total Phases: 6
@@ -23,12 +23,12 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03
 current_phase_name: Truthful Codex Capacity and Device Menu
-status: Ready to execute
+status: Phase complete — ready for verification
 stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
 last_activity_desc: "Completed Phase 03 Plan 08 exact-device capture and pending evidence"
-progress:[██████████] 98%
+progress:[██████████] 100%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -48,7 +48,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 
 Phase: 03.1 (High-Fidelity Animation and Interaction Polish) — EXECUTING
 Plan: 8 of 8
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-08-21 — Phase 03.1 execution started
 
 Progress: [██████████] 97%
@@ -107,6 +107,7 @@ Progress: [██████████] 97%
 | Phase 03.1 P05 | 12min | 2 tasks | 10 files |
 | Phase 03.1 P06 | 12min | 2 tasks | 7 files |
 | Phase 03.1 P07 | 17min | 3 tasks | 386 files |
+| Phase 03.1 P08 | 1h 20m | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Use a closed production-renderer capture vocabulary with Full, Half, Static, and bounded phases so logical evidence is deterministic and state-safe.
 - [Phase ?]: Require exact-pair fresh boot/session identity plus uploaded selected-usb binary hash in one immutable deployment lock before any capture.
 - [Phase ?]: Keep framebuffer and LED rows machine-only; physical LED, optical, smoothness, brightness, feel, and latency claims remain deferred to Plan 08.
+- [Phase ?]: Accepted exact paired-keypad deployment 875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e with logical manifest 624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094 and 25/25 physical rows pass.
+- [Phase ?]: Preserved failed physical attempts immutably; current defect ledger has zero defects and zero open dispositions.
 
 ### Pending Todos
 
@@ -221,5 +224,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-21T10:45:31.548Z
-Stopped at: Completed 03.1-07-PLAN.md
+Last session: 2026-08-21T13:38:25.701Z
+Stopped at: Completed 03.1-08-PLAN.md
