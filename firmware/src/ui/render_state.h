@@ -64,6 +64,9 @@ struct RenderState {
     const char* age = "";
     TileState state = TileState::Empty;
     TileFeedback feedback = TileFeedback::Disabled;
+    // One complete-frame physical press cue. Presentation only: it never
+    // changes request authority or implies host acknowledgement.
+    bool press_impulse = false;
   };
   CodexRenderView codex;
   DiagnosticsRenderView diagnostics;

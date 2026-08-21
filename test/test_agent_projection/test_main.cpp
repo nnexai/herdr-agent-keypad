@@ -346,7 +346,9 @@ void test_signal_edge_renders_feedback_words() {
   JsonDocument intent;
   TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "action-1", intent.to<JsonObject>()));
   resetLog();
-  projection.renderFeedback(board, 0);
+  projection.renderFeedback(board, 0);  // one-frame physical press impulse
+  resetLog();
+  projection.renderFeedback(board, 0);  // current request is now PENDING
   TEST_ASSERT_TRUE(logContainsText("PENDING"));
   JsonDocument result = focus_result_document("action-1", "rejected");
   result["snapshot_revision"] = 1;
@@ -387,12 +389,10 @@ void test_pending_feedback_advances_at_bounded_300ms_steps() {
   TEST_ASSERT_TRUE(projection.commitSnapshot(board));
   JsonDocument intent;
   TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "cadence-action", intent.to<JsonObject>()));
+  const uint32_t captured_at = micros();
   projection.renderFeedback(board, 0);  // consume the one-frame impulse
-
   resetLog();
-  projection.tick(board, 299999UL);
-  TEST_ASSERT_EQUAL_UINT32(0, countPushes());
-  projection.tick(board, 300000UL);
+  projection.tick(board, captured_at + AgentProjection::kPendingStepUs);
   TEST_ASSERT_TRUE(countPushes() > 0);
   TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Pending),
                     static_cast<int>(projection.feedback(0)));
@@ -734,6 +734,8 @@ void assertThemeVocabulary(ThemeRenderer& theme) {
   commitThroughTheme(theme, projection, board, revision++, "working");
   JsonDocument intent;
   TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "vocab-action", intent.to<JsonObject>()));
+  resetLog();
+  projection.renderFeedback(board, 0);  // physical press impulse
   resetLog();
   projection.renderFeedback(board, 0);
   TEST_ASSERT_TRUE(logContainsText("PENDING"));

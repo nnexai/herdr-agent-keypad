@@ -100,8 +100,12 @@ class LedgerTheme final : public ThemeRenderer {
                               : 0;
     char row[16] = {};
 
-    // Header y:5..16 — feedback takeover wins, then fence band, then disc·age.
-    if (feedback != nullptr) {
+    // Header y:5..16 — physical press gets a localized row cue before the
+    // pending word is shown on the next complete frame.
+    if (tile.press_impulse) {
+      sprite.fillRect(30, 86, 64, 3, kAccent);
+      sprite.fillRect(0, 4, 4, 14, kAccent);
+    } else if (feedback != nullptr) {
       sprite.fillRect(0, 4, 128, 14, feedback->color);
       sprite.setTextColor(kBackground, feedback->color);
       sprite.drawString(feedback->word, 6, 7);

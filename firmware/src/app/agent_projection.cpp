@@ -466,7 +466,9 @@ void AgentProjection::disableActive(BoardAdapter* board) {
     pending_action_[slot] = 0;
     pending_action_text_[slot][0] = '\0';
     pending_deadline_[slot] = 0;
+    pending_step_[slot] = 0;
     feedback_until_[slot] = 0;
+    press_impulse_[slot] = false;
     feedback_[slot] = Feedback::Disabled;
   }
   if (board != nullptr) renderSync(*board);
@@ -491,6 +493,9 @@ bool AgentProjection::commitSnapshot() {
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     pending_[slot] = Binding();
     pending_action_[slot] = 0;
+    pending_deadline_[slot] = 0;
+    pending_step_[slot] = 0;
+    press_impulse_[slot] = false;
     feedback_[slot] = (committed_generation_.tiles[slot].binding.occupied && !urgent)
                           ? Feedback::Ready : Feedback::Disabled;
   }
@@ -601,6 +606,7 @@ bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
   out.since = tile.since;
   out.age = tile.age;
   out.state = tile.state;
+  out.press_impulse = press_impulse_[slot];
   state.codex.source_state = strcmp(generation.codex_source_state, "current") == 0 ? CodexSourceState::Current :
                              strcmp(generation.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
                              strcmp(generation.codex_source_state, "auth_required") == 0 ? CodexSourceState::AuthRequired :
@@ -641,8 +647,16 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
     if (pending_action_[slot] != 0 && elapsed(now_us, pending_deadline_[slot])) {
       pending_action_[slot] = 0;
       pending_[slot] = Binding();
+      pending_deadline_[slot] = 0;
+      pending_step_[slot] = 0;
+      press_impulse_[slot] = false;
       feedback_[slot] = Feedback::Uncertain;
       feedback_until_[slot] = now_us + kFeedbackHoldUs;
+      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+      feedback_dirty = true;
+    } else if (pending_action_[slot] != 0 &&
+               pending_step_[slot] != 0 && elapsed(now_us, pending_step_[slot])) {
+      pending_step_[slot] = now_us + kPendingStepUs;
       renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
       feedback_dirty = true;
     } else if (pending_action_[slot] == 0 && feedback_until_[slot] != 0 &&
@@ -680,9 +694,8 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
     const bool blocked_dirty = blocked_frame &&
                                committed_generation_.tiles[slot].state == TileState::Blocked;
     const bool ambient_dirty = (ambient_mask & static_cast<uint8_t>(1U << slot)) != 0;
-    const bool pending_dirty = blocked_frame && feedback_[slot] == Feedback::Pending;
-    if (feedback_active && !pending_dirty) continue;
-    if (blocked_dirty || pending_dirty || (ambient_dirty && !feedback_active)) {
+    if (feedback_active) continue;
+    if (blocked_dirty || (ambient_dirty && !feedback_active)) {
       renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
     }
   }
@@ -740,9 +753,12 @@ const uint16_t* AgentProjection::capturePixels() const {
   return static_cast<const uint16_t*>(g_composition.getBuffer());
 }
 
-
 void AgentProjection::renderFeedback(BoardAdapter& board, uint8_t slot) {
-  if (slot < kSlotCount && committed_ && !syncing_) renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+  if (slot >= kSlotCount || !committed_ || syncing_) return;
+  renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+  // captureFocusIntent arms exactly one complete-frame physical cue. Clearing
+  // only after composition keeps the next frame honest PENDING.
+  press_impulse_[slot] = false;
 }
 
 bool AgentProjection::hasBinding(uint8_t slot) const {
@@ -782,6 +798,7 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
     output.age = tile.age;
     output.state = tile.state;
     output.feedback = feedback_[slot];
+    output.press_impulse = press_impulse_[slot];
   }
   state.codex.source_state = strcmp(committed_generation_.codex_source_state, "current") == 0 ? CodexSourceState::Current :
                              strcmp(committed_generation_.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
@@ -819,7 +836,10 @@ bool AgentProjection::captureFocusIntent(uint8_t key, const char* action_id, Jso
   pending_[key] = committed_generation_.tiles[key].binding;
   pending_action_[key] = next_action_++;
   if (next_action_ == 0) next_action_ = 1;
-  pending_deadline_[key] = micros() + kPendingDeadlineUs;
+  const uint32_t started = micros();
+  pending_deadline_[key] = started + kPendingDeadlineUs;
+  pending_step_[key] = started + kPendingStepUs;
+  press_impulse_[key] = true;
   feedback_[key] = Feedback::Pending;
   payload["action_id"] = pending_action_text_[key];
   if (pending_[key].has_agent_session) payload["agent_session"] = pending_[key].agent_session; else payload["agent_session"] = nullptr;

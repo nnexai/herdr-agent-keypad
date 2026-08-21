@@ -56,6 +56,7 @@ class AgentProjection final {
   static constexpr uint8_t kSlotCount = 3;
   static constexpr size_t kTextBytes = 65;
   static constexpr uint32_t kPendingDeadlineUs = 3000000UL;
+  static constexpr uint32_t kPendingStepUs = 300000UL;
   static constexpr uint32_t kFeedbackHoldUs = 2000000UL;
   // Success feedback is deliberately shorter than the failure family (D-15).
   static constexpr uint32_t kSuccessHoldUs = 800000UL;
@@ -173,8 +174,10 @@ class AgentProjection final {
   Binding pending_[kSlotCount]{};
   uint32_t pending_action_[kSlotCount]{};
   Feedback feedback_[kSlotCount]{};
+  bool press_impulse_[kSlotCount]{};
   char pending_action_text_[kSlotCount][kTextBytes] = {};
   uint32_t pending_deadline_[kSlotCount]{};
+  uint32_t pending_step_[kSlotCount]{};
   uint32_t feedback_until_[kSlotCount]{};
   bool staged_valid_ = false;
   bool staged_codex_only_ = false;

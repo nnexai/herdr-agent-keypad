@@ -195,7 +195,12 @@ class SignalEdgeTheme final : public ThemeRenderer {
       sprite.drawString(since, rightAlignedX(since), 112);
     }
 
-    if (feedback != nullptr) {
+    if (tile.press_impulse) {
+      // A press is physical acknowledgement only: flash the local rail and
+      // preserve every identity/state word without claiming host progress.
+      sprite.fillRect(0, 0, 16, 128, kAccent);
+      sprite.drawLine(16, 108, 30, 108, kAccent);
+    } else if (feedback != nullptr) {
       sprite.fillRect(0, 108, 128, 20, feedback->color);
       drawFeedbackGlyph(sprite, tile.feedback, phase);
       sprite.setTextColor(kBackground, feedback->color);
