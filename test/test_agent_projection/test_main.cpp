@@ -138,7 +138,7 @@ void assertPanelTextBounded() {
     TEST_ASSERT_TRUE_MESSAGE(x >= 4, entry.c_str());
     TEST_ASSERT_TRUE_MESSAGE(x + static_cast<int32_t>(text.size()) * 6 <= 124,
                              entry.c_str());
-    TEST_ASSERT_TRUE_MESSAGE(y >= 4 && y <= 114, entry.c_str());
+    TEST_ASSERT_TRUE_MESSAGE(y >= 4 && y <= 122, entry.c_str());
   }
 }
 
@@ -1022,14 +1022,15 @@ void test_signal_edge_polish_geometry() {
   MenuState menu;
   menu.open = true;
   menu.cursor = 0;
-  menu.editing = true;
-  menu.theme_candidate = ThemeId::Instrument;
-  menu.grammar_candidate = LedGrammarId::MeterLamps;
+  menu.viewport_start = 0;
+  menu.page = MenuPage::Root;
+  menu.theme_stored = ThemeId::Instrument;
+  menu.grammar_stored = LedGrammarId::MeterLamps;
   resetLog();
   signalEdgeTheme().composeMenu(sprite, menu);
-  TEST_ASSERT_TRUE(logContainsAny("fillRect:12:30:112:20"));
-  TEST_ASSERT_TRUE(logContainsText("TURN: CHANGE"));
-  TEST_ASSERT_TRUE(logContainsText("CLICK: SAVE"));
+  TEST_ASSERT_TRUE(logContainsAny("fillRect:12:20:112:24"));
+  TEST_ASSERT_TRUE(logContainsText("TURN:SEL"));
+  TEST_ASSERT_TRUE(logContainsText("CLICK:OPEN"));
 }
 
 void test_usage_placeholders_follow_theme_geometry() {
@@ -1813,27 +1814,287 @@ void test_menu_encoder_only_timeout_is_wrap_safe_and_reverts_preview() {
   TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
 }
 
-void test_each_theme_composes_menu_vocabulary() {
-  MenuState menu;
-  menu.open = true;
-  menu.cursor = 1;
-  menu.editing = true;
-  menu.theme_candidate = ThemeId::Instrument;
-  menu.grammar_candidate = LedGrammarId::FieldExtension;
-  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
-  for (ThemeRenderer* theme : themes) {
-    resetLog();
-    LGFX_Sprite sprite;
-    theme->composeMenu(sprite, menu);
-    TEST_ASSERT_TRUE(logContainsAny("THEME"));
-    TEST_ASSERT_TRUE(logContainsAny("LED"));
-    if (theme == &signalEdgeTheme()) {
-      TEST_ASSERT_TRUE(logContainsText("TURN: CHANGE"));
-      TEST_ASSERT_TRUE(logContainsText("CLICK: SAVE"));
-    } else {
-      TEST_ASSERT_TRUE(logContainsText("TURN:SEL CLICK:CLOSE"));
+void test_all_theme_root_viewports_use_exact_three_row_geometry() {
+  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(),
+                             &beaconTheme(), &instrumentTheme()};
+  const uint8_t starts[] = {0, 0, 1, 2, 3, 3};
+  LGFX_Sprite sprite;
+  for (uint8_t cursor = 0; cursor < 6; ++cursor) {
+    MenuState menu;
+    menu.open = true;
+    menu.page = MenuPage::Root;
+    menu.cursor = cursor;
+    menu.viewport_start = starts[cursor];
+    menu.theme_stored = ThemeId::SignalEdge;
+    menu.grammar_stored = LedGrammarId::MeterLamps;
+    menu.brightness_stored = 100;
+    for (ThemeRenderer* theme : themes) {
+      resetLog();
+      theme->composeMenu(sprite, menu);
+      TEST_ASSERT_EQUAL_UINT32(1, logTextCount("MENU"));
+      for (uint8_t visible = 0; visible < 3; ++visible) {
+        const uint8_t row = starts[cursor] + visible;
+        const char* label = row == 0 ? "THEME"
+                            : row == 1 ? "LEDS"
+                            : row == 2 ? "BRIGHTNESS"
+                            : row == 3 ? "HEALTH"
+                            : row == 4 ? "ABOUT"
+                                       : "CLOSE";
+        if (theme == &beaconTheme() && row < 3) {
+          const char* line = row == 0 ? "THEME SIGNAL EDGE"
+                             : row == 1 ? "LEDS METER+LAMPS"
+                                        : "BRIGHTNESS 100%";
+          TEST_ASSERT_TRUE(logContainsTextAt(line, (128 - strlen(line) * 6) / 2,
+                                             30 + visible * 24));
+        } else {
+          TEST_ASSERT_TRUE(logContainsTextAt(
+              label,
+              theme == &ledgerTheme() ? 14
+              : theme == &beaconTheme() ? (128 - strlen(label) * 6) / 2
+                                         : 24,
+              30 + visible * 24));
+        }
+      }
+      TEST_ASSERT_TRUE(logContainsText(
+          theme == &signalEdgeTheme() ? "TURN:SEL"
+                                      : "TURN:SEL CLICK:OPEN"));
+      assertPanelTextBounded();
     }
   }
+
+  MenuState exact;
+  exact.open = true;
+  exact.cursor = 0;
+  exact.theme_stored = ThemeId::SignalEdge;
+  exact.grammar_stored = LedGrammarId::RailEcho;
+  resetLog();
+  signalEdgeTheme().composeMenu(sprite, exact);
+  TEST_ASSERT_TRUE(logContainsTextAt("MENU", 16, 4));
+  TEST_ASSERT_TRUE(logContainsTextAt(">", 16, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("THEME", 24, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("SIGNAL EDGE", 54, 30));
+  TEST_ASSERT_TRUE(logContainsAny("fillRect:12:20:112:24"));
+  resetLog();
+  ledgerTheme().composeMenu(sprite, exact);
+  TEST_ASSERT_TRUE(logContainsTextAt("MENU", 6, 4));
+  TEST_ASSERT_TRUE(logContainsTextAt(">", 6, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("THEME", 14, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("SIGNAL EDGE", 54, 30));
+  resetLog();
+  beaconTheme().composeMenu(sprite, exact);
+  TEST_ASSERT_TRUE(logContainsTextAt("MENU", 52, 4));
+  TEST_ASSERT_TRUE(logContainsTextAt(">", 4, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("THEME SIGNAL EDGE", 13, 30));
+  resetLog();
+  instrumentTheme().composeMenu(sprite, exact);
+  TEST_ASSERT_TRUE(logContainsTextAt("MENU", 52, 4));
+  TEST_ASSERT_TRUE(logContainsTextAt(">", 16, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("THEME", 24, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("SIGNAL EDGE", 54, 30));
+}
+
+void test_all_theme_value_and_brightness_pages_use_approved_bands() {
+  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(),
+                             &beaconTheme(), &instrumentTheme()};
+  LGFX_Sprite sprite;
+  for (ThemeRenderer* theme : themes) {
+    MenuState menu;
+    menu.open = true;
+    menu.page = MenuPage::Theme;
+    menu.theme_candidate = ThemeId::Instrument;
+    resetLog();
+    theme->composeMenu(sprite, menu);
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "THEME", theme == &signalEdgeTheme() ? 16
+                 : theme == &ledgerTheme() ? 6
+                                            : 49,
+        4));
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "INSTRUMENT", theme == &signalEdgeTheme() ? 16
+                       : theme == &ledgerTheme() ? 6
+                                                  : 34,
+        30));
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "TURN:CHANGE", theme == &signalEdgeTheme() ? 16
+                       : theme == &ledgerTheme() ? 6
+                                                  : 31,
+        102));
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "CLICK:SAVE", theme == &signalEdgeTheme() ? 16
+                      : theme == &ledgerTheme() ? 6
+                                                 : 34,
+        114));
+
+    menu.page = MenuPage::Leds;
+    menu.grammar_candidate = LedGrammarId::MeterLamps;
+    resetLog();
+    theme->composeMenu(sprite, menu);
+    TEST_ASSERT_TRUE(logContainsText("LEDS"));
+    TEST_ASSERT_TRUE(logContainsText("METER+LAMPS"));
+
+    menu.page = MenuPage::Brightness;
+    menu.brightness_candidate = 100;
+    resetLog();
+    theme->composeMenu(sprite, menu);
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "BRIGHTNESS", theme == &signalEdgeTheme() ? 16
+                       : theme == &ledgerTheme() ? 6
+                                                  : 34,
+        4));
+    TEST_ASSERT_TRUE(logContainsTextAt("100%", 40, 24));
+    TEST_ASSERT_TRUE(logContainsAny("drawRect:"));
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "TURN:CHANGE", theme == &signalEdgeTheme() ? 16
+                       : theme == &ledgerTheme() ? 6
+                                                  : 31,
+        102));
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "CLICK:SAVE", theme == &signalEdgeTheme() ? 16
+                      : theme == &ledgerTheme() ? 6
+                                                 : 34,
+        114));
+    assertPanelTextBounded();
+  }
+}
+
+void test_all_theme_health_and_about_pages_are_fixed_bounded_allowlists() {
+  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(),
+                             &beaconTheme(), &instrumentTheme()};
+  LGFX_Sprite sprite;
+  MenuState menu;
+  menu.open = true;
+  menu.page = MenuPage::Health;
+  menu.diagnostics.link_status = "current";
+  menu.diagnostics.herdr_status = "stale";
+  menu.diagnostics.codex_status = "auth_required";
+  menu.diagnostics.sync_age = "AGE 999M";
+  menu.diagnostics.codex_age = "AGE N/A";
+  menu.diagnostics.error_code = "E-2407";
+  const int32_t rows[] = {30, 46, 62, 78, 94, 110};
+  const char* labels[] = {"LINK", "HERDR", "CODEX", "SYNC AGE", "CODEX AGE",
+                          "ERR"};
+  const char* values[] = {"OK", "STALE", "AUTH REQUIRED", "999M", "N/A",
+                          "E-2407"};
+  for (ThemeRenderer* theme : themes) {
+    menu.page = MenuPage::Health;
+    resetLog();
+    theme->composeMenu(sprite, menu);
+    TEST_ASSERT_TRUE(logContainsText("HEALTH"));
+    for (uint8_t row = 0; row < 6; ++row) {
+      if (theme == &beaconTheme()) {
+        char line[21] = {};
+        snprintf(line, sizeof(line), "%s %s", labels[row], values[row]);
+        TEST_ASSERT_TRUE(logContainsTextAt(line, (128 - strlen(line) * 6) / 2,
+                                           rows[row]));
+      } else {
+        TEST_ASSERT_TRUE(logContainsTextAt(
+            labels[row], theme == &ledgerTheme() ? 6 : 12, rows[row]));
+        TEST_ASSERT_TRUE(logContainsTextAt(
+            values[row], 120 - strlen(values[row]) * 6, rows[row]));
+      }
+    }
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "CLICK:BACK", theme == &ledgerTheme() ? 6
+                      : theme == &signalEdgeTheme() ? 12
+                                                    : 34,
+        122));
+    TEST_ASSERT_EQUAL_UINT32(0, logTextCount("NONE"));
+    assertPanelTextBounded();
+
+    menu.page = MenuPage::About;
+    menu.diagnostics.firmware_version = "1234567890ABCDEF";
+    menu.diagnostics.protocol_version = 2;
+    menu.diagnostics.bridge_version = "";
+    menu.diagnostics.device_suffix = "ABCDEF";
+    menu.diagnostics.session_suffix = "123456";
+    menu.diagnostics.revision_suffix = "A1B2C3";
+    resetLog();
+    theme->composeMenu(sprite, menu);
+    TEST_ASSERT_TRUE(logContainsText("ABOUT"));
+    TEST_ASSERT_TRUE(logContainsAny("1234567890..."));
+    TEST_ASSERT_TRUE(logContainsAny("N/A"));
+    TEST_ASSERT_FALSE(logContainsAny("1234567890ABCDEF"));
+    TEST_ASSERT_TRUE(logContainsAny("ABCDEF"));
+    TEST_ASSERT_TRUE(logContainsTextAt(
+        "CLICK:BACK", theme == &ledgerTheme() ? 6
+                      : theme == &signalEdgeTheme() ? 12
+                                                    : 34,
+        122));
+    assertPanelTextBounded();
+  }
+}
+
+void test_menu_projection_injects_only_committed_diagnostics_and_preserves_state() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument first = snapshot_document(1);
+  first["diagnostics"]["error_code"] = "E-2404";
+  first["diagnostics"]["account_identity"] = "secret@example.com";
+  first["diagnostics"]["host_path"] = "/home/private";
+  first["diagnostics"]["raw_error"] = "credential leaked";
+  TEST_ASSERT_TRUE(projection.stageSnapshot(first.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+
+  SettingsStore settings;
+  settings.load();
+  MenuController controller(settings);
+  controller.resetFromStore();
+  controller.click(100);
+  controller.rotate(3, 101);
+  controller.click(102);
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Health),
+                    static_cast<int>(controller.mode()));
+  const uint8_t cursor = controller.state().cursor;
+  const uint8_t viewport = controller.state().viewport_start;
+  const uint32_t activity = controller.lastEncoderActivityUs();
+
+  resetLog();
+  projection.renderMenu(board, signalEdgeTheme(), controller.state());
+  TEST_ASSERT_TRUE(logContainsText("E-2404"));
+  TEST_ASSERT_FALSE(logContainsAny("secret@example.com"));
+  TEST_ASSERT_FALSE(logContainsAny("/home/private"));
+  TEST_ASSERT_FALSE(logContainsAny("credential leaked"));
+  std::vector<int> order = pushOrder();
+  TEST_ASSERT_EQUAL_UINT32(1, order.size());
+  TEST_ASSERT_EQUAL_INT(3, order[0]);
+
+  JsonDocument update = snapshot_document(2);
+  update["diagnostics"]["herdr_status"] = "stale";
+  update["diagnostics"]["codex_age"] = "AGE 14M";
+  TEST_ASSERT_TRUE(projection.stageSnapshot(update.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  resetLog();
+  projection.renderMenu(board, ledgerTheme(), controller.state());
+  TEST_ASSERT_TRUE(logContainsText("STALE"));
+  TEST_ASSERT_TRUE(logContainsText("14M"));
+  TEST_ASSERT_EQUAL_UINT8(cursor, controller.state().cursor);
+  TEST_ASSERT_EQUAL_UINT8(viewport, controller.state().viewport_start);
+  TEST_ASSERT_EQUAL_UINT32(activity, controller.lastEncoderActivityUs());
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(
+      projection.captureFocusIntent(0, "menu-live", intent.to<JsonObject>()));
+}
+
+void test_diagnostic_identifier_and_version_admission_is_closed() {
+  AgentProjection projection;
+  JsonDocument long_suffix = snapshot_document(1);
+  long_suffix["diagnostics"]["device_suffix"] = "ABCDEFG";
+  TEST_ASSERT_FALSE(
+      projection.stageSnapshot(long_suffix.as<JsonObjectConst>()));
+  JsonDocument invalid_suffix = snapshot_document(1);
+  invalid_suffix["diagnostics"]["session_suffix"] = "ABC_12";
+  TEST_ASSERT_FALSE(
+      projection.stageSnapshot(invalid_suffix.as<JsonObjectConst>()));
+  JsonDocument path_version = snapshot_document(1);
+  path_version["diagnostics"]["bridge_version"] = "/home/private";
+  TEST_ASSERT_FALSE(
+      projection.stageSnapshot(path_version.as<JsonObjectConst>()));
+  JsonDocument identity_version = snapshot_document(1);
+  identity_version["diagnostics"]["firmware_version"] =
+      "secret@example";
+  TEST_ASSERT_FALSE(
+      projection.stageSnapshot(identity_version.as<JsonObjectConst>()));
 }
 
 void test_menu_redraw_is_panel4_only() {
@@ -1910,7 +2171,11 @@ int runAllTests() {
   RUN_TEST(test_menu_controller_walks_six_clamped_rows_and_all_pages);
   RUN_TEST(test_menu_brightness_previews_confirms_and_reverts_locally);
   RUN_TEST(test_menu_encoder_only_timeout_is_wrap_safe_and_reverts_preview);
-  RUN_TEST(test_each_theme_composes_menu_vocabulary);
+  RUN_TEST(test_all_theme_root_viewports_use_exact_three_row_geometry);
+  RUN_TEST(test_all_theme_value_and_brightness_pages_use_approved_bands);
+  RUN_TEST(test_all_theme_health_and_about_pages_are_fixed_bounded_allowlists);
+  RUN_TEST(test_menu_projection_injects_only_committed_diagnostics_and_preserves_state);
+  RUN_TEST(test_diagnostic_identifier_and_version_admission_is_closed);
   RUN_TEST(test_menu_redraw_is_panel4_only);
   return UNITY_END();
 }

@@ -221,18 +221,7 @@ class LedgerTheme final : public ThemeRenderer {
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);
-    sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("SETTINGS", 6, 7);
-    sprite.drawLine(4, 18, 124, 18, kSettled);
-    sprite.setTextColor(menu.cursor == 0 ? kAccent : kMetadata, kBackground);
-    sprite.drawString(menu.cursor == 0 ? "> THEME" : "  THEME", 6, 32);
-    sprite.drawString(themeName(menu.theme_candidate), 58, 32);
-    sprite.setTextColor(menu.cursor == 1 ? kAccent : kMetadata, kBackground);
-    sprite.drawString(menu.cursor == 1 ? "> LED" : "  LED", 6, 52);
-    sprite.drawString(grammarName(menu.grammar_candidate), 58, 52);
-    sprite.drawLine(4, 72, 124, 72, kSettled);
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString(kMenuHint, kMenuHintX, 108);
+    drawMenuPage(sprite, menu, MenuVisual::Ledger);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {

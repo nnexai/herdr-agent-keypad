@@ -267,16 +267,7 @@ class InstrumentTheme final : public ThemeRenderer {
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);
     drawBezelTicks(sprite, kSettled);
-    sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("MENU", centeredX("MENU"), 8);
-    sprite.setTextColor(menu.cursor == 0 ? kAccent : kMetadata, kBackground);
-    sprite.drawString(menu.cursor == 0 ? "> THEME" : "  THEME", 16, 36);
-    sprite.drawString(themeName(menu.theme_candidate), 16, 50);
-    sprite.setTextColor(menu.cursor == 1 ? kAccent : kMetadata, kBackground);
-    sprite.drawString(menu.cursor == 1 ? "> LED" : "  LED", 16, 72);
-    sprite.drawString(grammarName(menu.grammar_candidate), 16, 86);
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString(kMenuHint, kMenuHintX, 112);
+    drawMenuPage(sprite, menu, MenuVisual::Instrument);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {

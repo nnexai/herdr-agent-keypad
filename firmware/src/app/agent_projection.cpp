@@ -31,6 +31,21 @@ bool validSuffix(const char* value) {
   return true;
 }
 
+bool validVersion(const char* value) {
+  if (value == nullptr || value[0] == '\0') return false;
+  if (strcmp(value, "UNAVAL") == 0) return true;
+  bool has_digit = false;
+  for (size_t index = 0; value[index] != '\0'; ++index) {
+    const char c = value[index];
+    has_digit = has_digit || (c >= '0' && c <= '9');
+    if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9') || c == '.' || c == '+' || c == '-')) {
+      return false;
+    }
+  }
+  return has_digit;
+}
+
 LGFX_Sprite g_composition;
 bool g_composition_ready = false;
 
@@ -242,7 +257,9 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
       !copyBounded(candidate.diagnostics_sync_age, sizeof(candidate.diagnostics_sync_age), diagnostics["sync_age"].as<const char*>(), false) ||
       !copyBounded(candidate.diagnostics_codex_age, sizeof(candidate.diagnostics_codex_age), diagnostics["codex_age"].as<const char*>(), false) ||
       !copyBounded(candidate.diagnostics_firmware_version, sizeof(candidate.diagnostics_firmware_version), diagnostics["firmware_version"].as<const char*>(), false) ||
+      !validVersion(candidate.diagnostics_firmware_version) ||
       !copyBounded(candidate.diagnostics_bridge_version, sizeof(candidate.diagnostics_bridge_version), diagnostics["bridge_version"].as<const char*>(), false) ||
+      !validVersion(candidate.diagnostics_bridge_version) ||
       !copyBounded(candidate.diagnostics_device_suffix, sizeof(candidate.diagnostics_device_suffix), diagnostics["device_suffix"].as<const char*>(), false) ||
       !validSuffix(candidate.diagnostics_device_suffix) ||
       !copyBounded(candidate.diagnostics_session_suffix, sizeof(candidate.diagnostics_session_suffix), diagnostics["session_suffix"].as<const char*>(), false) ||
@@ -468,8 +485,13 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
 void AgentProjection::renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const {
   Display* display = board.displayAt(3);
   if (display == nullptr || !ensureComposition()) return;
-  if (menu.open) theme.composeMenu(g_composition, menu);
-  else theme.composePanel4(g_composition, renderState(micros()));
+  if (menu.open) {
+    MenuState frame = menu;
+    frame.diagnostics = renderState(micros()).diagnostics;
+    theme.composeMenu(g_composition, frame);
+  } else {
+    theme.composePanel4(g_composition, renderState(micros()));
+  }
   g_composition.pushSprite(display, 0, 0);
 }
 
@@ -500,6 +522,8 @@ bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer, Captu
     MenuState menu;
     menu.open = true;
     menu.cursor = scene == CaptureScene::MenuTheme ? 0 : 1;
+    menu.page = scene == CaptureScene::MenuTheme ? MenuPage::Theme
+                                                 : MenuPage::Leds;
     menu.editing = true;
     menu.theme_candidate = ThemeId::Instrument;
     menu.grammar_candidate = LedGrammarId::MeterLamps;

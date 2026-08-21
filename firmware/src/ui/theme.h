@@ -29,6 +29,7 @@ struct MenuState {
   ThemeId theme_stored = ThemeId::SignalEdge;
   LedGrammarId grammar_stored = LedGrammarId::RailEcho;
   uint8_t brightness_stored = 80;
+  DiagnosticsRenderView diagnostics;
 };
 
 // A display language. Every implementation composes complete frames into the

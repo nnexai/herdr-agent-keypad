@@ -302,19 +302,7 @@ class BeaconTheme final : public ThemeRenderer {
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);
-    sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("MENU", centeredX("MENU"), 8);
-    sprite.setTextColor(menu.cursor == 0 ? kAccent : kMetadata, kBackground);
-    sprite.drawString("THEME", 28, 36);
-    sprite.drawString(themeName(menu.theme_candidate), 28, 52);
-    sprite.setTextColor(menu.cursor == 1 ? kAccent : kMetadata, kBackground);
-    sprite.drawString("LED", 28, 76);
-    sprite.drawString(grammarName(menu.grammar_candidate), 28, 92);
-    sprite.setTextColor(kSettled, kBackground);
-    sprite.drawString(menu.cursor == 0 ? ">" : " ", 14, 36);
-    sprite.drawString(menu.cursor == 1 ? ">" : " ", 14, 76);
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString(kMenuHint, kMenuHintX, 112);
+    drawMenuPage(sprite, menu, MenuVisual::Beacon);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {

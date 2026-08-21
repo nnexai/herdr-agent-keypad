@@ -145,18 +145,6 @@ void drawFeedbackGlyph(LGFX_Sprite& sprite, TileFeedback feedback, bool phase_hi
   }
 }
 
-void drawMenuRow(LGFX_Sprite& sprite, int32_t y, bool selected, bool editing,
-                 const char* label, const char* value) {
-  if (selected) sprite.fillRect(12, y, 112, 20, kAccent);
-  if (selected && editing) sprite.drawRect(12, y, 112, 20, kBackground);
-  const uint16_t foreground = selected ? kBackground : kMetadata;
-  const uint16_t background = selected ? kAccent : kBackground;
-  sprite.setTextColor(foreground, background);
-  sprite.drawString(selected ? ">" : " ", 16, y + 6);
-  sprite.drawString(label, 28, y + 6);
-  sprite.setTextColor(selected ? kBackground : kPrimary, background);
-  sprite.drawString(value, rightAlignedX(value), y + 6);
-}
 
 class SignalEdgeTheme final : public ThemeRenderer {
  public:
@@ -253,18 +241,7 @@ class SignalEdgeTheme final : public ThemeRenderer {
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);
     sprite.fillRect(0, 0, 8, 128, kAccent);
-    sprite.setTextColor(kPrimary, kBackground);
-    sprite.drawString("MENU", 16, 8);
-    sprite.drawLine(16, 22, 124, 22, kSettled);
-
-    drawMenuRow(sprite, 30, menu.cursor == 0, menu.editing && menu.cursor == 0,
-                "THEME", themeName(menu.theme_candidate));
-    drawMenuRow(sprite, 58, menu.cursor == 1, menu.editing && menu.cursor == 1,
-                "LED", grammarName(menu.grammar_candidate));
-
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString(menu.editing ? "TURN: CHANGE" : "TURN: SELECT", 16, 100);
-    sprite.drawString(menu.editing ? "CLICK: SAVE" : "CLICK: ENTER", 16, 112);
+    drawMenuPage(sprite, menu, MenuVisual::SignalEdge);
   }
 
   void composeSync(LGFX_Sprite& sprite) override {
