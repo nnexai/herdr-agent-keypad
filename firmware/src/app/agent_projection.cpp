@@ -76,6 +76,13 @@ bool printable(const char* value, bool allow_empty) {
 bool elapsed(uint32_t now, uint32_t deadline) {
   return static_cast<int32_t>(now - deadline) >= 0;
 }
+uint8_t semanticEventPhase(uint32_t now_us, uint32_t started_us) {
+  if (started_us == 0 ||
+      static_cast<int32_t>(now_us - started_us) < 0) return 0;
+  constexpr uint32_t kSemanticPhaseUs = 100000UL;
+  return static_cast<uint8_t>(((now_us - started_us) / kSemanticPhaseUs) & 0x07U);
+}
+
 uint8_t menuPresentationProgress(const MenuState& menu, uint32_t now_us,
                                  AnimationScheduler::Level level) {
   if (level == AnimationScheduler::Level::Static) return 3;
@@ -504,9 +511,16 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
   return true;
 }
 
+void AgentProjection::beginSemanticEvent(uint32_t now_us) {
+  ++semantic_event_epoch_;
+  if (semantic_event_epoch_ == 0) semantic_event_epoch_ = 1;
+  semantic_event_started_us_ = now_us != 0 ? now_us : 1;
+}
+
 void AgentProjection::disableActive(BoardAdapter* board) {
   committed_ = false;
   syncing_ = true;
+  beginSemanticEvent(micros());
   animation_.interruptTransition(staged_.snapshot_revision);
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     pending_[slot] = Binding();
@@ -525,14 +539,15 @@ bool AgentProjection::commitSnapshot() {
   const bool animate = transition_after_commit_ || committed_;
   transition_after_commit_ = false;
   committed_generation_ = staged_;
-  semantic_event_epoch_ = committed_generation_.snapshot_revision;
+  const uint32_t event_started_us = micros();
+  beginSemanticEvent(event_started_us);
   staged_valid_ = false;
   staged_codex_only_ = false;
   const bool urgent = strcmp(committed_generation_.source_status, "current") != 0;
   if (urgent || !animate) {
-    animation_.interruptTransition(semantic_event_epoch_);
+    animation_.interruptTransition(committed_generation_.snapshot_revision);
   } else {
-    animation_.beginTransition(semantic_event_epoch_, micros());
+    animation_.beginTransition(committed_generation_.snapshot_revision, event_started_us);
   }
   if (!committed_) {
     committed_ = true;
@@ -569,13 +584,14 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_
     const bool animate = transition_after_commit_;
     transition_after_commit_ = false;
     committed_generation_ = staged_;
-    semantic_event_epoch_ = committed_generation_.snapshot_revision;
+    const uint32_t event_started_us = micros();
+    beginSemanticEvent(event_started_us);
     staged_valid_ = false;
     staged_codex_only_ = false;
     if (animate && strcmp(committed_generation_.source_status, "current") == 0) {
-      animation_.beginTransition(semantic_event_epoch_, micros());
+      animation_.beginTransition(committed_generation_.snapshot_revision, event_started_us);
     } else {
-      animation_.interruptTransition(semantic_event_epoch_);
+      animation_.interruptTransition(committed_generation_.snapshot_revision);
     }
     if (menu.open) {
       renderMenu(board, panel4_theme, menu);
@@ -652,6 +668,8 @@ bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
   state.syncing = syncing_;
   state.transition_epoch = animation_.transitionEpoch();
   state.semantic_event_epoch = semantic_event_epoch_;
+  state.semantic_event_started_us = semantic_event_started_us_;
+  state.semantic_event_phase = semanticEventPhase(now_us, semantic_event_started_us_);
   state.transition_active =
       strcmp(generation.source_status, "current") == 0 &&
       !syncing_ && animation_.level() != AnimationScheduler::Level::Static &&
@@ -715,6 +733,7 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       press_impulse_[slot] = false;
       feedback_phase_[slot] = 0;
       feedback_[slot] = Feedback::Uncertain;
+      beginSemanticEvent(now_us);
       feedback_until_[slot] = now_us + kFeedbackHoldUs;
       renderTileAt(board, slot, committed_generation_.tiles[slot], feedback_[slot], now_us);
       feedback_dirty = true;
@@ -856,6 +875,8 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
   state.syncing = syncing_;
   state.transition_epoch = animation_.transitionEpoch();
   state.semantic_event_epoch = semantic_event_epoch_;
+  state.semantic_event_started_us = semantic_event_started_us_;
+  state.semantic_event_phase = semanticEventPhase(now_us, semantic_event_started_us_);
   state.transition_active =
       strcmp(committed_generation_.source_status, "current") == 0 &&
       !syncing_ && animation_.level() != AnimationScheduler::Level::Static &&
@@ -872,8 +893,8 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
     output.title = tile.title;
     output.discriminator = tile.discriminator;
     output.since = tile.since;
-    output.age = tile.age;
     output.state = tile.state;
+    output.feedback = feedback_[slot];
     output.feedback_phase = feedback_phase_[slot];
     output.press_impulse = press_impulse_[slot];
   }
@@ -914,9 +935,11 @@ bool AgentProjection::captureFocusIntent(uint8_t key, const char* action_id, Jso
   pending_action_[key] = next_action_++;
   if (next_action_ == 0) next_action_ = 1;
   const uint32_t started = micros();
+  beginSemanticEvent(started);
   pending_deadline_[key] = started + kPendingDeadlineUs;
   pending_step_[key] = started + kPendingStepUs;
   press_impulse_[key] = true;
+  feedback_phase_[key] = 0;
   feedback_[key] = Feedback::Pending;
   payload["action_id"] = pending_action_text_[key];
   if (pending_[key].has_agent_session) payload["agent_session"] = pending_[key].agent_session; else payload["agent_session"] = nullptr;
@@ -955,6 +978,9 @@ bool AgentProjection::applyFocusResult(JsonObjectConst payload) {
   pending_deadline_[slot] = 0;
   pending_step_[slot] = 0;
   press_impulse_[slot] = false;
+  feedback_phase_[slot] = 0;
+  const uint32_t result_started_us = micros();
+  beginSemanticEvent(result_started_us);
   if (strcmp(outcome, "accepted") == 0 && payload["focused"].as<bool>()) feedback_[slot] = Feedback::Success;
   else if (strcmp(outcome, "stale_target") == 0) feedback_[slot] = Feedback::Stale;
   else if (strcmp(outcome, "vanished") == 0 || strcmp(outcome, "not_found") == 0) feedback_[slot] = Feedback::Vanished;
@@ -962,6 +988,6 @@ bool AgentProjection::applyFocusResult(JsonObjectConst payload) {
   else if (strcmp(outcome, "timeout") == 0 || strcmp(outcome, "uncertain") == 0) feedback_[slot] = Feedback::Uncertain;
   else if (strcmp(outcome, "failed") == 0) feedback_[slot] = Feedback::Failed;
   else feedback_[slot] = Feedback::Rejected;
-  feedback_until_[slot] = micros() + (feedback_[slot] == Feedback::Success ? kSuccessHoldUs : kFeedbackHoldUs);
+  feedback_until_[slot] = result_started_us + (feedback_[slot] == Feedback::Success ? kSuccessHoldUs : kFeedbackHoldUs);
   return feedback_[slot] == Feedback::Success;
 }

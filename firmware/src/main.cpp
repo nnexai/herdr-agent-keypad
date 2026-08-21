@@ -742,6 +742,13 @@ void loop() {
   refreshMenuPresentation();
   LedEvents led_events;
   led_events.menu_open = menuController.open();
+  if (led_events.menu_open) {
+    led_events.semantic_event = LedSemanticEvent::MenuOpen;
+    led_events.semantic_start_us = menuController.state().presentation_started_us;
+    led_events.semantic_epoch = led_events.semantic_start_us != 0
+                                    ? led_events.semantic_start_us
+                                    : 1;
+  }
   ledEngine.render(agentProjection.renderState(now), led_events, now, board);
   proofMetrics.sampleRuntime();
   delay(1);

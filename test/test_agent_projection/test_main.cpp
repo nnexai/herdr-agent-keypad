@@ -414,6 +414,28 @@ void test_pending_feedback_advances_at_bounded_300ms_steps() {
   TEST_ASSERT_TRUE(stepped_count > 0);
   TEST_ASSERT_EQUAL_UINT16(1U << 1, segments[0].mask);
 }
+void test_semantic_feedback_events_restart_bounded_clock() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const RenderState committed = projection.renderState(micros());
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "clock-action", intent.to<JsonObject>()));
+  const RenderState pending = projection.renderState(micros());
+  TEST_ASSERT_TRUE(committed.semantic_event_epoch != pending.semantic_event_epoch);
+  TEST_ASSERT_TRUE(pending.semantic_event_started_us != 0);
+
+  projection.renderFeedback(board, 0);
+  JsonDocument result = focus_result_document("clock-action", "rejected");
+  result["snapshot_revision"] = 1;
+  TEST_ASSERT_FALSE(projection.applyFocusResult(result.as<JsonObjectConst>()));
+  const RenderState rejected = projection.renderState(micros());
+  TEST_ASSERT_TRUE(pending.semantic_event_epoch != rejected.semantic_event_epoch);
+  TEST_ASSERT_TRUE(pending.semantic_event_started_us != rejected.semantic_event_started_us);
+}
+
 
 
 // --- Per-panel reveal fencing (R-2) ----------------------------------------
@@ -2344,7 +2366,7 @@ void test_simultaneous_direct_keys_precede_click_and_rotation_dispatch() {
                               dispatch_order.size());
   TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Theme),
                     static_cast<int>(menu.mode()));
-  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Instrument),
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon),
                     static_cast<int>(menu.activeTheme()));
 }
 void test_menu_presentation_is_immediate_bounded_and_reversible() {
@@ -2878,6 +2900,7 @@ void test_led_grammar_rest_truth_and_segment_bounds_across_phases() {
   }
 
   state.slots[0].feedback = TileFeedback::Pending;
+  state.slots[0].feedback_phase = 1;
   rest.semantic_event = LedSemanticEvent::Pending;
   rest.semantic_phase = 1;
   const size_t field_count = fieldExtensionGrammar().frame(
@@ -2922,6 +2945,14 @@ void test_led_grammar_rest_truth_and_segment_bounds_across_phases() {
   probe_engine.render(state, explicit_start, 0, probe_board);
   TEST_ASSERT_EQUAL_UINT32(91, probe.seen.semantic_epoch);
   TEST_ASSERT_EQUAL_UINT8(0, probe.seen.semantic_phase);
+  state.semantic_event_epoch = 92;
+  state.semantic_event_started_us = 100;
+  state.semantic_event_phase = 2;
+  state.transition_phase = 7;
+  LedEvents derived_start;
+  probe_engine.render(state, derived_start, 0, probe_board);
+  TEST_ASSERT_EQUAL_UINT32(92, probe.seen.semantic_epoch);
+  TEST_ASSERT_EQUAL_UINT8(2, probe.seen.semantic_phase);
 
   state.syncing = true;
   rest.semantic_event = LedSemanticEvent::Sync;
@@ -2946,6 +2977,7 @@ void test_led_semantic_events_align_grammar_starts_and_fences() {
   state.slots[0].occupied = true;
   state.slots[0].state = TileState::Working;
   state.slots[0].feedback = TileFeedback::Pending;
+  state.slots[0].feedback_phase = 1;
   state.semantic_event_epoch = 41;
 
   LedEvents pending;
@@ -3057,6 +3089,7 @@ int runAllTests() {
   RUN_TEST(test_signal_edge_and_ledger_phase_motion_is_distinct_and_semantically_fixed);
   RUN_TEST(test_press_impulse_precedes_pending_render);
   RUN_TEST(test_pending_feedback_advances_at_bounded_300ms_steps);
+  RUN_TEST(test_semantic_feedback_events_restart_bounded_clock);
   RUN_TEST(test_beacon_and_instrument_press_impulse_and_exact_focus_outcomes);
   RUN_TEST(test_blocked_tick_produces_changing_complete_frames_at_measured_static_cost);
   RUN_TEST(test_signal_edge_and_ledger_fences_empty_and_codex_are_phase_static);

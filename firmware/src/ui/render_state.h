@@ -82,6 +82,8 @@ struct RenderState {
   uint8_t transition_phase = 0;
   uint32_t transition_epoch = 0;
   uint32_t semantic_event_epoch = 0;
+  uint32_t semantic_event_started_us = 0;
+  uint8_t semantic_event_phase = 0;
   uint8_t ambient_phase = 0;
   // BLOCKED pulse phase from the AnimationScheduler (1.2 s period, eight
   // complete samples, LED synced). Themes use this for smooth motion.

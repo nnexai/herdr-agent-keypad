@@ -43,6 +43,7 @@ struct LedEvents {
   bool all_off = false;
   LedSemanticEvent semantic_event = LedSemanticEvent::None;
   uint32_t semantic_epoch = 0;
+  uint32_t semantic_start_us = 0;
   uint8_t semantic_phase = 0;
 };
 
@@ -54,10 +55,10 @@ inline uint32_t ledSemanticEpoch(const RenderState& state,
 
 inline LedSemanticEvent ledSemanticEvent(const RenderState& state,
                                          const LedEvents& events) {
+  if (state.syncing) return LedSemanticEvent::Sync;
   if (events.semantic_event != LedSemanticEvent::None) {
     return events.semantic_event;
   }
-  if (state.syncing) return LedSemanticEvent::Sync;
   for (const RenderState::Slot& slot : state.slots) {
     if (slot.press_impulse) return LedSemanticEvent::Press;
     switch (slot.feedback) {
@@ -80,13 +81,17 @@ inline LedSemanticEvent ledSemanticEvent(const RenderState& state,
   if (state.transition_active) return LedSemanticEvent::State;
   return LedSemanticEvent::None;
 }
-
 inline uint8_t ledSemanticPhase(const RenderState& state,
                                 const LedEvents& events) {
-  return events.semantic_event != LedSemanticEvent::None ||
-                 events.semantic_epoch != 0
-             ? events.semantic_phase
-             : state.transition_phase;
+  if (events.semantic_event != LedSemanticEvent::None ||
+      events.semantic_epoch != 0) {
+    return events.semantic_phase;
+  }
+  if (state.semantic_event_epoch != 0 ||
+      state.semantic_event_started_us != 0) {
+    return state.semantic_event_phase;
+  }
+  return state.transition_phase;
 }
 
 struct LedCodexCue {
