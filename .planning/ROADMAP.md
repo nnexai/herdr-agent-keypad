@@ -203,7 +203,7 @@ Plans:
   4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
   5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
 
-**Plans:** 4/9 plans executed
+**Plans:** 5/9 plans executed
 
 Plans:
 
@@ -225,7 +225,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 03-05-PLAN.md — Map Codex usage and source health through all four existing LED grammars.
+- [x] 03-05-PLAN.md — Map Codex usage and source health through all four existing LED grammars.
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -299,7 +299,7 @@ Plans:
 | 2. Authoritative Agent Projection and Exact Focus | 4/5 | In Progress|  |
 | 02.1 Reliable Live Synchronization, Focus, and Flicker-Free Rendering | 3/3 | Complete | 2026-08-17 |
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
-| 3. Truthful Codex Capacity and Device Menu | 3/9 | In Progress|  |
+| 3. Truthful Codex Capacity and Device Menu | 5/9 | In Progress|  |
 | 03.1 High-Fidelity Animation and Interaction Polish | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 
