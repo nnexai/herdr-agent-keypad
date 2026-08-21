@@ -99,6 +99,9 @@ struct ProofMetrics {
   void observeLoopWall(uint32_t elapsed_us) {
     if (elapsed_us > loop_wall_max_us) loop_wall_max_us = elapsed_us;
   }
+  // Record only a complete compose+flush transaction. loop_window_us is the
+  // measured main-loop wall window, so the duty value remains comparable to
+  // AnimationScheduler's degradation decision.
   void observeAnimationFrame(uint32_t compose_flush_us,
                              uint32_t loop_window_us,
                              uint8_t level) {

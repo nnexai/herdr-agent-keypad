@@ -681,26 +681,24 @@ void loop() {
     agentProjection.tick(board, now);
     const uint32_t tick_cost = micros() - tick_started;
     const uint32_t loop_window = micros() - loop_started;
-    // Use the real loop window for the scheduler budget. A long tick is a
-    // complete compose/flush transaction on the production path; short ticks
-    // are scheduler bookkeeping and are not counted as frames.
-    if (tick_cost > 1000) {
+    // Only a tick that composed a complete frame feeds the scheduler. The
+    // window is measured wall time from the same loop, so Half/Static decisions
+    // cannot be polluted by bookkeeping-only ticks.
+    const bool frame_observed = agentProjection.animation().consumeFrameObservation();
+    if (frame_observed) {
+      agentProjection.animation().observeFlushCost(tick_cost, loop_window);
       proofMetrics.observeAnimationFrame(
           tick_cost, loop_window,
           static_cast<uint8_t>(agentProjection.animation().level()));
+    } else if (agentProjection.animation().level() == AnimationScheduler::Level::Static) {
+      proofMetrics.recordSkippedFrame();
     }
     if (agentProjection.animation().level() != lastAnimationLevel) {
       proofMetrics.recordAnimationLevelChange();
       lastAnimationLevel = agentProjection.animation().level();
     }
-    if (agentProjection.animation().level() == AnimationScheduler::Level::Static) {
-      proofMetrics.recordSkippedFrame();
-    } else if (agentProjection.animation().level() != AnimationScheduler::Level::Full &&
-               tick_cost > 1000) {
+    if (frame_observed && agentProjection.animation().level() != AnimationScheduler::Level::Full) {
       proofMetrics.recordDegradedFrame();
-    }
-    if (tick_cost > 0) {
-      agentProjection.animation().observeFlushCost(tick_cost, loop_window);
     }
   }
   refreshMenuPresentation();

@@ -1325,6 +1325,50 @@ void test_render_state_transition_metadata_is_presentation_only() {
   TEST_ASSERT_TRUE(state.transition_active);
   TEST_ASSERT_TRUE(projection.hasBinding(0));
 }
+void test_urgent_generation_cuts_transition_and_fences_bindings() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument first = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(first.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  JsonDocument ordinary = snapshot_document(2);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(ordinary.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  TEST_ASSERT_TRUE(projection.animation().transitionActive());
+
+  JsonDocument stale = snapshot_document(3, "working", "stale");
+  TEST_ASSERT_TRUE(projection.stageSnapshot(stale.as<JsonObjectConst>()));
+  resetLog();
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const RenderState state = projection.renderState(0);
+  TEST_ASSERT_FALSE(state.transition_active);
+  TEST_ASSERT_FALSE(projection.hasBinding(0));
+  TEST_ASSERT_TRUE(logContainsText("STALE"));
+  resetLog();
+  projection.tick(board, 1000000UL);
+  TEST_ASSERT_EQUAL_UINT32(0, countPushes());
+}
+
+void test_static_commit_flushes_complete_semantics_without_motion() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument first = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(first.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  projection.animation().setLevel(AnimationScheduler::Level::Static);
+  JsonDocument second = snapshot_document(2);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(second.as<JsonObjectConst>()));
+  resetLog();
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  TEST_ASSERT_EQUAL_UINT32(3, countPushes());
+  const RenderState state = projection.renderState(0);
+  TEST_ASSERT_FALSE(state.transition_active);
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+  TEST_ASSERT_TRUE(logContainsText("WORKING"));
+  resetLog();
+  projection.tick(board, 1000000UL);
+  TEST_ASSERT_EQUAL_UINT32(0, countPushes());
+}
 
 void test_blocked_motion_suppressed_by_fence_and_no_alloc() {
   AgentProjection projection;
@@ -2367,6 +2411,8 @@ int runAllTests() {
   RUN_TEST(test_half_samples_every_second_phase_and_static_keeps_semantics);
   RUN_TEST(test_signal_edge_transition_changes_only_rail_accent);
   RUN_TEST(test_render_state_transition_metadata_is_presentation_only);
+  RUN_TEST(test_urgent_generation_cuts_transition_and_fences_bindings);
+  RUN_TEST(test_static_commit_flushes_complete_semantics_without_motion);
   RUN_TEST(test_blocked_motion_suppressed_by_fence_and_no_alloc);
   RUN_TEST(test_led_grammars_and_policy);
   RUN_TEST(test_led_policy_clamps_bright_led_count_and_all_off);
