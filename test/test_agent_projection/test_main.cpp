@@ -1237,6 +1237,44 @@ void test_phase3_capture_scenes_use_production_panel4_renderers() {
       projection.capturePanel(0, &signalEdgeTheme(), CaptureScene::MenuHealth));
 }
 
+void test_capture_phase_and_level_vocabulary_is_bounded_and_deterministic() {
+  AgentProjection projection;
+  ThemeRenderer* themes[] = {
+      &signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  const AnimationScheduler::Level levels[] = {
+      AnimationScheduler::Level::Full,
+      AnimationScheduler::Level::Half,
+      AnimationScheduler::Level::Static,
+  };
+  for (ThemeRenderer* theme : themes) {
+    for (AnimationScheduler::Level level : levels) {
+      for (uint8_t phase = 0; phase < 8; ++phase) {
+        TEST_ASSERT_TRUE(projection.capturePanel(
+            0, theme, CaptureScene::Working, level, phase));
+        TEST_ASSERT_NOT_NULL(projection.capturePixels());
+      }
+    }
+  }
+  TEST_ASSERT_FALSE(projection.capturePanel(
+      0, &signalEdgeTheme(), CaptureScene::Working,
+      AnimationScheduler::Level::Full, 8));
+  TEST_ASSERT_TRUE(projection.capturePanel(
+      0, &signalEdgeTheme(), CaptureScene::Working,
+      AnimationScheduler::Level::Static, 7));
+}
+
+void test_capture_slot_cardinality_is_bounded_and_semantic() {
+  AgentProjection projection;
+  for (CaptureScene scene : {CaptureScene::SlotsZero, CaptureScene::SlotsOne,
+                             CaptureScene::SlotsTwo, CaptureScene::SlotsThree}) {
+    resetLog();
+    TEST_ASSERT_TRUE(projection.capturePanel(
+        0, &signalEdgeTheme(), scene, AnimationScheduler::Level::Static, 0));
+    TEST_ASSERT_TRUE(logContainsText("NO AGENT") || logContainsText("@DESIGNER"));
+    TEST_ASSERT_FALSE(logContainsText("UNAVAL"));
+  }
+}
+
 void test_signal_edge_polish_geometry() {
   LGFX_Sprite sprite;
   RenderState state;
@@ -2849,7 +2887,9 @@ int runAllTests() {
   RUN_TEST(test_null_panel_fails_closed);
   RUN_TEST(test_generation_replacement_clears_feedback);
   RUN_TEST(test_snapshot_commit_keeps_visible_sync_cutout_hidden);
-  RUN_TEST(test_committed_render_state_exposes_one_codex_and_diagnostics_view);
+  RUN_TEST(test_capture_phase_and_level_vocabulary_is_bounded_and_deterministic);
+  RUN_TEST(test_capture_slot_cardinality_is_bounded_and_semantic);
+  RUN_TEST(test_phase3_capture_scenes_use_production_panel4_renderers);
   RUN_TEST(test_rejected_diagnostics_preserve_committed_generation_and_binding);
   RUN_TEST(test_flush_ordering_one_push_per_panel_sequential);
   RUN_TEST(test_theme_dispatch_renders_through_injected_theme);
