@@ -2672,16 +2672,33 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "phase31-current-deployment":
         return run_phase31_current_deployment(args)
     if args.command == "phase31-run":
-        baseline = validate_phase31_baseline_file(
-            args.baseline.resolve(),
-            require_current_deployment=args.require_current_deployment,
-        )
-        if baseline.get("status") == "blocked":
+        baseline_path = args.baseline.resolve()
+        try:
+            baseline_document = json.loads(baseline_path.read_text(encoding="ascii"))
+            baseline_kind = baseline_document.get("kind")
+        except (OSError, json.JSONDecodeError):
+            baseline_document = None
+            baseline_kind = None
+        if baseline_kind == "phase03.1-budget-lock":
+            _phase31_sidecar(baseline_path, "budget lock")
+            if baseline_document.get("status") != "blocked":
+                raise ValueError("Phase 03.1 budget lock status is not closed")
             print(
                 "Phase 03.1 budget lock is a historical blocked baseline; "
                 "continuing with current deployment",
                 flush=True,
             )
+        else:
+            baseline = validate_phase31_baseline_file(
+                baseline_path,
+                require_current_deployment=args.require_current_deployment,
+            )
+            if baseline.get("status") == "blocked":
+                print(
+                    "Phase 03.1 budget lock is a historical blocked baseline; "
+                    "continuing with current deployment",
+                    flush=True,
+                )
         return run_phase31_run(args)
     if args.command == "phase31-capture":
         return run_phase31_capture(args)
