@@ -5,10 +5,10 @@ current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: Exploration gate required before implementation
 stopped_at: Completed 03.1-08-PLAN.md
-last_updated: "2026-08-21T19:47:00.770Z"
+last_updated: "2026-08-21T19:49:07.063Z"
 last_activity: 2026-08-21
 last_activity_desc: Phase 03.2 inserted before Phase 4
-state_head: 8d3d05002126838f502513a7ba43db2c1ba7ce2b
+state_head: 1e1f97f292555173d5cd29614a8effa66b972102
 progress:
   total_phases: 8
   completed_phases: 5
@@ -209,6 +209,7 @@ None yet.
 - Phase 03.1 inserted after Phase 3: High-Fidelity Animation and Interaction Polish (URGENT)
 - Phase 03.2 inserted after Phase 3: Production Rust Herdr Bridge (URGENT)
 - Phase 03.2 inserted after Phase 03.1: Focus-Then-Hold USB Keyboard; comparative exploration gate required before composite USB commitment (URGENT)
+- Phase 03.2 edited: composite CDC + HID is the sole feasibility target; alternative backends are explored only after a recorded composite failure
 
 ## Deferred Items
 

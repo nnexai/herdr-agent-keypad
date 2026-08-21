@@ -309,24 +309,24 @@ Plans:
 **Mode:** mvp
 **Depends on:** Phase 03.1
 **Requirements:** HOLD-01, HOLD-02, HOLD-03, HOLD-04, HOLD-05, SAFE-02
-**Research flag:** Mandatory exploration must precede permanent USB migration. It must prototype composite TinyUSB CDC + HID on the exact board and compare it with Herdr pane key-repeat, per-OS virtual-keyboard injection, and a possible explicit Herdr key-state API. The decision record must measure focus-to-HID ordering, short-click separation, key-repeat behavior, release and stuck-key failure modes, USB identity/pairing, CDC framing and throughput, reconnect, suspend/resume, flashing, and boot recovery. Composite HID is the selected product direction only after this gate passes; an exploration failure returns the transport decision for explicit reconsideration rather than silently selecting a narrower backend.
+**Research flag:** Mandatory composite-USB feasibility must precede permanent migration. The exploration run prototypes only TinyUSB composite CDC + HID on the exact board and measures focus-to-HID ordering, short-click separation, key-repeat behavior, release and stuck-key failure modes, USB identity/pairing, CDC framing and throughput, reconnect, suspend/resume, flashing, and boot recovery. A passing result commits Phase 03.2 to composite CDC + HID and ends transport exploration. Only a recorded composite failure may return the decision for explicit reconsideration of Herdr pane key-repeat, per-OS virtual-keyboard injection, or an explicit Herdr key-state API.
 
 **Success Criteria** (what must be TRUE):
 
-  1. A bounded exploration run records reproducible evidence for every candidate path and proves or rejects composite CDC + HID on the exact keypad before implementation commits to a replacement USB stack.
+  1. A bounded exploration run records reproducible exact-device evidence that proves or rejects composite CDC + HID before implementation replaces the proven USB stack; alternative paths are not explored after a passing result.
   2. A short press retains the existing immediate exact-focus behavior and never emits Space; crossing a physically validated hold threshold arms only local firmware gesture state correlated to the existing generation-, binding-, action-, and session-bound focus result.
   3. Firmware emits HID Space-down only after Herdr acknowledges exact focus and only while the same physical key remains held; release-before-ack, stale identity, late result, focus failure, unavailable source, or disconnected host never emits Space.
   4. Once HID Space-down is active, later focus changes do not cancel it; the input behaves like a physical keyboard and ends on physical release or USB-device removal, with controlled reset and suspend paths releasing all keys.
   5. The fixed Space hold adds no configurable key, macro, text, command, provider, or arbitrary Herdr-action surface, and pending, active, cancelled, and failed hold states remain visibly distinct.
   6. Fresh exact-device evidence requalifies composite USB identity, pairing, bounded NDJSON CDC exchange, reconnect, suspend/resume, flashing, recovery, input latency, and stuck-key behavior before Phase 4 acceptance begins.
 
-**Planning gate:** Phase planning must schedule the comparative exploration and exact-device decision record before any production transport, firmware, or host migration plan. The exploration must first test whether the existing correlated `focus_result` is sufficient authorization so the hold path does not add protocol messages without need.
+**Planning gate:** Phase planning must schedule the composite CDC + HID feasibility run and exact-device decision record before any production transport, firmware, or host migration plan. It must also test whether the existing correlated `focus_result` is sufficient authorization so the hold path does not add protocol messages without need. Alternative backends remain out of scope unless this gate records a composite failure and the direction is explicitly reconsidered.
 
 **Plans:** TBD
 
 Plans:
 
-- [ ] 03.2-00: Comparative exploration and exact-device composite USB decision gate
+- [ ] 03.2-00: Composite CDC + HID feasibility run and exact-device decision gate
 - [ ] Remaining implementation plans are defined only after 03.2-00 records a passing direction
 
 **UI hint:** yes
