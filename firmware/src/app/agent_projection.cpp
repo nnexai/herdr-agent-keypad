@@ -592,7 +592,7 @@ bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
       animation_.transitionActive();
   state.transition_phase = state.transition_active ? animation_.transitionProgress(micros()) :
                            AnimationScheduler::kNeutralPhase;
-  state.ambient_phase = animation_.presentationPhase();
+  state.ambient_phase = animation_.presentationPhase(micros());
   state.blocked_pulse_high = animation_.blockedPulseHigh(micros());
   RenderState::Slot& out = state.slots[slot];
   out.occupied = tile.binding.occupied;
@@ -770,7 +770,7 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
       animation_.transitionActive();
   state.transition_phase = state.transition_active ? animation_.transitionProgress(now_us) :
                            AnimationScheduler::kNeutralPhase;
-  state.ambient_phase = animation_.presentationPhase();
+  state.ambient_phase = animation_.presentationPhase(now_us);
   state.blocked_pulse_high = animation_.blockedPulseHigh(now_us);
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     RenderState::Slot& output = state.slots[slot];

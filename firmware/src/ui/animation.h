@@ -22,10 +22,12 @@ class AnimationScheduler final {
     next_ambient_us_ = 0;
   }
 
-  // Test and capture seams use this only to model measured degradation.
-  // Production changes levels through observeFlushCost().
-  void setLevel(Level level) { level_ = level; }
-
+  void setLevel(Level level) {
+    level_ = level;
+    if (level_ == Level::Static && transition_active_) {
+      interruptTransition(transition_epoch_);
+    }
+  }
   // Feed one measured complete compose+flush cost and the wall-time window in
   // which it occurred. Degradation is sticky within a window and recovers
   // toward Full only at half the allowed duty.
@@ -36,8 +38,12 @@ class AnimationScheduler final {
     last_duty_percent_ = static_cast<uint32_t>(
         (static_cast<uint64_t>(flush_us) * 100U) / loop_window_us);
     if (last_duty_percent_ > kBudgetPercent) {
-      if (level_ == Level::Full) level_ = Level::Half;
-      else if (level_ == Level::Half) level_ = Level::Static;
+      if (level_ == Level::Full) {
+        level_ = Level::Half;
+      } else if (level_ == Level::Half) {
+        level_ = Level::Static;
+        interruptTransition(transition_epoch_);
+      }
     } else if (last_duty_percent_ * 2U <= kBudgetPercent) {
       if (level_ == Level::Static) level_ = Level::Half;
       else if (level_ == Level::Half) level_ = Level::Full;
@@ -108,7 +114,12 @@ class AnimationScheduler final {
 
   uint8_t presentationPhase() const {
     if (level_ == Level::Static || !transition_active_) return kNeutralPhase;
-    return transitionProgress(transition_started_us_ + 1U);
+    return transition_last_phase_;
+  }
+
+  uint8_t presentationPhase(uint32_t now_us) const {
+    if (level_ == Level::Static || !transition_active_) return kNeutralPhase;
+    return transitionProgress(now_us);
   }
 
   // BLOCKED phase reference for LED synchronization: both display and LED
