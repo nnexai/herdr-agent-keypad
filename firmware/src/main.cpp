@@ -450,7 +450,12 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     reply["frame_count"] = proofMetrics.frame_count;
     reply["full_frames"] = proofMetrics.full_frames;
     reply["half_frames"] = proofMetrics.half_frames;
+    reply["minimum_free_heap"] = proofMetrics.minimum_free_heap;
+    reply["max_key_poll_gap_us"] = proofMetrics.max_key_poll_gap_us;
     reply["largest_free_block"] = proofMetrics.largest_free_block;
+    reply["out_of_order"] = proofMetrics.out_of_order;
+    reply["parser_high_water"] = proofMetrics.parser_high_water;
+    reply["queue_high_water"] = proofMetrics.queue_high_water;
     reply["level_changes"] = proofMetrics.level_changes;
     reply["loop_wall_max_us"] = proofMetrics.loop_wall_max_us;
     reply["malformed"] = proofMetrics.malformed;
