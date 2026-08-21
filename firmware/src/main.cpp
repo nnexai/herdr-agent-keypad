@@ -727,6 +727,7 @@ void loop() {
   const uint32_t loop_started = micros();
   const uint32_t now = loop_started;
   board.update(now);
+  reportInput();
   const ProductInputFrame input = captureProductInput(now);
   const ProductInputActions actions = ProductInputRouter::route(input);
   dispatchProductInput(actions, input, now);
