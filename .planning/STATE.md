@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03.1
 current_phase_name: High-Fidelity Animation and Interaction Polish
 status: executing
-stopped_at: Completed 03.1-04-PLAN.md
-last_updated: "2026-08-21T09:55:41.123Z"
+stopped_at: Completed 03.1-05-PLAN.md
+last_updated: "2026-08-21T10:10:07.414Z"
 last_activity: 2026-08-21
 last_activity_desc: Completed Phase 03 Plan 08 exact-device capture and pending evidence
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 43
-  completed_plans: 39
+  completed_plans: 40
 ---
 
 Total Phases: 6
@@ -28,7 +28,7 @@ stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
 last_activity_desc: "Completed Phase 03 Plan 08 exact-device capture and pending evidence"
-progress:[█████████░] 91%
+progress:[█████████░] 93%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.1 (High-Fidelity Animation and Interaction Polish) — EXECUTING
-Plan: 5 of 8
+Plan: 6 of 8
 Status: Ready to execute
 Last activity: 2026-08-21 — Phase 03.1 execution started
 
@@ -104,6 +104,7 @@ Progress: [██████████] 97%
 | Phase 03.1 P02 | 34min | 2 tasks | 8 files |
 | Phase 03.1 P03 | 1min | 2 tasks | 8 files |
 | Phase 03.1 P04 | 15min | 2 tasks | 8 files |
+| Phase 03.1 P05 | 12min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -174,6 +175,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Represent physical press as a per-slot RenderState presentation flag so it cannot become protocol state or imply host acknowledgement.
 - [Phase ?]: Keep pending cadence in AgentProjection at a fixed 300 ms step independent of ambient theme cadence and degradation.
 - [Phase ?]: Clear impulse and pending timing markers on exact result admission so success and named failures assert immediately.
+- [Phase ?]: MenuController remains authoritative; immediate mutations start only bounded presentation metadata.
+- [Phase ?]: Fixed 120 ms open/close and 200 ms slide/detail bounds replace reversed phases without momentum.
+- [Phase ?]: Each theme moves only its rail, record stripe, beacon marker, or bezel cue while semantic copy stays stable.
 
 ### Pending Todos
 
@@ -210,5 +214,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-21T09:55:41.108Z
-Stopped at: Completed 03.1-04-PLAN.md
+Last session: 2026-08-21T10:10:07.401Z
+Stopped at: Completed 03.1-05-PLAN.md
