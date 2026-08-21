@@ -246,6 +246,21 @@ class Phase31DeploymentLockTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "firmware binary hash"):
                 validate_deployment(record, firmware, device_id="device-1")
 
+class Phase31CaptureTests(unittest.TestCase):
+    def test_phase31_capture_rejects_failed_manifest_before_strict_validation(self):
+        from phase1_bringup.phase3_smoke import validate_phase31_framebuffer_manifest
+
+        deployment = {
+            "deployment_id": "deployment",
+            "firmware_sha256": "firmware",
+        }
+        with self.assertRaisesRegex(ValueError, "status"):
+            validate_phase31_framebuffer_manifest(
+                {"schema_version": 1, "kind": "phase03.1-framebuffer-evidence",
+                 "status": "blocked", "deployment": deployment},
+                deployment,
+            )
+
 class Phase31ProfileTests(unittest.TestCase):
     def test_phase31_profile_preserves_unavailable_physical_observation(self):
         from phase1_bringup.phase3_smoke import phase31_lock_from_baseline, validate_phase31_baseline
