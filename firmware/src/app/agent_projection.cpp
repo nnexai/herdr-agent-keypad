@@ -618,8 +618,9 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_
 #ifdef ARDUINO
     // Snapshot flushes are long enough to overlap a normal human press. Keep
     // ButtonSense sampling between panels; BoardAdapter latches the edge until
-    // the normal input dispatcher consumes it after the commit.
-    board.update();
+    // the normal input dispatcher consumes it after the commit. The timestamp
+    // belongs to this physical poll, not to the later main-loop poll.
+    board.update(micros());
 #endif
   }
   return commitSnapshot();

@@ -13,9 +13,13 @@ class BoardAdapter {
  public:
   bool begin(const PhysicalMap& physical_map);
   // Capture the poll timestamp at the adapter's single hardware latch seam.
-  // Product input actions use this timestamp for edge-to-render evidence.
-  void update(uint32_t now_us = 0);
+  // Every poll must provide its real hardware-observation timestamp. The
+  // adapter preserves the first timestamp until the corresponding key/delta
+  // is consumed; later polls cannot move an unconsumed edge forward.
+  void update(uint32_t now_us);
   uint32_t inputLatchedAt() const { return input_latched_at_us_; }
+  long encoderDelta();
+  long consumeEncoderDelta();
   bool ready() const { return ready_; }
 
   Display* displayAt(uint8_t index);
@@ -25,7 +29,6 @@ class BoardAdapter {
   bool consumePressed(uint8_t logical_index);
   bool mapKeyLabel(uint8_t label, uint8_t& library_index) const;
   bool mapEncoderClick(uint8_t& library_index) const;
-  long encoderDelta();
   long encoderPosition() const;
 
   void setBrightness(uint8_t brightness);
@@ -38,5 +41,10 @@ class BoardAdapter {
   const PhysicalMap* physical_map_ = nullptr;
   bool ready_ = false;
   uint8_t pressed_latch_ = 0;
+  uint32_t key_latched_at_us_[PhysicalMap::kKeyCount] = {};
+  int32_t encoder_delta_latch_ = 0;
+  uint32_t encoder_latched_at_us_ = 0;
   uint32_t input_latched_at_us_ = 0;
+
+  void refreshInputLatchTimestamp();
 };

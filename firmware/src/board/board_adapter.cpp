@@ -4,6 +4,11 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
   physical_map_ = &physical_map;
   ready_ = false;
   pressed_latch_ = 0;
+  for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
+    key_latched_at_us_[logical] = 0;
+  }
+  encoder_delta_latch_ = 0;
+  encoder_latched_at_us_ = 0;
   input_latched_at_us_ = 0;
   if (!physical_map_->complete()) return false;
   BoardConfig config;
@@ -13,17 +18,54 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
   return ready_;
 }
 
+void BoardAdapter::refreshInputLatchTimestamp() {
+  uint32_t first = 0;
+  for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
+    if ((pressed_latch_ & static_cast<uint8_t>(1U << logical)) == 0 ||
+        key_latched_at_us_[logical] == 0) {
+      continue;
+    }
+    if (first == 0 ||
+        static_cast<int32_t>(key_latched_at_us_[logical] - first) < 0) {
+      first = key_latched_at_us_[logical];
+    }
+  }
+  if (encoder_delta_latch_ != 0 && encoder_latched_at_us_ != 0 &&
+      (first == 0 ||
+       static_cast<int32_t>(encoder_latched_at_us_ - first) < 0)) {
+    first = encoder_latched_at_us_;
+  }
+  input_latched_at_us_ = first;
+}
+
 void BoardAdapter::update(uint32_t now_us) {
   if (!ready_) return;
   // This is the single poll path for STM32 keys, ButtonSense, and encoder.
   board_.update();
-  input_latched_at_us_ = now_us;
   for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
     uint8_t library_index = 0;
-    if (physical_map_->keyIndex(logical, library_index) && board_.key(library_index).wasPressed()) {
+    if (physical_map_->keyIndex(logical, library_index) &&
+        board_.key(library_index).wasPressed() &&
+        (pressed_latch_ & static_cast<uint8_t>(1U << logical)) == 0) {
       pressed_latch_ |= static_cast<uint8_t>(1U << logical);
+      key_latched_at_us_[logical] = now_us;
     }
   }
+
+  const long raw_delta = board_.encoder.delta();
+  if (raw_delta != 0) {
+    const int64_t bounded_delta =
+        raw_delta > INT32_MAX ? INT32_MAX :
+        raw_delta < INT32_MIN ? INT32_MIN : static_cast<int64_t>(raw_delta);
+    const int64_t accumulated =
+        static_cast<int64_t>(encoder_delta_latch_) + bounded_delta;
+    if (encoder_delta_latch_ == 0) encoder_latched_at_us_ = now_us;
+    encoder_delta_latch_ =
+        accumulated > INT32_MAX ? INT32_MAX :
+        accumulated < INT32_MIN ? INT32_MIN : static_cast<int32_t>(accumulated);
+    if (encoder_delta_latch_ == 0) encoder_latched_at_us_ = 0;
+  }
+  refreshInputLatchTimestamp();
 }
 
 Display* BoardAdapter::displayAt(uint8_t index) {
@@ -55,6 +97,8 @@ bool BoardAdapter::wasPressed(uint8_t logical_index) {
 bool BoardAdapter::consumePressed(uint8_t logical_index) {
   if (!wasPressed(logical_index)) return false;
   pressed_latch_ &= static_cast<uint8_t>(~(1U << logical_index));
+  key_latched_at_us_[logical_index] = 0;
+  refreshInputLatchTimestamp();
   return true;
 }
 
@@ -70,7 +114,16 @@ bool BoardAdapter::mapEncoderClick(uint8_t& library_index) const {
 
 long BoardAdapter::encoderDelta() {
   if (!ready_) return 0;
-  return board_.encoder.delta();
+  return encoder_delta_latch_;
+}
+
+long BoardAdapter::consumeEncoderDelta() {
+  if (!ready_) return 0;
+  const long delta = encoder_delta_latch_;
+  encoder_delta_latch_ = 0;
+  encoder_latched_at_us_ = 0;
+  refreshInputLatchTimestamp();
+  return delta;
 }
 
 long BoardAdapter::encoderPosition() const {

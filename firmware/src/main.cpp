@@ -599,11 +599,13 @@ void reportInput() {
     return;
   }
   if (armedInput == ArmedInput::Encoder) {
-    const int32_t delta = board.encoderDelta();
+    const int32_t delta = static_cast<int32_t>(board.encoderDelta());
     if (delta > 0) {
+      board.consumeEncoderDelta();
       reportEncoderTransition("cw");
       armedInput = ArmedInput::None;
     } else if (delta < 0) {
+      board.consumeEncoderDelta();
       reportEncoderTransition("ccw");
       armedInput = ArmedInput::None;
     }
@@ -634,17 +636,17 @@ void refreshMenuPresentation() {
     proofMetrics.observeFirstEncoderResponse(micros() - encoderInputAt);
     encoderResponsePending = false;
   }
-}
-
 ProductInputFrame captureProductInput(uint32_t now_us) {
   ProductInputFrame frame;
   if (!board.ready()) return frame;
+  // Capture before draining: once the first key is consumed, the adapter's
+  // latch may advance to a still-pending encoder event.
+  frame.latched_at_us = board.inputLatchedAt();
   for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
     frame.agent_pressed[slot] = board.consumePressed(slot);
   }
   frame.encoder_clicked = board.consumePressed(4);
-  frame.encoder_delta = static_cast<int32_t>(board.encoderDelta());
-  frame.latched_at_us = board.inputLatchedAt();
+  frame.encoder_delta = static_cast<int32_t>(board.consumeEncoderDelta());
   if (frame.latched_at_us == 0) frame.latched_at_us = now_us;
   return frame;
 }
