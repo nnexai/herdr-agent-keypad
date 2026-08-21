@@ -2703,6 +2703,71 @@ void test_menu_redraw_is_panel4_only() {
 
 
 
+void test_led_grammar_rest_truth_and_segment_bounds_across_phases() {
+  RenderState state;
+  state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
+  state.slots[0].state = TileState::Idle;
+  state.slots[1].state = TileState::Settled;
+  state.slots[2].state = TileState::Empty;
+  LedEvents rest;
+  rest.semantic_event = LedSemanticEvent::State;
+  rest.semantic_epoch = 90;
+  rest.semantic_phase = 3;
+  LedSegment segments[kLedGrammarMaxSegments]{};
+
+  const size_t exception_count = exceptionChannelGrammar().frame(
+      state, rest, 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_EQUAL_UINT32(0, exception_count);
+  const size_t meter_count =
+      meterLampsGrammar().frame(state, rest, 0, segments,
+                                kLedGrammarMaxSegments);
+  for (size_t index = 0; index < meter_count; ++index) {
+    TEST_ASSERT_TRUE((segments[index].mask & 0x0E00U) == 0);
+  }
+
+  state.slots[0].feedback = TileFeedback::Pending;
+  rest.semantic_event = LedSemanticEvent::Pending;
+  rest.semantic_phase = 1;
+  const size_t field_count = fieldExtensionGrammar().frame(
+      state, rest, 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, field_count);
+  TEST_ASSERT_EQUAL_UINT16(1U << 1, segments[0].mask);
+
+  const size_t meter_pending = meterLampsGrammar().frame(
+      state, rest, 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, meter_pending);
+  for (size_t index = 0; index < meter_pending; ++index) {
+    TEST_ASSERT_TRUE((segments[index].mask & (1U << 1)) == 0);
+  }
+
+  state.codex.source_state = CodexSourceState::Current;
+  state.codex.primary = 100;
+  state.codex.reached_limit = 1;
+  rest.semantic_event = LedSemanticEvent::Health;
+  rest.semantic_phase = 0;
+  for (LedGrammar* grammar : {&railEchoGrammar(), &exceptionChannelGrammar(),
+                              &fieldExtensionGrammar(), &meterLampsGrammar()}) {
+    const size_t count =
+        grammar->frame(state, rest, 0, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
+  }
+  state.syncing = true;
+  rest.semantic_event = LedSemanticEvent::Sync;
+  rest.semantic_epoch = 91;
+  for (LedGrammar* grammar : {&railEchoGrammar(), &exceptionChannelGrammar(),
+                              &fieldExtensionGrammar(), &meterLampsGrammar()}) {
+    LedEngine engine;
+    BoardAdapter board;
+    engine.setGrammar(*grammar);
+    g_led_calls.clear();
+    engine.render(state, rest, 0, board);
+    TEST_ASSERT_EQUAL_UINT32(1, g_led_calls.size());
+    TEST_ASSERT_EQUAL_UINT16(LedEngine::kAllMask, g_led_calls[0].mask);
+    TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
+  }
+}
+
 void test_led_semantic_events_align_grammar_starts_and_fences() {
   RenderState state;
   state.source_status = "current";
@@ -2758,6 +2823,7 @@ void test_led_semantic_events_align_grammar_starts_and_fences() {
 
 int runAllTests() {
   UNITY_BEGIN();
+  RUN_TEST(test_led_grammar_rest_truth_and_segment_bounds_across_phases);
   RUN_TEST(test_led_semantic_events_align_grammar_starts_and_fences);
   RUN_TEST(test_compose_then_flush_commits_generation);
   RUN_TEST(test_null_panel_fails_closed);
