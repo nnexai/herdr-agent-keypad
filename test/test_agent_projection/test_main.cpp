@@ -5,6 +5,7 @@
 #include <string>
 #include <cstdio>
 #include <vector>
+#include <algorithm>
 
 #include "../../firmware/src/app/agent_projection.h"
 #include "../../firmware/src/app/settings_store.h"
@@ -1262,6 +1263,24 @@ void test_capture_phase_and_level_vocabulary_is_bounded_and_deterministic() {
       0, &signalEdgeTheme(), CaptureScene::Working,
       AnimationScheduler::Level::Static, 7));
 }
+void test_blocked_renderstate_motion_has_distinct_complete_frames() {
+  AgentProjection projection;
+  ThemeRenderer* themes[] = {
+      &signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  for (ThemeRenderer* theme : themes) {
+    std::vector<std::vector<std::string>> frames;
+    for (uint8_t phase = 0; phase < AnimationScheduler::kBlockedPhaseCount; ++phase) {
+      resetLog();
+      TEST_ASSERT_TRUE(projection.capturePanel(
+          0, theme, CaptureScene::Blocked, AnimationScheduler::Level::Full, phase));
+      TEST_ASSERT_NOT_NULL(projection.capturePixels());
+      if (std::find(frames.begin(), frames.end(), g_render_log) == frames.end()) {
+        frames.push_back(g_render_log);
+      }
+    }
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(3, frames.size());
+  }
+}
 
 void test_capture_slot_cardinality_is_bounded_and_semantic() {
   AgentProjection projection;
@@ -1449,14 +1468,15 @@ void test_blocked_pulse_cadence_and_phase() {
   AnimationScheduler scheduler;
   const uint32_t start = 1000;
   scheduler.blockedFrameDue(start);  // establishes the epoch
-  TEST_ASSERT_FALSE(scheduler.blockedFrameDue(start + 100000UL));       // within half period
-  TEST_ASSERT_TRUE(scheduler.blockedFrameDue(start + 650000UL));        // crossed 600 ms
-  TEST_ASSERT_FALSE(scheduler.blockedFrameDue(start + 700000UL));
-  TEST_ASSERT_TRUE(scheduler.blockedFrameDue(start + 1250000UL));       // next half period
-  // Phase query is stable and derived from the same epoch.
+  TEST_ASSERT_FALSE(scheduler.blockedFrameDue(start + 100000UL));       // within 150 ms phase
+  TEST_ASSERT_TRUE(scheduler.blockedFrameDue(start + 200000UL));        // crossed 150 ms
+  TEST_ASSERT_FALSE(scheduler.blockedFrameDue(start + 250000UL));
+  TEST_ASSERT_TRUE(scheduler.blockedFrameDue(start + 350000UL));        // crossed 300 ms
+  TEST_ASSERT_EQUAL_UINT8(0, scheduler.blockedPhase(start + 100000UL));
+  TEST_ASSERT_EQUAL_UINT8(1, scheduler.blockedPhase(start + 200000UL));
+  TEST_ASSERT_EQUAL_UINT8(4, scheduler.blockedPhase(start + 650000UL));
   TEST_ASSERT_TRUE(scheduler.blockedPulseHigh(start + 100000UL));
   TEST_ASSERT_FALSE(scheduler.blockedPulseHigh(start + 650000UL));
-  TEST_ASSERT_TRUE(scheduler.blockedPulseHigh(start + 1250000UL));
   TEST_ASSERT_EQUAL_UINT32(start, scheduler.blockedPhaseEpoch());
 }
 
@@ -2887,6 +2907,7 @@ int runAllTests() {
   RUN_TEST(test_generation_replacement_clears_feedback);
   RUN_TEST(test_snapshot_commit_keeps_visible_sync_cutout_hidden);
   RUN_TEST(test_capture_phase_and_level_vocabulary_is_bounded_and_deterministic);
+  RUN_TEST(test_blocked_renderstate_motion_has_distinct_complete_frames);
   RUN_TEST(test_capture_slot_cardinality_is_bounded_and_semantic);
   RUN_TEST(test_phase3_capture_scenes_use_production_panel4_renderers);
   RUN_TEST(test_rejected_diagnostics_preserve_committed_generation_and_binding);

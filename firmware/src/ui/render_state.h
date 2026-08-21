@@ -83,7 +83,8 @@ struct RenderState {
   uint32_t transition_epoch = 0;
   uint32_t semantic_event_epoch = 0;
   uint8_t ambient_phase = 0;
-  // BLOCKED pulse phase from the AnimationScheduler (1.2 s period, LED
-  // synced). Themes draw their alternate BLOCKED frame when false.
+  // BLOCKED pulse phase from the AnimationScheduler (1.2 s period, eight
+  // complete samples, LED synced). Themes use this for smooth motion.
+  uint8_t blocked_phase = 0;
   bool blocked_pulse_high = true;
 };

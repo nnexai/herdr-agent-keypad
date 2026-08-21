@@ -221,8 +221,10 @@ class BeaconTheme final : public ThemeRenderer {
       sprite.drawString("NO AGENT", centeredX("NO AGENT"), 96);
     } else {
       if (fence == nullptr && feedback == nullptr && activeField(tile.state)) {
-        const bool low = tile.state == TileState::Blocked && !state.blocked_pulse_high;
-        drawField(sprite, low ? scale565(base.color, 12) : base.color, phase);
+        const bool blocked = tile.state == TileState::Blocked;
+        const uint8_t blocked_scale = static_cast<uint8_t>(
+            12U + static_cast<uint8_t>(state.blocked_phase * 6U));
+        drawField(sprite, blocked ? scale565(base.color, blocked_scale) : base.color, phase);
       } else if (feedback != nullptr && activeField(tile.state)) {
         drawField(sprite, scale565(base.color, 12), phase);
       }

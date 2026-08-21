@@ -66,7 +66,7 @@ void drawStateRing(LGFX_Sprite& sprite, TileState state, uint16_t color,
       sprite.drawCircle(kCx, kCy, kRadius, color);
       sprite.drawCircle(kCx, kCy, kRadius - 1, color);
       sprite.drawCircle(kCx, kCy, kRadius - 2, color);
-      drawGapMask(sprite, pulse_high ? 8 : 4);
+      drawGapMask(sprite, 4 + static_cast<int32_t>(phase % 8U));
       break;
     case TileState::Unseen:
       sprite.drawCircle(kCx, kCy, kRadius, color);
@@ -219,7 +219,10 @@ class InstrumentTheme final : public ThemeRenderer {
       }
     } else {
       const bool low = tile.state == TileState::Blocked && !state.blocked_pulse_high;
-      drawStateRing(sprite, tile.state, low ? dim565(content) : content, phase,
+      const uint8_t ring_phase = tile.state == TileState::Blocked
+                                     ? state.blocked_phase : phase;
+      drawStateRing(sprite, tile.state,
+                    low ? dim565(content) : content, ring_phase,
                     state.blocked_pulse_high);
       drawInnerGlyph(sprite, tile.state, content);
     }

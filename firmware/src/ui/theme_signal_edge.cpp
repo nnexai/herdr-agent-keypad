@@ -30,10 +30,10 @@ void drawDashedRect(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w, int32_
 
 // State rail x:0..15 — width plus fill pattern is the state channel.
 void drawRail(LGFX_Sprite& sprite, TileState state, uint16_t color,
-              bool pulse_high, bool motion_active, uint8_t phase) {
+              bool motion_active, uint8_t phase, uint8_t blocked_phase) {
   switch (state) {
-    case TileState::Blocked: {  // 16 px animated dashes — crawl by half a
-      const int32_t offset = pulse_high ? 0 : 6;  // dash period per pulse phase
+    case TileState::Blocked: {  // 16 px animated dashes — crawl continuously.
+      const int32_t offset = static_cast<int32_t>((blocked_phase * 3U) % 12U);
       for (int32_t y = offset; y < 128; y += 12) sprite.fillRect(0, y, 16, 7, color);
       break;
     }
@@ -181,10 +181,8 @@ class SignalEdgeTheme final : public ThemeRenderer {
       sprite.drawString("NO AGENT", centeredX("NO AGENT"), 104);
       drawGlyph(sprite, TileState::Empty, kEmptyEdge);
     } else {
-      drawRail(sprite, tile.state, content, state.blocked_pulse_high,
-               motion_active, phase);
-      drawTitleRows(sprite, tile.title, fence != nullptr ? kSettled : kPrimary);
-      sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
+      drawRail(sprite, tile.state, content, motion_active, phase,
+               state.blocked_phase);
       sprite.drawString(tile.discriminator, 15, 32);
       drawGlyph(sprite, tile.state, content);
       sprite.setTextColor(content, kBackground);

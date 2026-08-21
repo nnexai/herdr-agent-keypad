@@ -10,6 +10,7 @@
 class AnimationScheduler final {
  public:
   static constexpr uint32_t kBlockedPeriodUs = 1200000UL;
+  static constexpr uint8_t kBlockedPhaseCount = 8;
   static constexpr uint32_t kTransitionDurationUs = 200000UL;
   static constexpr uint32_t kBudgetPercent = 30;
   static constexpr uint8_t kTransitionPhaseCount = 4;
@@ -125,19 +126,26 @@ class AnimationScheduler final {
     return ambient_phase_;
   }
 
-  // BLOCKED phase reference for LED synchronization: both display and LED
-  // engines derive their on/off half-period from this epoch.
+  // BLOCKED phase reference for LED synchronization. Eight complete samples
+  // per 1.2 s cycle keep the warning urgent while allowing themes to move
+  // continuously instead of blinking between two static frames.
   uint32_t blockedPhaseEpoch() const { return blocked_epoch_us_; }
   uint32_t blockedPhaseEpochUs() const { return blocked_epoch_us_; }
+  uint8_t blockedPhase(uint32_t now_us) const {
+    if (blocked_epoch_us_ == 0) return 0;
+    const uint32_t step = kBlockedPeriodUs / kBlockedPhaseCount;
+    return static_cast<uint8_t>(((now_us - blocked_epoch_us_) / step) %
+                                kBlockedPhaseCount);
+  }
   bool blockedPulseHigh(uint32_t now_us) const {
-    return ((now_us - blocked_epoch_us_) / (kBlockedPeriodUs / 2)) % 2 == 0;
+    return blockedPhase(now_us) < kBlockedPhaseCount / 2U;
   }
 
-  // Returns true when BLOCKED crossed a half-period boundary since last call.
+  // Returns true when BLOCKED crossed a presentation phase boundary.
   bool blockedFrameDue(uint32_t now_us) {
     if (blocked_epoch_us_ == 0) blocked_epoch_us_ = now_us != 0 ? now_us : 1;
-    const uint32_t half = kBlockedPeriodUs / 2;
-    const uint32_t phase = (now_us - blocked_epoch_us_) / half;
+    const uint32_t step = kBlockedPeriodUs / kBlockedPhaseCount;
+    const uint32_t phase = (now_us - blocked_epoch_us_) / step;
     if (phase != last_blocked_phase_) {
       last_blocked_phase_ = phase;
       return true;

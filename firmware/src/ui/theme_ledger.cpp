@@ -153,7 +153,8 @@ class LedgerTheme final : public ThemeRenderer {
 
       if (tile.state == TileState::Blocked && fence == nullptr) {
         sprite.fillRect(0, 70, 128, 20, kBlocked);
-        if (!state.blocked_pulse_high) sprite.fillRect(0, 70, 128, 2, kBackground);
+        sprite.fillRect(0, 70 + static_cast<int32_t>(state.blocked_phase * 2U),
+                        128, 2, kBackground);
         drawLedgerGlyph(sprite, tile.state, 16, 80, kBackground);
         sprite.setTextColor(kBackground, kBlocked);
         sprite.drawString(base.word, 30, 74);

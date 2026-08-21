@@ -159,9 +159,10 @@ uint8_t capturePhase(CaptureLevel level, uint8_t phase) {
 void applyCapturePresentation(RenderState& state, CaptureLevel level, uint8_t phase) {
   const uint8_t resolved = capturePhase(level, phase);
   state.ambient_phase = resolved;
+  state.blocked_phase = resolved;
   state.transition_phase = static_cast<uint8_t>(resolved % AnimationScheduler::kTransitionPhaseCount);
   state.transition_active = level != CaptureLevel::Static;
-  state.blocked_pulse_high = (resolved & 1U) == 0;
+  state.blocked_pulse_high = resolved < AnimationScheduler::kBlockedPhaseCount / 2U;
   for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
     state.slots[slot].feedback_phase = resolved;
   }
@@ -848,6 +849,7 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
   state.transition_phase = state.transition_active ? animation_.transitionProgress(now_us) :
                            AnimationScheduler::kNeutralPhase;
   state.ambient_phase = animation_.presentationPhase(now_us);
+  state.blocked_phase = animation_.blockedPhase(now_us);
   state.blocked_pulse_high = animation_.blockedPulseHigh(now_us);
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     RenderState::Slot& output = state.slots[slot];
