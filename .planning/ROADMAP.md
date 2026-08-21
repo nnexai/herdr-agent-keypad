@@ -203,7 +203,7 @@ Plans:
   4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
   5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
 
-**Plans:** 5/9 plans executed
+**Plans:** 6/9 plans executed
 
 Plans:
 
@@ -229,7 +229,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 03-06-PLAN.md — Extend the one menu controller and settings store for non-modal direct keys and persistent local brightness.
+- [x] 03-06-PLAN.md — Extend the one menu controller and settings store for non-modal direct keys and persistent local brightness.
 
 **Wave 7** *(blocked on Wave 6 completion)*
 

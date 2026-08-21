@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03
 current_phase_name: Truthful Codex Capacity and Device Menu
 status: Ready to execute
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-08-21T00:17:52Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-08-21T00:28:47Z"
 last_activity: 2026-08-21
-last_activity_desc: Completed Phase 03 Plan 05 Codex LED grammar projection
+last_activity_desc: Completed Phase 03 Plan 06 non-modal input and local brightness
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 35
-  completed_plans: 31
+  completed_plans: 32
 ---
 
 Total Phases: 6
@@ -24,15 +24,15 @@ milestone_name: milestone
 current_phase: 03
 current_phase_name: Truthful Codex Capacity and Device Menu
 status: Ready to execute
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-08-21T00:17:52Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-08-21T00:28:47Z"
 last_activity: 2026-08-21
-last_activity_desc: "Completed Phase 03 Plan 05 Codex LED grammar projection"
-progress:[█████████░] 89%
+last_activity_desc: "Completed Phase 03 Plan 06 non-modal input and local brightness"
+progress:[█████████░] 91%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
-  completed_plans: 31
+  completed_plans: 32
 ---
 
 # Project State
@@ -47,17 +47,17 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03 — Truthful Codex Capacity and Device Menu
-Plan: 6 of 09
+Plan: 7 of 09
 Status: Ready to execute
-Last activity: 2026-08-21 — Completed Phase 03 Plan 05 Codex LED grammar projection
+Last activity: 2026-08-21 — Completed Phase 03 Plan 06 non-modal input and local brightness
 
-Progress: [█████████░] 89%
+Progress: [█████████░] 91%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 31
+- Total plans completed: 32
 - Average duration: 14 min
 - Total execution time: 0.2 hours
 
@@ -96,6 +96,7 @@ Progress: [█████████░] 89%
 | Phase 03 P03 | 3min | 2 tasks | 11 files |
 | Phase 03 P04 | 30min | 1 task | 9 files |
 | Phase 03 P05 | 28min | 1 task | 8 files |
+| Phase 03 P06 | 11min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -153,6 +154,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Firmware stages complete Codex and diagnostics into a local Generation candidate and exposes one committed shared RenderState.
 - [Phase 3]: All four panel-4 renderers share bounded Codex truth semantics while retaining theme-owned geometry; staged snapshot reveal frames read one staged Generation.
 - [Phase 3]: All four LED grammars consume the committed Codex RenderState directly; current-only primary usage owns the established usage zones, source failures use health overlays, and focus feedback retains precedence.
+- [Phase 3]: ProductInputRouter is the sole pure frame-ordering seam; production and native tests execute it with all agent slots emitted before click and rotation.
+- [Phase 3]: Settings schema v2 stores only theme, LED grammar, and 10%-step brightness; valid v1 loads at 80% with no boot migration write.
 
 ### Pending Todos
 
@@ -189,5 +192,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-21T00:17:52Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-08-21T00:28:47Z
+Stopped at: Completed 03-06-PLAN.md
