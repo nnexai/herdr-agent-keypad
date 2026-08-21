@@ -67,7 +67,10 @@ class ExceptionChannel final : public LedGrammar {
       const uint16_t hue = tile.state == TileState::Unseen ? 195 : 350;
       add(out, count, capacity, kKeyMasks[slot], hue, 100, brightness);
     }
-    if (events.menu_open) add(out, count, capacity, kL13, 180, 100, 25);
+    if (events.menu_open ||
+        ledSemanticEvent(state, events) == LedSemanticEvent::MenuOpen) {
+      add(out, count, capacity, kL13, 180, 100, 25);
+    }
     return count;
   }
 };

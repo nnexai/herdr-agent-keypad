@@ -61,7 +61,8 @@ void LedEngine::resolve(const LedSegment* segments, size_t count,
       else led.brightness = kRestingBrightnessCap;
     }
   }
-  if (events.all_off) {
+  if (events.all_off || state.syncing ||
+      ledSemanticEvent(state, events) == LedSemanticEvent::Sync) {
     for (uint8_t index = 0; index < kLedCount; ++index) resolved_[index] = {};
   }
 }

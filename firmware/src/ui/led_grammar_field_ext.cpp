@@ -94,7 +94,11 @@ class FieldExtension final : public LedGrammar {
       add(out, count, capacity, kUsageMask, usage.hue, usage.saturation,
           usage.brightness);
     }
-    if (events.menu_open) add(out, count, capacity, kL13, 180, 100, 25);
+    if ((events.menu_open ||
+         ledSemanticEvent(state, events) == LedSemanticEvent::MenuOpen) &&
+        !health) {
+      add(out, count, capacity, kL13, 180, 100, 25);
+    }
     return count;
   }
 };

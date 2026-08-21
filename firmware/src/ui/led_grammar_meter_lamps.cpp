@@ -116,7 +116,9 @@ class MeterLamps final : public LedGrammar {
     if (!health) {
       addUsageMeter(out, count, capacity, state, ledCodexCue(state));
     }
-    if (events.menu_open && !health) {
+    if ((events.menu_open ||
+         ledSemanticEvent(state, events) == LedSemanticEvent::MenuOpen) &&
+        !health) {
       add(out, count, capacity, 1U << 13, 180, 100, 25);
     }
     return count;

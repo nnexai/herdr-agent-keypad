@@ -86,7 +86,9 @@ class RailEcho final : public LedGrammar {
             feedbackHsv(state, events, feedback, now_us));
       }
     }
-    if (events.menu_open && !health) {
+    if ((events.menu_open ||
+         ledSemanticEvent(state, events) == LedSemanticEvent::MenuOpen) &&
+        !health) {
       add(out, count, capacity, kL13, {180, 100, 25});
     }
     return count;
