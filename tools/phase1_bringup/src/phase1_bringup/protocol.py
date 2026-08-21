@@ -123,16 +123,7 @@ def validate_frame(frame: Any) -> dict[str, Any]:
     payload = frame["payload"]
     if not isinstance(payload, dict):
         raise ProtocolError("invalid_payload", "payload must be an object")
-    if frame_type == "metrics_ack":
-        legacy = {
-            "acknowledged", "digest_mismatch", "duplicate", "largest_free_block",
-            "malformed", "max_display_flush_us", "max_key_poll_gap_us",
-            "minimum_free_heap", "out_of_order", "parser_high_water",
-            "queue_high_water", "received", "rejected", "sent", "watchdog_reset",
-        }
-        if set(payload) != legacy and set(payload) != PAYLOAD_KEYS["metrics_ack"]:
-            raise ProtocolError("invalid_shape", "metrics_ack payload is closed")
-    elif frame_type != "event" and set(payload) != PAYLOAD_KEYS[frame_type]:
+    if frame_type != "event" and set(payload) != PAYLOAD_KEYS[frame_type]:
         raise ProtocolError("invalid_shape", f"{frame_type} payload is closed")
     elif frame_type == "event" and not {"kind", "step_id"}.issubset(payload):
         raise ProtocolError("invalid_shape", "event payload requires kind and step_id")

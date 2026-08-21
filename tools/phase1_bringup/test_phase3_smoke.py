@@ -17,6 +17,7 @@ from phase1_bringup.phase3_smoke import (
     validate_phase31_reset_epoch,
     write_json,
 )
+from phase1_bringup.protocol import classify_line, new_frame
 
 
 class FakeLiveBridge:
@@ -169,6 +170,23 @@ class Phase3FinalizeTests(unittest.TestCase):
                     args.publication_receipt.write_text(json.dumps(receipt), encoding="ascii")
                     with self.assertRaisesRegex(RuntimeError, error):
                         finalize_evidence(args)
+    def test_metrics_ack_legacy_shape_is_typed_rejection(self):
+        legacy = {
+            name: 1 for name in (
+                "acknowledged", "digest_mismatch", "duplicate",
+                "largest_free_block", "malformed", "max_display_flush_us",
+                "max_key_poll_gap_us", "minimum_free_heap", "out_of_order",
+                "parser_high_water", "queue_high_water", "received",
+                "rejected", "sent", "watchdog_reset",
+            )
+        }
+        line = (json.dumps(new_frame(
+            "metrics_ack", "boot-a", "session-a", 1, legacy,
+        ), sort_keys=True, separators=(",", ":")) + "\n").encode("ascii")
+        result = classify_line(line)
+        self.assertFalse(result.accepted)
+        self.assertEqual(result.reason, "invalid_shape")
+
 
 class Phase31DeploymentLockTests(unittest.TestCase):
     def _fake_session(self, *, device_id: str = "device-1", boot_id: str = "boot-2",
