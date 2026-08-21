@@ -263,15 +263,41 @@ Plans:
 **Plans:** 8 plans
 
 Plans:
+**Wave 1**
 
 - [ ] 03.1-01-PLAN.md — Measure the exact-device baseline and lock cadence/resource budgets
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 03.1-02-PLAN.md — Prove the shared scheduler and Signal Edge transition tracer
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 03.1-03-PLAN.md — Complete distinct motion systems for all four themes
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 03.1-04-PLAN.md — Deliver immediate focus feedback and truthful outcomes
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
 - [ ] 03.1-05-PLAN.md — Polish menu navigation and immediate brightness response
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
 - [ ] 03.1-06-PLAN.md — Synchronize all four LED grammars with semantic display events
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
 - [ ] 03.1-07-PLAN.md — Build, flash, hash-lock, and capture the completed firmware's logical evidence
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
 - [ ] 03.1-08-PLAN.md — Validate the current deployment and complete exact-device physical acceptance
+
+**Cross-cutting constraints:**
+
+- UI-LONG-TEXT: At the exact device's lowest accepted 10% brightness, every theme keeps the 8 px metadata floor, ASCII ellipsis, and 4 px safe inset without clipping, overlap, ticker motion, or bezel collision.
 
 **UI hint:** yes
 **Depends on:** Phase 03.1
