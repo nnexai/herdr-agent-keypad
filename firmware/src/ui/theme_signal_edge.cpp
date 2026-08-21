@@ -180,6 +180,7 @@ class SignalEdgeTheme final : public ThemeRenderer {
     if (tile.state == TileState::Empty) {
       drawDashedRect(sprite, 4, 4, 120, 120, kEmptyEdge);
       sprite.setTextColor(kMetadata, kBackground);
+      sprite.drawString("EMPTY", centeredX("EMPTY"), 92);
       sprite.drawString("NO AGENT", centeredX("NO AGENT"), 104);
       drawGlyph(sprite, TileState::Empty, kEmptyEdge);
     } else {

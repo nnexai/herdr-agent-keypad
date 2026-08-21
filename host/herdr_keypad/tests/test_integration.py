@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -188,10 +189,87 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertNotIn("panes", manifest)
         script = (ROOT / "host/herdr_keypad/scripts/ensure-bridge.sh").read_text()
         self.assertIn("flock -n 9", script)
+        self.assertIn("flock -u 9", script)
+        self.assertIn("HERDR_KEYPAD_EXCLUSIVE_LOCK=1", script)
+        self.assertIn("exit 125", script)
         self.assertIn("stop-for-acceptance", script)
         self.assertIn('set +e', script)
         self.assertIn('exit "$wrapped_status"', script)
+        self.assertLess(script.index("flock -u 9"), script.index('ensure-bridge.sh" >/dev/null'))
         self.assertNotIn("pkill", script)
+
+    def test_run_exclusive_retains_lock_and_preserves_status(self):
+        guard = ROOT / "host/herdr_keypad/scripts/ensure-bridge.sh"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            runtime = root / "runtime"
+            runtime.mkdir()
+            fake_python = root / "herdr_keypad_fake"
+            fake_python.write_text(
+                "#!/usr/bin/env python3\n"
+                "import signal, sys, time\n"
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))\n"
+                "while True: time.sleep(1)\n",
+                encoding="ascii",
+            )
+            fake_python.chmod(0o755)
+            environment = os.environ.copy()
+            environment.update({
+                "XDG_RUNTIME_DIR": str(runtime),
+                "HERDR_KEYPAD_PYTHON": str(fake_python),
+            })
+            environment.pop("HERDR_KEYPAD_PIDFILE", None)
+            launcher = subprocess.Popen(
+                ["sh", "-c", f"{guard} >/dev/null 2>&1 &"],
+                cwd=ROOT,
+                env=environment,
+            )
+            launcher.wait(timeout=5)
+            pidfile = runtime / "herdr-keypad" / "bridge.pid"
+            lock = runtime / "herdr-keypad" / "bridge.lock"
+            deadline = time.monotonic() + 5
+            while not pidfile.exists() and time.monotonic() < deadline:
+                time.sleep(0.02)
+            self.assertTrue(pidfile.exists())
+            ready = root / "wrapped-ready"
+            wrapped = subprocess.Popen(
+                [
+                    str(guard), "run-exclusive", "--", "sh", "-c",
+                    f"flock -n 9 && touch {ready}; sleep 0.3; exit 37",
+                ],
+                cwd=ROOT,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                deadline = time.monotonic() + 5
+                while not ready.exists() and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(ready.exists())
+                time.sleep(0.1)
+                probe = subprocess.run(
+                    ["flock", "-n", str(lock), "sh", "-c", "exit 0"],
+                    cwd=ROOT,
+                    env=environment,
+                )
+                self.assertNotEqual(probe.returncode, 0)
+                self.assertEqual(wrapped.wait(timeout=8), 37)
+                self.assertTrue(pidfile.exists())
+            finally:
+                if pidfile.exists():
+                    try:
+                        os.kill(int(pidfile.read_text(encoding="ascii")), 15)
+                    except (FileNotFoundError, ProcessLookupError, ValueError):
+                        pass
+                try:
+                    wrapped.communicate(timeout=2)
+                except subprocess.TimeoutExpired:
+                    wrapped.kill()
+                    wrapped.communicate()
+                if wrapped.poll() is None:
+                    wrapped.kill()
 
     def test_subscribe_uses_installed_typed_public_schema(self):
         calls = []

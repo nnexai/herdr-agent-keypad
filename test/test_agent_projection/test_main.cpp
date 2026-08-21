@@ -1404,6 +1404,8 @@ void test_signal_edge_polish_geometry() {
   state.slots[0].feedback = TileFeedback::Disabled;
   resetLog();
   signalEdgeTheme().composeTile(sprite, 0, state);
+  TEST_ASSERT_TRUE(logContainsTextAt("EMPTY", 49, 92));
+  TEST_ASSERT_TRUE(logContainsTextAt("NO AGENT", 40, 104));
   TEST_ASSERT_TRUE(logContainsAny("fillRect:54:59:20:2"));
 
   MenuState menu;
@@ -1497,7 +1499,8 @@ void test_beacon_pending_uses_large_animated_takeover() {
   state.slots[0].feedback = TileFeedback::Pending;
   resetLog();
   beaconTheme().composeTile(sprite, 0, state);
-  TEST_ASSERT_TRUE(logContainsText("FOCUS SENT"));
+  TEST_ASSERT_TRUE(logContainsTextAt("PENDING", 43, 76));
+  TEST_ASSERT_FALSE(logContainsText("FOCUS SENT"));
   TEST_ASSERT_TRUE(logContainsAny("fillCircle:42:52:2"));
 }
 void test_beacon_and_instrument_phase_motion_is_distinct_and_semantically_fixed() {

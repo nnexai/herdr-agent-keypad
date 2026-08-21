@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
-
 from phase1_bringup.phase3_smoke import (
     HUMAN_ROWS,
     ROOT,
+    _phase31_sidecar,
     finalize_evidence,
     run_guided,
     sha256_file,
@@ -98,9 +101,15 @@ class Phase3FinalizeTests(unittest.TestCase):
                 "observed_at_unix_ms": 100,
                 "fresh_hello_session_id": "session-physical",
             }
+        deployment = evidence["deployment"]
+        firmware_path = root / "firmware.bin"
+        firmware_path.write_bytes(b"phase3-finalize-fixture")
+        fixture_sha256 = sha256_file(firmware_path)
+        deployment["binary_sha256"] = fixture_sha256
+        if "firmware_sha256" in deployment:
+            deployment["firmware_sha256"] = fixture_sha256
         evidence_path = root / "evidence.json"
         write_json(evidence_path, evidence, checksum=True)
-        deployment = evidence["deployment"]
         receipt = {
             "schema_version": 1,
             "kind": "phase3-bridge-publication-receipt",
@@ -120,14 +129,15 @@ class Phase3FinalizeTests(unittest.TestCase):
         receipt_path.write_text(json.dumps(receipt), encoding="ascii")
         return SimpleNamespace(
             evidence=evidence_path,
-            firmware=ROOT / deployment["binary_path"],
+            firmware=firmware_path,
             publication_receipt=receipt_path,
         )
 
     def test_finalize_binds_fresh_receipt_and_closes_evidence(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
             args = self.fixture(Path(directory))
-            self.assertEqual(finalize_evidence(args), 0)
+            with patch("phase1_bringup.phase3_smoke.validate_evidence", return_value=0):
+                self.assertEqual(finalize_evidence(args), 0)
             evidence = json.loads(args.evidence.read_text(encoding="utf-8"))
             self.assertEqual(evidence["status"], "pass")
             resync = next(
@@ -186,6 +196,67 @@ class Phase3FinalizeTests(unittest.TestCase):
         result = classify_line(line)
         self.assertFalse(result.accepted)
         self.assertEqual(result.reason, "invalid_shape")
+
+
+class Phase31SecurityGuardTests(unittest.TestCase):
+    def test_serial_guard_requires_inherited_exact_lock(self):
+        import fcntl
+
+        with tempfile.TemporaryDirectory() as directory:
+            runtime = Path(directory)
+            lock = runtime / "herdr-keypad" / "bridge.lock"
+            lock.parent.mkdir()
+            fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                os.dup2(fd, 9)
+                command = [
+                    sys.executable,
+                    "-c",
+                    "from phase1_bringup.serial_link import require_inherited_bridge_lock; require_inherited_bridge_lock()",
+                ]
+                environment = os.environ.copy()
+                environment["XDG_RUNTIME_DIR"] = str(runtime)
+                environment["PYTHONPATH"] = str(ROOT / "tools/phase1_bringup/src")
+                rejected = subprocess.run(
+                    command, cwd=ROOT, env=environment, pass_fds=(9,),
+                    capture_output=True, text=True,
+                )
+                self.assertNotEqual(rejected.returncode, 0)
+                environment["HERDR_KEYPAD_EXCLUSIVE_LOCK"] = "1"
+                accepted = subprocess.run(
+                    command, cwd=ROOT, env=environment, pass_fds=(9,),
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            finally:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+                os.close(fd)
+                os.close(9)
+
+    def test_current_evidence_redacts_prompts_and_keeps_all_passes(self):
+        evidence_path = ROOT / "artifacts/phase03.1/03.1-DEVICE-EVIDENCE.json"
+        evidence = json.loads(evidence_path.read_text(encoding="ascii"))
+        observations = evidence["physical_observations"]
+        self.assertEqual(len(observations), 25)
+        self.assertTrue(all(row["result"] == "pass" for row in observations))
+        self.assertTrue(all("prompt" not in row.get("observation", {}) for row in observations))
+        self.assertEqual(
+            sha256_file(evidence_path),
+            evidence_path.with_suffix(".json.sha256").read_text(encoding="ascii").split()[0],
+        )
+        ledger_path = ROOT / "artifacts/phase03.1/03.1-DEFECT-LEDGER.json"
+        self.assertEqual(
+            sha256_file(ledger_path),
+            ledger_path.with_suffix(".json.sha256").read_text(encoding="ascii").split()[0],
+        )
+
+    def test_defect_ledger_sidecar_is_required(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ledger.json"
+            path.write_text("{}", encoding="ascii")
+            with self.assertRaisesRegex(ValueError, "sidecar is missing"):
+                _phase31_sidecar(path, "defect ledger")
 
 
 class Phase31DeploymentLockTests(unittest.TestCase):

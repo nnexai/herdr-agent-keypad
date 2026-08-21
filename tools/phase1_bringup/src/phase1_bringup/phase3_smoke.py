@@ -20,7 +20,7 @@ from types import SimpleNamespace
 from herdr_keypad.codex import normalize_rate_limits
 
 from .pairing import PairingStore
-from .serial_link import reconnect_exact
+from .serial_link import reconnect_exact, require_inherited_bridge_lock
 
 ROOT = Path(__file__).resolve().parents[4]
 THEMES = ("signal-edge", "ledger", "beacon", "instrument")
@@ -479,6 +479,13 @@ def phase31_lock_from_baseline(baseline: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _phase31_serial_opener(candidate: Any) -> Any:
+    require_inherited_bridge_lock()
+    return __import__("serial").Serial(
+        candidate.device, 115200, timeout=0.2, write_timeout=2.0
+    )
+
+
 def _phase31_exact_session(binding_path: Path, timeout: float) -> tuple[Any, Any, Any, dict[str, Any]]:
     binding = PairingStore(binding_path).load()
     if binding is None:
@@ -486,8 +493,7 @@ def _phase31_exact_session(binding_path: Path, timeout: float) -> tuple[Any, Any
     selected, link, session, _ = reconnect_exact(
         binding,
         ports=None,
-        opener=lambda candidate: __import__("serial").Serial(
-            candidate.device, 115200, timeout=0.2, write_timeout=2.0),
+        opener=_phase31_serial_opener,
         timeout=timeout,
     )
     hello = dict(session.device)
@@ -896,8 +902,7 @@ def fresh_deployment(binding_path: Path, firmware: Path, timeout: float) -> dict
     selected, link, session, _transitions = reconnect_exact(
         binding,
         ports=None,
-        opener=lambda candidate: __import__("serial").Serial(
-            candidate.device, 115200, timeout=0.2, write_timeout=2.0),
+        opener=_phase31_serial_opener,
         timeout=timeout,
     )
     try:
@@ -1163,10 +1168,17 @@ def _phase31_capture_ppm(
         "--level", level,
         "--phase", str(phase),
     ]
-    subprocess.run(
-        command, cwd=ROOT, check=True,
-        timeout=max(10.0, args.timeout + 5.0),
-    )
+    for attempt in range(3):
+        try:
+            subprocess.run(
+                command, cwd=ROOT, check=True, pass_fds=(9,),
+                timeout=max(10.0, args.timeout + 5.0),
+            )
+            break
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            if attempt == 2:
+                raise
+            time.sleep(0.2)
     ppm_payload = ppm.read_bytes()
     if not ppm_payload.startswith(PPM_HEADER):
         raise RuntimeError(f"invalid PPM capture: {ppm}")
@@ -1490,7 +1502,6 @@ def phase31_guarded_bridge(
     *,
     timeout: float,
 ) -> Iterator[tuple[subprocess.Popen[str], dict[str, Any], str]]:
-    guard = ROOT / "host/herdr_keypad/scripts/ensure-bridge.sh"
     with tempfile.TemporaryDirectory(prefix="phase31-guided-") as directory:
         temporary = Path(directory)
         receipt_path = temporary / "publication.json"
@@ -1499,15 +1510,26 @@ def phase31_guarded_bridge(
         environment.pop("HERDR_KEYPAD_PIDFILE", None)
         environment["HERDR_DEPLOYED_FIRMWARE"] = str(args.firmware.resolve())
         environment["HERDR_KEYPAD_PUBLICATION_EVIDENCE"] = str(receipt_path)
+        host_source = str(ROOT / "host/herdr_keypad/src")
+        existing_pythonpath = environment.get("PYTHONPATH")
+        environment["PYTHONPATH"] = (
+            host_source if not existing_pythonpath
+            else host_source + os.pathsep + existing_pythonpath
+        )
         with log_path.open("w+", encoding="utf-8") as log:
             process = subprocess.Popen(
-                [str(guard)],
+                [
+                    os.fspath(Path(os.sys.executable)),
+                    "-m", "herdr_keypad", "--run-bridge",
+                    "--binding", os.fspath(args.binding.resolve()),
+                ],
                 cwd=ROOT,
                 env=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=subprocess.STDOUT,
                 text=True,
+                pass_fds=(9,),
             )
             try:
                 deadline = time.monotonic() + max(10.0, timeout * 4.0)
@@ -1692,7 +1714,7 @@ def _phase31_write_defect(
             "reason": reason,
         })
     ledger["status"] = "blocked"
-    atomic_write(path, json.dumps(ledger, sort_keys=True, indent=2).encode("ascii") + b"\n")
+    write_json(path, ledger, checksum=True)
 
 
 def run_phase31_current_deployment(args: argparse.Namespace) -> int:
@@ -1827,7 +1849,6 @@ def run_phase31_run(args: argparse.Namespace) -> int:
             row["result"] = result
             row["observation"] = {
                 "answer": answer,
-                "prompt": _phase31_prompt(row),
                 "observed_at_unix_ms": time.time_ns() // 1_000_000,
                 "fresh_hello_session_id": session_id,
                 "physical_claims": True,
@@ -2176,6 +2197,7 @@ def validate_phase31_device_evidence(
             raise ValueError("fresh bridge publication evidence is missing")
     if require_no_open_defects:
         ledger_path = (defects_path or ROOT / "artifacts/phase03.1/03.1-DEFECT-LEDGER.json").resolve()
+        _phase31_sidecar(ledger_path, "defect ledger")
         try:
             ledger = json.loads(ledger_path.read_text(encoding="ascii"))
         except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:

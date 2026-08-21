@@ -47,11 +47,21 @@ if [ "${1:-}" = "run-exclusive" ]; then
     shift
     [ "$#" -gt 0 ] || { echo "run-exclusive requires a command" >&2; exit 2; }
     "$ROOT/scripts/ensure-bridge.sh" stop-for-acceptance
+    exec 9>"$LOCK"
+    if ! flock -n 9; then
+        echo "run-exclusive could not acquire the bridge lock" >&2
+        exit 125
+    fi
+    export HERDR_KEYPAD_EXCLUSIVE_LOCK=1
     wrapped_status=0
-    cleanup_status=0
     cleanup() {
         trap - EXIT HUP INT TERM
         set +e
+        if ! flock -u 9; then
+            echo "run-exclusive could not release the bridge lock" >&2
+            exit 125
+        fi
+        unset HERDR_KEYPAD_EXCLUSIVE_LOCK
         "$ROOT/scripts/ensure-bridge.sh" >/dev/null 2>&1 &
         restart_pid=$!
         i=0
@@ -59,8 +69,6 @@ if [ "${1:-}" = "run-exclusive" ]; then
             if [ -s "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE" 2>/dev/null)" 2>/dev/null &&
                 [ -r "/proc/$(cat "$PIDFILE")/fd/9" ] &&
                 [ "$(readlink "/proc/$(cat "$PIDFILE")/fd/9" 2>/dev/null)" = "$LOCK" ]; then
-                # The restarted guard deliberately remains the long-lived owner.
-                # Waiting for its process would make every successful cleanup hang.
                 exit "$wrapped_status"
             fi
             if ! kill -0 "$restart_pid" 2>/dev/null; then break; fi
@@ -68,8 +76,7 @@ if [ "${1:-}" = "run-exclusive" ]; then
         done
         wait "$restart_pid" 2>/dev/null
         echo "guarded bridge ownership was not restored" >&2
-        cleanup_status=125
-        exit "$cleanup_status"
+        exit 125
     }
     on_hup() { wrapped_status=129; exit "$wrapped_status"; }
     on_int() { wrapped_status=130; exit "$wrapped_status"; }

@@ -1,14 +1,42 @@
 """Bounded serial I/O and exact-identity fresh-session recovery."""
 from __future__ import annotations
 
+import fcntl
+import os
 import secrets
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Iterable
 
 from .discovery import Candidate, DiscoveryError, enumerate_candidates, exact_identity_candidate
 from .pairing import PairingBinding
 from .protocol import MAX_LINE_BYTES, ProtocolSession
+
+
+def phase31_bridge_lock_path() -> Path:
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    return Path(runtime or (Path.home() / ".cache")) / "herdr-keypad" / "bridge.lock"
+
+
+def require_inherited_bridge_lock() -> None:
+    """Require the run-exclusive bridge lock before opening an exact device."""
+    if os.environ.get("HERDR_KEYPAD_EXCLUSIVE_LOCK") != "1":
+        raise RuntimeError("Phase 03.1 serial requires run-exclusive bridge lock")
+    fd_path = "/proc/self/fd/9"
+    try:
+        if fcntl.fcntl(9, fcntl.F_GETFD) & fcntl.FD_CLOEXEC:
+            raise RuntimeError("Phase 03.1 serial lock fd 9 was not inherited")
+        target = os.readlink(fd_path)
+    except (OSError, ValueError) as exc:
+        raise RuntimeError("Phase 03.1 serial lock fd 9 is not inherited") from exc
+    expected = os.fspath(phase31_bridge_lock_path())
+    if target != expected:
+        raise RuntimeError("Phase 03.1 serial lock fd 9 does not name the bridge lock")
+    try:
+        fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        raise RuntimeError("Phase 03.1 serial bridge lock is not held") from exc
 
 
 class SerialLinkError(RuntimeError):

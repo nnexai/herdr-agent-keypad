@@ -242,10 +242,6 @@ class BeaconTheme final : public ThemeRenderer {
         drawFeedbackGlyph(sprite, tile.feedback, feedback->color, phase);
         sprite.setTextColor(feedback->color, kBackground);
         sprite.drawString(feedback->word, centeredX(feedback->word), 76);
-        if (tile.feedback == TileFeedback::Pending) {
-          sprite.setTextColor(kMetadata, kBackground);
-          sprite.drawString("FOCUS SENT", centeredX("FOCUS SENT"), 88);
-        }
       } else {
         drawCenterGlyph(sprite, tile.state, content);
         sprite.setTextColor(content, kBackground);
