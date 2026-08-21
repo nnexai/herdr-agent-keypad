@@ -1121,9 +1121,260 @@ void test_blocked_motion_recomposes_blocked_panel_only() {
   TEST_ASSERT_EQUAL_INT(0, order[0]);
 }
 
+RenderState committedCodexLedState(AgentProjection& projection,
+                                   BoardAdapter& board,
+                                   const char* source_state,
+                                   int16_t primary,
+                                   int8_t reached_limit,
+                                   const char* observation_age = "AGE 0M") {
+  JsonDocument document = snapshot_document(1);
+  JsonObject codex = document["codex"].as<JsonObject>();
+  codex["source_state"] = source_state;
+  if (primary < 0) codex["primary"] = nullptr;
+  else codex["primary"] = primary;
+  if (reached_limit < 0) codex["reached_limit"] = nullptr;
+  else codex["reached_limit"] = reached_limit != 0;
+  codex["observation_age"] = observation_age;
+  if (std::string(source_state) == "auth_required" ||
+      std::string(source_state) == "unavailable") {
+    codex["primary"] = nullptr;
+    codex["secondary"] = nullptr;
+    codex["reset_text"] = "RESET N/A";
+  }
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  return projection.renderState(0);
+}
+
+bool resolvedOn(const LedEngine& engine, uint8_t index) {
+  return engine.resolved(index).brightness != 0;
+}
+
+void assertUsageCue(LedGrammar& grammar, const RenderState& state,
+                    uint16_t mask, uint16_t hue) {
+  BoardAdapter board;
+  LedEngine engine;
+  engine.setGrammar(grammar);
+  g_led_calls.clear();
+  engine.render(state, LedEvents(), 0, board);
+  TEST_ASSERT_TRUE_MESSAGE(!g_led_calls.empty(), "engine emitted no LED log");
+  for (uint8_t index = 0; index < LedEngine::kLedCount; ++index) {
+    if ((mask & (static_cast<uint16_t>(1U) << index)) == 0) continue;
+    TEST_ASSERT_TRUE_MESSAGE(resolvedOn(engine, index), "usage zone stayed dark");
+    TEST_ASSERT_EQUAL_UINT16(hue, engine.resolved(index).hue);
+  }
+}
+
+void test_led_grammars_consume_committed_current_usage_boundaries() {
+  constexpr uint16_t kRailUsage = 1U << 10;
+  constexpr uint16_t kExceptionUsage = 1U << 10;
+  constexpr uint16_t kFieldUsage = (1U << 9) | (1U << 10) | (1U << 11);
+  constexpr uint16_t kMeterUsageLamp = 1U << 10;
+  struct GrammarZone {
+    LedGrammar* grammar;
+    uint16_t mask;
+  };
+  GrammarZone zones[] = {
+      {&railEchoGrammar(), kRailUsage},
+      {&exceptionChannelGrammar(), kExceptionUsage},
+      {&fieldExtensionGrammar(), kFieldUsage},
+      {&meterLampsGrammar(), kMeterUsageLamp},
+  };
+
+  for (const int16_t primary : {0, 74, 75, 100}) {
+    AgentProjection projection;
+    BoardAdapter projection_board;
+    const RenderState state =
+        committedCodexLedState(projection, projection_board, "current",
+                               primary, -1);
+    const uint16_t expected_hue = primary >= 75 ? 35 : 180;
+    for (const GrammarZone& zone : zones) {
+      assertUsageCue(*zone.grammar, state, zone.mask, expected_hue);
+    }
+  }
+
+  AgentProjection absent_projection;
+  BoardAdapter absent_board;
+  const RenderState absent =
+      committedCodexLedState(absent_projection, absent_board, "current", -1,
+                             -1);
+  for (const GrammarZone& zone : zones) {
+    LedEngine engine;
+    BoardAdapter board;
+    engine.setGrammar(*zone.grammar);
+    LedEvents transient;
+    transient.menu_open = true;
+    engine.render(absent, transient, 0, board);
+    for (uint8_t index = 0; index < LedEngine::kLedCount; ++index) {
+      if ((zone.mask & (static_cast<uint16_t>(1U) << index)) != 0) {
+        TEST_ASSERT_FALSE_MESSAGE(resolvedOn(engine, index),
+                                  "transient event manufactured Codex usage");
+      }
+    }
+  }
+
+  AgentProjection limit_projection;
+  BoardAdapter limit_board;
+  const RenderState limit =
+      committedCodexLedState(limit_projection, limit_board, "current", 100, 1);
+  for (const GrammarZone& zone : zones) {
+    assertUsageCue(*zone.grammar, limit, zone.mask, 0);
+  }
+}
+
+void test_meter_lamps_uses_exact_primary_quarter_boundaries() {
+  constexpr uint8_t kMeterIndices[] = {0, 2, 3, 6};
+  struct Boundary {
+    int16_t primary;
+    uint8_t full;
+    bool partial;
+  };
+  const Boundary boundaries[] = {
+      {0, 0, false}, {1, 0, true},  {24, 0, true}, {25, 1, false},
+      {26, 1, true}, {50, 2, false}, {75, 3, false}, {100, 4, false},
+  };
+  for (const Boundary& boundary : boundaries) {
+    AgentProjection projection;
+    BoardAdapter projection_board;
+    const RenderState state =
+        committedCodexLedState(projection, projection_board, "current",
+                               boundary.primary, -1);
+    LedEngine engine;
+    BoardAdapter board;
+    engine.setGrammar(meterLampsGrammar());
+    engine.render(state, LedEvents(), 0, board);
+    for (uint8_t step = 0; step < 4; ++step) {
+      const bool expected =
+          step < boundary.full || (step == boundary.full && boundary.partial);
+      TEST_ASSERT_EQUAL(expected, resolvedOn(engine, kMeterIndices[step]));
+    }
+  }
+}
+
+void test_codex_failures_use_health_overlays_and_focus_preempts_them() {
+  constexpr const char* kFailures[] = {
+      "stale", "auth_required", "codex_offline", "host_offline",
+      "unavailable",
+  };
+  struct GrammarHealth {
+    LedGrammar* grammar;
+    uint16_t health_mask;
+    uint8_t focus_index;
+    uint8_t focus_brightness;
+    uint8_t failure_brightness;
+  };
+  GrammarHealth grammars[] = {
+      {&railEchoGrammar(), 0x2492, 1, 45, 45},
+      {&exceptionChannelGrammar(), 0x0249, 1, 30, 30},
+      {&fieldExtensionGrammar(), 0x3000, 0, 45, 30},
+      {&meterLampsGrammar(), 0x2492, 1, 45, 45},
+  };
+
+  for (const char* failure : kFailures) {
+    AgentProjection projection;
+    BoardAdapter projection_board;
+    const RenderState failed =
+        committedCodexLedState(projection, projection_board, failure, 80, 1,
+                               "AGE 2H");
+    for (const GrammarHealth& grammar : grammars) {
+      LedEngine engine;
+      BoardAdapter board;
+      engine.setGrammar(*grammar.grammar);
+      engine.render(failed, LedEvents(), 0, board);
+      bool saw_health = false;
+      for (uint8_t index = 0; index < LedEngine::kLedCount; ++index) {
+        if ((grammar.health_mask &
+             (static_cast<uint16_t>(1U) << index)) == 0) {
+          continue;
+        }
+        const ResolvedLed& led = engine.resolved(index);
+        if (led.hue == 0 && led.saturation == 100 &&
+            led.brightness != 0 &&
+            led.brightness <= LedEngine::kHealthBrightnessCap) {
+          saw_health = true;
+        }
+      }
+      for (uint8_t index = 0; index < LedEngine::kLedCount; ++index) {
+        const ResolvedLed& led = engine.resolved(index);
+        TEST_ASSERT_FALSE_MESSAGE(
+            led.brightness != 0 && (led.hue == 180 || led.hue == 35),
+            "cached/offline percentage looked current");
+      }
+      TEST_ASSERT_TRUE_MESSAGE(saw_health, failure);
+    }
+  }
+
+  AgentProjection focus_projection;
+  BoardAdapter focus_projection_board;
+  committedCodexLedState(focus_projection, focus_projection_board, "stale",
+                         80, -1, "AGE 16M");
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(
+      focus_projection.captureFocusIntent(0, "led-focus", intent.to<JsonObject>()));
+  const RenderState focused = focus_projection.renderState(0);
+  TEST_ASSERT_EQUAL(static_cast<int>(TileFeedback::Pending),
+                    static_cast<int>(focused.slots[0].feedback));
+  for (const GrammarHealth& grammar : grammars) {
+    LedEngine engine;
+    BoardAdapter board;
+    engine.setGrammar(*grammar.grammar);
+    engine.render(focused, LedEvents(), 0, board);
+    const ResolvedLed& led = engine.resolved(grammar.focus_index);
+    TEST_ASSERT_EQUAL_UINT16(185, led.hue);
+    TEST_ASSERT_EQUAL_UINT8(grammar.focus_brightness, led.brightness);
+  }
+
+  JsonDocument rejected = focus_result_document("led-focus", "rejected");
+  rejected["snapshot_revision"] = 1;
+  TEST_ASSERT_FALSE(
+      focus_projection.applyFocusResult(rejected.as<JsonObjectConst>()));
+  const RenderState failed_focus = focus_projection.renderState(0);
+  TEST_ASSERT_EQUAL(static_cast<int>(TileFeedback::Rejected),
+                    static_cast<int>(failed_focus.slots[0].feedback));
+  for (const GrammarHealth& grammar : grammars) {
+    LedEngine engine;
+    BoardAdapter board;
+    engine.setGrammar(*grammar.grammar);
+    engine.render(failed_focus, LedEvents(), 0, board);
+    const ResolvedLed& led = engine.resolved(grammar.focus_index);
+    TEST_ASSERT_EQUAL_UINT16(0, led.hue);
+    TEST_ASSERT_EQUAL_UINT8(grammar.failure_brightness, led.brightness);
+  }
+}
+
+void test_menu_all_off_and_grammar_switch_keep_led_engine_precedence() {
+  AgentProjection projection;
+  BoardAdapter projection_board;
+  const RenderState state =
+      committedCodexLedState(projection, projection_board, "current", 62, -1);
+  LedGrammar* grammars[] = {
+      &railEchoGrammar(), &exceptionChannelGrammar(),
+      &fieldExtensionGrammar(), &meterLampsGrammar(),
+  };
+  BoardAdapter board;
+  LedEngine engine;
+  LedEvents menu;
+  menu.menu_open = true;
+  for (LedGrammar* grammar : grammars) {
+    engine.setGrammar(*grammar);
+    engine.render(state, menu, 0, board);
+    TEST_ASSERT_TRUE(resolvedOn(engine, 13));
+    TEST_ASSERT_EQUAL_UINT16(180, engine.resolved(13).hue);
+  }
+
+  g_led_calls.clear();
+  LedEvents off = menu;
+  off.all_off = true;
+  engine.render(state, off, 1, board);
+  TEST_ASSERT_EQUAL_UINT32(1, g_led_calls.size());
+  TEST_ASSERT_EQUAL_UINT16(LedEngine::kAllMask, g_led_calls[0].mask);
+  TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
+}
+
 void test_led_grammars_and_policy() {
   RenderState state;
   state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
   state.blocked_pulse_high = true;
   state.slots[0].occupied = true;
   state.slots[0].state = TileState::Blocked;
@@ -1196,6 +1447,7 @@ void test_led_policy_clamps_bright_led_count_and_all_off() {
 void test_led_grammar_scene_masks() {
   RenderState state;
   state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
   state.slots[0].state = TileState::Idle;
   state.slots[1].state = TileState::Working;
   state.slots[2].state = TileState::Empty;
@@ -1221,8 +1473,9 @@ void test_led_grammar_scene_masks() {
   state.blocked_pulse_high = true;
   const size_t health_high =
       fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
-  TEST_ASSERT_EQUAL_UINT32(1, health_high);
+  TEST_ASSERT_EQUAL_UINT32(2, health_high);
   TEST_ASSERT_EQUAL_UINT8(10, segments[0].brightness);
+  TEST_ASSERT_EQUAL_UINT8(45, segments[1].brightness);
   state.blocked_pulse_high = false;
   fieldExtensionGrammar().frame(state, LedEvents(), 0, segments, kLedGrammarMaxSegments);
   TEST_ASSERT_EQUAL_UINT8(3, segments[0].brightness);
@@ -1366,6 +1619,10 @@ int runAllTests() {
   RUN_TEST(test_led_grammars_and_policy);
   RUN_TEST(test_led_policy_clamps_bright_led_count_and_all_off);
   RUN_TEST(test_led_grammar_scene_masks);
+  RUN_TEST(test_led_grammars_consume_committed_current_usage_boundaries);
+  RUN_TEST(test_meter_lamps_uses_exact_primary_quarter_boundaries);
+  RUN_TEST(test_codex_failures_use_health_overlays_and_focus_preempts_them);
+  RUN_TEST(test_menu_all_off_and_grammar_switch_keep_led_engine_precedence);
   RUN_TEST(test_blocked_motion_recomposes_blocked_panel_only);
   RUN_TEST(test_menu_controller_clamps_previews_and_persists_only_on_confirm);
   RUN_TEST(test_each_theme_composes_menu_vocabulary);

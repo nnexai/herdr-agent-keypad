@@ -1,7 +1,5 @@
 #include "led_grammar.h"
 
-#include <string.h>
-
 namespace {
 constexpr uint16_t kKeyMasks[3] = {(1U << 1), (1U << 4), (1U << 7)};
 constexpr uint16_t kAboveKey = (1U << 0) | (1U << 3) | (1U << 6) | (1U << 9);
@@ -30,11 +28,16 @@ class ExceptionChannel final : public LedGrammar {
   size_t frame(const RenderState& state, const LedEvents& events,
                uint32_t now_us, LedSegment* out, size_t capacity) const override {
     size_t count = 0;
-    const bool health = state.source_status != nullptr &&
-                        (strcmp(state.source_status, "stale") == 0 ||
-                         strcmp(state.source_status, "offline") == 0 ||
-                         strcmp(state.source_status, "unavailable") == 0);
-    if (health) add(out, count, capacity, kAboveKey, 0, 100, 10);
+    const bool health = ledPresentationUnhealthy(state);
+    if (health) {
+      add(out, count, capacity, kAboveKey, 0, 100, 10);
+    } else {
+      const LedCodexCue usage = ledCodexCue(state);
+      if (usage.visible) {
+        add(out, count, capacity, 1U << 10, usage.hue,
+            usage.saturation, usage.brightness);
+      }
+    }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
       const RenderState::Slot& tile = state.slots[slot];
       if (active(tile.feedback)) {

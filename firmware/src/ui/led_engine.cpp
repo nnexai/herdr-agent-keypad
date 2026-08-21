@@ -1,9 +1,6 @@
 #include "led_engine.h"
 
-#include <string.h>
-
 #include "../board/board_adapter.h"
-
 
 LedGrammar& LedEngine::grammar() const {
   return grammar_ != nullptr ? *grammar_ : railEchoGrammar();
@@ -12,12 +9,6 @@ LedGrammar& LedEngine::grammar() const {
 bool LedEngine::same(const ResolvedLed& left, const ResolvedLed& right) {
   return left.hue == right.hue && left.saturation == right.saturation &&
          left.brightness == right.brightness;
-}
-
-bool LedEngine::unhealthy(const char* source_status) {
-  return source_status != nullptr &&
-         (strcmp(source_status, "stale") == 0 || strcmp(source_status, "offline") == 0 ||
-          strcmp(source_status, "unavailable") == 0);
 }
 
 bool LedEngine::red(const ResolvedLed& led) {
@@ -35,22 +26,36 @@ void LedEngine::resolve(const LedSegment* segments, size_t count,
     }
   }
 
-  const bool health = unhealthy(state.source_status);
+  const bool health = ledPresentationUnhealthy(state);
+  bool feedback_active = false;
   bool semantic_high = health;
   for (const RenderState::Slot& slot : state.slots) {
-    if (slot.state == TileState::Blocked ||
-        (slot.feedback != TileFeedback::Disabled && slot.feedback != TileFeedback::Ready)) {
+    if (slot.feedback != TileFeedback::Disabled &&
+        slot.feedback != TileFeedback::Ready) {
+      feedback_active = true;
       semantic_high = true;
     }
+    if (slot.state == TileState::Blocked) semantic_high = true;
   }
 
   uint8_t high_count = 0;
   for (uint8_t index = 0; index < kLedCount; ++index) {
     ResolvedLed& led = resolved_[index];
-    if (led.brightness > kGlobalBrightnessCap) led.brightness = kGlobalBrightnessCap;
-    if (events.dim && led.brightness > kDimBrightnessCap) led.brightness = kDimBrightnessCap;
-    if (health && red(led) && led.brightness > kHealthBrightnessCap) led.brightness = kHealthBrightnessCap;
-    if (!semantic_high && led.brightness > kRestingBrightnessCap) led.brightness = kRestingBrightnessCap;
+    if (led.brightness > kGlobalBrightnessCap) {
+      led.brightness = kGlobalBrightnessCap;
+    }
+    if (events.dim && led.brightness > kDimBrightnessCap) {
+      led.brightness = kDimBrightnessCap;
+    }
+    // Grammar health layers request <= 10. Keep the fail-safe clamp except
+    // while a later, bounded focus cue is deliberately preempting that layer.
+    if (health && !feedback_active && red(led) &&
+        led.brightness > kHealthBrightnessCap) {
+      led.brightness = kHealthBrightnessCap;
+    }
+    if (!semantic_high && led.brightness > kRestingBrightnessCap) {
+      led.brightness = kRestingBrightnessCap;
+    }
     if (led.brightness > kRestingBrightnessCap) {
       if (high_count < kHighBrightnessCount) ++high_count;
       else led.brightness = kRestingBrightnessCap;

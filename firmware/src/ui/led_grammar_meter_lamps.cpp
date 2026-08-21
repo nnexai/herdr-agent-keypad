@@ -1,7 +1,5 @@
 #include "led_grammar.h"
 
-#include <string.h>
-
 namespace {
 constexpr uint16_t kBacklights = (1U << 1) | (1U << 4) | (1U << 7) | (1U << 10) | (1U << 13);
 constexpr uint16_t kKeyMasks[3] = {(1U << 1), (1U << 4), (1U << 7)};
@@ -33,10 +31,41 @@ uint16_t hue(TileState state) {
   }
 }
 
-bool unhealthy(const char* status) {
-  return status != nullptr && (strcmp(status, "stale") == 0 ||
-                               strcmp(status, "offline") == 0 ||
-                               strcmp(status, "unavailable") == 0);
+bool active(TileFeedback feedback) {
+  return feedback != TileFeedback::Disabled &&
+         feedback != TileFeedback::Ready;
+}
+
+void addUsageMeter(LedSegment* out, size_t& count, size_t capacity,
+                   const RenderState& state, const LedCodexCue& usage) {
+  if (!usage.visible) return;
+  add(out, count, capacity, 1U << 10, usage.hue, usage.saturation,
+      usage.brightness);
+  if (usage.limit) {
+    add(out, count, capacity, kLamps, usage.hue, usage.saturation,
+        usage.brightness);
+    return;
+  }
+  constexpr uint8_t kMeterIndices[] = {0, 2, 3, 6};
+  uint16_t full_mask = 0;
+  for (uint8_t step = 0; step < 4; ++step) {
+    const int16_t remaining =
+        static_cast<int16_t>(state.codex.primary - step * 25);
+    if (remaining >= 25) {
+      full_mask |= static_cast<uint16_t>(1U << kMeterIndices[step]);
+      continue;
+    }
+    if (remaining > 0) {
+      const uint8_t partial = static_cast<uint8_t>(
+          (usage.brightness * remaining + 24) / 25);
+      add(out, count, capacity,
+          static_cast<uint16_t>(1U << kMeterIndices[step]), usage.hue,
+          usage.saturation, partial);
+    }
+    break;
+  }
+  add(out, count, capacity, full_mask, usage.hue, usage.saturation,
+      usage.brightness);
 }
 
 class MeterLamps final : public LedGrammar {
@@ -44,21 +73,34 @@ class MeterLamps final : public LedGrammar {
   size_t frame(const RenderState& state, const LedEvents& events,
                uint32_t now_us, LedSegment* out, size_t capacity) const override {
     size_t count = 0;
-    if (unhealthy(state.source_status)) {
-      add(out, count, capacity, static_cast<uint16_t>(kBacklights | kLamps), 0, 100, 10);
-    } else {
-      for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
-        const RenderState::Slot& tile = state.slots[slot];
-        uint16_t color = hue(tile.state);
-        uint8_t value = brightness(tile.state, state.blocked_pulse_high);
-        if (tile.feedback == TileFeedback::Pending) { color = 185; value = 45; }
-        else if (tile.feedback == TileFeedback::Success) { color = 120; value = 45; }
-        else if (tile.feedback != TileFeedback::Disabled && tile.feedback != TileFeedback::Ready) { color = 0; value = 45; }
-        add(out, count, capacity, kKeyMasks[slot], color, 100, value);
-      }
+    const bool health = ledPresentationUnhealthy(state);
+    if (health) {
+      add(out, count, capacity, kBacklights, 0, 100, 10);
     }
-    if (events.menu_open && !unhealthy(state.source_status)) add(out, count, capacity, 1U << 13, 180, 100, 25);
-    // Meter and remaining accents remain dark: no usage data exists in Phase 02.2.
+    for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
+      const RenderState::Slot& tile = state.slots[slot];
+      uint16_t color = hue(tile.state);
+      uint8_t value = brightness(tile.state, state.blocked_pulse_high);
+      if (tile.feedback == TileFeedback::Pending) {
+        color = 185;
+        value = 45;
+      } else if (tile.feedback == TileFeedback::Success) {
+        color = 120;
+        value = 45;
+      } else if (active(tile.feedback)) {
+        color = 0;
+        value = 45;
+      } else if (health) {
+        continue;
+      }
+      add(out, count, capacity, kKeyMasks[slot], color, 100, value);
+    }
+    if (!health) {
+      addUsageMeter(out, count, capacity, state, ledCodexCue(state));
+    }
+    if (events.menu_open && !health) {
+      add(out, count, capacity, 1U << 13, 180, 100, 25);
+    }
     return count;
   }
 };

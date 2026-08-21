@@ -32,7 +32,6 @@ class LedEngine final {
 
  private:
   static bool same(const ResolvedLed& left, const ResolvedLed& right);
-  static bool unhealthy(const char* source_status);
   static bool red(const ResolvedLed& led);
   void resolve(const LedSegment* segments, size_t count,
                const RenderState& state, const LedEvents& events);

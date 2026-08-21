@@ -1,7 +1,5 @@
 #include "led_grammar.h"
 
-#include <string.h>
-
 namespace {
 constexpr uint16_t kBacklights = (1U << 1) | (1U << 4) | (1U << 7) | (1U << 10) | (1U << 13);
 constexpr uint16_t kKeyMasks[3] = {(1U << 1), (1U << 4), (1U << 7)};
@@ -43,21 +41,32 @@ class RailEcho final : public LedGrammar {
   size_t frame(const RenderState& state, const LedEvents& events,
                uint32_t now_us, LedSegment* out, size_t capacity) const override {
     size_t count = 0;
-    const bool health = state.source_status != nullptr &&
-                        (strcmp(state.source_status, "stale") == 0 ||
-                         strcmp(state.source_status, "offline") == 0 ||
-                         strcmp(state.source_status, "unavailable") == 0);
+    const bool health = ledPresentationUnhealthy(state);
     if (health) {
       add(out, count, capacity, kBacklights, {0, 100, 10});
     } else {
       for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
         const RenderState::Slot& tile = state.slots[slot];
-        Hsv value = active(tile.feedback) ? feedbackHsv(tile.feedback, now_us)
-                                         : stateHsv(tile.state, state.blocked_pulse_high);
-        add(out, count, capacity, kKeyMasks[slot], value);
+        if (active(tile.feedback)) continue;
+        add(out, count, capacity, kKeyMasks[slot],
+            stateHsv(tile.state, state.blocked_pulse_high));
+      }
+      const LedCodexCue usage = ledCodexCue(state);
+      if (usage.visible) {
+        add(out, count, capacity, 1U << 10,
+            {usage.hue, usage.saturation, usage.brightness});
       }
     }
-    if (events.menu_open && !health) add(out, count, capacity, kL13, {180, 100, 25});
+    for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
+      const TileFeedback feedback = state.slots[slot].feedback;
+      if (active(feedback)) {
+        add(out, count, capacity, kKeyMasks[slot],
+            feedbackHsv(feedback, now_us));
+      }
+    }
+    if (events.menu_open && !health) {
+      add(out, count, capacity, kL13, {180, 100, 25});
+    }
     return count;
   }
 };
