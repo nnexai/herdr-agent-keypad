@@ -273,7 +273,7 @@ class Phase31CurrentDeploymentTests(unittest.TestCase):
         }
         return deployment, publication
 
-    def test_current_deployment_accepts_exact_hello_and_publication(self):
+    def test_phase31_current_deployment_accepts_exact_hello_and_publication(self):
         deployment, publication = self.identity()
         accepted = validate_phase31_current_deployment_identity(
             deployment,
@@ -289,7 +289,7 @@ class Phase31CurrentDeploymentTests(unittest.TestCase):
         self.assertEqual(accepted["deployment_id"], "deployment-1")
         self.assertEqual(accepted["publication_snapshot_revision"], 7)
 
-    def test_current_deployment_rejects_stale_boot_or_firmware(self):
+    def test_phase31_current_deployment_rejects_stale_boot_or_firmware(self):
         deployment, publication = self.identity()
         for field, value, message in (
             ("device_boot_id", "old-boot", "boot"),
@@ -308,7 +308,7 @@ class Phase31CurrentDeploymentTests(unittest.TestCase):
                         deployment, hello, "session-1", publication
                     )
 
-    def test_current_deployment_rejects_unacknowledged_or_wrong_publication(self):
+    def test_phase31_current_deployment_rejects_unacknowledged_or_wrong_publication(self):
         deployment, publication = self.identity()
         publication["snapshot_ack"]["accepted"] = False
         with self.assertRaisesRegex(ValueError, "publication"):

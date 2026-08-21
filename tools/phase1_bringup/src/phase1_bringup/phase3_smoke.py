@@ -141,6 +141,23 @@ OBSERVATION_PROMPTS = {
         "are restored."
     ),
 }
+PHASE31_MATRIX_ROWS = tuple(
+    f"matrix-{theme}-{grammar}"
+    for theme in THEMES
+    for grammar in LED_GRAMMARS
+)
+PHASE31_STRESS_ROWS = (
+    "stress-concurrent-herdr-codex",
+    "stress-stale-offline-recovery",
+    "stress-usb-reconnect",
+    "stress-firmware-reset",
+    "stress-generation-replacement",
+    "stress-simultaneous-key-encoder",
+    "stress-resource-degradation",
+)
+PHASE31_PHYSICAL_ROWS = PHASE31_MATRIX_ROWS + PHASE31_STRESS_ROWS
+PHASE31_BACKSTOP_ROWS = ("backstop-long-text-10-percent", "backstop-physical-quality")
+PHASE31_ALL_ROWS = PHASE31_PHYSICAL_ROWS + PHASE31_BACKSTOP_ROWS
 TRACER_LINK_KEYS = {
     "tracer_sha256", "elapsed_ms_path", "child_exit_path", "redaction_result_path"
 }
@@ -727,6 +744,55 @@ def validate_deployment(
         raise ValueError("canonical deployment identity mismatch")
 
 
+def validate_phase31_current_deployment_identity(
+    deployment: Mapping[str, Any],
+    hello: Mapping[str, Any],
+    session_id: str,
+    publication: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Fail closed at the physical boundary before any observation prompt."""
+    deployment_id = deployment.get("deployment_id")
+    if not valid_publication_identity(deployment_id):
+        raise ValueError("current deployment identity is missing")
+    expected = (
+        ("device_id", "paired_device_id", "device identity"),
+        ("firmware", "hello_firmware", "firmware"),
+        ("protocol", "protocol_version", "protocol"),
+        ("device_boot_id", "boot_id", "boot"),
+    )
+    for hello_key, deployment_key, label in expected:
+        if hello.get(hello_key) != deployment.get(deployment_key):
+            raise ValueError(f"current hello {label} differs from deployment lock")
+    if not valid_publication_identity(session_id):
+        raise ValueError("current hello session identity is missing")
+    if publication.get("binary_sha256") != deployment.get("firmware_sha256"):
+        raise ValueError("fresh publication firmware hash differs from deployment lock")
+    publication_hello = publication.get("hello")
+    if not isinstance(publication_hello, Mapping):
+        raise ValueError("fresh publication hello is missing")
+    for hello_key, deployment_key, label in expected:
+        publication_key = "boot_id" if hello_key == "device_boot_id" else hello_key
+        if publication_hello.get(publication_key) != deployment.get(deployment_key):
+            raise ValueError(f"fresh publication {label} differs from deployment lock")
+    if not valid_publication_identity(publication_hello.get("session_id")):
+        raise ValueError("fresh publication session identity is missing")
+    ack = publication.get("snapshot_ack")
+    if (
+        not isinstance(ack, Mapping)
+        or ack.get("accepted") is not True
+        or not valid_snapshot_revision(ack.get("snapshot_revision"))
+    ):
+        raise ValueError("fresh publication was not acknowledged")
+    return {
+        "deployment_id": deployment_id,
+        "device_id": deployment["paired_device_id"],
+        "boot_id": deployment["boot_id"],
+        "session_id": session_id,
+        "publication_session_id": publication_hello["session_id"],
+        "publication_snapshot_revision": ack["snapshot_revision"],
+    }
+
+
 def validate_deployment_file(
     path: Path,
     *,
@@ -1181,6 +1247,587 @@ def validate_phase31_framebuffer_manifest(
             or not png_has_deployment(artifact, deployment_id)
         ):
             raise ValueError("framebuffer contact sheet linkage invalid")
+def _phase31_sidecar(path: Path, label: str) -> str:
+    sidecar = path.with_suffix(path.suffix + ".sha256")
+    try:
+        expected = sidecar.read_text(encoding="ascii").split()[0]
+    except (FileNotFoundError, OSError, IndexError) as exc:
+        raise ValueError(f"{label} checksum sidecar is missing") from exc
+    actual = sha256_file(path)
+    if actual != expected:
+        raise ValueError(f"{label} checksum mismatch")
+    if len(expected) != 64:
+        raise ValueError(f"{label} checksum is invalid")
+    return expected
+
+
+def _phase31_framebuffer_sources(
+    manifest: Mapping[str, Any], theme: str | None = None
+) -> list[str]:
+    captures = manifest.get("captures", [])
+    if not isinstance(captures, list):
+        raise ValueError("logical framebuffer captures are missing")
+    selected: list[str] = []
+    wanted = (
+        ("blocked", 1), ("pending", 1), ("focused", 1), ("failed", 1),
+        ("slots-0", 1), ("slots-1", 1), ("slots-2", 1), ("slots-3", 1),
+        ("codex-current", 4), ("menu-root-0", 4), ("working", 1),
+    )
+    for scene, panel in wanted:
+        candidates = [
+            item for item in captures
+            if item.get("scene") == scene
+            and item.get("panel") == panel
+            and (theme is None or item.get("theme") == theme)
+        ]
+        if not candidates:
+            raise ValueError(f"logical source capture is missing: {theme}:{scene}")
+        selected.append(sorted(candidates, key=lambda item: item["id"])[0]["id"])
+    return selected
+
+
+def _phase31_physical_row(
+    row_id: str,
+    deployment_id: str,
+    deployment_lock_sha256: str,
+    logical_manifest_sha256: str,
+    source_framebuffer_ids: list[str],
+    *,
+    theme: str | None = None,
+    grammar: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "id": row_id,
+        "theme": theme or "all",
+        "grammar": grammar or "all",
+        "source": "physical",
+        "result": "pending",
+        "deployment_id": deployment_id,
+        "deployment_lock_sha256": deployment_lock_sha256,
+        "logical_manifest_sha256": logical_manifest_sha256,
+        "source_framebuffer_ids": list(source_framebuffer_ids),
+        "measurement_ids": [f"measurement-{row_id}"],
+        "observation": None,
+    }
+
+
+def _phase31_prompt(row: Mapping[str, Any]) -> str:
+    row_id = str(row["id"])
+    if row_id.startswith("matrix-"):
+        theme = str(row["theme"]).replace("-", " ").upper()
+        grammar = str(row["grammar"]).replace("-", " ").upper()
+        return (
+            f"Set THEME={theme} and LEDS={grammar}. Exercise the complete bounded cell: "
+            "ordinary refresh with 0, 1, 2, and 3 direct-agent occupants; rapid encoder "
+            "detents/clicks and direct keys 1-3 during menu and animation; BLOCKED, "
+            "PENDING, FOCUSED, REJECTED/FAILED; menu open; brightness 10%, 80%, 100%; "
+            "stale/offline and SYNC fences. Check exact orientation, 10% long text, "
+            "brightness, LED zones, no blend/tear/black flash/ghosting, smooth complete "
+            "frames, immediate opaque focus only, no replay, and display/LED semantic "
+            "alignment. Answer Y only for a physical pass, N for a visible defect, or "
+            "R when the observation cannot be performed."
+        )
+    prompts = {
+        "stress-concurrent-herdr-codex": (
+            "With the guarded bridge live, cause simultaneous Herdr snapshot changes and "
+            "Codex usage changes. Verify complete frames, no mixed generation, no remap, "
+            "no input starvation, and exact focus identity."
+        ),
+        "stress-stale-offline-recovery": (
+            "Exercise Herdr stale/offline and Codex stale/offline transitions, then restore "
+            "fresh data. Verify immediate fences, no queued/replayed press, and complete "
+            "recovery without optimistic success."
+        ),
+        "stress-usb-reconnect": (
+            "Unplug/replug the USB data link once, then wait for the guarded bridge to "
+            "republish. Verify all-panel SYNC, fresh hello/publication, and no stale action."
+        ),
+        "stress-firmware-reset": (
+            "Use the normal firmware reset control. Verify all-panel SYNC through boot, "
+            "fresh generation commit, unchanged deployment firmware/pair identity, and "
+            "no focus replay."
+        ),
+        "stress-generation-replacement": (
+            "Replace a generation while an ordinary reveal and focus request are active. "
+            "Verify the old generation is discarded, the new complete generation wins, "
+            "and no old binding or press is replayed."
+        ),
+        "stress-simultaneous-key-encoder": (
+            "Press direct keys 1-3 while turning/clicking the encoder on every menu page "
+            "and animation state. Verify direct focus stays immediate and non-modal; "
+            "menu cursor and preview remain causally correct."
+        ),
+        "stress-resource-degradation": (
+            "Exercise the busiest animation and update load. Verify measured Full→Half→Static "
+            "degradation before budget violation, semantic frames retained, bounded queue, "
+            "zero per-frame allocation, and no input starvation."
+        ),
+        "backstop-long-text-10-percent": (
+            "At exact 10% brightness inspect every theme's longest title/discriminator, "
+            "Codex reset/source/age, and ABOUT text. Verify 8 px metadata floor, ASCII ..., "
+            "4 px inset, no clipping, overlap, ticker, or bezel collision."
+        ),
+        "backstop-physical-quality": (
+            "Inspect physical orientation, viewing angles, brightness/legibility, LED "
+            "zones/alignment, blend artifacts, tearing, black flash, ghosting, smoothness, "
+            "first press/encoder response, complete flush/reveal, cadence/duty, heap/block, "
+            "queue, power method/headroom, and display/LED event alignment separately from "
+            "machine framebuffer evidence."
+        ),
+    }
+    return prompts[row_id]
+
+
+def _phase31_load_inputs(
+    deployment_path: Path,
+    framebuffer_path: Path,
+    firmware: Path,
+    binding_path: Path,
+    *,
+    require_current: bool,
+) -> tuple[dict[str, Any], dict[str, Any], Any, str, str]:
+    binding = PairingStore(binding_path.resolve()).load()
+    if binding is None:
+        raise RuntimeError(f"paired keypad binding missing: {binding_path}")
+    deployment = validate_deployment_file(
+        deployment_path.resolve(),
+        firmware=firmware.resolve(),
+        binding=binding,
+        require_current=require_current,
+    )
+    deployment_lock_sha256 = _phase31_sidecar(deployment_path.resolve(), "deployment lock")
+    logical_manifest_sha256 = _phase31_sidecar(framebuffer_path.resolve(), "logical manifest")
+    manifest = json.loads(framebuffer_path.resolve().read_text(encoding="ascii"))
+    validate_phase31_framebuffer_manifest(
+        manifest, deployment, deployment_lock_sha256=deployment_lock_sha256
+    )
+    return (
+        deployment,
+        manifest,
+        binding,
+        deployment_lock_sha256,
+        logical_manifest_sha256,
+    )
+
+
+@contextmanager
+def phase31_guarded_bridge(
+    args: argparse.Namespace,
+    deployment: Mapping[str, Any],
+    expected_boot_id: str,
+    *,
+    timeout: float,
+) -> Iterator[tuple[subprocess.Popen[str], dict[str, Any], str]]:
+    guard = ROOT / "host/herdr_keypad/scripts/ensure-bridge.sh"
+    with tempfile.TemporaryDirectory(prefix="phase31-guided-") as directory:
+        temporary = Path(directory)
+        receipt_path = temporary / "publication.json"
+        log_path = temporary / "bridge.log"
+        environment = os.environ.copy()
+        environment.pop("HERDR_KEYPAD_PIDFILE", None)
+        environment["HERDR_DEPLOYED_FIRMWARE"] = str(args.firmware.resolve())
+        environment["HERDR_KEYPAD_PUBLICATION_EVIDENCE"] = str(receipt_path)
+        with log_path.open("w+", encoding="utf-8") as log:
+            process = subprocess.Popen(
+                [str(guard)],
+                cwd=ROOT,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                deadline = time.monotonic() + max(10.0, timeout * 4.0)
+                receipt: dict[str, Any] | None = None
+                while time.monotonic() < deadline:
+                    if process.poll() is not None:
+                        break
+                    try:
+                        candidate = json.loads(receipt_path.read_text(encoding="ascii"))
+                    except (FileNotFoundError, json.JSONDecodeError, OSError):
+                        candidate = None
+                    if isinstance(candidate, dict):
+                        try:
+                            validate_phase31_current_deployment_identity(
+                                deployment,
+                                {
+                                    "device_id": candidate.get("hello", {}).get("device_id"),
+                                    "firmware": candidate.get("hello", {}).get("firmware"),
+                                    "protocol": candidate.get("hello", {}).get("protocol"),
+                                    "device_boot_id": candidate.get("hello", {}).get("boot_id"),
+                                },
+                                str(candidate.get("hello", {}).get("session_id", "")),
+                                candidate,
+                            )
+                        except ValueError:
+                            pass
+                        else:
+                            receipt = candidate
+                            break
+                    time.sleep(0.05)
+                if receipt is None:
+                    log.flush()
+                    log.seek(0)
+                    detail = log.read()[-480:].strip()
+                    if process.poll() is None:
+                        raise RuntimeError(
+                            f"guarded bridge did not publish a fresh acknowledgement: {detail}"
+                        )
+                    raise RuntimeError(f"guarded bridge exited before publication: {detail}")
+                if receipt["hello"]["boot_id"] != expected_boot_id:
+                    raise RuntimeError("guarded publication boot identity differs from active transition")
+                print(
+                    f"LIVE BRIDGE PASS deployment={deployment['deployment_id']} "
+                    f"boot={expected_boot_id} session={receipt['hello']['session_id']}",
+                    flush=True,
+                )
+                yield process, receipt, sha256_file(receipt_path)
+            finally:
+                _stop_guided_bridge(process)
+
+
+def _phase31_machine_metrics(session: Any) -> dict[str, Any]:
+    try:
+        frame, _ = session.request("metrics", {"request": "proof"}, {"metrics_ack"})
+        payload = dict(frame["payload"])
+    except Exception as exc:
+        return {"status": "unavailable", "error": str(exc)[:160]}
+    required = (
+        "max_display_flush_us", "minimum_free_heap", "largest_free_block",
+        "max_key_poll_gap_us", "parser_high_water", "queue_high_water",
+    )
+    if any(not isinstance(payload.get(name), int) or payload[name] < 0 for name in required):
+        return {"status": "unavailable", "error": "metrics payload is incomplete"}
+    return {"status": "pass", "metrics": {name: payload[name] for name in required}}
+
+
+def _phase31_make_evidence(
+    deployment: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    deployment_lock_sha256: str,
+    logical_manifest_sha256: str,
+    hello: Mapping[str, Any],
+    session_id: str,
+    publication: Mapping[str, Any],
+    publication_sha256: str,
+    machine_metrics: Mapping[str, Any],
+) -> dict[str, Any]:
+    rows: list[dict[str, Any]] = []
+    for theme in THEMES:
+        for grammar in LED_GRAMMARS:
+            row_id = f"matrix-{theme}-{grammar}"
+            rows.append(_phase31_physical_row(
+                row_id, deployment["deployment_id"], deployment_lock_sha256,
+                logical_manifest_sha256, _phase31_framebuffer_sources(manifest, theme),
+                theme=theme, grammar=grammar,
+            ))
+    all_sources = sorted({
+        source
+        for theme in THEMES
+        for source in _phase31_framebuffer_sources(manifest, theme)
+    })
+    rows.extend(_phase31_physical_row(
+        row_id, deployment["deployment_id"], deployment_lock_sha256,
+        logical_manifest_sha256, all_sources,
+    ) for row_id in PHASE31_STRESS_ROWS)
+    rows.extend(_phase31_physical_row(
+        row_id, deployment["deployment_id"], deployment_lock_sha256,
+        logical_manifest_sha256, all_sources,
+    ) for row_id in PHASE31_BACKSTOP_ROWS)
+    return {
+        "schema_version": 1,
+        "kind": "phase03.1-device-evidence",
+        "status": "pending",
+        "run_id": f"phase31-{deployment['deployment_id'][:16]}",
+        "deployment": dict(deployment),
+        "deployment_lock_sha256": deployment_lock_sha256,
+        "logical_manifest_sha256": logical_manifest_sha256,
+        "exact_pair": {
+            "device_id": deployment["paired_device_id"],
+            "pair_identity_digest": deployment["pair_identity_digest"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "protocol": deployment["protocol_version"],
+        },
+        "preflight": {
+            "accepted": True,
+            "accepted_at_unix_ms": time.time_ns() // 1_000_000,
+            "hello": {
+                "device_id": hello["device_id"],
+                "firmware": hello["firmware"],
+                "protocol": hello["protocol"],
+                "boot_id": hello["device_boot_id"],
+                "session_id": session_id,
+            },
+            "guarded_publication": {
+                "receipt_sha256": publication_sha256,
+                "published_at_unix_ms": publication["published_at_unix_ms"],
+                "boot_id": publication["hello"]["boot_id"],
+                "session_id": publication["hello"]["session_id"],
+                "snapshot_revision": publication["snapshot_ack"]["snapshot_revision"],
+                "accepted": True,
+            },
+        },
+        "physical_observations": rows,
+        "machine_measurements": [{
+            "id": "measurement-preflight-metrics",
+            "source": "machine",
+            "deployment_id": deployment["deployment_id"],
+            "data": dict(machine_metrics),
+        }],
+        "deployment_transitions": [],
+        "defect_ledger": {
+            "path": "artifacts/phase03.1/03.1-DEFECT-LEDGER.json",
+            "status": "pending",
+        },
+        "evidence_boundary": {
+            "logical": "source framebuffer IDs only; no physical claims",
+            "physical": "typed human observations only; no machine ACK implies physical pass",
+            "machine": "bounded serial/bridge facts only",
+        },
+    }
+def _phase31_write_defect(
+    evidence: Mapping[str, Any],
+    row: Mapping[str, Any],
+    *,
+    reason: str,
+) -> None:
+    path = ROOT / "artifacts/phase03.1/03.1-DEFECT-LEDGER.json"
+    try:
+        ledger = json.loads(path.read_text(encoding="ascii"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        ledger = {
+            "schema_version": 1,
+            "kind": "phase03.1-defect-ledger",
+            "deployment_id": evidence["deployment"]["deployment_id"],
+            "deployment_lock_sha256": evidence["deployment_lock_sha256"],
+            "logical_manifest_sha256": evidence["logical_manifest_sha256"],
+            "defects": [],
+        }
+    defects = ledger.setdefault("defects", [])
+    observation_id = f"{row['id']}-{row['observation']['observed_at_unix_ms']}"
+    defect_id = "defect-" + sha256_bytes(canonical_bytes({
+        "deployment_id": evidence["deployment"]["deployment_id"],
+        "observation_id": observation_id,
+        "reason": reason,
+    }))[:16]
+    if not any(item.get("defect_id") == defect_id for item in defects):
+        defects.append({
+            "defect_id": defect_id,
+            "status": "open",
+            "disposition": "blocking",
+            "deployment_id": evidence["deployment"]["deployment_id"],
+            "deployment_lock_sha256": evidence["deployment_lock_sha256"],
+            "logical_manifest_sha256": evidence["logical_manifest_sha256"],
+            "before_observation_ids": [observation_id],
+            "after_observation_ids": [],
+            "row_id": row["id"],
+            "reason": reason,
+        })
+    ledger["status"] = "blocked"
+    atomic_write(path, json.dumps(ledger, sort_keys=True, indent=2).encode("ascii") + b"\n")
+
+
+def run_phase31_current_deployment(args: argparse.Namespace) -> int:
+    deployment, manifest, _binding, lock_sha, manifest_sha = _phase31_load_inputs(
+        args.deployment, args.framebuffer, args.firmware, args.binding,
+        require_current=args.require_current_deployment,
+    )
+    evidence_path = args.evidence.resolve()
+    if evidence_path.exists():
+        raise RuntimeError(
+            "device evidence already exists; refusing to replace an accepted or partial header"
+        )
+    _selected, link, session, _transitions = _phase31_exact_session(
+        args.binding.resolve(), args.timeout
+    )
+    try:
+        hello = dict(session.device)
+        if hello.get("device_boot_id") != deployment["boot_id"]:
+            raise RuntimeError("fresh hello boot identity differs from locked deployment")
+        machine_metrics = _phase31_machine_metrics(session)
+        session_id = session.session_id
+    finally:
+        link.close()
+    with phase31_guarded_bridge(
+        args, deployment, deployment["boot_id"], timeout=args.timeout
+    ) as (_bridge, publication, publication_sha):
+        accepted = validate_phase31_current_deployment_identity(
+            deployment, hello, session_id, publication
+        )
+        evidence = _phase31_make_evidence(
+            deployment, manifest, lock_sha, manifest_sha, hello, session_id,
+            publication, publication_sha, machine_metrics,
+        )
+        evidence["preflight"]["identity"] = accepted
+        write_json(evidence_path, evidence, checksum=True)
+    validate_phase31_device_evidence(
+        evidence_path, args.deployment, args.framebuffer, None,
+        require_current_deployment=args.require_current_deployment,
+        allow_pending=True,
+        require_fresh_bridge_publication=True,
+    )
+    print(
+        f"CURRENT DEPLOYMENT PASS deployment={deployment['deployment_id']} "
+        f"logical_manifest_sha256={manifest_sha}",
+        flush=True,
+    )
+    return 0
+
+
+def _phase31_current_evidence_header(
+    evidence: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    lock_sha: str,
+    manifest_sha: str,
+) -> None:
+    if evidence.get("kind") != "phase03.1-device-evidence":
+        raise ValueError("device evidence schema is not closed")
+    if evidence.get("deployment", {}).get("deployment_id") != deployment["deployment_id"]:
+        raise ValueError("device evidence deployment differs from current lock")
+    if evidence.get("deployment_lock_sha256") != lock_sha:
+        raise ValueError("device evidence deployment lock checksum differs")
+    if evidence.get("logical_manifest_sha256") != manifest_sha:
+        raise ValueError("device evidence logical manifest checksum differs")
+    if evidence.get("preflight", {}).get("accepted") is not True:
+        raise ValueError("device evidence preflight is not accepted")
+    row_ids = [row.get("id") for row in evidence.get("physical_observations", [])]
+    if set(row_ids) != set(PHASE31_ALL_ROWS) or len(row_ids) != len(PHASE31_ALL_ROWS):
+        raise ValueError("Phase 03.1 physical observation matrix is incomplete")
+    captures = {row.get("id") for row in manifest.get("captures", [])}
+    for row in evidence["physical_observations"]:
+        if (
+            row.get("deployment_id") != deployment["deployment_id"]
+            or row.get("deployment_lock_sha256") != lock_sha
+            or row.get("logical_manifest_sha256") != manifest_sha
+            or not row.get("source_framebuffer_ids")
+            or not set(row["source_framebuffer_ids"]).issubset(captures)
+            or not row.get("measurement_ids")
+        ):
+            raise ValueError("physical observation lineage is incomplete")
+
+
+def run_phase31_run(args: argparse.Namespace) -> int:
+    deployment, manifest, _binding, lock_sha, manifest_sha = _phase31_load_inputs(
+        args.deployment, args.framebuffer, args.firmware, args.binding,
+        require_current=args.require_current_deployment,
+    )
+    evidence_path = args.evidence.resolve()
+    _phase31_sidecar(evidence_path, "device evidence")
+    evidence = json.loads(evidence_path.read_text(encoding="ascii"))
+    _phase31_current_evidence_header(
+        evidence, deployment, manifest, lock_sha, manifest_sha
+    )
+    if evidence.get("status") == "pass":
+        raise RuntimeError("device evidence is already complete; refusing to replay rows")
+    _selected, link, session, _transitions = _phase31_exact_session(
+        args.binding.resolve(), args.timeout
+    )
+    try:
+        hello = dict(session.device)
+        if hello.get("device_boot_id") != deployment["boot_id"]:
+            raise RuntimeError("pre-row hello boot identity differs from locked deployment")
+        session_id = session.session_id
+        machine_metrics = _phase31_machine_metrics(session)
+    finally:
+        link.close()
+    with phase31_guarded_bridge(
+        args, deployment, deployment["boot_id"], timeout=args.timeout
+    ) as (_bridge, publication, _publication_sha):
+        validate_phase31_current_deployment_identity(
+            deployment, hello, session_id, publication
+        )
+        evidence["machine_measurements"].append({
+            "id": f"measurement-run-{time.time_ns()}",
+            "source": "machine",
+            "deployment_id": deployment["deployment_id"],
+            "data": machine_metrics,
+        })
+        for row in evidence["physical_observations"]:
+            if row.get("result") == "pass":
+                continue
+            row_id = row["id"]
+            print(f"\n{row_id}", flush=True)
+            print(_phase31_prompt(row), flush=True)
+            try:
+                answer = input(f"Answer Y/N/R {row_id}: ").strip().upper()
+            except EOFError as exc:
+                raise RuntimeError(
+                    f"physical observation input ended before {row_id}"
+                ) from exc
+            if answer not in {"Y", "N", "R"}:
+                raise RuntimeError("physical observation response must be exactly Y, N, or R")
+            result = {"Y": "pass", "N": "failed", "R": "refused"}[answer]
+            row["result"] = result
+            row["observation"] = {
+                "answer": answer,
+                "prompt": _phase31_prompt(row),
+                "observed_at_unix_ms": time.time_ns() // 1_000_000,
+                "fresh_hello_session_id": session_id,
+                "physical_claims": True,
+            }
+            write_json(evidence_path, evidence, checksum=True)
+            if answer != "Y":
+                _phase31_write_defect(
+                    evidence, row,
+                    reason=f"typed physical result {result}; acceptance remains blocked",
+                )
+                return 1
+    _selected, link, session, _transitions = _phase31_exact_session(
+        args.binding.resolve(), args.timeout
+    )
+    try:
+        final_hello = dict(session.device)
+        final_session_id = session.session_id
+        active_deployment = dict(deployment)
+        active_deployment["boot_id"] = final_hello.get("device_boot_id")
+        if (
+            final_hello.get("device_id") != deployment["paired_device_id"]
+            or final_hello.get("firmware") != deployment["hello_firmware"]
+            or final_hello.get("protocol") != deployment["protocol_version"]
+        ):
+            raise RuntimeError("final hello differs from locked deployment")
+    finally:
+        link.close()
+    with phase31_guarded_bridge(
+        args, active_deployment, active_deployment["boot_id"], timeout=args.timeout
+    ) as (_bridge, publication, publication_sha):
+        validate_phase31_current_deployment_identity(
+            active_deployment, final_hello, final_session_id, publication
+        )
+        if active_deployment["boot_id"] != deployment["boot_id"]:
+            evidence["deployment_transitions"].append({
+                "id": f"transition-{time.time_ns()}",
+                "kind": "explicit-reconnect-or-reset",
+                "from_boot_id": deployment["boot_id"],
+                "to_boot_id": active_deployment["boot_id"],
+                "session_id": final_session_id,
+                "publication_sha256": publication_sha,
+                "deployment_id": deployment["deployment_id"],
+            })
+        evidence["preflight"]["final_publication"] = {
+            "receipt_sha256": publication_sha,
+            "published_at_unix_ms": publication["published_at_unix_ms"],
+            "boot_id": publication["hello"]["boot_id"],
+            "session_id": publication["hello"]["session_id"],
+            "snapshot_revision": publication["snapshot_ack"]["snapshot_revision"],
+            "accepted": True,
+        }
+        evidence["status"] = "pass"
+        write_json(evidence_path, evidence, checksum=True)
+    ledger_path = ROOT / "artifacts/phase03.1/03.1-DEFECT-LEDGER.json"
+    write_json(ledger_path, {
+        "schema_version": 1,
+        "kind": "phase03.1-defect-ledger",
+        "status": "pass",
+        "deployment_id": deployment["deployment_id"],
+        "deployment_lock_sha256": lock_sha,
+        "logical_manifest_sha256": manifest_sha,
+        "defects": [],
+    })
+    print("PHYSICAL OBSERVATIONS COMPLETE", flush=True)
+    return 0
 
 
 def run_phase31_capture(args: argparse.Namespace) -> int:
@@ -1355,7 +2002,115 @@ def run_phase31_capture(args: argparse.Namespace) -> int:
         f"{deployment['deployment_id']}"
     )
     return 0
+def validate_phase31_device_evidence(
+    path: Path,
+    deployment_path: Path,
+    framebuffer_path: Path,
+    defects_path: Path | None,
+    *,
+    require_current_deployment: bool = False,
+    allow_pending: bool = False,
+    require_fresh_bridge_publication: bool = False,
+    require_no_open_defects: bool = False,
+) -> int:
+    path = path.resolve()
+    _phase31_sidecar(path, "device evidence")
+    evidence = json.loads(path.read_text(encoding="ascii"))
+    binding_path = Path.home() / ".config/herdr/keypad-binding.json"
+    binding = PairingStore(binding_path).load()
+    if binding is None:
+        raise RuntimeError("paired keypad binding is missing")
+    firmware = (ROOT / ".pio/build/selected-usb/firmware.bin").resolve()
+    deployment = validate_deployment_file(
+        deployment_path.resolve(), firmware=firmware, binding=binding,
+        require_current=require_current_deployment,
+    )
+    manifest_sha = _phase31_sidecar(framebuffer_path.resolve(), "logical manifest")
+    lock_sha = _phase31_sidecar(deployment_path.resolve(), "deployment lock")
+    manifest = json.loads(framebuffer_path.resolve().read_text(encoding="ascii"))
+    validate_phase31_framebuffer_manifest(
+        manifest, deployment, deployment_lock_sha256=lock_sha
+    )
+    _phase31_current_evidence_header(evidence, deployment, manifest, lock_sha, manifest_sha)
+    exact_pair = evidence.get("exact_pair")
+    if exact_pair != {
+        "device_id": deployment["paired_device_id"],
+        "pair_identity_digest": deployment["pair_identity_digest"],
+        "firmware_sha256": deployment["firmware_sha256"],
+        "protocol": deployment["protocol_version"],
+    }:
+        raise ValueError("exact pair evidence linkage is invalid")
+    pending = any(
+        row.get("result") == "pending"
+        for row in evidence["physical_observations"]
+    )
+    if pending and not allow_pending:
+        raise ValueError("physical observations remain pending")
+    expected_status = "pending" if pending else "pass"
+    if evidence.get("status") != expected_status:
+        raise ValueError("device evidence status does not match observations")
+    if any(
+        row.get("result") in {"failed", "refused", "unavailable"}
+        for row in evidence["physical_observations"]
+    ):
+        raise ValueError("failed or unavailable physical observation blocks acceptance")
+    for measurement in evidence.get("machine_measurements", []):
+        if measurement.get("source") != "machine" or measurement.get("deployment_id") != deployment["deployment_id"]:
+            raise ValueError("machine measurement provenance is invalid")
+        if measurement.get("data", {}).get("status") != "pass" and not allow_pending:
+            raise ValueError("machine measurement is unavailable")
+    publication = evidence.get("preflight", {}).get("guarded_publication")
+    final_publication = evidence.get("preflight", {}).get("final_publication")
+    if require_fresh_bridge_publication:
+        publication = final_publication or publication
+        if (
+            not isinstance(publication, Mapping)
+            or publication.get("accepted") is not True
+            or not valid_snapshot_revision(publication.get("snapshot_revision"))
+            or not valid_publication_identity(publication.get("boot_id"))
+            or not valid_publication_identity(publication.get("session_id"))
+            or not isinstance(publication.get("receipt_sha256"), str)
+            or len(publication["receipt_sha256"]) != 64
+        ):
+            raise ValueError("fresh bridge publication evidence is missing")
+    if require_no_open_defects:
+        ledger_path = (defects_path or ROOT / "artifacts/phase03.1/03.1-DEFECT-LEDGER.json").resolve()
+        try:
+            ledger = json.loads(ledger_path.read_text(encoding="ascii"))
+        except (FileNotFoundError, OSError, json.JSONDecodeError) as exc:
+            raise ValueError("defect ledger is missing") from exc
+        if (
+            ledger.get("kind") != "phase03.1-defect-ledger"
+            or ledger.get("deployment_id") != deployment["deployment_id"]
+            or ledger.get("deployment_lock_sha256") != lock_sha
+            or ledger.get("logical_manifest_sha256") != manifest_sha
+            or ledger.get("status") != "pass"
+            or ledger.get("defects") != []
+        ):
+            raise ValueError("defect ledger contains an open or mismatched defect")
+    print(
+        f"validated {'pending' if pending else 'complete'} Phase 03.1 device evidence "
+        f"for {deployment['deployment_id']}"
+    )
+    return 0
+
+
 def run_phase31_validate(args: argparse.Namespace) -> int:
+    try:
+        document = json.loads(args.evidence.resolve().read_text(encoding="ascii"))
+    except (OSError, json.JSONDecodeError):
+        document = None
+    if isinstance(document, dict) and document.get("kind") == "phase03.1-device-evidence":
+        return validate_phase31_device_evidence(
+            args.evidence,
+            args.deployment,
+            args.framebuffer,
+            args.defects,
+            require_current_deployment=args.require_current_deployment,
+            allow_pending=False,
+            require_fresh_bridge_publication=args.require_fresh_bridge_publication,
+            require_no_open_defects=args.require_no_open_defects,
+        )
     deployment_path = args.deployment.resolve()
     binding_path = (
         args.binding.resolve()
@@ -1807,6 +2562,26 @@ def main(argv: list[str] | None = None) -> int:
     deploy_validate.add_argument("--firmware", type=Path, required=True)
     deploy_validate.add_argument("--deployment", type=Path, required=True)
     deploy_validate.add_argument("--require-current-deployment", action="store_true")
+    current31 = subparsers.add_parser("phase31-current-deployment")
+    current31.add_argument("--binding", type=Path, required=True)
+    current31.add_argument("--firmware", type=Path, required=True)
+    current31.add_argument("--deployment", type=Path, required=True)
+    current31.add_argument("--framebuffer", type=Path, required=True)
+    current31.add_argument("--evidence", type=Path, required=True)
+    current31.add_argument("--timeout", type=float, default=5.0)
+    current31.add_argument("--require-current-deployment", action="store_true")
+    current31.add_argument("--require-fresh-bridge-publication", action="store_true")
+    run31 = subparsers.add_parser("phase31-run")
+    run31.add_argument("--binding", type=Path, required=True)
+    run31.add_argument("--firmware", type=Path, required=True)
+    run31.add_argument("--deployment", type=Path, required=True)
+    run31.add_argument("--baseline", type=Path, required=True)
+    run31.add_argument("--framebuffer", type=Path, required=True)
+    run31.add_argument("--evidence", type=Path, required=True)
+    run31.add_argument("--defects", type=Path, required=True)
+    run31.add_argument("--timeout", type=float, default=5.0)
+    run31.add_argument("--require-current-deployment", action="store_true")
+    run31.add_argument("--require-fresh-bridge-publication", action="store_true")
     capture31 = subparsers.add_parser("phase31-capture")
     capture31.add_argument("--binding", type=Path, required=True)
     capture31.add_argument("--firmware", type=Path, required=True)
@@ -1818,8 +2593,12 @@ def main(argv: list[str] | None = None) -> int:
     phase31_validate = subparsers.add_parser("phase31-validate")
     phase31_validate.add_argument("--evidence", type=Path, required=True)
     phase31_validate.add_argument("--deployment", type=Path, required=True)
+    phase31_validate.add_argument("--framebuffer", type=Path)
+    phase31_validate.add_argument("--defects", type=Path)
     phase31_validate.add_argument("--binding", type=Path)
     phase31_validate.add_argument("--require-current-deployment", action="store_true")
+    phase31_validate.add_argument("--require-fresh-bridge-publication", action="store_true")
+    phase31_validate.add_argument("--require-no-open-defects", action="store_true")
     validate = subparsers.add_parser("validate")
     validate.add_argument("--evidence", type=Path, required=True)
     validate.add_argument("--allow-pending", action="store_true")
@@ -1841,6 +2620,20 @@ def main(argv: list[str] | None = None) -> int:
                 require_current=args.require_current_deployment,
             )
         )
+    if args.command == "phase31-current-deployment":
+        return run_phase31_current_deployment(args)
+    if args.command == "phase31-run":
+        baseline = validate_phase31_baseline_file(
+            args.baseline.resolve(),
+            require_current_deployment=args.require_current_deployment,
+        )
+        if baseline.get("status") == "blocked":
+            print(
+                "Phase 03.1 budget lock is a historical blocked baseline; "
+                "continuing with current deployment",
+                flush=True,
+            )
+        return run_phase31_run(args)
     if args.command == "phase31-capture":
         return run_phase31_capture(args)
     if args.command == "phase31-validate":
