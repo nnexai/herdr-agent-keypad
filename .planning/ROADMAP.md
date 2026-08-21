@@ -260,7 +260,7 @@ Plans:
   4. Motion improves hierarchy and feedback without making state meaning depend on movement, color, timing, or animation completion; reduced/degraded/static modes remain truthful and visually coherent.
   5. All four themes and four LED grammars receive exact-device visual checks under normal refresh, rapid interaction, live data changes, stale/offline transitions, and reconnect/reset conditions, with measured evidence for the accepted quality bar.
 
-**Plans:** 6/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -289,7 +289,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 03.1-07-PLAN.md — Build, flash, hash-lock, and capture the completed firmware's logical evidence
+- [x] 03.1-07-PLAN.md — Build, flash, hash-lock, and capture the completed firmware's logical evidence
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
@@ -333,7 +333,7 @@ Plans:
 | 02.1 Reliable Live Synchronization, Focus, and Flicker-Free Rendering | 3/3 | Complete | 2026-08-17 |
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
-| 03.1 High-Fidelity Animation and Interaction Polish | 6/8 | In Progress|  |
+| 03.1 High-Fidelity Animation and Interaction Polish | 7/8 | In Progress|  |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 
 ## Backlog

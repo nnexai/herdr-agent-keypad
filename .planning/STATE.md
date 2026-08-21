@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03.1
 current_phase_name: High-Fidelity Animation and Interaction Polish
 status: executing
-stopped_at: Completed 03.1-06-PLAN.md
-last_updated: "2026-08-21T10:22:45.544Z"
+stopped_at: Completed 03.1-07-PLAN.md
+last_updated: "2026-08-21T10:45:41.327Z"
 last_activity: 2026-08-21
 last_activity_desc: Completed Phase 03 Plan 08 exact-device capture and pending evidence
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 43
-  completed_plans: 41
+  completed_plans: 42
 ---
 
 Total Phases: 6
@@ -28,7 +28,7 @@ stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
 last_activity_desc: "Completed Phase 03 Plan 08 exact-device capture and pending evidence"
-progress:[██████████] 95%
+progress:[██████████] 98%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.1 (High-Fidelity Animation and Interaction Polish) — EXECUTING
-Plan: 7 of 8
+Plan: 8 of 8
 Status: Ready to execute
 Last activity: 2026-08-21 — Phase 03.1 execution started
 
@@ -106,6 +106,7 @@ Progress: [██████████] 97%
 | Phase 03.1 P04 | 15min | 2 tasks | 8 files |
 | Phase 03.1 P05 | 12min | 2 tasks | 10 files |
 | Phase 03.1 P06 | 12min | 2 tasks | 7 files |
+| Phase 03.1 P07 | 17min | 3 tasks | 386 files |
 
 ## Accumulated Context
 
@@ -181,6 +182,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Each theme moves only its rail, record stripe, beacon marker, or bezel cue while semantic copy stays stable.
 - [Phase ?]: LedEvents now carries bounded semantic event kind, epoch, and grammar-neutral phase while Codex truth remains in committed RenderState.
 - [Phase ?]: LedEngine owns immediate SYNC/all-off resolution; four grammars retain independent phase and physical-zone choreography.
+- [Phase ?]: Use a closed production-renderer capture vocabulary with Full, Half, Static, and bounded phases so logical evidence is deterministic and state-safe.
+- [Phase ?]: Require exact-pair fresh boot/session identity plus uploaded selected-usb binary hash in one immutable deployment lock before any capture.
+- [Phase ?]: Keep framebuffer and LED rows machine-only; physical LED, optical, smoothness, brightness, feel, and latency claims remain deferred to Plan 08.
 
 ### Pending Todos
 
@@ -217,5 +221,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-21T10:22:45.531Z
-Stopped at: Completed 03.1-06-PLAN.md
+Last session: 2026-08-21T10:45:31.548Z
+Stopped at: Completed 03.1-07-PLAN.md
