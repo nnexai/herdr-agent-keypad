@@ -15,12 +15,10 @@ void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
   out[count++] = {mask, hue, saturation, brightness};
 }
 
-bool feedbackHigh(const RenderState& state, const LedEvents& events,
-                  TileFeedback feedback, uint32_t now_us) {
-  const LedSemanticEvent event = ledSemanticEvent(state, events);
-  if (ledFeedbackUsesSemanticPhase(feedback, event)) {
-    return (ledSemanticPhase(state, events) & 1U) == 0;
-  }
+bool feedbackHigh(const RenderState::Slot& tile, const LedEvents& events,
+                  uint32_t now_us) {
+  uint8_t phase = 0;
+  if (ledSemanticPhase(tile, events, phase)) return (phase & 1U) == 0;
   return ((now_us / 150000UL) & 1U) == 0;
 }
 
@@ -50,9 +48,9 @@ class ExceptionChannel final : public LedGrammar {
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
       const RenderState::Slot& tile = state.slots[slot];
       if (active(tile.feedback)) {
-        const bool blink = feedbackHigh(state, events, tile.feedback, now_us);
-        uint16_t hue = tile.feedback == TileFeedback::Pending ? 185 :
-                       tile.feedback == TileFeedback::Success ? 120 : 0;
+        const bool blink = feedbackHigh(tile, events, now_us);
+        const uint16_t hue = tile.feedback == TileFeedback::Pending ? 185 :
+                             tile.feedback == TileFeedback::Success ? 120 : 0;
         add(out, count, capacity, kKeyMasks[slot], hue, 100,
             static_cast<uint8_t>(blink ? 30 : 0));
         continue;

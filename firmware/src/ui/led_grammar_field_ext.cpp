@@ -35,18 +35,14 @@ uint16_t hue(TileState state) {
   }
 }
 
-bool addFeedback(const RenderState& state, const LedEvents& events,
-                 uint32_t now_us, const RenderState::Slot& tile,
+bool addFeedback(const RenderState::Slot& tile, const LedEvents& events,
                  uint8_t slot, LedSegment* out, size_t& count,
                  size_t capacity) {
   const uint16_t key = kKeyMasks[slot];
-  (void)now_us;
   if (tile.feedback == TileFeedback::Pending) {
-    const bool use_semantic_phase =
-        events.menu_open || events.semantic_event != LedSemanticEvent::None;
-    const uint8_t step = use_semantic_phase
-                             ? ledSemanticPhase(state, events) % 3U
-                             : tile.feedback_phase % 3U;
+    uint8_t phase = 0;
+    const bool semantic = ledSemanticPhase(tile, events, phase);
+    const uint8_t step = semantic ? phase % 3U : tile.feedback_phase % 3U;
     const uint16_t pending_mask =
         static_cast<uint16_t>(1U << (slot * 3U + step));
     add(out, count, capacity, pending_mask, 185, 100, 45);
@@ -56,47 +52,46 @@ bool addFeedback(const RenderState& state, const LedEvents& events,
       tile.feedback == TileFeedback::Ready) {
     return false;
   }
-  const bool use_semantic_phase =
-      events.menu_open || events.semantic_event != LedSemanticEvent::None;
-  const bool high = use_semantic_phase
-                        ? (ledSemanticPhase(state, events) & 1U) == 0
-                        : true;
+  uint8_t phase = 0;
+  const bool semantic = ledSemanticPhase(tile, events, phase);
+  const bool high = !semantic || (phase & 1U) == 0;
   const uint16_t feedback_hue =
       tile.feedback == TileFeedback::Success ? 120 : 0;
-  const uint8_t brightness =
+  const uint8_t feedback_brightness =
       tile.feedback == TileFeedback::Success ? 45 : 30;
   add(out, count, capacity, key, feedback_hue, 100,
-      static_cast<uint8_t>(high ? brightness : 0));
+      static_cast<uint8_t>(high ? feedback_brightness : 0));
   return true;
 }
 class FieldExtension final : public LedGrammar {
  public:
   size_t frame(const RenderState& state, const LedEvents& events,
                uint32_t now_us, LedSegment* out, size_t capacity) const override {
+    (void)now_us;
     size_t count = 0;
     const bool health = ledPresentationUnhealthy(state);
     if (health) {
-      const uint8_t brightness = state.blocked_pulse_high ? 10 : 3;
-      add(out, count, capacity, kHealthPair, 0, 100, brightness);
+      const uint8_t health_brightness = state.blocked_pulse_high ? 10 : 3;
+      add(out, count, capacity, kHealthPair, 0, 100, health_brightness);
       for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
-        addFeedback(state, events, now_us, state.slots[slot], slot, out, count,
-                    capacity);
+        addFeedback(state.slots[slot], events, slot, out, count, capacity);
       }
       return count;
     }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
       const RenderState::Slot& tile = state.slots[slot];
       const uint16_t key = kKeyMasks[slot];
-      if (addFeedback(state, events, now_us, tile, slot, out, count, capacity)) {
+      if (addFeedback(tile, events, slot, out, count, capacity)) {
         continue;
       }
-      const uint8_t brightness = level(tile.state, state.blocked_pulse_high);
-      if (brightness == 0) continue;
+      const uint8_t tile_brightness = level(tile.state, state.blocked_pulse_high);
+      if (tile_brightness == 0) continue;
       const uint16_t color = hue(tile.state);
-      add(out, count, capacity, kCenterMasks[slot], color, 100, brightness);
+      add(out, count, capacity, kCenterMasks[slot], color, 100,
+          tile_brightness);
       add(out, count, capacity,
           static_cast<uint16_t>(key & ~kCenterMasks[slot]), color, 100,
-          static_cast<uint8_t>((brightness * 60U) / 100U));
+          static_cast<uint8_t>((tile_brightness * 60U) / 100U));
     }
     const LedCodexCue usage = ledCodexCue(state);
     if (usage.visible) {

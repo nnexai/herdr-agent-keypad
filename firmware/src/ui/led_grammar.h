@@ -72,6 +72,30 @@ inline bool ledFeedbackUsesSemanticPhase(TileFeedback feedback,
   return event != LedSemanticEvent::None &&
          event == ledFeedbackSemanticEvent(feedback);
 }
+// Resolve one feedback segment against its own semantic clock.  A physical
+// press keeps PENDING on the press event for that frame; result feedback uses
+// its mapped event.  Semantic clocks are used for an explicit/menu event,
+// while ordinary pending movement keeps its bounded local phase.
+inline bool ledSemanticPhase(const RenderState::Slot& slot,
+                             const LedEvents& events, uint8_t& phase) {
+  const LedSemanticEvent slot_event =
+      slot.press_impulse ? LedSemanticEvent::Press
+                         : ledFeedbackSemanticEvent(slot.feedback);
+  if (!ledFeedbackUsesSemanticPhase(slot.feedback, slot_event) ||
+      (events.semantic_event == LedSemanticEvent::None && !events.menu_open)) {
+    return false;
+  }
+  if (slot.semantic_event_epoch != 0 ||
+      slot.semantic_event_started_us != 0) {
+    phase = slot.semantic_event_phase;
+  } else if (events.semantic_event != LedSemanticEvent::None) {
+    phase = events.semantic_phase;
+  } else {
+    phase = slot.feedback_phase;
+  }
+  return true;
+}
+
 
 inline LedSemanticEvent ledSemanticEvent(const RenderState& state,
                                          const LedEvents& events);

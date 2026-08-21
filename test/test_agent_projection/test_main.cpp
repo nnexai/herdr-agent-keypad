@@ -1881,6 +1881,13 @@ RenderState committedCodexLedState(AgentProjection& projection,
 bool resolvedOn(const LedEngine& engine, uint8_t index) {
   return engine.resolved(index).brightness != 0;
 }
+uint8_t segmentBrightness(const LedSegment* segments, size_t count,
+                          uint16_t mask) {
+  for (size_t index = 0; index < count; ++index) {
+    if ((segments[index].mask & mask) != 0) return segments[index].brightness;
+  }
+  return 0;
+}
 
 void assertUsageCue(LedGrammar& grammar, const RenderState& state,
                     uint16_t mask, uint16_t hue) {
@@ -2978,8 +2985,8 @@ void test_led_grammar_rest_truth_and_segment_bounds_across_phases() {
   state.transition_phase = 7;
   LedEvents derived_start;
   probe_engine.render(state, derived_start, 0, probe_board);
-  TEST_ASSERT_EQUAL_UINT32(92, probe.seen.semantic_epoch);
-  TEST_ASSERT_EQUAL_UINT8(2, probe.seen.semantic_phase);
+  TEST_ASSERT_EQUAL_UINT32(0, probe.seen.semantic_epoch);
+  TEST_ASSERT_EQUAL_UINT8(0, probe.seen.semantic_phase);
 
   state.syncing = true;
   rest.semantic_event = LedSemanticEvent::Sync;
@@ -3004,8 +3011,9 @@ void test_menu_open_keeps_focus_feedback_clock_and_l13_decoration() {
   state.slots[0].occupied = true;
   state.slots[0].state = TileState::Working;
   state.slots[0].feedback = TileFeedback::Pending;
-  state.semantic_event_epoch = 7;
-  state.semantic_event_started_us = 1000;
+  state.slots[0].semantic_event_epoch = 7;
+  state.slots[0].semantic_event_started_us = 1000;
+  state.slots[0].semantic_event_phase = 0;
 
   LedEvents menu;
   menu.menu_open = true;
@@ -3019,17 +3027,20 @@ void test_menu_open_keeps_focus_feedback_clock_and_l13_decoration() {
   pending_engine.render(state, menu, 1000, board);
   TEST_ASSERT_EQUAL_UINT8(45, pending_engine.resolved(1).brightness);
   TEST_ASSERT_TRUE(resolvedOn(pending_engine, 13));
-  pending_engine.render(state, menu, 101000, board);
+  state.slots[0].semantic_event_phase = 1;
+  pending_engine.render(state, menu, 1000, board);
   TEST_ASSERT_EQUAL_UINT8(0, pending_engine.resolved(1).brightness);
   TEST_ASSERT_TRUE(resolvedOn(pending_engine, 13));
 
   state.slots[0].feedback = TileFeedback::Success;
+  state.slots[0].semantic_event_phase = 0;
   LedEngine success_engine;
   success_engine.setGrammar(railEchoGrammar());
   success_engine.render(state, menu, 1000, board);
   TEST_ASSERT_EQUAL_UINT8(45, success_engine.resolved(1).brightness);
   TEST_ASSERT_TRUE(resolvedOn(success_engine, 13));
-  success_engine.render(state, menu, 101000, board);
+  state.slots[0].semantic_event_phase = 1;
+  success_engine.render(state, menu, 1000, board);
   TEST_ASSERT_EQUAL_UINT8(0, success_engine.resolved(1).brightness);
   TEST_ASSERT_TRUE(resolvedOn(success_engine, 13));
 }
@@ -3040,8 +3051,9 @@ void test_menu_open_terminal_focus_feedback_uses_event_phase() {
   state.codex.source_state = CodexSourceState::Current;
   state.slots[0].occupied = true;
   state.slots[0].state = TileState::Working;
-  state.semantic_event_epoch = 7;
-  state.semantic_event_started_us = 1000;
+  state.slots[0].semantic_event_epoch = 7;
+  state.slots[0].semantic_event_started_us = 1000;
+  state.slots[0].semantic_event_phase = 0;
 
   struct TerminalCase {
     TileFeedback feedback;
@@ -3068,18 +3080,87 @@ void test_menu_open_terminal_focus_feedback_uses_event_phase() {
       LedEngine engine;
       BoardAdapter board;
       engine.setGrammar(*grammar);
+      state.slots[0].semantic_event_phase = 0;
       engine.render(state, menu, 1000, board);
       TEST_ASSERT_TRUE(engine.resolved(1).brightness > 0);
       TEST_ASSERT_TRUE(resolvedOn(engine, 13));
-      engine.render(state, menu, 101000, board);
+      state.slots[0].semantic_event_phase = 1;
+      engine.render(state, menu, 1000, board);
       TEST_ASSERT_EQUAL_UINT8(0, engine.resolved(1).brightness);
       TEST_ASSERT_TRUE(resolvedOn(engine, 13));
     }
   }
 }
 
+void test_led_grammars_keep_distinct_slot_feedback_phases() {
+  RenderState state;
+  state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
+  state.slots[0].state = TileState::Working;
+  state.slots[0].feedback = TileFeedback::Pending;
+  state.slots[0].semantic_event_epoch = 101;
+  state.slots[0].semantic_event_started_us = 1000;
+  state.slots[0].semantic_event_phase = 1;
+  state.slots[1].state = TileState::Idle;
+  state.slots[1].feedback = TileFeedback::Failed;
+  state.slots[1].semantic_event_epoch = 202;
+  state.slots[1].semantic_event_started_us = 2000;
+  state.slots[1].semantic_event_phase = 0;
+
+  LedEvents menu;
+  menu.menu_open = true;
+  menu.semantic_event = LedSemanticEvent::MenuOpen;
+  LedSegment segments[kLedGrammarMaxSegments]{};
+  struct GrammarExpectation {
+    LedGrammar* grammar;
+    uint8_t bright_phase_zero;
+  };
+  const GrammarExpectation grammars[] = {
+      {&railEchoGrammar(), 45},
+      {&exceptionChannelGrammar(), 30},
+      {&meterLampsGrammar(), 45},
+  };
+  for (const GrammarExpectation& expectation : grammars) {
+    const size_t count = expectation.grammar->frame(
+        state, menu, 0, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
+    TEST_ASSERT_EQUAL_UINT8(0, segmentBrightness(segments, count, 1U << 1));
+    TEST_ASSERT_EQUAL_UINT8(expectation.bright_phase_zero,
+                            segmentBrightness(segments, count, 1U << 4));
+    TEST_ASSERT_EQUAL_UINT8(25, segmentBrightness(segments, count, 1U << 13));
+  }
+
+  const TileFeedback field_cases[] = {
+      TileFeedback::Pending, TileFeedback::Vanished,
+      TileFeedback::Uncertain, TileFeedback::Failed,
+  };
+  for (const TileFeedback feedback : field_cases) {
+    state.slots[0].feedback = feedback;
+    const size_t count = fieldExtensionGrammar().frame(
+        state, menu, 0, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
+    if (feedback == TileFeedback::Pending) {
+      TEST_ASSERT_EQUAL_UINT8(45, segmentBrightness(segments, count, 1U << 1));
+    } else {
+      TEST_ASSERT_EQUAL_UINT8(0, segmentBrightness(segments, count, 1U << 1));
+    }
+    TEST_ASSERT_EQUAL_UINT8(30, segmentBrightness(segments, count, 1U << 4));
+    TEST_ASSERT_EQUAL_UINT8(25, segmentBrightness(segments, count, 1U << 13));
+  }
+
+  state.source_status = "stale";
+  state.blocked_pulse_high = true;
+  const size_t health_count = fieldExtensionGrammar().frame(
+      state, menu, 0, segments, kLedGrammarMaxSegments);
+  TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, health_count);
+  TEST_ASSERT_EQUAL_UINT16((1U << 12) | (1U << 13), segments[0].mask);
+  TEST_ASSERT_EQUAL_UINT16(0, segments[0].hue);
+  TEST_ASSERT_EQUAL_UINT8(10, segments[0].brightness);
+  TEST_ASSERT_EQUAL_UINT8(10, segmentBrightness(segments, health_count, 1U << 13));
+}
 void test_led_semantic_events_align_grammar_starts_and_fences() {
   RenderState state;
+
   state.source_status = "current";
   state.codex.source_state = CodexSourceState::Current;
   state.slots[0].occupied = true;
@@ -3136,6 +3217,7 @@ int runAllTests() {
   UNITY_BEGIN();
   RUN_TEST(test_menu_open_keeps_focus_feedback_clock_and_l13_decoration);
   RUN_TEST(test_menu_open_terminal_focus_feedback_uses_event_phase);
+  RUN_TEST(test_led_grammars_keep_distinct_slot_feedback_phases);
   RUN_TEST(test_led_grammar_rest_truth_and_segment_bounds_across_phases);
   RUN_TEST(test_led_semantic_events_align_grammar_starts_and_fences);
   RUN_TEST(test_compose_then_flush_commits_generation);

@@ -23,26 +23,24 @@ bool active(TileFeedback feedback) {
   return feedback != TileFeedback::Disabled && feedback != TileFeedback::Ready;
 }
 
-bool pulseHigh(const RenderState& state, const LedEvents& events,
-               TileFeedback feedback, uint32_t now_us) {
-  const LedSemanticEvent event = ledSemanticEvent(state, events);
-  if (ledFeedbackUsesSemanticPhase(feedback, event)) {
-    return (ledSemanticPhase(state, events) & 1U) == 0;
-  }
+bool pulseHigh(const RenderState::Slot& tile, const LedEvents& events,
+               uint32_t now_us) {
+  uint8_t phase = 0;
+  if (ledSemanticPhase(tile, events, phase)) return (phase & 1U) == 0;
   return ((now_us / 200000UL) & 1U) == 0;
 }
 
-Hsv feedbackHsv(const RenderState& state, const LedEvents& events,
-                TileFeedback feedback, uint32_t now_us) {
-  if (feedback == TileFeedback::Pending) {
+Hsv feedbackHsv(const RenderState::Slot& tile, const LedEvents& events,
+                uint32_t now_us) {
+  if (tile.feedback == TileFeedback::Pending) {
     return {185, 100, static_cast<uint8_t>(
-        pulseHigh(state, events, feedback, now_us) ? 45 : 0)};
+        pulseHigh(tile, events, now_us) ? 45 : 0)};
   }
-  if (feedback == TileFeedback::Success) {
+  if (tile.feedback == TileFeedback::Success) {
     return {120, 100, static_cast<uint8_t>(
-        pulseHigh(state, events, feedback, now_us) ? 45 : 0)};
+        pulseHigh(tile, events, now_us) ? 45 : 0)};
   }
-  const bool blink = pulseHigh(state, events, feedback, now_us);
+  const bool blink = pulseHigh(tile, events, now_us);
   return {0, 100, static_cast<uint8_t>(blink ? 45 : 0)};
 }
 
@@ -74,10 +72,10 @@ class RailEcho final : public LedGrammar {
       }
     }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
-      const TileFeedback feedback = state.slots[slot].feedback;
-      if (active(feedback)) {
+      const RenderState::Slot& tile = state.slots[slot];
+      if (active(tile.feedback)) {
         add(out, count, capacity, kKeyMasks[slot],
-            feedbackHsv(state, events, feedback, now_us));
+            feedbackHsv(tile, events, now_us));
       }
     }
     if ((events.menu_open ||
