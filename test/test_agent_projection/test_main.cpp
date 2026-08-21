@@ -432,6 +432,8 @@ void test_beacon_and_instrument_press_impulse_and_exact_focus_outcomes() {
 
     JsonDocument exact;
     TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "theme-exact", exact.to<JsonObject>()));
+    projection.renderFeedback(board, 0);  // consume this press's impulse
+    resetLog();
     exact["snapshot_revision"] = 1;
     JsonDocument accepted = focus_result_document("theme-exact", "accepted");
     accepted["snapshot_revision"] = 1;

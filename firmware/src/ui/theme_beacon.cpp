@@ -227,7 +227,14 @@ class BeaconTheme final : public ThemeRenderer {
         drawField(sprite, scale565(base.color, 12), phase);
       }
 
-      if (feedback != nullptr) {
+      if (tile.press_impulse) {
+        // The beacon halo is the physical-detection cue; it carries no
+        // request/result word and therefore cannot imply FOCUSED.
+        sprite.drawCircle(64, 52, 28, kAccent);
+        sprite.fillCircle(64, 52, 3, kAccent);
+        sprite.setTextColor(content, kBackground);
+        sprite.drawString(base.word, centeredX(base.word), 76);
+      } else if (feedback != nullptr) {
         drawFeedbackGlyph(sprite, tile.feedback, feedback->color, phase);
         sprite.setTextColor(feedback->color, kBackground);
         sprite.drawString(feedback->word, centeredX(feedback->word), 76);

@@ -194,8 +194,13 @@ class InstrumentTheme final : public ThemeRenderer {
     sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
     sprite.drawString(row, centeredX(row), 5);
 
-    // Ring: feedback replaces the inner glyph with its own bounded primitive.
-    if (feedback != nullptr) {
+    // Ring: the press impulse marks detection on the local gauge only.
+    if (tile.press_impulse) {
+      drawStateRing(sprite, TileState::Working, kAccent, 0,
+                    state.blocked_pulse_high);
+      sprite.drawCircle(kCx, kCy, 14, kAccent);
+      sprite.fillCircle(kCx, kCy - 14, 2, kAccent);
+    } else if (feedback != nullptr) {
       if (tile.feedback == TileFeedback::Pending) {
         drawStateRing(sprite, TileState::Blocked, feedback->color, phase,
                       state.blocked_pulse_high);
@@ -219,11 +224,13 @@ class InstrumentTheme final : public ThemeRenderer {
       drawInnerGlyph(sprite, tile.state, content);
     }
 
-    // State line y:89 — one state or feedback word, plus verbatim since.
-    sprite.setTextColor(feedback != nullptr ? feedback->color : content, kBackground);
-    sprite.drawString(feedback != nullptr ? feedback->word : base.word,
-                      centeredX(feedback != nullptr ? feedback->word : base.word), 89);
-    if (feedback == nullptr) {
+    // State line remains the underlying state during the physical impulse;
+    // feedback words begin only on the following complete frame.
+    const bool feedback_text = feedback != nullptr && !tile.press_impulse;
+    sprite.setTextColor(feedback_text ? feedback->color : content, kBackground);
+    sprite.drawString(feedback_text ? feedback->word : base.word,
+                      centeredX(feedback_text ? feedback->word : base.word), 89);
+    if (!feedback_text) {
       ellipsize(row, 6, tile.since);
       sprite.drawString(row, rightAlignedX(row), 89);
     }
