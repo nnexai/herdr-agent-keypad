@@ -1,0 +1,160 @@
+{
+  "deployment": {
+    "binary_path": ".pio/build/selected-usb/firmware.bin",
+    "binary_sha256": "413073b5c09b3fd9ecd1103a145cb490d882ca3bc1e153e87cd37b89677760b6",
+    "deployment_id": "67be7c6b77605be57c6e5702102e597e4b234a5a6e6cd8aaea8e985e25a1f8ba",
+    "fresh_boot_id": "0000fccb0deabf8c-e6dbb88d",
+    "fresh_session_id": "session-bb75826229626999",
+    "hello_firmware": "phase1-bringup",
+    "paired_device_id": "0000fccb0deabf8c",
+    "platformio_environment": "selected-usb",
+    "protocol_version": 1,
+    "upload_result": "pass",
+    "usb_serial": "8C:BF:EA:0D:CB:FC"
+  },
+  "evidence_boundary": {
+    "focus_semantics": "unchanged; no focus or snapshot payload is serialized",
+    "metrics": "bounded machine scalars only",
+    "physical": "typed exact-device operator observations; unavailable is not pass"
+  },
+  "kind": "phase03.1-baseline-profile",
+  "measurement_window": {
+    "ended_unix_ms": 1787300439791,
+    "started_unix_ms": 1787300438508
+  },
+  "metrics": {
+    "allocation_stable": 1,
+    "animation_duty_max_percent": 0,
+    "compose_flush_max_us": 0,
+    "degraded_frames": 0,
+    "first_encoder_response_us": 0,
+    "first_press_response_us": 0,
+    "frame_count": 0,
+    "full_frames": 0,
+    "half_frames": 0,
+    "largest_free_block": 8257524,
+    "level_changes": 0,
+    "loop_wall_max_us": 4993,
+    "max_key_poll_gap_us": 5006,
+    "minimum_free_heap": 306856,
+    "parser_high_water": 184,
+    "queue_high_water": 1,
+    "reveal_max_us": 0,
+    "skipped_frames": 0,
+    "static_frames": 0
+  },
+  "observations": [
+    {
+      "id": "blocked-cycle",
+      "method": "exact-device metrics window",
+      "observation": {
+        "duration_ms": 1250,
+        "sample_ids": [
+          "before-blocked",
+          "after-blocked"
+        ]
+      },
+      "result": "pass"
+    },
+    {
+      "id": "direct-key-response",
+      "method": "physical operator observation required",
+      "observation": {
+        "reason": "no human visual confirmation supplied"
+      },
+      "result": "unavailable"
+    },
+    {
+      "id": "encoder-response",
+      "method": "physical operator observation required",
+      "observation": {
+        "reason": "no human visual confirmation supplied"
+      },
+      "result": "unavailable"
+    },
+    {
+      "id": "display-led-alignment",
+      "method": "physical operator observation required",
+      "observation": {
+        "reason": "framebuffer and metrics cannot prove LED/display alignment"
+      },
+      "result": "unavailable"
+    },
+    {
+      "id": "smoothness",
+      "method": "physical operator observation required",
+      "observation": {
+        "reason": "framebuffer and metrics cannot prove physical smoothness"
+      },
+      "result": "unavailable"
+    },
+    {
+      "id": "brightness-power",
+      "method": "physical power/brightness observation required",
+      "observation": {
+        "reason": "power headroom cannot be inferred from USB enumeration"
+      },
+      "result": "unavailable"
+    }
+  ],
+  "samples": [
+    {
+      "id": "before-blocked",
+      "metrics": {
+        "allocation_stable": 1,
+        "animation_duty_max_percent": 0,
+        "compose_flush_max_us": 0,
+        "degraded_frames": 0,
+        "first_encoder_response_us": 0,
+        "first_press_response_us": 0,
+        "frame_count": 0,
+        "full_frames": 0,
+        "half_frames": 0,
+        "largest_free_block": 8257524,
+        "level_changes": 0,
+        "loop_wall_max_us": 3993,
+        "max_key_poll_gap_us": 4305,
+        "minimum_free_heap": 306856,
+        "parser_high_water": 184,
+        "queue_high_water": 1,
+        "reveal_max_us": 0,
+        "skipped_frames": 0,
+        "static_frames": 0
+      }
+    },
+    {
+      "id": "after-blocked",
+      "metrics": {
+        "allocation_stable": 1,
+        "animation_duty_max_percent": 0,
+        "compose_flush_max_us": 0,
+        "degraded_frames": 0,
+        "first_encoder_response_us": 0,
+        "first_press_response_us": 0,
+        "frame_count": 0,
+        "full_frames": 0,
+        "half_frames": 0,
+        "largest_free_block": 8257524,
+        "level_changes": 0,
+        "loop_wall_max_us": 4993,
+        "max_key_poll_gap_us": 5006,
+        "minimum_free_heap": 306856,
+        "parser_high_water": 184,
+        "queue_high_water": 1,
+        "reveal_max_us": 0,
+        "skipped_frames": 0,
+        "static_frames": 0
+      }
+    }
+  ],
+  "schema_version": 1,
+  "session": {
+    "boot_id": "0000fccb0deabf8c-e6dbb88d",
+    "device_id": "0000fccb0deabf8c",
+    "firmware": "phase1-bringup",
+    "protocol": 1,
+    "session_id": "session-3016235abb64409c",
+    "usb_serial": "8C:BF:EA:0D:CB:FC"
+  },
+  "status": "blocked"
+}

@@ -14,7 +14,7 @@ import tempfile
 import time
 import zlib
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, Iterator, Mapping
 
 from herdr_keypad.codex import normalize_rate_limits
 
@@ -189,6 +189,311 @@ def write_json(path: Path, value: Any, *, checksum: bool = False) -> str:
         atomic_write(sidecar, f"{digest}  {relative(path)}\n".encode("ascii"))
     return digest
 
+
+PHASE31_METRIC_FIELDS = (
+    "loop_wall_max_us",
+    "compose_flush_max_us",
+    "frame_count",
+    "full_frames",
+    "half_frames",
+    "static_frames",
+    "level_changes",
+    "skipped_frames",
+    "degraded_frames",
+    "reveal_max_us",
+    "first_press_response_us",
+    "first_encoder_response_us",
+    "max_key_poll_gap_us",
+    "minimum_free_heap",
+    "largest_free_block",
+    "parser_high_water",
+    "queue_high_water",
+    "allocation_stable",
+    "animation_duty_max_percent",
+)
+PHASE31_OBSERVATION_IDS = (
+    "blocked-cycle",
+    "direct-key-response",
+    "encoder-response",
+    "display-led-alignment",
+    "smoothness",
+    "brightness-power",
+)
+PHASE31_HARD_CEILINGS = {
+    "ordinary_transition_us": 250_000,
+    "menu_slide_us": 200_000,
+    "recovery_reveal_us": 250_000,
+    "press_response_us": 120_000,
+    "success_hold_us": 900_000,
+    "animation_duty_percent": 30,
+}
+
+
+def _phase31_metrics(payload: Mapping[str, Any]) -> dict[str, int]:
+    metrics: dict[str, int] = {}
+    for name in PHASE31_METRIC_FIELDS:
+        value = payload.get(name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise ValueError(f"Phase 03.1 metric is missing or invalid: {name}")
+        metrics[name] = value
+    if metrics["allocation_stable"] not in {0, 1}:
+        raise ValueError("allocation_stable must be 0 or 1")
+    return metrics
+
+
+def validate_phase31_baseline(baseline: Mapping[str, Any]) -> None:
+    if baseline.get("schema_version") != 1 or baseline.get("kind") != "phase03.1-baseline-profile":
+        raise ValueError("Phase 03.1 baseline schema is not closed")
+    deployment = baseline.get("deployment")
+    if not isinstance(deployment, Mapping) or not valid_publication_identity(deployment.get("deployment_id")):
+        raise ValueError("baseline deployment identity is missing")
+    metrics = baseline.get("metrics")
+    if not isinstance(metrics, Mapping):
+        raise ValueError("baseline metrics are missing")
+    _phase31_metrics(metrics)
+    observations = baseline.get("observations")
+    if not isinstance(observations, list):
+        raise ValueError("baseline physical observations are missing")
+    by_id = {item.get("id"): item for item in observations if isinstance(item, Mapping)}
+    if set(by_id) != set(PHASE31_OBSERVATION_IDS):
+        raise ValueError("baseline physical observation matrix is incomplete")
+    for row_id in PHASE31_OBSERVATION_IDS:
+        row = by_id[row_id]
+        if row.get("result") not in {"pass", "failed", "unavailable", "refused"}:
+            raise ValueError(f"{row_id} observation result is not typed")
+        if not isinstance(row.get("method"), str) or not row["method"]:
+            raise ValueError(f"{row_id} observation method is missing")
+    if not isinstance(baseline.get("measurement_window"), Mapping):
+        raise ValueError("baseline measurement window is missing")
+    if not isinstance(baseline.get("samples"), list) or not baseline["samples"]:
+        raise ValueError("baseline raw samples are missing")
+    for sample in baseline["samples"]:
+        if not isinstance(sample, Mapping) or not isinstance(sample.get("id"), str):
+            raise ValueError("baseline sample identity is invalid")
+        _phase31_metrics(sample.get("metrics", {}))
+
+
+def validate_phase31_baseline_file(path: Path, *, require_current_deployment: bool = False) -> dict[str, Any]:
+    baseline = json.loads(path.read_text(encoding="utf-8"))
+    sidecar = path.with_suffix(path.suffix + ".sha256")
+    if sha256_file(path) != sidecar.read_text(encoding="ascii").split()[0]:
+        raise ValueError("baseline checksum mismatch")
+    validate_phase31_baseline(baseline)
+    deployment = baseline["deployment"]
+    firmware = resolve_repo_path(deployment["binary_path"])
+    if sha256_file(firmware) != deployment["binary_sha256"]:
+        raise ValueError("baseline firmware hash mismatch")
+    if require_current_deployment and firmware != (ROOT / ".pio/build/selected-usb/firmware.bin").resolve():
+        raise ValueError("baseline does not reference current selected-usb deployment")
+    print(f"validated Phase 03.1 baseline for {deployment['deployment_id']}")
+    return baseline
+
+
+def phase31_lock_from_baseline(baseline: Mapping[str, Any]) -> dict[str, Any]:
+    validate_phase31_baseline(baseline)
+    observations = baseline["observations"]
+    if any(row["result"] != "pass" for row in observations):
+        raise ValueError("budget lock requires every physical observation to pass")
+    metrics = _phase31_metrics(baseline["metrics"])
+    measured_ceiling_checks = (
+        ("first_press_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),
+        ("first_encoder_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),
+        ("reveal_max_us", PHASE31_HARD_CEILINGS["recovery_reveal_us"]),
+        ("animation_duty_max_percent", PHASE31_HARD_CEILINGS["animation_duty_percent"]),
+        ("compose_flush_max_us", PHASE31_HARD_CEILINGS["ordinary_transition_us"]),
+    )
+    for field, ceiling in measured_ceiling_checks:
+        if metrics[field] > ceiling:
+            raise ValueError(f"budget lock measurement exceeds hard ceiling: {field}")
+    required = (
+        "compose_flush_max_us", "reveal_max_us", "first_press_response_us",
+        "first_encoder_response_us", "loop_wall_max_us",
+    )
+    if any(metrics[name] <= 0 for name in required):
+        raise ValueError("budget lock requires non-zero exact-device timing observations")
+    if metrics["allocation_stable"] != 1:
+        raise ValueError("budget lock requires allocation-stability evidence")
+    measured_frame = max(metrics["compose_flush_max_us"], metrics["reveal_max_us"])
+    frame_budget = max(1, measured_frame)
+    cadence = max(1_000, (frame_budget * 100 + 29) // 30)
+    limits = {
+        "ordinary_transition_us": min(PHASE31_HARD_CEILINGS["ordinary_transition_us"], frame_budget),
+        "menu_slide_us": min(PHASE31_HARD_CEILINGS["menu_slide_us"], frame_budget),
+        "recovery_reveal_us": min(PHASE31_HARD_CEILINGS["recovery_reveal_us"], metrics["reveal_max_us"]),
+        "press_response_us": min(PHASE31_HARD_CEILINGS["press_response_us"], metrics["first_press_response_us"]),
+        "encoder_response_us": min(PHASE31_HARD_CEILINGS["press_response_us"], metrics["first_encoder_response_us"]),
+        "success_hold_us": PHASE31_HARD_CEILINGS["success_hold_us"],
+        "animation_duty_percent": min(
+            PHASE31_HARD_CEILINGS["animation_duty_percent"],
+            metrics["animation_duty_max_percent"],
+        ),
+        "compose_flush_max_us": metrics["compose_flush_max_us"],
+        "max_key_poll_gap_us": metrics["max_key_poll_gap_us"],
+        "minimum_free_heap": metrics["minimum_free_heap"],
+        "largest_free_block": metrics["largest_free_block"],
+        "queue_high_water": metrics["queue_high_water"],
+        "source_observation_ids": [row["id"] for row in observations],
+    }
+    for field, ceiling in PHASE31_HARD_CEILINGS.items():
+        if field in limits and limits[field] > ceiling:
+            raise ValueError(f"budget lock exceeds hard ceiling: {field}")
+    return {
+        "schema_version": 1,
+        "kind": "phase03.1-budget-lock",
+        "status": "accepted",
+        "baseline_deployment_id": baseline["deployment"]["deployment_id"],
+        "baseline_metrics": {
+            "source": "artifacts/phase03.1/03.1-BASELINE-PROFILE.json",
+            "observation_ids": [row["id"] for row in observations],
+            "measurement_method": "exact paired keypad metrics_ack plus typed physical observation",
+        },
+        "ceilings": dict(PHASE31_HARD_CEILINGS),
+        "cadence_us": {
+            "Signal Edge": cadence,
+            "Ledger": cadence,
+            "Beacon": cadence * 2,
+            "Instrument": cadence,
+        },
+        "limits": limits,
+        "degradation": {
+            "levels": ["Full", "Half", "Static"],
+            "full_to_half_duty_percent": 30,
+            "half_to_static_duty_percent": 30,
+            "blocked_last": True,
+            "semantic_frames_preserved": True,
+        },
+        "power": {
+            "source_observation_id": "brightness-power",
+            "method": next(row["method"] for row in observations if row["id"] == "brightness-power"),
+            "status": "observed",
+        },
+    }
+
+
+def _phase31_exact_session(binding_path: Path, timeout: float) -> tuple[Any, Any, Any, dict[str, Any]]:
+    binding = PairingStore(binding_path).load()
+    if binding is None:
+        raise RuntimeError(f"pairing binding missing: {binding_path}")
+    selected, link, session, _ = reconnect_exact(
+        binding,
+        ports=None,
+        opener=lambda candidate: __import__("serial").Serial(
+            candidate.device, 115200, timeout=0.2, write_timeout=2.0),
+        timeout=timeout,
+    )
+    hello = dict(session.device)
+    if hello.get("device_id") != binding.device_id:
+        link.close()
+        raise RuntimeError("fresh hello device identity differs from exact pairing")
+    if hello.get("firmware") != binding.firmware or hello.get("protocol") != binding.protocol:
+        link.close()
+        raise RuntimeError("fresh hello firmware/protocol differs from exact pairing")
+    return selected, link, session, hello
+
+
+def run_phase31_profile(args: argparse.Namespace) -> int:
+    guard = ROOT / "host/herdr_keypad/scripts/ensure-bridge.sh"
+    pidfile = Path(os.environ.get("XDG_RUNTIME_DIR", str(Path.home() / ".cache"))) / "herdr-keypad/bridge.pid"
+    if pidfile.is_file() and pidfile.stat().st_size:
+        subprocess.run([str(guard), "stop-for-acceptance"], cwd=ROOT, check=True)
+    firmware = args.firmware.resolve()
+    if not firmware.is_file():
+        raise RuntimeError("current firmware binary is required")
+    deployment = fresh_deployment(args.binding.resolve(), firmware, args.timeout)
+    started = time.time_ns() // 1_000_000
+    selected, link, session, hello = _phase31_exact_session(args.binding.resolve(), args.timeout)
+    try:
+        session.request("metrics", {"request": "reset"}, {"metrics_ack"})
+        before_frame, _ = session.request("metrics", {"request": "proof"}, {"metrics_ack"})
+        before = _phase31_metrics(before_frame["payload"])
+        time.sleep(1.25)
+        after_frame, _ = session.request("metrics", {"request": "proof"}, {"metrics_ack"})
+        after = _phase31_metrics(after_frame["payload"])
+    finally:
+        link.close()
+    ended = time.time_ns() // 1_000_000
+    observations = [
+        {
+            "id": "blocked-cycle", "result": "pass", "method": "exact-device metrics window",
+            "observation": {"sample_ids": ["before-blocked", "after-blocked"], "duration_ms": 1250},
+        },
+        {
+            "id": "direct-key-response", "result": "unavailable",
+            "method": "physical operator observation required",
+            "observation": {"reason": "no human visual confirmation supplied"},
+        },
+        {
+            "id": "encoder-response", "result": "unavailable",
+            "method": "physical operator observation required",
+            "observation": {"reason": "no human visual confirmation supplied"},
+        },
+        {
+            "id": "display-led-alignment", "result": "unavailable",
+            "method": "physical operator observation required",
+            "observation": {"reason": "framebuffer and metrics cannot prove LED/display alignment"},
+        },
+        {
+            "id": "smoothness", "result": "unavailable",
+            "method": "physical operator observation required",
+            "observation": {"reason": "framebuffer and metrics cannot prove physical smoothness"},
+        },
+        {
+            "id": "brightness-power", "result": "unavailable",
+            "method": "physical power/brightness observation required",
+            "observation": {"reason": "power headroom cannot be inferred from USB enumeration"},
+        },
+    ]
+    baseline = {
+        "schema_version": 1,
+        "kind": "phase03.1-baseline-profile",
+        "status": "blocked",
+        "deployment": deployment,
+        "session": {
+            "device_id": hello["device_id"],
+            "firmware": hello["firmware"],
+            "protocol": hello["protocol"],
+            "boot_id": hello["device_boot_id"],
+            "session_id": hello["device_session_id"],
+            "usb_serial": selected.serial_number or "unavailable",
+        },
+        "measurement_window": {"started_unix_ms": started, "ended_unix_ms": ended},
+        "samples": [
+            {"id": "before-blocked", "metrics": before},
+            {"id": "after-blocked", "metrics": after},
+        ],
+        "metrics": {
+            name: max(before[name], after[name]) for name in PHASE31_METRIC_FIELDS
+        },
+        "observations": observations,
+        "evidence_boundary": {
+            "metrics": "bounded machine scalars only",
+            "physical": "typed exact-device operator observations; unavailable is not pass",
+            "focus_semantics": "unchanged; no focus or snapshot payload is serialized",
+        },
+    }
+    write_json(args.evidence.resolve(), baseline, checksum=True)
+    validate_phase31_baseline_file(args.evidence.resolve())
+    print(f"wrote blocked Phase 03.1 baseline for {deployment['deployment_id']}")
+    try:
+        subprocess.Popen(
+            [str(guard)],
+            cwd=ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+    except OSError as exc:
+        raise RuntimeError("guarded bridge restart failed") from exc
+    return 0
+
+
+def run_phase31_lock(args: argparse.Namespace) -> int:
+    baseline = validate_phase31_baseline_file(args.baseline.resolve())
+    lock = phase31_lock_from_baseline(baseline)
+    write_json(args.output.resolve(), lock, checksum=True)
+    print(f"wrote Phase 03.1 budget lock for {lock['baseline_deployment_id']}")
+    return 0
 
 def png_chunk(kind: bytes, payload: bytes) -> bytes:
     body = kind + payload
@@ -887,18 +1192,40 @@ def main(argv: list[str] | None = None) -> int:
     finalize.add_argument("--evidence", type=Path, required=True)
     finalize.add_argument("--firmware", type=Path, required=True)
     finalize.add_argument("--publication-receipt", type=Path, required=True)
+    profile = subparsers.add_parser("phase31-profile")
+    profile.add_argument("--binding", type=Path, required=True)
+    profile.add_argument("--firmware", type=Path, required=True)
+    profile.add_argument("--evidence", type=Path, required=True)
+    profile.add_argument("--timeout", type=float, default=5.0)
+    lock = subparsers.add_parser("phase31-lock")
+    lock.add_argument("--baseline", type=Path, required=True)
+    lock.add_argument("--output", type=Path, required=True)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--evidence", type=Path, required=True)
     validate.add_argument("--allow-pending", action="store_true")
     validate.add_argument("--require-current-deployment", action="store_true")
     validate.add_argument("--require-fresh-bridge-publication", action="store_true")
     args = parser.parse_args(argv)
+    if args.command == "phase31-profile":
+        return run_phase31_profile(args)
+    if args.command == "phase31-lock":
+        return run_phase31_lock(args)
     if args.command == "capture":
         return run_capture(args)
     if args.command == "run":
         return run_guided(args)
     if args.command == "finalize":
         return finalize_evidence(args)
+    try:
+        document = json.loads(args.evidence.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        document = None
+    if isinstance(document, dict) and document.get("kind") == "phase03.1-baseline-profile":
+        validate_phase31_baseline_file(
+            args.evidence.resolve(),
+            require_current_deployment=args.require_current_deployment,
+        )
+        return 0
     return validate_evidence(
         args.evidence,
         args.allow_pending,

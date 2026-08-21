@@ -23,7 +23,17 @@ PAYLOAD_KEYS: dict[str, set[str]] = {
     "event": {"key", "direction", "kind", "step_id"},
     "error": {"code", "detail"},
     "metrics": {"request"},
-    "metrics_ack": {"acknowledged", "digest_mismatch", "duplicate", "largest_free_block", "malformed", "max_display_flush_us", "max_key_poll_gap_us", "minimum_free_heap", "out_of_order", "parser_high_water", "queue_high_water", "received", "rejected", "sent", "watchdog_reset"},
+    "metrics_ack": {
+        "acknowledged", "digest_mismatch", "duplicate", "largest_free_block",
+        "malformed", "max_display_flush_us", "max_key_poll_gap_us",
+        "minimum_free_heap", "out_of_order", "parser_high_water",
+        "queue_high_water", "received", "rejected", "sent", "watchdog_reset",
+        "loop_wall_max_us", "compose_flush_max_us", "frame_count",
+        "full_frames", "half_frames", "static_frames", "level_changes",
+        "skipped_frames", "degraded_frames", "reveal_max_us",
+        "first_press_response_us", "first_encoder_response_us",
+        "animation_duty_max_percent", "allocation_stable",
+    },
 }
 
 class DuplicateKeyError(ValueError):
@@ -105,10 +115,6 @@ def validate_frame(frame: Any) -> dict[str, Any]:
         raise ProtocolError("unknown_type", "frame type must be a string")
     if frame["type"] not in FRAME_TYPES:
         raise ProtocolError("unknown_type", "frame type is not in the closed v1 set")
-    _require_string(frame["boot_id"], "boot_id")
-    _require_string(frame["session_id"], "session_id")
-    if not _is_int(frame["seq"]) or not 1 <= frame["seq"] <= 0xFFFFFFFF:
-        raise ProtocolError("invalid_sequence", "seq must be a positive uint32")
     if frame["reply_to"] is not None and (not _is_int(frame["reply_to"]) or not 1 <= frame["reply_to"] <= 0xFFFFFFFF):
         raise ProtocolError("invalid_reply_to", "reply_to must be null or a positive uint32")
     if not isinstance(frame["digest"], str) or not DIGEST_PATTERN.fullmatch(frame["digest"]):
@@ -117,9 +123,18 @@ def validate_frame(frame: Any) -> dict[str, Any]:
     payload = frame["payload"]
     if not isinstance(payload, dict):
         raise ProtocolError("invalid_payload", "payload must be an object")
-    if frame_type != "event" and set(payload) != PAYLOAD_KEYS[frame_type]:
+    if frame_type == "metrics_ack":
+        legacy = {
+            "acknowledged", "digest_mismatch", "duplicate", "largest_free_block",
+            "malformed", "max_display_flush_us", "max_key_poll_gap_us",
+            "minimum_free_heap", "out_of_order", "parser_high_water",
+            "queue_high_water", "received", "rejected", "sent", "watchdog_reset",
+        }
+        if set(payload) != legacy and set(payload) != PAYLOAD_KEYS["metrics_ack"]:
+            raise ProtocolError("invalid_shape", "metrics_ack payload is closed")
+    elif frame_type != "event" and set(payload) != PAYLOAD_KEYS[frame_type]:
         raise ProtocolError("invalid_shape", f"{frame_type} payload is closed")
-    if frame_type == "event" and not {"kind", "step_id"}.issubset(payload):
+    elif frame_type == "event" and not {"kind", "step_id"}.issubset(payload):
         raise ProtocolError("invalid_shape", "event payload requires kind and step_id")
     if frame_type in {"hello", "hello_ack"} and payload.get("protocol") != PROTOCOL_VERSION:
         raise ProtocolError("invalid_shape", "payload protocol must be v1")

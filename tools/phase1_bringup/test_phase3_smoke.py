@@ -169,8 +169,8 @@ class Phase3FinalizeTests(unittest.TestCase):
                         finalize_evidence(args)
 
 class Phase31ProfileTests(unittest.TestCase):
-    def test_phase31_profile_rejects_unavailable_physical_observation(self):
-        from phase1_bringup.phase3_smoke import validate_phase31_baseline
+    def test_phase31_profile_preserves_unavailable_physical_observation(self):
+        from phase1_bringup.phase3_smoke import phase31_lock_from_baseline, validate_phase31_baseline
 
         baseline = {
             "schema_version": 1,
@@ -188,11 +188,22 @@ class Phase31ProfileTests(unittest.TestCase):
                 )
             },
             "observations": [
-                {"id": "power", "result": "unavailable", "method": "not measured"},
+                {
+                    "id": observation_id,
+                    "result": "unavailable" if observation_id == "brightness-power" else "pass",
+                    "method": "not measured",
+                }
+                for observation_id in (
+                    "blocked-cycle", "direct-key-response", "encoder-response",
+                    "display-led-alignment", "smoothness", "brightness-power",
+                )
             ],
         }
-        with self.assertRaisesRegex(ValueError, "power"):
-            validate_phase31_baseline(baseline)
+        baseline["measurement_window"] = {"started_unix_ms": 1, "ended_unix_ms": 2}
+        baseline["samples"] = [{"id": "sample", "metrics": baseline["metrics"]}]
+        validate_phase31_baseline(baseline)
+        with self.assertRaisesRegex(ValueError, "physical observation"):
+            phase31_lock_from_baseline(baseline)
 
 
 class Phase31BudgetLockTests(unittest.TestCase):
@@ -215,16 +226,28 @@ class Phase31BudgetLockTests(unittest.TestCase):
             "kind": "phase03.1-baseline-profile",
             "deployment": {"deployment_id": "deployment"},
             "metrics": metrics,
+            "measurement_window": {"started_unix_ms": 1, "ended_unix_ms": 2},
+            "samples": [{"id": "sample", "metrics": metrics}],
             "observations": [
-                {"id": "timing", "result": "pass", "method": "exact-device"},
-                {"id": "memory", "result": "pass", "method": "exact-device"},
-                {"id": "power", "result": "pass", "method": "USB-powered exact-device"},
+                {
+                    "id": observation_id,
+                    "result": "pass",
+                    "method": "exact-device",
+                }
+                for observation_id in (
+                    "blocked-cycle", "direct-key-response", "encoder-response",
+                    "display-led-alignment", "smoothness", "brightness-power",
+                )
             ],
         }
         lock = phase31_lock_from_baseline(baseline)
         self.assertLessEqual(lock["ceilings"]["ordinary_transition_us"], 250000)
         self.assertLessEqual(lock["limits"]["ordinary_transition_us"], 250000)
-        self.assertEqual(lock["limits"]["source_observation_ids"], ["timing", "memory", "power"])
+        self.assertEqual(
+            lock["limits"]["source_observation_ids"],
+            ["blocked-cycle", "direct-key-response", "encoder-response",
+             "display-led-alignment", "smoothness", "brightness-power"],
+        )
         self.assertIn("Beacon", lock["cadence_us"])
         self.assertLessEqual(lock["limits"]["animation_duty_percent"], 30)
 
@@ -247,10 +270,18 @@ class Phase31BudgetLockTests(unittest.TestCase):
             "kind": "phase03.1-baseline-profile",
             "deployment": {"deployment_id": "deployment"},
             "metrics": metrics,
+            "measurement_window": {"started_unix_ms": 1, "ended_unix_ms": 2},
+            "samples": [{"id": "sample", "metrics": metrics}],
             "observations": [
-                {"id": "timing", "result": "pass", "method": "exact-device"},
-                {"id": "memory", "result": "pass", "method": "exact-device"},
-                {"id": "power", "result": "pass", "method": "USB-powered exact-device"},
+                {
+                    "id": observation_id,
+                    "result": "pass",
+                    "method": "exact-device",
+                }
+                for observation_id in (
+                    "blocked-cycle", "direct-key-response", "encoder-response",
+                    "display-led-alignment", "smoothness", "brightness-power",
+                )
             ],
         }
         with self.assertRaisesRegex(ValueError, "press"):

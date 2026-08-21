@@ -29,6 +29,9 @@ size_t frameLength = 0;
 bool frameOverflow = false;
 uint32_t txSequence = 0;
 uint32_t lastKeyPollAt = 0;
+bool encoderResponsePending = false;
+uint32_t encoderInputAt = 0;
+AnimationScheduler::Level lastAnimationLevel = AnimationScheduler::Level::Full;
 String bootId;
 String deviceId;
 BoardAdapter board;
@@ -358,7 +361,9 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
         theme_preview ? menuController.activeTheme() : menuController.storedTheme());
     const bool committed =
         staged && agentProjection.commitSnapshot(board, panel4_theme, menu_state);
-    proofMetrics.observeDisplayFlush(micros() - render_started);
+    const uint32_t reveal_elapsed = micros() - render_started;
+    proofMetrics.observeDisplayFlush(reveal_elapsed);
+    proofMetrics.observeReveal(reveal_elapsed);
     proofMetrics.sampleRuntime();
     JsonDocument reply;
     reply["accepted"] = committed;
@@ -400,9 +405,20 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     proofMetrics.normalizeUntouchedSamples();
     JsonDocument reply;
     reply["acknowledged"] = proofMetrics.acknowledged;
+    reply["allocation_stable"] = proofMetrics.allocation_stable;
+    reply["animation_duty_max_percent"] = proofMetrics.animation_duty_max_percent;
+    reply["compose_flush_max_us"] = proofMetrics.compose_flush_max_us;
+    reply["degraded_frames"] = proofMetrics.degraded_frames;
     reply["digest_mismatch"] = proofMetrics.digest_mismatch;
     reply["duplicate"] = proofMetrics.duplicate;
+    reply["first_encoder_response_us"] = proofMetrics.first_encoder_response_us;
+    reply["first_press_response_us"] = proofMetrics.first_press_response_us;
+    reply["frame_count"] = proofMetrics.frame_count;
+    reply["full_frames"] = proofMetrics.full_frames;
+    reply["half_frames"] = proofMetrics.half_frames;
     reply["largest_free_block"] = proofMetrics.largest_free_block;
+    reply["level_changes"] = proofMetrics.level_changes;
+    reply["loop_wall_max_us"] = proofMetrics.loop_wall_max_us;
     reply["malformed"] = proofMetrics.malformed;
     reply["max_display_flush_us"] = proofMetrics.max_display_flush_us;
     reply["max_key_poll_gap_us"] = proofMetrics.max_key_poll_gap_us;
@@ -412,7 +428,10 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     reply["queue_high_water"] = proofMetrics.queue_high_water;
     reply["received"] = proofMetrics.received;
     reply["rejected"] = proofMetrics.rejected;
+    reply["reveal_max_us"] = proofMetrics.reveal_max_us;
     reply["sent"] = proofMetrics.sent;
+    reply["skipped_frames"] = proofMetrics.skipped_frames;
+    reply["static_frames"] = proofMetrics.static_frames;
     reply["watchdog_reset"] = proofMetrics.watchdog_reset;
     sendFrame("metrics_ack", admission.frame.sequence, reply.as<JsonObjectConst>(), false);
     completeAdmission();
@@ -516,14 +535,16 @@ void reportAgentKey(uint8_t key) {
       key >= AgentProjection::kSlotCount) {
     return;
   }
+  const uint32_t response_started = micros();
   char actionId[32] = {};
   std::snprintf(actionId, sizeof(actionId), "device-%lu-%u",
-                static_cast<unsigned long>(micros()),
+                static_cast<unsigned long>(response_started),
                 static_cast<unsigned>(key));
   JsonDocument intent;
   if (agentProjection.captureFocusIntent(key, actionId,
                                          intent.to<JsonObject>())) {
     agentProjection.renderFeedback(board, key);
+    proofMetrics.observeFirstPressResponse(micros() - response_started);
     sendFrame("focus_intent", 0, intent.as<JsonObjectConst>());
   }
 }
@@ -569,6 +590,10 @@ void refreshMenuPresentation() {
   const bool theme_preview = menuController.editing() && menuController.state().cursor == 0;
   ThemeRenderer& menu_theme = themeById(theme_preview ? menuController.activeTheme() : stored_theme);
   agentProjection.renderMenu(board, menu_theme, menuController.state());
+  if (encoderResponsePending) {
+    proofMetrics.observeFirstEncoderResponse(micros() - encoderInputAt);
+    encoderResponsePending = false;
+  }
 }
 
 ProductInputFrame captureProductInput() {
@@ -598,10 +623,16 @@ void dispatchProductInput(const ProductInputActions& actions,
         reportAgentKey(static_cast<uint8_t>(action.value));
         break;
       case ProductInputActionKind::EncoderClick:
-        menuController.click(now_us);
+        if (menuController.click(now_us)) {
+          encoderResponsePending = true;
+          encoderInputAt = now_us;
+        }
         break;
       case ProductInputActionKind::EncoderRotate:
-        menuController.rotate(action.value, now_us);
+        if (menuController.rotate(action.value, now_us)) {
+          encoderResponsePending = true;
+          encoderInputAt = now_us;
+        }
         break;
     }
   }
@@ -632,7 +663,8 @@ void setup() {
 }
 
 void loop() {
-  const uint32_t now = micros();
+  const uint32_t loop_started = micros();
+  const uint32_t now = loop_started;
   board.update();
   // Capture every product edge once immediately after the single hardware
   // poll. The pure router emits all displayed agent slots before either
@@ -648,9 +680,28 @@ void loop() {
     const uint32_t tick_started = micros();
     agentProjection.tick(board, now);
     const uint32_t tick_cost = micros() - tick_started;
-    // Feed measured tick cost into the animation budget (loop window ~1 ms
-    // delay + work); ProofMetrics keeps measuring flush transactions.
-    if (tick_cost > 0) agentProjection.animation().observeFlushCost(tick_cost, 1000);
+    const uint32_t loop_window = micros() - loop_started;
+    // Use the real loop window for the scheduler budget. A long tick is a
+    // complete compose/flush transaction on the production path; short ticks
+    // are scheduler bookkeeping and are not counted as frames.
+    if (tick_cost > 1000) {
+      proofMetrics.observeAnimationFrame(
+          tick_cost, loop_window,
+          static_cast<uint8_t>(agentProjection.animation().level()));
+    }
+    if (agentProjection.animation().level() != lastAnimationLevel) {
+      proofMetrics.recordAnimationLevelChange();
+      lastAnimationLevel = agentProjection.animation().level();
+    }
+    if (agentProjection.animation().level() == AnimationScheduler::Level::Static) {
+      proofMetrics.recordSkippedFrame();
+    } else if (agentProjection.animation().level() != AnimationScheduler::Level::Full &&
+               tick_cost > 1000) {
+      proofMetrics.recordDegradedFrame();
+    }
+    if (tick_cost > 0) {
+      agentProjection.animation().observeFlushCost(tick_cost, loop_window);
+    }
   }
   refreshMenuPresentation();
   LedEvents led_events;
@@ -658,4 +709,5 @@ void loop() {
   ledEngine.render(agentProjection.renderState(now), led_events, now, board);
   proofMetrics.sampleRuntime();
   delay(1);
+  proofMetrics.observeLoopWall(micros() - loop_started);
 }
