@@ -15,6 +15,7 @@ import time
 import zlib
 from pathlib import Path
 from typing import Any, Iterator, Mapping
+from types import SimpleNamespace
 
 from herdr_keypad.codex import normalize_rate_limits
 
@@ -619,6 +620,112 @@ def bucket_matrix() -> dict[str, Any]:
     }
 
 
+def pair_identity_digest(device_id: str, protocol: int, firmware: str) -> str:
+    if not valid_publication_identity(device_id) or not valid_publication_identity(firmware):
+        raise ValueError("pair identity fields are invalid")
+    if protocol != 1:
+        raise ValueError("pair identity protocol is invalid")
+    return sha256_bytes(canonical_bytes({
+        "device_id": device_id,
+        "firmware": firmware,
+        "protocol": protocol,
+    }))
+
+
+def deployment_id_for(deployment: Mapping[str, Any]) -> str:
+    tuple_value = {
+        "boot_id": deployment.get("boot_id", deployment.get("fresh_boot_id")),
+        "firmware_sha256": deployment.get(
+            "firmware_sha256", deployment.get("binary_sha256")
+        ),
+        "hello_firmware": deployment.get("hello_firmware"),
+        "pair_identity_digest": deployment.get("pair_identity_digest"),
+        "protocol_version": deployment.get("protocol_version"),
+        "session_id": deployment.get("session_id", deployment.get("fresh_session_id")),
+    }
+    if any(not valid_publication_identity(value) for key, value in tuple_value.items()
+           if key not in {"protocol_version"}):
+        raise ValueError("deployment identity tuple is incomplete")
+    if tuple_value["protocol_version"] != 1:
+        raise ValueError("deployment identity protocol is invalid")
+    return sha256_bytes(canonical_bytes(tuple_value))
+
+
+def validate_deployment(
+    deployment: Mapping[str, Any],
+    firmware: Path,
+    *,
+    device_id: str | None = None,
+    binding: Any | None = None,
+    require_current: bool = False,
+) -> None:
+    required = (
+        "platformio_environment", "binary_path", "binary_sha256", "firmware_sha256",
+        "upload_result", "paired_device_id", "pair_identity_digest",
+        "hello_firmware", "protocol_version", "fresh_boot_id", "fresh_session_id",
+        "boot_id", "session_id", "observed_at_unix_ms", "deployment_id",
+    )
+    if any(key not in deployment for key in required):
+        raise ValueError("deployment lock fields are incomplete")
+    if deployment["platformio_environment"] != "selected-usb" or deployment["upload_result"] != "pass":
+        raise ValueError("deployment is not a successful selected-usb upload")
+    if deployment["binary_sha256"] != deployment["firmware_sha256"]:
+        raise ValueError("deployment firmware hash aliases differ")
+    if deployment["fresh_boot_id"] != deployment["boot_id"] or deployment["fresh_session_id"] != deployment["session_id"]:
+        raise ValueError("deployment boot/session aliases differ")
+    if sha256_file(firmware) != deployment["firmware_sha256"]:
+        raise ValueError("deployed firmware binary hash mismatch")
+    if not valid_publication_identity(deployment["boot_id"]) or not valid_publication_identity(
+        deployment["session_id"]
+    ):
+        raise ValueError("deployment boot/session identity is invalid")
+    expected_digest = pair_identity_digest(
+        deployment["paired_device_id"],
+        deployment["protocol_version"],
+        deployment["hello_firmware"],
+    )
+    if expected_digest != deployment["pair_identity_digest"]:
+        raise ValueError("pair identity digest mismatch")
+    expected_device = device_id if device_id is not None else (
+        binding.device_id if binding is not None else deployment["paired_device_id"]
+    )
+    if deployment["paired_device_id"] != expected_device:
+        raise ValueError("fresh hello device identity differs from exact pairing")
+    if binding is not None and (
+        deployment["hello_firmware"] != binding.firmware
+        or deployment["protocol_version"] != binding.protocol
+    ):
+        raise ValueError("fresh hello firmware/protocol differs from exact pairing")
+    if require_current and firmware.resolve() != (ROOT / ".pio/build/selected-usb/firmware.bin").resolve():
+        raise ValueError("deployment does not reference current selected-usb binary")
+    if deployment["deployment_id"] != deployment_id_for(deployment):
+        raise ValueError("canonical deployment identity mismatch")
+
+
+def validate_deployment_file(
+    path: Path,
+    *,
+    firmware: Path | None = None,
+    binding: Any | None = None,
+    require_current: bool = False,
+) -> dict[str, Any]:
+    path = path.resolve()
+    sidecar = path.with_suffix(path.suffix + ".sha256")
+    if sha256_file(path) != sidecar.read_text(encoding="ascii").split()[0]:
+        raise ValueError("deployment lock checksum mismatch")
+    deployment = json.loads(path.read_text(encoding="ascii"))
+    if deployment.get("schema_version") != 1 or deployment.get("kind") != "phase03.1-final-deployment":
+        raise ValueError("deployment lock schema is not closed")
+    binary = (firmware or resolve_repo_path(deployment["binary_path"])).resolve()
+    validate_deployment(
+        deployment,
+        binary,
+        binding=binding,
+        require_current=require_current,
+    )
+    return deployment
+
+
 def fresh_deployment(binding_path: Path, firmware: Path, timeout: float) -> dict[str, Any]:
     binding = PairingStore(binding_path).load()
     if binding is None:
@@ -637,25 +744,83 @@ def fresh_deployment(binding_path: Path, firmware: Path, timeout: float) -> dict
         if hello.get("firmware") != binding.firmware or hello.get("protocol") != binding.protocol:
             raise RuntimeError("fresh hello firmware/protocol differs from exact pairing")
         boot_id = hello.get("device_boot_id")
-        if not isinstance(boot_id, str) or not boot_id:
-            raise RuntimeError("fresh hello did not supply a boot identity")
+        session_id = session.session_id
+        if not valid_publication_identity(boot_id) or not valid_publication_identity(session_id):
+            raise RuntimeError("fresh hello did not supply boot/session identity")
+        if not firmware.is_file():
+            raise RuntimeError("uploaded selected-usb firmware binary is missing")
+        digest = sha256_file(firmware)
+        observed = time.time_ns() // 1_000_000
         record = {
+            "schema_version": 1,
+            "kind": "phase03.1-final-deployment",
             "platformio_environment": "selected-usb",
             "binary_path": relative(firmware),
-            "binary_sha256": sha256_file(firmware),
+            "binary_sha256": digest,
+            "firmware_sha256": digest,
             "upload_result": "pass",
             "paired_device_id": binding.device_id,
+            "pair_identity_digest": pair_identity_digest(
+                binding.device_id, binding.protocol, binding.firmware
+            ),
             "hello_firmware": binding.firmware,
             "protocol_version": binding.protocol,
             "fresh_boot_id": boot_id,
-            "fresh_session_id": session.session_id,
+            "fresh_session_id": session_id,
+            "boot_id": boot_id,
+            "session_id": session_id,
             "usb_serial": selected.serial_number or "unavailable",
+            "observed_at_unix_ms": observed,
         }
-        record["deployment_id"] = sha256_bytes(canonical_bytes(record))
+        record["deployment_id"] = deployment_id_for(record)
+        validate_deployment(record, firmware, binding=binding)
         return record
     finally:
         link.close()
 
+
+def run_phase31_deploy_lock(args: argparse.Namespace) -> int:
+    firmware = args.firmware.resolve()
+    output = args.output.resolve()
+    expected = (ROOT / ".pio/build/selected-usb/firmware.bin").resolve()
+    if firmware != expected:
+        raise RuntimeError("phase31 deployment lock requires selected-usb firmware.bin")
+    for stale in (output, output.with_suffix(output.suffix + ".sha256")):
+        try:
+            stale.unlink()
+        except FileNotFoundError:
+            pass
+    try:
+        binding = PairingStore(args.binding.resolve()).load()
+        if binding is None:
+            raise RuntimeError(f"pairing binding missing: {args.binding}")
+        deployment = fresh_deployment(args.binding.resolve(), firmware, args.timeout)
+        validate_deployment(deployment, firmware, binding=binding, require_current=True)
+        write_json(output, deployment, checksum=True)
+        validate_deployment_file(
+            output, firmware=firmware, binding=binding, require_current=True
+        )
+    except Exception:
+        for stale in (output, output.with_suffix(output.suffix + ".sha256")):
+            try:
+                stale.unlink()
+            except FileNotFoundError:
+                pass
+        raise
+    print(f"wrote final Phase 03.1 deployment lock for {deployment['deployment_id']}")
+    return 0
+
+
+def run_phase31_validate_deployment(args: argparse.Namespace) -> int:
+    binding = PairingStore(args.binding.resolve()).load() if args.binding else None
+    validate_deployment_file(
+        args.deployment.resolve(),
+        firmware=args.firmware.resolve(),
+        binding=binding,
+        require_current=args.require_current,
+    )
+    print(f"validated final deployment lock {args.deployment.resolve()}")
+    return 0
 
 def run_capture(args: argparse.Namespace) -> int:
     firmware = args.firmware.resolve()
@@ -1222,6 +1387,16 @@ def main(argv: list[str] | None = None) -> int:
     lock = subparsers.add_parser("phase31-lock")
     lock.add_argument("--baseline", type=Path, required=True)
     lock.add_argument("--output", type=Path, required=True)
+    deploy = subparsers.add_parser("phase31-deploy-lock")
+    deploy.add_argument("--binding", type=Path, required=True)
+    deploy.add_argument("--firmware", type=Path, required=True)
+    deploy.add_argument("--output", type=Path, required=True)
+    deploy.add_argument("--timeout", type=float, default=5.0)
+    deploy_validate = subparsers.add_parser("phase31-validate-deployment")
+    deploy_validate.add_argument("--binding", type=Path, required=True)
+    deploy_validate.add_argument("--firmware", type=Path, required=True)
+    deploy_validate.add_argument("--deployment", type=Path, required=True)
+    deploy_validate.add_argument("--require-current-deployment", action="store_true")
     validate = subparsers.add_parser("validate")
     validate.add_argument("--evidence", type=Path, required=True)
     validate.add_argument("--allow-pending", action="store_true")
@@ -1232,6 +1407,17 @@ def main(argv: list[str] | None = None) -> int:
         return run_phase31_profile(args)
     if args.command == "phase31-lock":
         return run_phase31_lock(args)
+    if args.command == "phase31-deploy-lock":
+        return run_phase31_deploy_lock(args)
+    if args.command == "phase31-validate-deployment":
+        return run_phase31_validate_deployment(
+            SimpleNamespace(
+                binding=args.binding,
+                firmware=args.firmware,
+                deployment=args.deployment,
+                require_current=args.require_current_deployment,
+            )
+        )
     if args.command == "capture":
         return run_capture(args)
     if args.command == "run":

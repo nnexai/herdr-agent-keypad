@@ -1,0 +1,20 @@
+{
+  "binary_path": ".pio/build/selected-usb/firmware.bin",
+  "binary_sha256": "df9061de96b316ff7d0033d45d29715ec80c7ff9a89461b095adde4ac2ddf984",
+  "boot_id": "0000fccb0deabf8c-05e89fea",
+  "deployment_id": "3f505f3e1a9ef859b4cd6ac4f2ceb02fb5990a1d7bdc0ccf53130b8a32d8c0a3",
+  "firmware_sha256": "df9061de96b316ff7d0033d45d29715ec80c7ff9a89461b095adde4ac2ddf984",
+  "fresh_boot_id": "0000fccb0deabf8c-05e89fea",
+  "fresh_session_id": "session-1f889119207d2ab5",
+  "hello_firmware": "phase1-bringup",
+  "kind": "phase03.1-final-deployment",
+  "observed_at_unix_ms": 1787308539413,
+  "pair_identity_digest": "9c17862634774f714a6304e206a77d8ac06de6df04df53e28584edfd6f351f06",
+  "paired_device_id": "0000fccb0deabf8c",
+  "platformio_environment": "selected-usb",
+  "protocol_version": 1,
+  "schema_version": 1,
+  "session_id": "session-1f889119207d2ab5",
+  "upload_result": "pass",
+  "usb_serial": "8C:BF:EA:0D:CB:FC"
+}
