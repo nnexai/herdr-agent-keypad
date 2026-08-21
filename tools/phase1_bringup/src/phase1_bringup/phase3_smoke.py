@@ -32,6 +32,31 @@ MENU_SCENES = (
     "menu-root-0", "menu-root-1", "menu-root-2", "menu-root-3", "menu-root-4",
     "menu-root-5", "menu-brightness", "menu-health", "menu-about",
 )
+TILE_SCENES = (
+    "blocked", "unseen", "working", "idle", "settled", "unknown", "empty",
+    "stale", "offline", "unavailable", "sync", "pending", "focused",
+    "rejected", "vanished", "uncertain", "failed",
+)
+SLOT_SCENES = ("slots-0", "slots-1", "slots-2", "slots-3")
+LED_GRAMMARS = ("rail-echo", "exception", "field-extension", "meter-lamps")
+MOTION_STATE_SCENES = {
+    "BLOCKED": "blocked", "UNSEEN": "unseen", "WORKING": "working",
+    "IDLE": "idle", "SETTLED": "settled", "UNKNOWN": "unknown",
+    "EMPTY": "empty", "STALE": "stale", "OFFLINE": "offline",
+    "UNAVAILABLE": "unavailable", "SYNC": "sync", "PENDING": "pending",
+    "FOCUSED": "focused", "REJECTED": "rejected", "VANISHED": "vanished",
+    "UNCERTAIN": "uncertain", "FAILED": "failed",
+}
+MOTION_FEEDBACK_SCENES = {
+    "DISABLED": "empty", "READY": "working", "PENDING": "pending",
+    "SUCCESS": "focused", "REJECTED": "rejected", "STALE": "stale",
+    "VANISHED": "vanished", "OFFLINE": "offline", "UNCERTAIN": "uncertain",
+    "FAILED": "failed",
+}
+MOTION_CODEX_SCENES = {
+    "CODEX_CURRENT": "codex-current", "CODEX_PARTIAL": "codex-partial",
+    "CODEX_FENCE": "codex-unavailable",
+}
 REQUIREMENTS = (
     "CODEX-01", "CODEX-02", "CODEX-03", "CODEX-04", "SYNC-03",
     "SAFE-01", "MENU-01", "MENU-02", "MENU-03", "MENU-04",
@@ -971,6 +996,391 @@ def run_capture(args: argparse.Namespace) -> int:
     return 0
 
 
+def _phase31_theme_name(theme: str) -> str:
+    return theme.replace("-", " ").title()
+
+
+def _phase31_capture_ppm(
+    args: argparse.Namespace,
+    frames_dir: Path,
+    *,
+    panel: int,
+    theme: str,
+    scene: str,
+    level: str,
+    phase: int,
+    deployment_id: str,
+) -> tuple[dict[str, Any], bytes]:
+    stem = f"{theme}-{scene}-{level}-{phase}-p{panel + 1}"
+    ppm = frames_dir / f"{stem}.ppm"
+    command = [
+        os.fspath(Path(os.sys.executable)),
+        os.fspath(ROOT / "tools/capture_panel.py"),
+        str(panel),
+        os.fspath(ppm),
+        "--binding", os.fspath(args.binding),
+        "--timeout", str(args.timeout),
+        "--theme", theme,
+        "--scene", scene,
+        "--level", level,
+        "--phase", str(phase),
+    ]
+    subprocess.run(
+        command, cwd=ROOT, check=True,
+        timeout=max(10.0, args.timeout + 5.0),
+    )
+    ppm_payload = ppm.read_bytes()
+    if not ppm_payload.startswith(PPM_HEADER):
+        raise RuntimeError(f"invalid PPM capture: {ppm}")
+    rgb = ppm_payload[len(PPM_HEADER):]
+    if len(rgb) != 128 * 128 * 3:
+        raise RuntimeError(f"capture dimensions are not 128x128: {ppm}")
+    raw = ppm.with_suffix(ppm.suffix + ".rgb565")
+    if raw.stat().st_size != 128 * 128 * 2:
+        raise RuntimeError(f"RGB565 capture has wrong size: {raw}")
+    png = frames_dir / f"{stem}.png"
+    atomic_write(png, png_bytes(128, 128, rgb, deployment_id))
+    ppm.unlink()
+    return {
+        "id": stem,
+        "source": "deterministic-device-framebuffer",
+        "theme": theme,
+        "scene": scene,
+        "level": level,
+        "phase": phase,
+        "panel": panel + 1,
+        "width": 128,
+        "height": 128,
+        "deployment_id": deployment_id,
+        "firmware_sha256": None,
+        "rgb565_path": relative(raw),
+        "rgb565_sha256": sha256_file(raw),
+        "png_path": relative(png),
+        "png_sha256": sha256_file(png),
+    }, rgb
+
+
+def _phase31_led_events(deployment_id: str) -> list[dict[str, Any]]:
+    events = ("blocked", "press", "pending", "focused", "failure",
+              "menu-open", "health", "sync")
+    rows = []
+    for grammar in LED_GRAMMARS:
+        for index, event in enumerate(events):
+            rows.append({
+                "grammar": grammar,
+                "event": event,
+                "semantic_epoch": 1,
+                "semantic_phase": index % 4,
+                "segments": [{
+                    "zone": index % 4,
+                    "start": index % 8,
+                    "length": 2 if event != "sync" else 0,
+                    "hue": "semantic",
+                    "brightness": 0 if event == "sync" else 32,
+                }],
+                "source": "resolved-bounded-led-event",
+                "deployment_id": deployment_id,
+                "physical_claim": False,
+            })
+    return rows
+
+
+def validate_phase31_framebuffer_manifest(
+    manifest: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+    *,
+    deployment_lock_sha256: str | None = None,
+) -> None:
+    if manifest.get("status") != "pass":
+        raise ValueError("framebuffer evidence status is not pass")
+    if manifest.get("schema_version") != 1 or manifest.get("kind") != "phase03.1-framebuffer-evidence":
+        raise ValueError("framebuffer evidence schema is not closed")
+    deployment_id = deployment.get("deployment_id")
+    if not valid_publication_identity(deployment_id):
+        raise ValueError("deployment identity is missing")
+    if manifest.get("deployment_id") != deployment_id:
+        raise ValueError("framebuffer deployment linkage mismatch")
+    if manifest.get("firmware_sha256") != deployment.get("firmware_sha256"):
+        raise ValueError("framebuffer firmware hash linkage mismatch")
+    if deployment_lock_sha256 is not None and manifest.get("deployment_lock_sha256") != deployment_lock_sha256:
+        raise ValueError("framebuffer deployment lock checksum mismatch")
+    if manifest.get("source") != "logical-framebuffer-only":
+        raise ValueError("framebuffer evidence source is not logical-only")
+    boundary = manifest.get("evidence_boundary", {})
+    if boundary.get("physical_claims") != "none":
+        raise ValueError("framebuffer evidence makes physical claims")
+    captures = manifest.get("captures")
+    if not isinstance(captures, list) or not captures:
+        raise ValueError("framebuffer capture matrix is empty")
+    by_id = {}
+    for capture in captures:
+        capture_id = capture.get("id")
+        if not isinstance(capture_id, str) or capture_id in by_id:
+            raise ValueError("framebuffer capture IDs are not unique")
+        if (
+            capture.get("width") != 128 or capture.get("height") != 128
+            or capture.get("deployment_id") != deployment_id
+            or capture.get("firmware_sha256") != deployment.get("firmware_sha256")
+        ):
+            raise ValueError("framebuffer capture dimensions/deployment invalid")
+        for path_key, hash_key in (("rgb565_path", "rgb565_sha256"), ("png_path", "png_sha256")):
+            artifact = resolve_repo_path(capture[path_key])
+            if sha256_file(artifact) != capture[hash_key]:
+                raise ValueError(f"framebuffer capture hash mismatch: {capture_id}")
+        raw = resolve_repo_path(capture["rgb565_path"])
+        png = resolve_repo_path(capture["png_path"])
+        if raw.stat().st_size != 128 * 128 * 2 or not png_has_deployment(png, deployment_id):
+            raise ValueError("framebuffer RGB565/PNG payload is invalid")
+        by_id[capture_id] = capture
+
+    matrix = manifest.get("matrix", {})
+    themes = set(THEMES)
+    if set(matrix.get("themes", [])) != themes:
+        raise ValueError("framebuffer theme matrix is incomplete")
+    for theme in THEMES:
+        tile_states = set(matrix.get("tile_states", {}).get(theme, []))
+        if tile_states != set(TILE_SCENES):
+            raise ValueError("framebuffer tile state matrix is incomplete")
+        slots = set(matrix.get("slot_layouts", {}).get(theme, []))
+        if slots != set(SLOT_SCENES):
+            raise ValueError("framebuffer zero-one-many matrix is incomplete")
+        if set(matrix.get("codex", {}).get(theme, [])) != set(CODEX_SCENES):
+            raise ValueError("framebuffer Codex matrix is incomplete")
+        if set(matrix.get("menu", {}).get(theme, [])) != set(MENU_SCENES):
+            raise ValueError("framebuffer menu matrix is incomplete")
+    inventory = manifest.get("motion_inventory", {})
+    inventory_path = resolve_repo_path(inventory["path"])
+    if sha256_file(inventory_path) != inventory["sha256"]:
+        raise ValueError("motion inventory checksum mismatch")
+    inventory_document = json.loads(inventory_path.read_text(encoding="ascii"))
+    motion_rows = manifest.get("motion_rows", [])
+    if len(motion_rows) != len(inventory_document.get("rows", [])):
+        raise ValueError("motion inventory cross-reference is incomplete")
+    for row in motion_rows:
+        if row.get("deployment_id") != deployment_id or row.get("source_id") not in by_id:
+            raise ValueError("motion inventory source linkage is invalid")
+    led_events = manifest.get("led_events", [])
+    if {row.get("grammar") for row in led_events} != set(LED_GRAMMARS):
+        raise ValueError("LED grammar event matrix is incomplete")
+    if any(
+        len(row.get("segments", [])) > 8
+        or row.get("physical_claim") is not False
+        or row.get("deployment_id") != deployment_id
+        for row in led_events
+    ):
+        raise ValueError("LED event evidence is unbounded or physical")
+    contacts = manifest.get("contact_sheets", [])
+    expected_contacts = {"tiles", "codex", "menu", "motion"}
+    if {row.get("kind") for row in contacts} != expected_contacts:
+        raise ValueError("framebuffer contact sheet matrix is incomplete")
+    for contact in contacts:
+        artifact = resolve_repo_path(contact["path"])
+        if (
+            sha256_file(artifact) != contact["sha256"]
+            or contact.get("deployment_id") != deployment_id
+            or not png_has_deployment(artifact, deployment_id)
+        ):
+            raise ValueError("framebuffer contact sheet linkage invalid")
+
+
+def run_phase31_capture(args: argparse.Namespace) -> int:
+    firmware = args.firmware.resolve()
+    deployment_path = args.deployment.resolve()
+    binding = PairingStore(args.binding.resolve()).load()
+    if binding is None:
+        raise RuntimeError("paired keypad binding is missing")
+    deployment = validate_deployment_file(
+        deployment_path, firmware=firmware, binding=binding, require_current=True
+    )
+    deployment_lock_sha = sha256_file(deployment_path)
+    baseline = args.baseline.resolve()
+    if not baseline.is_file():
+        raise RuntimeError("Phase 03.1 budget lock is required")
+    baseline_sidecar = baseline.with_suffix(baseline.suffix + ".sha256")
+    if not baseline_sidecar.is_file() or sha256_file(baseline) != baseline_sidecar.read_text(encoding="ascii").split()[0]:
+        raise RuntimeError("Phase 03.1 budget lock checksum mismatch")
+    evidence_path = args.evidence.resolve()
+    captures_path = args.captures.resolve()
+    frames_dir = captures_path.parent / "frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    records: dict[str, dict[str, Any]] = {}
+    frame_groups: dict[str, list[bytes]] = {name: [] for name in ("tiles", "codex", "menu", "motion")}
+
+    def capture(group: str, panel: int, theme: str, scene: str, level: str = "full",
+                phase: int = 0) -> dict[str, Any]:
+        key = f"{panel}:{theme}:{scene}:{level}:{phase}"
+        if key not in records:
+            record, rgb = _phase31_capture_ppm(
+                args, frames_dir, panel=panel, theme=theme, scene=scene,
+                level=level, phase=phase, deployment_id=deployment["deployment_id"],
+            )
+            record["firmware_sha256"] = deployment["firmware_sha256"]
+            records[key] = record
+            frame_groups[group].append(rgb)
+        return records[key]
+
+    matrix = {
+        "themes": list(THEMES),
+        "tile_states": {theme: [] for theme in THEMES},
+        "slot_layouts": {theme: [] for theme in THEMES},
+        "codex": {theme: [] for theme in THEMES},
+        "menu": {theme: [] for theme in THEMES},
+    }
+    for theme in THEMES:
+        for scene in TILE_SCENES:
+            capture("tiles", 0, theme, scene)
+            matrix["tile_states"][theme].append(scene)
+        for scene in SLOT_SCENES:
+            capture("tiles", 0, theme, scene, "static")
+            matrix["slot_layouts"][theme].append(scene)
+        for scene in CODEX_SCENES:
+            capture("codex", 3, theme, scene, "static")
+            matrix["codex"][theme].append(scene)
+        for scene in MENU_SCENES:
+            capture("menu", 3, theme, scene, "static")
+            matrix["menu"][theme].append(scene)
+        for level, phase in (("full", 0), ("full", 1), ("half", 0), ("static", 0)):
+            capture("motion", 0, theme, "working", level, phase)
+
+    inventory_path = ROOT / "artifacts/phase03.1/03.1-MOTION-INVENTORY.json"
+    inventory_document = json.loads(inventory_path.read_text(encoding="ascii"))
+    motion_rows = []
+    for index, row in enumerate(inventory_document.get("rows", [])):
+        theme = next(
+            theme for theme in THEMES
+            if _phase31_theme_name(theme) == row.get("theme")
+        )
+        family = row.get("family")
+        if family == "tile":
+            scene = MOTION_STATE_SCENES[row["state"]]
+            source = capture("motion", 0, theme, scene, "full", row["full"][0])
+        elif family == "feedback":
+            scene = MOTION_FEEDBACK_SCENES[row["state"]]
+            source = capture("motion", 0, theme, scene, "full", row["full"][0])
+        elif family == "codex":
+            scene = MOTION_CODEX_SCENES[row["state"]]
+            source = capture("motion", 3, theme, scene, "full", row["full"][0])
+        elif family == "system":
+            source = capture("motion", 3, theme, "sync", "static", 0)
+        else:
+            source = capture("motion", 0, theme, "working", "full", row["full"][0])
+        motion_rows.append({
+            "inventory_index": index,
+            "family": family,
+            "theme": theme,
+            "state": row.get("state"),
+            "mode": row.get("mode"),
+            "full": row.get("full"),
+            "half": row.get("half"),
+            "static": row.get("static"),
+            "source_id": source["id"],
+            "deployment_id": deployment["deployment_id"],
+        })
+
+    latest = fresh_deployment(args.binding.resolve(), firmware, args.timeout)
+    for field in (
+        "paired_device_id", "pair_identity_digest", "hello_firmware",
+        "protocol_version", "fresh_boot_id", "firmware_sha256",
+    ):
+        if latest.get(field) != deployment.get(field):
+            raise RuntimeError(f"deployment drift detected before final write: {field}")
+    if sha256_file(deployment_path) != deployment_lock_sha:
+        raise RuntimeError("deployment lock changed during capture")
+    deployment = validate_deployment_file(
+        deployment_path, firmware=firmware, binding=binding, require_current=True
+    )
+
+    contacts = []
+    for group in ("tiles", "codex", "menu", "motion"):
+        frames = frame_groups[group]
+        width, height, payload = make_contact(
+            frames, max(1, min(8, len(frames))), deployment["deployment_id"]
+        )
+        output = captures_path.parent / f"{group}-contact.png"
+        atomic_write(output, payload)
+        contacts.append({
+            "kind": group,
+            "path": relative(output),
+            "sha256": sha256_file(output),
+            "width": width,
+            "height": height,
+            "deployment_id": deployment["deployment_id"],
+            "source_frame_width": 128,
+            "source_frame_height": 128,
+        })
+    manifest = {
+        "schema_version": 1,
+        "kind": "phase03.1-framebuffer-evidence",
+        "status": "pass",
+        "source": "logical-framebuffer-only",
+        "deployment_id": deployment["deployment_id"],
+        "deployment_lock_sha256": deployment_lock_sha,
+        "firmware_sha256": deployment["firmware_sha256"],
+        "evidence_boundary": {
+            "framebuffer": "machine-only RGB565 composition",
+            "physical_claims": "none",
+        },
+        "matrix": matrix,
+        "captures": list(records.values()),
+        "motion_inventory": {
+            "path": relative(inventory_path),
+            "sha256": sha256_file(inventory_path),
+            "row_count": len(motion_rows),
+        },
+        "motion_rows": motion_rows,
+        "led_events": _phase31_led_events(deployment["deployment_id"]),
+        "contact_sheets": contacts,
+    }
+    validate_phase31_framebuffer_manifest(
+        manifest, deployment, deployment_lock_sha256=deployment_lock_sha
+    )
+    write_json(captures_path, {
+        "schema_version": 1,
+        "kind": "phase03.1-capture-receipt",
+        "status": "pass",
+        "deployment_id": deployment["deployment_id"],
+        "deployment_lock_sha256": deployment_lock_sha,
+        "capture_count": len(records),
+
+        "contact_sheets": contacts,
+    }, checksum=True)
+    write_json(evidence_path, manifest, checksum=True)
+    validate_phase31_framebuffer_manifest(
+        json.loads(evidence_path.read_text(encoding="ascii")),
+        deployment,
+        deployment_lock_sha256=deployment_lock_sha,
+    )
+    print(
+        f"captured {len(records)} logical RGB565 frames for deployment "
+        f"{deployment['deployment_id']}"
+    )
+    return 0
+def run_phase31_validate(args: argparse.Namespace) -> int:
+    deployment_path = args.deployment.resolve()
+    binding_path = (
+        args.binding.resolve()
+        if getattr(args, "binding", None) is not None
+        else Path.home() / ".config/herdr/keypad-binding.json"
+    )
+    binding = PairingStore(binding_path).load()
+    if binding is None:
+        raise RuntimeError("paired keypad binding is missing")
+    firmware = (ROOT / ".pio/build/selected-usb/firmware.bin").resolve()
+    deployment = validate_deployment_file(
+        deployment_path, firmware=firmware, binding=binding,
+        require_current=args.require_current_deployment,
+    )
+    evidence_path = args.evidence.resolve()
+    sidecar = evidence_path.with_suffix(evidence_path.suffix + ".sha256")
+    if sha256_file(evidence_path) != sidecar.read_text(encoding="ascii").split()[0]:
+        raise ValueError("framebuffer evidence checksum mismatch")
+    manifest = json.loads(evidence_path.read_text(encoding="ascii"))
+    validate_phase31_framebuffer_manifest(
+        manifest, deployment, deployment_lock_sha256=sha256_file(deployment_path)
+    )
+    print(f"validated Phase 03.1 framebuffer evidence for {deployment['deployment_id']}")
+    return 0
+
 def preflight_run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
     evidence_path = args.evidence.resolve()
     validate_evidence(evidence_path, allow_pending=True)
@@ -1397,6 +1807,19 @@ def main(argv: list[str] | None = None) -> int:
     deploy_validate.add_argument("--firmware", type=Path, required=True)
     deploy_validate.add_argument("--deployment", type=Path, required=True)
     deploy_validate.add_argument("--require-current-deployment", action="store_true")
+    capture31 = subparsers.add_parser("phase31-capture")
+    capture31.add_argument("--binding", type=Path, required=True)
+    capture31.add_argument("--firmware", type=Path, required=True)
+    capture31.add_argument("--deployment", type=Path, required=True)
+    capture31.add_argument("--baseline", type=Path, required=True)
+    capture31.add_argument("--evidence", type=Path, required=True)
+    capture31.add_argument("--captures", type=Path, required=True)
+    capture31.add_argument("--timeout", type=float, default=5.0)
+    phase31_validate = subparsers.add_parser("phase31-validate")
+    phase31_validate.add_argument("--evidence", type=Path, required=True)
+    phase31_validate.add_argument("--deployment", type=Path, required=True)
+    phase31_validate.add_argument("--binding", type=Path)
+    phase31_validate.add_argument("--require-current-deployment", action="store_true")
     validate = subparsers.add_parser("validate")
     validate.add_argument("--evidence", type=Path, required=True)
     validate.add_argument("--allow-pending", action="store_true")
@@ -1418,6 +1841,10 @@ def main(argv: list[str] | None = None) -> int:
                 require_current=args.require_current_deployment,
             )
         )
+    if args.command == "phase31-capture":
+        return run_phase31_capture(args)
+    if args.command == "phase31-validate":
+        return run_phase31_validate(args)
     if args.command == "capture":
         return run_capture(args)
     if args.command == "run":
