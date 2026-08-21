@@ -10,6 +10,8 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
   encoder_delta_latch_ = 0;
   encoder_latched_at_us_ = 0;
   input_latched_at_us_ = 0;
+  last_poll_at_us_ = 0;
+  pending_max_poll_gap_us_ = 0;
   if (!physical_map_->complete()) return false;
   BoardConfig config;
   config.enableDisplay = true;
@@ -40,6 +42,11 @@ void BoardAdapter::refreshInputLatchTimestamp() {
 
 void BoardAdapter::update(uint32_t now_us) {
   if (!ready_) return;
+  if (last_poll_at_us_ != 0) {
+    const uint32_t gap = now_us - last_poll_at_us_;
+    if (gap > pending_max_poll_gap_us_) pending_max_poll_gap_us_ = gap;
+  }
+  last_poll_at_us_ = now_us;
   // This is the single poll path for STM32 keys, ButtonSense, and encoder.
   board_.update();
   for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {

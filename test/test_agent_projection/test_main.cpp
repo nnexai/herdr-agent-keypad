@@ -15,6 +15,7 @@
 #include "../../firmware/src/app/menu_controller.h"
 #include "../../firmware/src/app/product_input_router.h"
 #include "../../firmware/src/ui/led_grammar.h"
+#include "../../firmware/src/metrics/proof_metrics.h"
 
 namespace {
 Display displays[4];
@@ -1618,6 +1619,48 @@ void test_ambient_cadence_degrades_under_budget_pressure() {
   scheduler.observeFlushCost(1000UL, 1000000UL);
   TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Full), static_cast<int>(scheduler.level()));
 }
+void test_main_loop_cadence_bounds_duty_and_does_not_oscillate_static() {
+
+  AnimationScheduler scheduler;
+  scheduler.setAmbientPeriod(33334UL);
+
+  constexpr uint32_t kFrameCostUs = 107587UL;
+  uint32_t completed_at_us = 33334UL + kFrameCostUs;
+  uint32_t max_duty_percent = 0;
+  uint32_t level_changes = 0;
+  AnimationScheduler::Level previous = scheduler.level();
+
+  for (uint8_t frame = 0; frame < 8; ++frame) {
+
+    scheduler.observeFlushCostAt(kFrameCostUs, completed_at_us);
+    if (scheduler.lastDutyPercent() > max_duty_percent) {
+      max_duty_percent = scheduler.lastDutyPercent();
+    }
+    if (scheduler.level() != previous) {
+      ++level_changes;
+      previous = scheduler.level();
+    }
+
+    completed_at_us += kFrameCostUs + 33334UL;
+  }
+
+  TEST_ASSERT_LESS_OR_EQUAL_UINT32(100, max_duty_percent);
+  TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Static),
+                    static_cast<int>(scheduler.level()));
+  TEST_ASSERT_EQUAL_UINT32(2, level_changes);
+}
+
+void test_animation_metrics_bound_duty_and_measure_frame_allocation_pairs() {
+  ProofMetrics metrics;
+  metrics.observeAnimationFrame(107587UL, 34000UL, 2);
+  TEST_ASSERT_EQUAL_UINT32(100, metrics.animation_duty_max_percent);
+
+  metrics.observeAnimationAllocation(100000UL, 80000UL, 100000UL, 80000UL);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.allocation_stable);
+  metrics.observeAnimationAllocation(100000UL, 80000UL, 99984UL, 79984UL);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.allocation_stable);
+}
+
 void test_transition_phase_is_bounded_and_interruptible() {
   AnimationScheduler scheduler;
   TEST_ASSERT_TRUE(scheduler.beginTransition(7, 1000));
@@ -3296,6 +3339,8 @@ int runAllTests() {
   RUN_TEST(test_beacon_and_instrument_fences_empty_and_codex_are_phase_static);
   RUN_TEST(test_blocked_pulse_cadence_and_phase);
   RUN_TEST(test_ambient_cadence_degrades_under_budget_pressure);
+  RUN_TEST(test_main_loop_cadence_bounds_duty_and_does_not_oscillate_static);
+  RUN_TEST(test_animation_metrics_bound_duty_and_measure_frame_allocation_pairs);
   RUN_TEST(test_transition_phase_is_bounded_and_interruptible);
   RUN_TEST(test_half_samples_every_second_phase_and_static_keeps_semantics);
   RUN_TEST(test_signal_edge_transition_changes_only_rail_accent);

@@ -18,6 +18,11 @@ class BoardAdapter {
   // is consumed; later polls cannot move an unconsumed edge forward.
   void update(uint32_t now_us);
   uint32_t inputLatchedAt() const { return input_latched_at_us_; }
+  uint32_t takeMaxPollGapUs() {
+    const uint32_t gap = pending_max_poll_gap_us_;
+    pending_max_poll_gap_us_ = 0;
+    return gap;
+  }
   long encoderDelta();
   long consumeEncoderDelta(uint32_t* latched_at_us = nullptr);
   bool ready() const { return ready_; }
@@ -45,6 +50,8 @@ class BoardAdapter {
   int32_t encoder_delta_latch_ = 0;
   uint32_t encoder_latched_at_us_ = 0;
   uint32_t input_latched_at_us_ = 0;
+  uint32_t last_poll_at_us_ = 0;
+  uint32_t pending_max_poll_gap_us_ = 0;
 
   void refreshInputLatchTimestamp();
 };

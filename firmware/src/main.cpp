@@ -28,7 +28,6 @@ char encodedFrame[kMaxLineBytes + 1];
 size_t frameLength = 0;
 bool frameOverflow = false;
 uint32_t txSequence = 0;
-uint32_t lastKeyPollAt = 0;
 bool encoderResponsePending = false;
 uint32_t encoderInputAt = 0;
 AnimationScheduler::Level lastAnimationLevel = AnimationScheduler::Level::Full;
@@ -524,22 +523,26 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
   completeAdmission();
 }
 
-void readFrames() {
+bool readFrame() {
+  bool processed = false;
   while (usbLink.available() > 0) {
     uint8_t byte = 0;
     if (usbLink.read(&byte, 1) != 1) break;
     if (byte == '\n') {
       if (frameOverflow) {
-        protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame), kMaxLineBytes + 1, admission);
+        protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame),
+                               kMaxLineBytes + 1, admission);
       } else {
         inputFrame[frameLength] = '\n';
-        protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame), frameLength + 1, admission);
+        protocolSession.accept(reinterpret_cast<const uint8_t *>(inputFrame),
+                               frameLength + 1, admission);
       }
       proofMetrics.recordReceived();
       dispatchAdmission(admission);
       frameLength = 0;
       frameOverflow = false;
-      continue;
+      processed = true;
+      break;
     }
     if (frameOverflow) continue;
     if (frameLength + 1 >= sizeof(inputFrame)) {
@@ -550,6 +553,7 @@ void readFrames() {
     proofMetrics.observeParser(frameLength);
   }
   proofMetrics.observeQueue(protocolSession.pending_count());
+  return processed;
 }
 
 void reportKeyTransition(uint8_t rawKey) {
@@ -700,6 +704,13 @@ void dispatchProductInput(const ProductInputActions& actions,
   }
   applyBrightnessIntent();
 }
+
+void dispatchAvailableProductInput(uint32_t now_us) {
+  reportInput();
+  const ProductInputFrame input = captureProductInput(now_us);
+  const ProductInputActions actions = ProductInputRouter::route(input);
+  dispatchProductInput(actions, input, now_us);
+}
 }  // namespace
 
 void setup() {
@@ -727,27 +738,34 @@ void loop() {
   const uint32_t loop_started = micros();
   const uint32_t now = loop_started;
   board.update(now);
-  reportInput();
-  const ProductInputFrame input = captureProductInput(now);
-  const ProductInputActions actions = ProductInputRouter::route(input);
-  dispatchProductInput(actions, input, now);
+  dispatchAvailableProductInput(now);
   if (menuController.expire(now)) applyBrightnessIntent();
-  readFrames();
-  if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
-  lastKeyPollAt = now;
-  {
+
+  const bool admission_processed = readFrame();
+  if (admission_processed) {
+    const uint32_t after_admission = micros();
+    board.update(after_admission);
+    dispatchAvailableProductInput(after_admission);
+  } else {
+    const uint32_t free_heap_before = ESP.getFreeHeap();
+    const uint32_t largest_before =
+        heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     const uint32_t tick_started = micros();
-    agentProjection.animation().advanceCadence(now);
     agentProjection.tick(board, now);
-    const uint32_t tick_cost = micros() - tick_started;
+    const uint32_t tick_finished = micros();
+    const uint32_t tick_cost = tick_finished - tick_started;
     const bool frame_observed =
         agentProjection.animation().consumeFrameObservation();
     if (frame_observed) {
-      agentProjection.animation().observeFlushCostAt(tick_cost, now);
+      proofMetrics.observeAnimationAllocation(
+          free_heap_before, largest_before, ESP.getFreeHeap(),
+          heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+      agentProjection.animation().observeFlushCostAt(tick_cost, tick_finished);
       proofMetrics.observeAnimationFrame(
           tick_cost, agentProjection.animation().lastLoopWindowUs(),
           static_cast<uint8_t>(agentProjection.animation().level()));
-    } else if (agentProjection.animation().level() == AnimationScheduler::Level::Static) {
+    } else if (agentProjection.animation().level() ==
+               AnimationScheduler::Level::Static) {
       proofMetrics.recordSkippedFrame();
     }
     if (agentProjection.animation().level() != lastAnimationLevel) {
@@ -759,6 +777,7 @@ void loop() {
       proofMetrics.recordDegradedFrame();
     }
   }
+
   refreshMenuPresentation();
   LedEvents led_events;
   led_events.menu_open = menuController.open();
@@ -770,6 +789,7 @@ void loop() {
                                     : 1;
   }
   ledEngine.render(agentProjection.renderState(now), led_events, now, board);
+  proofMetrics.observeKeyPollGap(board.takeMaxPollGapUs());
   proofMetrics.sampleRuntime();
   delay(1);
   proofMetrics.observeLoopWall(micros() - loop_started);

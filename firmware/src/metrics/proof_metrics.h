@@ -1,9 +1,11 @@
 #pragma once
 
-#include <Arduino.h>
 #include <stdint.h>
 
+#ifdef ARDUINO
+#include <Arduino.h>
 #include <esp_heap_caps.h>
+#endif
 
 // Fixed-width measurements at the protocol/link boundary. Protocol queue
 // counters are measured in pending frames; transport bytes are intentionally
@@ -77,9 +79,6 @@ struct ProofMetrics {
     first_encoder_response_us = 0;
     animation_duty_max_percent = 0;
     allocation_stable = 1;
-    allocation_samples_ = 0;
-    allocation_reference_heap_ = 0;
-    allocation_reference_largest_ = 0;
   }
 
   void observeParser(size_t bytes) {
@@ -99,9 +98,9 @@ struct ProofMetrics {
   void observeLoopWall(uint32_t elapsed_us) {
     if (elapsed_us > loop_wall_max_us) loop_wall_max_us = elapsed_us;
   }
-  // Record only a complete compose+flush transaction. loop_window_us is the
-  // measured main-loop wall window, so the duty value remains comparable to
-  // AnimationScheduler's degradation decision.
+  // Record only a complete compose+flush transaction. The scheduler supplies
+  // a completion-to-completion window; clamp malformed shorter windows to the
+  // non-overlapping frame cost so reported duty remains physically bounded.
   void observeAnimationFrame(uint32_t compose_flush_us,
                              uint32_t loop_window_us,
                              uint8_t level) {
@@ -111,8 +110,13 @@ struct ProofMetrics {
     else if (level == 1) ++half_frames;
     else ++static_frames;
     if (loop_window_us != 0) {
-      const uint32_t duty = static_cast<uint32_t>(
-          (static_cast<uint64_t>(compose_flush_us) * 100U) / loop_window_us);
+      if (loop_window_us < compose_flush_us) loop_window_us = compose_flush_us;
+      const uint32_t duty =
+          compose_flush_us >= loop_window_us
+              ? 100U
+              : static_cast<uint32_t>(
+                    (static_cast<uint64_t>(compose_flush_us) * 100U) /
+                    loop_window_us);
       if (duty > animation_duty_max_percent) animation_duty_max_percent = duty;
     }
   }
@@ -126,33 +130,30 @@ struct ProofMetrics {
     if (elapsed_us > first_press_response_us) first_press_response_us = elapsed_us;
   }
   void observeFirstEncoderResponse(uint32_t elapsed_us) {
-    if (elapsed_us > first_encoder_response_us) first_encoder_response_us = elapsed_us;
+    if (elapsed_us > first_encoder_response_us) {
+      first_encoder_response_us = elapsed_us;
+    }
   }
-  void observeAllocation(uint32_t free_heap, uint32_t largest) {
-    if (allocation_samples_ == 0) {
-      allocation_reference_heap_ = free_heap;
-      allocation_reference_largest_ = largest;
-    } else if (free_heap != allocation_reference_heap_ ||
-               largest != allocation_reference_largest_) {
+  void observeAnimationAllocation(uint32_t free_heap_before,
+                                  uint32_t largest_before,
+                                  uint32_t free_heap_after,
+                                  uint32_t largest_after) {
+    if (free_heap_before != free_heap_after ||
+        largest_before != largest_after) {
       allocation_stable = 0;
     }
-    ++allocation_samples_;
   }
+#ifdef ARDUINO
   void sampleRuntime() {
     const uint32_t free_heap = ESP.getFreeHeap();
     const uint32_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     if (free_heap < minimum_free_heap) minimum_free_heap = free_heap;
     if (largest < largest_free_block) largest_free_block = largest;
-    observeAllocation(free_heap, largest);
   }
 
   void normalizeUntouchedSamples() {
     if (minimum_free_heap == UINT32_MAX) minimum_free_heap = ESP.getFreeHeap();
     if (largest_free_block == UINT32_MAX) largest_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
   }
-
- private:
-  uint32_t allocation_samples_ = 0;
-  uint32_t allocation_reference_heap_ = 0;
-  uint32_t allocation_reference_largest_ = 0;
+#endif
 };

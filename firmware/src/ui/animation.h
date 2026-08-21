@@ -21,8 +21,7 @@ class AnimationScheduler final {
   void setAmbientPeriod(uint32_t period_us) {
     ambient_period_us_ = period_us;
     next_ambient_us_ = 0;
-    last_frame_at_us_ = 0;
-    recovery_due_us_ = 0;
+    last_frame_completed_at_us_ = 0;
     ambient_phase_ = kNeutralPhase;
   }
 
@@ -32,56 +31,25 @@ class AnimationScheduler final {
       interruptTransition(transition_epoch_);
     }
   }
-  // Compatibility seam for deterministic tests that provide an explicit
-  // scheduling window.
+  // Deterministic seam for callers that already measured the complete
+  // compose+flush window.
   void observeFlushCost(uint32_t flush_us, uint32_t loop_window_us) {
     if (loop_window_us == 0) return;
-    last_flush_us_ = flush_us;
-    last_loop_window_us_ = loop_window_us;
-    last_duty_percent_ = static_cast<uint32_t>(
-        (static_cast<uint64_t>(flush_us) * 100U) / loop_window_us);
-    if (last_duty_percent_ > kBudgetPercent) {
-      if (level_ == Level::Full) {
-        level_ = Level::Half;
-      } else if (level_ == Level::Half) {
-        level_ = Level::Static;
-        recovery_due_us_ = 0;
-        interruptTransition(transition_epoch_);
-      }
-    } else if (last_duty_percent_ * 2U <= kBudgetPercent) {
-      if (level_ == Level::Static) level_ = Level::Half;
-      else if (level_ == Level::Half) level_ = Level::Full;
-    }
+    recordObservation(flush_us, loop_window_us);
+    applyPressure(flush_us);
   }
 
-  // Measure against elapsed cadence between complete frames. The first
-  // sample uses the configured cadence rather than the frame's own loop.
-  void observeFlushCostAt(uint32_t flush_us, uint32_t now_us) {
+  // A frame is observed at completion. Completion-to-completion elapsed time
+  // contains the current single-threaded compose+flush cost, unlike the old
+  // loop-start cadence pairing. The first sample uses at least its own cost.
+  void observeFlushCostAt(uint32_t flush_us, uint32_t completed_at_us) {
     uint32_t window = activePeriodUs();
-    if (last_frame_at_us_ != 0) {
-      window = now_us - last_frame_at_us_;
+    if (last_frame_completed_at_us_ != 0) {
+      window = completed_at_us - last_frame_completed_at_us_;
     }
-    if (window == 0) window = 1;
-    last_frame_at_us_ = now_us;
-    observeFlushCost(flush_us, window);
-    if (level_ == Level::Static && recovery_due_us_ == 0) {
-      recovery_due_us_ = now_us + (ambient_period_us_ != 0 ? ambient_period_us_ : 1);
-    }
-  }
-
-  // Static mode must not deadlock waiting for another ambient frame. Cadence
-  // time itself advances recovery to Half; the next measured sample can then
-  // promote Half to Full.
-  void advanceCadence(uint32_t now_us) {
-    if (level_ != Level::Static) return;
-    if (recovery_due_us_ == 0) {
-      recovery_due_us_ = now_us + (ambient_period_us_ != 0 ? ambient_period_us_ : 1);
-      return;
-    }
-    if (static_cast<int32_t>(now_us - recovery_due_us_) < 0) return;
-    level_ = Level::Half;
-    next_ambient_us_ = now_us + activePeriodUs();
-    recovery_due_us_ = now_us + activePeriodUs();
+    last_frame_completed_at_us_ = completed_at_us;
+    recordObservation(flush_us, window);
+    applyPressure(flush_us);
   }
 
   Level level() const { return level_; }
@@ -203,12 +171,54 @@ class AnimationScheduler final {
     return false;
   }
 
-  uint32_t activePeriodUs() const {
-    if (ambient_period_us_ == 0) return 0;
-    return level_ == Level::Half ? ambient_period_us_ * 2U : ambient_period_us_;
-  }
+  uint32_t activePeriodUs() const { return periodForLevel(level_); }
 
  private:
+  static uint32_t dutyPercent(uint32_t flush_us, uint32_t window_us) {
+    if (window_us == 0 || flush_us >= window_us) return 100;
+    return static_cast<uint32_t>(
+        (static_cast<uint64_t>(flush_us) * 100U) / window_us);
+  }
+
+  uint32_t periodForLevel(Level level) const {
+    if (ambient_period_us_ == 0 || level == Level::Static) return 0;
+    if (level != Level::Half) return ambient_period_us_;
+    return ambient_period_us_ > UINT32_MAX / 2U
+               ? UINT32_MAX
+               : ambient_period_us_ * 2U;
+  }
+
+  void recordObservation(uint32_t flush_us, uint32_t window_us) {
+    if (window_us < flush_us) window_us = flush_us;
+    if (window_us == 0) window_us = 1;
+    last_flush_us_ = flush_us;
+    last_loop_window_us_ = window_us;
+    last_duty_percent_ = dutyPercent(flush_us, window_us);
+  }
+
+  void applyPressure(uint32_t flush_us) {
+    if (level_ == Level::Static) {
+      const uint32_t recovery_window = periodForLevel(Level::Half);
+      if (recovery_window != 0 &&
+          dutyPercent(flush_us, recovery_window) <= kBudgetPercent / 2U) {
+        level_ = Level::Half;
+        next_ambient_us_ = 0;
+      }
+      return;
+    }
+    if (last_duty_percent_ > kBudgetPercent) {
+      if (level_ == Level::Full) {
+        level_ = Level::Half;
+      } else {
+        level_ = Level::Static;
+        interruptTransition(transition_epoch_);
+      }
+    } else if (level_ == Level::Half &&
+               last_duty_percent_ <= kBudgetPercent / 2U) {
+      level_ = Level::Full;
+    }
+  }
+
   uint32_t ambient_period_us_ = 0;
   uint32_t next_ambient_us_ = 0;
   uint8_t ambient_phase_ = kNeutralPhase;
@@ -217,8 +227,7 @@ class AnimationScheduler final {
   uint32_t last_flush_us_ = 0;
   uint32_t last_loop_window_us_ = 0;
   uint32_t last_duty_percent_ = 0;
-  uint32_t last_frame_at_us_ = 0;
-  uint32_t recovery_due_us_ = 0;
+  uint32_t last_frame_completed_at_us_ = 0;
   uint32_t transition_started_us_ = 0;
   uint32_t transition_epoch_ = 0;
   uint8_t transition_last_phase_ = kNeutralPhase;

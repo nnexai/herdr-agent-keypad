@@ -606,6 +606,9 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_
       theme().composePanel4(g_composition, renderState(micros()));
       g_composition.pushSprite(display, 0, 0);
     }
+#ifdef ARDUINO
+    board.update(micros());
+#endif
     return true;
   }
   // Per-panel direct-cut reveal (R-2): panels flip old-complete -> new-complete
@@ -622,13 +625,6 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_
       renderSync(board);  // best-effort fail-closed SYNC on all panels
       return false;
     }
-#ifdef ARDUINO
-    // Snapshot flushes are long enough to overlap a normal human press. Keep
-    // ButtonSense sampling between panels; BoardAdapter latches the edge until
-    // the normal input dispatcher consumes it after the commit. The timestamp
-    // belongs to this physical poll, not to the later main-loop poll.
-    board.update(micros());
-#endif
   }
   return commitSnapshot();
 }
@@ -640,6 +636,9 @@ bool AgentProjection::renderSync(BoardAdapter& board) const {
     if (display == nullptr) return false;
     theme().composeSync(g_composition);
     g_composition.pushSprite(display, 0, 0);
+#ifdef ARDUINO
+    board.update(micros());
+#endif
   }
   return true;
 }
@@ -729,6 +728,9 @@ bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
   out.feedback = feedback;
   renderer.composeTile(g_composition, slot, state);
   g_composition.pushSprite(display, 0, 0);
+#ifdef ARDUINO
+  board.update(micros());
+#endif
   animation_.noteCompleteFrame();
   return true;
 }
@@ -815,6 +817,9 @@ void AgentProjection::renderMenu(BoardAdapter& board, ThemeRenderer& theme,
     theme.composePanel4(g_composition, renderState(now_us));
   }
   g_composition.pushSprite(display, 0, 0);
+#ifdef ARDUINO
+  board.update(micros());
+#endif
 }
 
 bool AgentProjection::redrawTiles(BoardAdapter& board) {
