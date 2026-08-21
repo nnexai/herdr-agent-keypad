@@ -2703,8 +2703,63 @@ void test_menu_redraw_is_panel4_only() {
 
 
 
+void test_led_semantic_events_align_grammar_starts_and_fences() {
+  RenderState state;
+  state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
+  state.slots[0].occupied = true;
+  state.slots[0].state = TileState::Working;
+  state.slots[0].feedback = TileFeedback::Pending;
+  state.semantic_event_epoch = 41;
+
+  LedEvents pending;
+  pending.semantic_event = LedSemanticEvent::Pending;
+  pending.semantic_epoch = 41;
+  pending.semantic_phase = 1;
+  LedSegment segments[kLedGrammarMaxSegments]{};
+  const size_t field_count =
+      fieldExtensionGrammar().frame(state, pending, 0, segments,
+                                    kLedGrammarMaxSegments);
+  TEST_ASSERT_TRUE(field_count > 0);
+  TEST_ASSERT_EQUAL_UINT16(1U << 1, segments[0].mask);
+  TEST_ASSERT_EQUAL_UINT8(45, segments[0].brightness);
+
+  const size_t exception_count =
+      exceptionChannelGrammar().frame(state, pending, 0, segments,
+                                      kLedGrammarMaxSegments);
+  TEST_ASSERT_TRUE(exception_count > 0);
+  TEST_ASSERT_EQUAL_UINT8(0, segments[0].brightness);
+
+  state.slots[0].feedback = TileFeedback::Success;
+  pending.semantic_event = LedSemanticEvent::Focused;
+  pending.semantic_epoch = 42;
+  pending.semantic_phase = 1;
+  const size_t rail_count =
+      railEchoGrammar().frame(state, pending, 0, segments,
+                              kLedGrammarMaxSegments);
+  TEST_ASSERT_TRUE(rail_count > 0);
+  TEST_ASSERT_EQUAL_UINT8(0, segments[0].brightness);
+
+  state.source_status = "stale";
+  state.codex.source_state = CodexSourceState::Stale;
+  pending.semantic_event = LedSemanticEvent::Health;
+  pending.semantic_epoch = 43;
+  pending.semantic_phase = 7;
+  for (LedGrammar* grammar : {&railEchoGrammar(), &exceptionChannelGrammar(),
+                              &fieldExtensionGrammar(), &meterLampsGrammar()}) {
+    const size_t count =
+        grammar->frame(state, pending, 0, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
+    for (size_t index = 0; index < count; ++index) {
+      TEST_ASSERT_TRUE(segments[index].hue != 120);
+      TEST_ASSERT_TRUE(segments[index].hue != 35);
+    }
+  }
+}
+
 int runAllTests() {
   UNITY_BEGIN();
+  RUN_TEST(test_led_semantic_events_align_grammar_starts_and_fences);
   RUN_TEST(test_compose_then_flush_commits_generation);
   RUN_TEST(test_null_panel_fails_closed);
   RUN_TEST(test_generation_replacement_clears_feedback);
