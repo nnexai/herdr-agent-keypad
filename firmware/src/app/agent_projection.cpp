@@ -875,6 +875,9 @@ bool AgentProjection::applyFocusResult(JsonObjectConst payload) {
       payload["snapshot_revision"].as<uint32_t>() != committed_generation_.snapshot_revision || !matchingResult(payload, pending_[slot], slot)) return false;
   pending_action_[slot] = 0;
   pending_[slot] = Binding();
+  pending_deadline_[slot] = 0;
+  pending_step_[slot] = 0;
+  press_impulse_[slot] = false;
   if (strcmp(outcome, "accepted") == 0 && payload["focused"].as<bool>()) feedback_[slot] = Feedback::Success;
   else if (strcmp(outcome, "stale_target") == 0) feedback_[slot] = Feedback::Stale;
   else if (strcmp(outcome, "vanished") == 0 || strcmp(outcome, "not_found") == 0) feedback_[slot] = Feedback::Vanished;
