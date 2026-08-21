@@ -1,9 +1,6 @@
 ---
 name: "gsd-doc-writer"
 description: "Writes and updates project documentation. Spawned with a doc_assignment block specifying doc type, mode (create/update/supplement), and project context."
-model: "gpt-5.6-luna"
-model_reasoning_effort: "xhigh"
-reasoning_effort: "xhigh"
 ---
 
 <codex_agent_role>

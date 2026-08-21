@@ -54,7 +54,7 @@ Typed mapping (agent_type-capable schema only):
   to `spawn_agent` when the runtime/tool supports it. Omit missing, empty,
   inherited, or unsupported values; do not invent one-off effort literals in
   workflow prose.
-- `fork_context: false` by default — GSD agents load their own context via `<files_to_read>` blocks
+- `fork_context: false` by default — GSD agents load their own context via `<required_reading>` blocks
 - `task_name` — required by the collaboration schema; provide a descriptive name for each spawned task
 - `fork_turns` — optional parameter controlling turn-forking depth; coexists with `fork_context` (not a replacement)
 - `Task(isolation="worktree")` / `Agent(isolation="worktree")` → no direct `spawn_agent` mapping,
@@ -159,7 +159,7 @@ All calls in this step are side-effect-free. On any error or timeout, stop retri
 2. **Targeted search:**
    - Interactive: `mempalace_search(query=<topic>, wing=<wing>)`.
    - Headless: `mempalace search "<topic>" --wing <wing>`.
-3. **Knowledge-graph facts** (when `config.mempalace.mirror_kg` is true): `mempalace_kg_query` / `mempalace_kg_timeline` for decisions relevant to the topic and their validity windows. Under `augment` the palace KG *supplements* GSD's native `.planning/graphs/` — combine both, do not treat the palace as the sole source. Under `kg_backend` or `replace` the palace KG is the *primary* graph source — query it first and use `.planning/graphs/` only as a fallback when the palace is unreachable.
+3. **Knowledge-graph facts** (unless `config.mempalace.mirror_kg !== false` — registry default is true, an absent key means enabled): `mempalace_kg_query` / `mempalace_kg_timeline` for decisions relevant to the topic and their validity windows. Under `augment` the palace KG *supplements* GSD's native `.planning/graphs/` — combine both, do not treat the palace as the sole source. Under `kg_backend` or `replace` the palace KG is the *primary* graph source — query it first and use `.planning/graphs/` only as a fallback when the palace is unreachable.
 4. **Dedup** the returned drawers/facts; keep the top results.
 
 ## Step 4 -- Write MEMORY-RECALL.md

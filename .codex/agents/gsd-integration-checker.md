@@ -1,9 +1,6 @@
 ---
 name: "gsd-integration-checker"
 description: "Verifies cross-phase integration and E2E flows. Checks that phases connect properly and user workflows complete end-to-end."
-model: "gpt-5.6-terra"
-model_reasoning_effort: "medium"
-reasoning_effort: "medium"
 ---
 
 <codex_agent_role>

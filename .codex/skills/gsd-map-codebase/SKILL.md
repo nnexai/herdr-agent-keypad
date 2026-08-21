@@ -54,7 +54,7 @@ Typed mapping (agent_type-capable schema only):
   to `spawn_agent` when the runtime/tool supports it. Omit missing, empty,
   inherited, or unsupported values; do not invent one-off effort literals in
   workflow prose.
-- `fork_context: false` by default — GSD agents load their own context via `<files_to_read>` blocks
+- `fork_context: false` by default — GSD agents load their own context via `<required_reading>` blocks
 - `task_name` — required by the collaboration schema; provide a descriptive name for each spawned task
 - `fork_turns` — optional parameter controlling turn-forking depth; coexists with `fork_context` (not a replacement)
 - `Task(isolation="worktree")` / `Agent(isolation="worktree")` → no direct `spawn_agent` mapping,
@@ -124,7 +124,7 @@ Output: .planning/codebase/ folder with 7 structured documents about the codebas
 Arguments: {{GSD_ARGS}}
 
 Parse the first token of {{GSD_ARGS}}:
-- If it is `--fast`: strip the flag, run the scan workflow (passing remaining args including optional --focus).
+- If it is `--fast`: strip the flag, then read and execute `/home/nnex/dev/prj/lilygo-t3/.codex/gsd-core/workflows/scan.md` (passing remaining args including optional --focus). Load it on demand here — it is deliberately not in `<execution_context>`, so the common full-map path does not pay for it.
 - If it is `--query`: strip the flag, run the intel workflow (passing remaining args as the subcommand).
 - Otherwise: pass all of {{GSD_ARGS}} as focus area to the map-codebase workflow.
 

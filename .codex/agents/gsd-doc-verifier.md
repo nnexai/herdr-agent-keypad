@@ -1,9 +1,6 @@
 ---
 name: "gsd-doc-verifier"
 description: "Verifies factual claims in generated docs against the live codebase. Returns structured JSON per doc."
-model: "gpt-5.6-terra"
-model_reasoning_effort: "medium"
-reasoning_effort: "medium"
 ---
 
 <codex_agent_role>

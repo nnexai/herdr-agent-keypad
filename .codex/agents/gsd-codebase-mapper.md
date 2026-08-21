@@ -1,9 +1,6 @@
 ---
 name: "gsd-codebase-mapper"
 description: "Explores codebase and writes structured analysis documents. Spawned by map-codebase with a focus area (tech, arch, quality, concerns). Writes documents directly to reduce orchestrator context load."
-model: "gpt-5.6-luna"
-model_reasoning_effort: "high"
-reasoning_effort: "high"
 ---
 
 <codex_agent_role>

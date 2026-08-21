@@ -54,7 +54,7 @@ Typed mapping (agent_type-capable schema only):
   to `spawn_agent` when the runtime/tool supports it. Omit missing, empty,
   inherited, or unsupported values; do not invent one-off effort literals in
   workflow prose.
-- `fork_context: false` by default — GSD agents load their own context via `<files_to_read>` blocks
+- `fork_context: false` by default — GSD agents load their own context via `<required_reading>` blocks
 - `task_name` — required by the collaboration schema; provide a descriptive name for each spawned task
 - `fork_turns` — optional parameter controlling turn-forking depth; coexists with `fork_context` (not a replacement)
 - `Task(isolation="worktree")` / `Agent(isolation="worktree")` → no direct `spawn_agent` mapping,
@@ -143,7 +143,7 @@ Phase: {{GSD_ARGS}}
 - If none of these tokens appear, run the standard full-phase execution flow with no flag-specific filtering
 - Do not infer that a flag is active just because it is documented in this prompt
 
-Context files are resolved inside the workflow via `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query init.execute-phase` and per-subagent `<files_to_read>` blocks.
+Context files are resolved inside the workflow via `node "$HOME/.codex/gsd-core/bin/gsd-tools.cjs" query init.execute-phase` and per-subagent `<required_reading>` blocks.
 </context>
 
 <process>

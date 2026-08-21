@@ -1,9 +1,6 @@
 ---
 name: "gsd-debug-session-manager"
 description: "Manages multi-cycle $gsd-debug checkpoint and continuation loop in isolated context. Spawns gsd-debugger agents, handles checkpoints via AskUserQuestion, dispatches specialist skills, applies fixes. Returns compact summary to main context. Spawned by $gsd-debug command."
-model: "gpt-5.6-sol"
-model_reasoning_effort: "high"
-reasoning_effort: "high"
 ---
 
 <codex_agent_role>
@@ -35,6 +32,7 @@ Received from spawning orchestrator:
 - `tdd_mode` — boolean; true if TDD gate is active
 - `goal` — `find_root_cause_only` | `find_and_fix`
 - `specialist_dispatch_enabled` — boolean; true if specialist skill review is enabled
+- `resume` — boolean; present only on an orchestrator auto-resume re-spawn (#3448), accompanied by `resume_status` and `resume_next_action` (the checkpoint's `status`/`next_action` read from the debug file at resume time). When `resume: true`, any earlier checkpoint in the session was already answered — carry that disposition and the recorded next action into the Step 2 dispatch.
 </session_parameters>
 
 <process>
@@ -76,6 +74,16 @@ Continue debugging {slug}. Evidence is in the debug file.
 - {debug_file_path} (Debug session state)
 </required_reading>
 </prior_state>
+
+{if resume: "<resume_directive>
+DATA_START
+**Status at pause:** {resume_status}
+**Recorded next action — resume here and proceed directly on it:** {resume_next_action}
+**Prior checkpoints:** already answered by the user; do not re-raise them. Route only
+genuinely NEW human input (a pending decision or destructive-action approval) back through
+the checkpoint loop, never a re-ask of an answered one.
+DATA_END
+</resume_directive>"}
 
 <mode>
 symptoms_prefilled: {symptoms_prefilled}

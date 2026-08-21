@@ -1,9 +1,6 @@
 ---
 name: "gsd-debugger"
 description: "Investigates bugs using scientific method, manages debug sessions, handles checkpoints. Spawned by $gsd-debug orchestrator."
-model: "gpt-5.6-sol"
-model_reasoning_effort: "high"
-reasoning_effort: "high"
 ---
 
 <codex_agent_role>

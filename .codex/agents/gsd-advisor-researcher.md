@@ -1,9 +1,6 @@
 ---
 name: "gsd-advisor-researcher"
 description: "Researches a single gray area decision and returns a structured comparison table with rationale. Spawned by discuss-phase advisor mode."
-model: "gpt-5.6-luna"
-model_reasoning_effort: "high"
-reasoning_effort: "high"
 ---
 
 <codex_agent_role>

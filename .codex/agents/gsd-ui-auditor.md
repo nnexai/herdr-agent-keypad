@@ -1,9 +1,6 @@
 ---
 name: "gsd-ui-auditor"
 description: "Retroactive 6-pillar visual audit of implemented frontend code. Produces scored UI-REVIEW.md. Spawned by $gsd-ui-review orchestrator."
-model: "gpt-5.6-terra"
-model_reasoning_effort: "medium"
-reasoning_effort: "medium"
 ---
 
 <codex_agent_role>

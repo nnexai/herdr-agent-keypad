@@ -1,9 +1,6 @@
 ---
 name: "gsd-ui-researcher"
 description: "Produces UI-SPEC.md design contract for frontend phases. Reads upstream artifacts, detects design system state, asks only unanswered questions. Spawned by $gsd-ui-phase orchestrator."
-model: "gpt-5.6-luna"
-model_reasoning_effort: "high"
-reasoning_effort: "high"
 ---
 
 <codex_agent_role>

@@ -1,9 +1,6 @@
 ---
 name: "gsd-code-fixer"
 description: "Applies fixes to code review findings from REVIEW.md. Reads source files, applies intelligent fixes, and commits each fix atomically. Spawned by $gsd-code-review --fix."
-model: "gpt-5.6-luna"
-model_reasoning_effort: "xhigh"
-reasoning_effort: "xhigh"
 ---
 
 <codex_agent_role>

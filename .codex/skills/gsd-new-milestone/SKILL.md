@@ -54,7 +54,7 @@ Typed mapping (agent_type-capable schema only):
   to `spawn_agent` when the runtime/tool supports it. Omit missing, empty,
   inherited, or unsupported values; do not invent one-off effort literals in
   workflow prose.
-- `fork_context: false` by default — GSD agents load their own context via `<files_to_read>` blocks
+- `fork_context: false` by default — GSD agents load their own context via `<required_reading>` blocks
 - `task_name` — required by the collaboration schema; provide a descriptive name for each spawned task
 - `fork_turns` — optional parameter controlling turn-forking depth; coexists with `fork_context` (not a replacement)
 - `Task(isolation="worktree")` / `Agent(isolation="worktree")` → no direct `spawn_agent` mapping,
@@ -128,7 +128,7 @@ Brownfield equivalent of new-project. Project exists, PROJECT.md has history. Ga
 <context>
 Milestone name: {{GSD_ARGS}} (optional - will prompt if not provided)
 
-Project and milestone context files are resolved inside the workflow (`init new-milestone`) and delegated via `<files_to_read>` blocks where subagents are used.
+Project and milestone context files are resolved inside the workflow (`init new-milestone`) and delegated via `<required_reading>` blocks where subagents are used.
 </context>
 
 <process>
