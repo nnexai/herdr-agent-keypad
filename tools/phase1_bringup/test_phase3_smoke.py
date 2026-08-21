@@ -14,6 +14,7 @@ from phase1_bringup.phase3_smoke import (
     run_guided,
     sha256_file,
     validate_phase31_current_deployment_identity,
+    validate_phase31_reset_epoch,
     write_json,
 )
 
@@ -289,10 +290,25 @@ class Phase31CurrentDeploymentTests(unittest.TestCase):
         self.assertEqual(accepted["deployment_id"], "deployment-1")
         self.assertEqual(accepted["publication_snapshot_revision"], 7)
 
-    def test_phase31_current_deployment_rejects_stale_boot_or_firmware(self):
+    def test_phase31_current_deployment_accepts_rotated_boot_epoch(self):
+        deployment, publication = self.identity()
+        hello = {
+            "device_id": "device-1",
+            "firmware": "phase1-bringup",
+            "protocol": 1,
+            "device_boot_id": "boot-rotated",
+        }
+        publication["hello"]["boot_id"] = "boot-rotated"
+        accepted = validate_phase31_current_deployment_identity(
+            deployment, hello, "session-rotated", publication
+        )
+        self.assertEqual(accepted["boot_id"], "boot-rotated")
+        self.assertEqual(accepted["session_id"], "session-rotated")
+
+    def test_phase31_current_deployment_rejects_wrong_device_or_hash(self):
         deployment, publication = self.identity()
         for field, value, message in (
-            ("device_boot_id", "old-boot", "boot"),
+            ("device_id", "other-device", "device identity"),
             ("firmware", "old-firmware", "firmware"),
         ):
             with self.subTest(field=field):
@@ -307,6 +323,32 @@ class Phase31CurrentDeploymentTests(unittest.TestCase):
                     validate_phase31_current_deployment_identity(
                         deployment, hello, "session-1", publication
                     )
+        publication["binary_sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "firmware hash"):
+            validate_phase31_current_deployment_identity(
+                deployment,
+                {
+                    "device_id": "device-1",
+                    "firmware": "phase1-bringup",
+                    "protocol": 1,
+                    "device_boot_id": "boot-1",
+                },
+                "session-1",
+                publication,
+            )
+
+    def test_phase31_reset_epoch_requires_changed_boot_and_session(self):
+        previous = {
+            "device_id": "device-1",
+            "boot_id": "boot-1",
+            "session_id": "session-1",
+        }
+        current = {**previous, "session_id": "session-2"}
+        with self.assertRaisesRegex(ValueError, "fresh boot"):
+            validate_phase31_reset_epoch(previous, current)
+        current["boot_id"] = "boot-2"
+        transition = validate_phase31_reset_epoch(previous, current)
+        self.assertEqual(transition["to_boot_id"], "boot-2")
 
     def test_phase31_current_deployment_rejects_unacknowledged_or_wrong_publication(self):
         deployment, publication = self.identity()
