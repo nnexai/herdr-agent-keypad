@@ -1712,6 +1712,28 @@ void test_blocked_motion_recomposes_blocked_panel_only() {
   TEST_ASSERT_EQUAL_UINT32(1, order.size());
   TEST_ASSERT_EQUAL_INT(0, order[0]);
 }
+void test_blocked_tick_produces_changing_complete_frames_at_measured_static_cost() {
+  AgentProjection projection;
+  BoardAdapter board;
+  commitThroughTheme(signalEdgeTheme(), projection, board, 1, "blocked");
+  // Model the measured 140 ms complete-panel cost in the 150 ms loop window:
+  // Full -> Half -> Static must not erase the semantic BLOCKED motion path.
+  projection.animation().observeFlushCost(140000UL, 150000UL);
+  projection.animation().observeFlushCost(140000UL, 150000UL);
+  TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(AnimationScheduler::Level::Static),
+                          static_cast<uint8_t>(projection.animation().level()));
+  projection.tick(board, 1000);
+  std::vector<std::string> previous;
+  size_t distinct = 0;
+  for (uint8_t phase = 1; phase <= 3; ++phase) {
+    resetLog();
+    projection.tick(board, 1000U + static_cast<uint32_t>(phase) * 150000U);
+    TEST_ASSERT_EQUAL_UINT32(1, countPushes());
+    if (g_render_log != previous) ++distinct;
+    previous = g_render_log;
+  }
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(2, distinct);
+}
 
 RenderState committedCodexLedState(AgentProjection& projection,
                                    BoardAdapter& board,
@@ -2963,6 +2985,7 @@ int runAllTests() {
   RUN_TEST(test_press_impulse_precedes_pending_render);
   RUN_TEST(test_pending_feedback_advances_at_bounded_300ms_steps);
   RUN_TEST(test_beacon_and_instrument_press_impulse_and_exact_focus_outcomes);
+  RUN_TEST(test_blocked_tick_produces_changing_complete_frames_at_measured_static_cost);
   RUN_TEST(test_signal_edge_and_ledger_fences_empty_and_codex_are_phase_static);
   RUN_TEST(test_render_state_transition_metadata_is_presentation_only);
   RUN_TEST(test_urgent_generation_cuts_transition_and_fences_bindings);

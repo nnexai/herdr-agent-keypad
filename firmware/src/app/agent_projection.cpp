@@ -621,18 +621,30 @@ bool AgentProjection::renderSync(BoardAdapter& board) const {
 }
 
 bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile,
-                                  Feedback feedback) const {
-  return renderTile(board, theme(), committed_generation_, slot, tile, feedback);
-}
-bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
-                                 uint8_t slot, const Tile& tile,
                                  Feedback feedback) const {
-  return renderTile(board, renderer, committed_generation_, slot, tile, feedback);
+  return renderTileAt(board, slot, tile, feedback, micros());
 }
-
+bool AgentProjection::renderTileAt(BoardAdapter& board, uint8_t slot, const Tile& tile,
+                                   Feedback feedback, uint32_t now_us) const {
+  return renderTileAt(board, theme(), committed_generation_, slot, tile, feedback, now_us);
+}
 bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
-                                  const Generation& generation, uint8_t slot,
-                                  const Tile& tile, Feedback feedback) const {
+                                 uint8_t slot, const Tile& tile, Feedback feedback) const {
+  return renderTileAt(board, renderer, slot, tile, feedback, micros());
+}
+bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
+                                   uint8_t slot, const Tile& tile, Feedback feedback,
+                                   uint32_t now_us) const {
+  return renderTileAt(board, renderer, committed_generation_, slot, tile, feedback, now_us);
+}
+bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
+                                 const Generation& generation, uint8_t slot, const Tile& tile,
+                                 Feedback feedback) const {
+  return renderTileAt(board, renderer, generation, slot, tile, feedback, micros());
+}
+bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
+                                   const Generation& generation, uint8_t slot, const Tile& tile,
+                                   Feedback feedback, uint32_t now_us) const {
   Display* display = board.displayAt(slot);
   if (display == nullptr || !ensureComposition()) return false;
   RenderState state;
@@ -644,10 +656,11 @@ bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
       strcmp(generation.source_status, "current") == 0 &&
       !syncing_ && animation_.level() != AnimationScheduler::Level::Static &&
       animation_.transitionActive();
-  state.transition_phase = state.transition_active ? animation_.transitionProgress(micros()) :
+  state.transition_phase = state.transition_active ? animation_.transitionProgress(now_us) :
                            AnimationScheduler::kNeutralPhase;
-  state.ambient_phase = animation_.presentationPhase(micros());
-  state.blocked_pulse_high = animation_.blockedPulseHigh(micros());
+  state.ambient_phase = animation_.presentationPhase(now_us);
+  state.blocked_phase = animation_.blockedPhase(now_us);
+  state.blocked_pulse_high = animation_.blockedPulseHigh(now_us);
   RenderState::Slot& out = state.slots[slot];
   out.occupied = tile.binding.occupied;
   out.title = tile.title;
@@ -702,13 +715,13 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       feedback_phase_[slot] = 0;
       feedback_[slot] = Feedback::Uncertain;
       feedback_until_[slot] = now_us + kFeedbackHoldUs;
-      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+      renderTileAt(board, slot, committed_generation_.tiles[slot], feedback_[slot], now_us);
       feedback_dirty = true;
     } else if (pending_action_[slot] != 0 &&
                pending_step_[slot] != 0 && elapsed(now_us, pending_step_[slot])) {
       pending_step_[slot] = now_us + kPendingStepUs;
       feedback_phase_[slot] = static_cast<uint8_t>((feedback_phase_[slot] + 1U) % 8U);
-      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+      renderTileAt(board, slot, committed_generation_.tiles[slot], feedback_[slot], now_us);
       feedback_dirty = true;
     } else if (pending_action_[slot] == 0 && feedback_until_[slot] != 0 &&
                elapsed(now_us, feedback_until_[slot])) {
@@ -716,7 +729,7 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       feedback_[slot] = (committed_generation_.tiles[slot].binding.occupied &&
                          strcmp(committed_generation_.source_status, "current") == 0)
                             ? Feedback::Ready : Feedback::Disabled;
-      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+      renderTileAt(board, slot, committed_generation_.tiles[slot], feedback_[slot], now_us);
       feedback_dirty = true;
     }
   }
@@ -730,7 +743,7 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
     // renderer moves only presentation accents; identity and state remain
     // committed and stable.
     for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
-      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+      renderTileAt(board, slot, committed_generation_.tiles[slot], feedback_[slot], now_us);
     }
     return;
   }
@@ -747,7 +760,7 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
     const bool ambient_dirty = (ambient_mask & static_cast<uint8_t>(1U << slot)) != 0;
     if (feedback_active) continue;
     if (blocked_dirty || (ambient_dirty && !feedback_active)) {
-      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+      renderTileAt(board, slot, committed_generation_.tiles[slot], feedback_[slot], now_us);
     }
   }
 }

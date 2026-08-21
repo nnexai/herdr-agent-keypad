@@ -183,6 +183,7 @@ class SignalEdgeTheme final : public ThemeRenderer {
     } else {
       drawRail(sprite, tile.state, content, motion_active, phase,
                state.blocked_phase);
+      drawTitleRows(sprite, tile.title, fence != nullptr ? kSettled : kPrimary);
       sprite.drawString(tile.discriminator, 15, 32);
       drawGlyph(sprite, tile.state, content);
       sprite.setTextColor(content, kBackground);

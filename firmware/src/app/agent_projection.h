@@ -170,11 +170,18 @@ class AgentProjection final {
   TileState parseState(const char* state) const;
   void disableActive(BoardAdapter* board);
   bool renderTile(BoardAdapter& board, uint8_t slot, const Tile& tile, Feedback feedback) const;
+  bool renderTileAt(BoardAdapter& board, uint8_t slot, const Tile& tile,
+                    Feedback feedback, uint32_t now_us) const;
   bool renderTile(BoardAdapter& board, ThemeRenderer& theme, uint8_t slot,
                   const Tile& tile, Feedback feedback) const;
+  bool renderTileAt(BoardAdapter& board, ThemeRenderer& theme, uint8_t slot,
+                    const Tile& tile, Feedback feedback, uint32_t now_us) const;
   bool renderTile(BoardAdapter& board, ThemeRenderer& theme,
                   const Generation& generation, uint8_t slot,
                   const Tile& tile, Feedback feedback) const;
+  bool renderTileAt(BoardAdapter& board, ThemeRenderer& theme,
+                    const Generation& generation, uint8_t slot,
+                    const Tile& tile, Feedback feedback, uint32_t now_us) const;
   bool renderSync(BoardAdapter& board) const;
 
   Generation staged_{};
