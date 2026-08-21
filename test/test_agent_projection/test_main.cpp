@@ -2970,6 +2970,43 @@ void test_led_grammar_rest_truth_and_segment_bounds_across_phases() {
   }
 }
 
+void test_menu_open_keeps_focus_feedback_clock_and_l13_decoration() {
+  RenderState state;
+  state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
+  state.slots[0].occupied = true;
+  state.slots[0].state = TileState::Working;
+  state.slots[0].feedback = TileFeedback::Pending;
+  state.semantic_event_epoch = 7;
+  state.semantic_event_started_us = 1000;
+
+  LedEvents menu;
+  menu.menu_open = true;
+  menu.semantic_event = LedSemanticEvent::MenuOpen;
+  menu.semantic_epoch = 99;
+  menu.semantic_start_us = 900000;
+
+  LedEngine pending_engine;
+  BoardAdapter board;
+  pending_engine.setGrammar(meterLampsGrammar());
+  pending_engine.render(state, menu, 1000, board);
+  TEST_ASSERT_EQUAL_UINT8(45, pending_engine.resolved(1).brightness);
+  TEST_ASSERT_TRUE(resolvedOn(pending_engine, 13));
+  pending_engine.render(state, menu, 101000, board);
+  TEST_ASSERT_EQUAL_UINT8(0, pending_engine.resolved(1).brightness);
+  TEST_ASSERT_TRUE(resolvedOn(pending_engine, 13));
+
+  state.slots[0].feedback = TileFeedback::Success;
+  LedEngine success_engine;
+  success_engine.setGrammar(railEchoGrammar());
+  success_engine.render(state, menu, 1000, board);
+  TEST_ASSERT_EQUAL_UINT8(45, success_engine.resolved(1).brightness);
+  TEST_ASSERT_TRUE(resolvedOn(success_engine, 13));
+  success_engine.render(state, menu, 101000, board);
+  TEST_ASSERT_EQUAL_UINT8(0, success_engine.resolved(1).brightness);
+  TEST_ASSERT_TRUE(resolvedOn(success_engine, 13));
+}
+
 void test_led_semantic_events_align_grammar_starts_and_fences() {
   RenderState state;
   state.source_status = "current";
@@ -3026,6 +3063,7 @@ void test_led_semantic_events_align_grammar_starts_and_fences() {
 
 int runAllTests() {
   UNITY_BEGIN();
+  RUN_TEST(test_menu_open_keeps_focus_feedback_clock_and_l13_decoration);
   RUN_TEST(test_led_grammar_rest_truth_and_segment_bounds_across_phases);
   RUN_TEST(test_led_semantic_events_align_grammar_starts_and_fences);
   RUN_TEST(test_compose_then_flush_commits_generation);

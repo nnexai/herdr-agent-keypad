@@ -102,11 +102,16 @@ void LedEngine::apply(BoardAdapter& board) {
 void LedEngine::render(const RenderState& state, const LedEvents& events,
                        uint32_t now_us, BoardAdapter& board) {
   LedEvents effective = events;
-  if (effective.semantic_epoch == 0) {
+  const LedSemanticEvent resolved_event = ledSemanticEvent(state, events);
+  const bool use_state_clock =
+      events.semantic_event != resolved_event;
+  effective.semantic_event = resolved_event;
+  if (use_state_clock) {
     effective.semantic_epoch = state.semantic_event_epoch;
-  }
-  if (effective.semantic_event == LedSemanticEvent::None) {
-    effective.semantic_event = ledSemanticEvent(state, effective);
+    effective.semantic_start_us = state.semantic_event_started_us;
+    effective.semantic_phase = state.semantic_event_phase;
+  } else {
+    effective.semantic_epoch = ledSemanticEpoch(state, events);
   }
   if (effective.semantic_event != LedSemanticEvent::None) {
     if (effective.semantic_start_us != 0) {
@@ -118,8 +123,8 @@ void LedEngine::render(const RenderState& state, const LedEvents& events,
                                      : static_cast<uint8_t>(
                                            (static_cast<uint32_t>(signed_elapsed) /
                                             kSemanticPhaseUs) & 0x07U);
-    } else if (events.semantic_event == LedSemanticEvent::None) {
-      effective.semantic_phase = state.semantic_event_phase;
+    } else if (use_state_clock || events.semantic_event == LedSemanticEvent::None) {
+      effective.semantic_phase = ledSemanticPhase(state, events);
     }
   }
   LedSegment segments[kLedGrammarMaxSegments]{};

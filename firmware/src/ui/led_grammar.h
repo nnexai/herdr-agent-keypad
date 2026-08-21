@@ -47,17 +47,28 @@ struct LedEvents {
   uint8_t semantic_phase = 0;
 };
 
+inline LedSemanticEvent ledSemanticEvent(const RenderState& state,
+                                         const LedEvents& events);
 inline uint32_t ledSemanticEpoch(const RenderState& state,
                                  const LedEvents& events) {
-  return events.semantic_epoch != 0 ? events.semantic_epoch
-                                    : state.semantic_event_epoch;
+  const LedSemanticEvent resolved = ledSemanticEvent(state, events);
+  if (events.semantic_epoch != 0 &&
+      resolved == events.semantic_event) {
+    return events.semantic_epoch;
+  }
+  return state.semantic_event_epoch;
 }
 
 inline LedSemanticEvent ledSemanticEvent(const RenderState& state,
                                          const LedEvents& events) {
-  if (state.syncing) return LedSemanticEvent::Sync;
-  if (events.semantic_event != LedSemanticEvent::None) {
-    return events.semantic_event;
+  if (state.syncing || events.semantic_event == LedSemanticEvent::Sync) {
+    return LedSemanticEvent::Sync;
+  }
+  // Health fences are authoritative. Feedback still remains visible as a
+  // bounded local cue, but cannot replace the fence's semantic clock.
+  if (ledPresentationUnhealthy(state) ||
+      events.semantic_event == LedSemanticEvent::Health) {
+    return LedSemanticEvent::Health;
   }
   for (const RenderState::Slot& slot : state.slots) {
     if (slot.press_impulse) return LedSemanticEvent::Press;
@@ -73,18 +84,25 @@ inline LedSemanticEvent ledSemanticEvent(const RenderState& state,
       default: break;
     }
   }
-  if (ledPresentationUnhealthy(state)) return LedSemanticEvent::Health;
-  for (const RenderState::Slot& slot : state.slots) {
-    if (slot.state == TileState::Blocked) return LedSemanticEvent::Blocked;
+  // MenuOpen is decoration only. It can provide an epoch when no higher
+  // priority semantic event is active, while menu_open independently drives
+  // LED-13 in each grammar.
+  if (events.semantic_event != LedSemanticEvent::None &&
+      events.semantic_event != LedSemanticEvent::MenuOpen) {
+    return events.semantic_event;
   }
-  if (events.menu_open) return LedSemanticEvent::MenuOpen;
+  if (events.menu_open || events.semantic_event == LedSemanticEvent::MenuOpen) {
+    return LedSemanticEvent::MenuOpen;
+  }
   if (state.transition_active) return LedSemanticEvent::State;
   return LedSemanticEvent::None;
 }
+
 inline uint8_t ledSemanticPhase(const RenderState& state,
                                 const LedEvents& events) {
-  if (events.semantic_event != LedSemanticEvent::None ||
-      events.semantic_epoch != 0) {
+  const LedSemanticEvent resolved = ledSemanticEvent(state, events);
+  if (events.semantic_event != LedSemanticEvent::None &&
+      resolved == events.semantic_event) {
     return events.semantic_phase;
   }
   if (state.semantic_event_epoch != 0 ||
