@@ -537,86 +537,106 @@ void test_multiple_agent_keys_capture_without_waiting() {
 
 // --- Settings store ----------------------------------------------------------
 
-void test_settings_fresh_device_falls_back_without_write() {
-  SettingsStore store;
-  TEST_ASSERT_FALSE(store.load());
-  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::SignalEdge), static_cast<int>(store.theme()));
-  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::RailEcho), static_cast<int>(store.ledGrammar()));
+void test_settings_fresh_and_legacy_load_without_boot_write() {
+  SettingsStore fresh;
+  TEST_ASSERT_FALSE(fresh.load());
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::SignalEdge),
+                    static_cast<int>(fresh.theme()));
+  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::RailEcho),
+                    static_cast<int>(fresh.ledGrammar()));
+  TEST_ASSERT_EQUAL_UINT8(80, fresh.brightness());
+  TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
+
+  g_nvs["ver"] = SettingsStore::kLegacySchemaVersion;
+  g_nvs["theme"] = static_cast<uint8_t>(ThemeId::Beacon);
+  g_nvs["ledgram"] = static_cast<uint8_t>(LedGrammarId::FieldExtension);
+  SettingsStore legacy;
+  TEST_ASSERT_TRUE(legacy.load());
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon),
+                    static_cast<int>(legacy.theme()));
+  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::FieldExtension),
+                    static_cast<int>(legacy.ledGrammar()));
+  TEST_ASSERT_EQUAL_UINT8(80, legacy.brightness());
   TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
 }
 
-void test_settings_valid_roundtrip() {
+void test_settings_v2_roundtrip_and_bounded_brightness() {
   SettingsStore store;
-  TEST_ASSERT_TRUE(store.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension));
+  TEST_ASSERT_TRUE(
+      store.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension, 60));
+  TEST_ASSERT_EQUAL_UINT32(SettingsStore::kSchemaVersion, g_nvs["ver"]);
+  TEST_ASSERT_EQUAL_UINT32(4, g_nvs.size());
   SettingsStore reloaded;
   TEST_ASSERT_TRUE(reloaded.load());
-  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon), static_cast<int>(reloaded.theme()));
-  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::FieldExtension), static_cast<int>(reloaded.ledGrammar()));
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon),
+                    static_cast<int>(reloaded.theme()));
+  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::FieldExtension),
+                    static_cast<int>(reloaded.ledGrammar()));
+  TEST_ASSERT_EQUAL_UINT8(60, reloaded.brightness());
+
+  const uint32_t writes = g_nvs_write_count;
+  TEST_ASSERT_FALSE(
+      store.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension, 0));
+  TEST_ASSERT_FALSE(
+      store.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension, 55));
+  TEST_ASSERT_FALSE(store.confirm(static_cast<ThemeId>(9),
+                                  LedGrammarId::RailEcho, 80));
+  TEST_ASSERT_EQUAL_UINT32(writes, g_nvs_write_count);
 }
 
-void test_settings_corrupt_version_falls_back_without_write() {
-  SettingsStore store;
-  TEST_ASSERT_TRUE(store.confirm(ThemeId::Ledger, LedGrammarId::Exception));
+void test_settings_invalid_records_fall_back_without_write() {
   g_nvs["ver"] = 99;
-  g_nvs_write_count = 0;
-  SettingsStore reloaded;
-  TEST_ASSERT_FALSE(reloaded.load());
-  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::SignalEdge), static_cast<int>(reloaded.theme()));
-  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::RailEcho), static_cast<int>(reloaded.ledGrammar()));
+  g_nvs["theme"] = static_cast<uint8_t>(ThemeId::Ledger);
+  g_nvs["ledgram"] = static_cast<uint8_t>(LedGrammarId::Exception);
+  SettingsStore corrupt_version;
+  TEST_ASSERT_FALSE(corrupt_version.load());
   TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
-  TEST_ASSERT_EQUAL_UINT32(99, g_nvs["ver"]);  // no write-back
-}
 
-void test_settings_out_of_range_enum_falls_back_without_write() {
-  SettingsStore store;
-  TEST_ASSERT_TRUE(store.confirm(ThemeId::Instrument, LedGrammarId::MeterLamps));
-  g_nvs["theme"] = 7;
-  g_nvs_write_count = 0;
-  SettingsStore reloaded;
-  TEST_ASSERT_FALSE(reloaded.load());
-  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::SignalEdge), static_cast<int>(reloaded.theme()));
+  g_nvs["ver"] = SettingsStore::kSchemaVersion;
+  g_nvs["bright"] = 0;
+  SettingsStore zero_brightness;
+  TEST_ASSERT_FALSE(zero_brightness.load());
+  TEST_ASSERT_EQUAL_UINT8(80, zero_brightness.brightness());
   TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
-  TEST_ASSERT_EQUAL_UINT32(7, g_nvs["theme"]);  // no write-back
-}
 
-void test_settings_confirm_rejects_out_of_range() {
-  SettingsStore store;
-  TEST_ASSERT_FALSE(store.confirm(static_cast<ThemeId>(9), LedGrammarId::RailEcho));
+  g_nvs["ver"] = 0;
+  g_nvs["theme"] = static_cast<uint8_t>(ThemeId::Instrument);
+  g_nvs["ledgram"] = static_cast<uint8_t>(LedGrammarId::MeterLamps);
+  g_nvs["bright"] = 100;
+  SettingsStore interrupted;
+  TEST_ASSERT_FALSE(interrupted.load());
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::SignalEdge),
+                    static_cast<int>(interrupted.theme()));
   TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
 }
 
-void test_settings_failed_replacement_never_loads_hybrid_pair() {
-  for (int32_t failure = 0; failure < 4; ++failure) {
+void test_settings_failed_replacement_restores_prior_record_and_active_values() {
+  for (int32_t failure = 0; failure < 5; ++failure) {
+    g_nvs.clear();
     g_nvs_fail_on_write = -1;
     g_nvs_write_attempt = 0;
-    SettingsStore initial;
-    TEST_ASSERT_TRUE(initial.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension));
+    SettingsStore store;
+    TEST_ASSERT_TRUE(
+        store.confirm(ThemeId::Beacon, LedGrammarId::FieldExtension, 60));
 
     g_nvs_fail_on_write = failure;
     g_nvs_write_attempt = 0;
-    SettingsStore replacement;
-    TEST_ASSERT_FALSE(replacement.confirm(ThemeId::Instrument, LedGrammarId::MeterLamps));
+    TEST_ASSERT_FALSE(
+        store.confirm(ThemeId::Instrument, LedGrammarId::MeterLamps, 100));
+    TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon),
+                      static_cast<int>(store.theme()));
+    TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::FieldExtension),
+                      static_cast<int>(store.ledGrammar()));
+    TEST_ASSERT_EQUAL_UINT8(60, store.brightness());
 
     SettingsStore reloaded;
-    if (failure == 0) {
-      TEST_ASSERT_TRUE(reloaded.load());
-      TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon), static_cast<int>(reloaded.theme()));
-      TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::FieldExtension), static_cast<int>(reloaded.ledGrammar()));
-    } else {
-      TEST_ASSERT_FALSE(reloaded.load());
-      TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::SignalEdge), static_cast<int>(reloaded.theme()));
-      TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::RailEcho), static_cast<int>(reloaded.ledGrammar()));
-    }
+    TEST_ASSERT_TRUE(reloaded.load());
+    TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon),
+                      static_cast<int>(reloaded.theme()));
+    TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::FieldExtension),
+                      static_cast<int>(reloaded.ledGrammar()));
+    TEST_ASSERT_EQUAL_UINT8(60, reloaded.brightness());
   }
-
-  g_nvs_fail_on_write = -1;
-  g_nvs_write_attempt = 0;
-  SettingsStore replacement;
-  TEST_ASSERT_TRUE(replacement.confirm(ThemeId::Instrument, LedGrammarId::MeterLamps));
-  SettingsStore reloaded;
-  TEST_ASSERT_TRUE(reloaded.load());
-  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Instrument), static_cast<int>(reloaded.theme()));
-  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::MeterLamps), static_cast<int>(reloaded.ledGrammar()));
 }
 
 // --- Plan 02: three more themes -------------------------------------------
@@ -1497,38 +1517,120 @@ void test_led_grammar_scene_masks() {
   }
 }
 
-void test_menu_controller_clamps_previews_and_persists_only_on_confirm() {
+void test_menu_controller_walks_six_clamped_rows_and_all_pages() {
   SettingsStore settings;
   settings.load();
   MenuController menu(settings);
   menu.resetFromStore();
-  TEST_ASSERT_TRUE(menu.click());
-  TEST_ASSERT_TRUE(menu.open());
-  TEST_ASSERT_EQUAL_UINT8(0, menu.state().cursor);
-  TEST_ASSERT_FALSE(menu.rotate(-1));
-  TEST_ASSERT_TRUE(menu.rotate(1));
-  TEST_ASSERT_EQUAL_UINT8(1, menu.state().cursor);
-  TEST_ASSERT_TRUE(menu.click());
-  TEST_ASSERT_TRUE(menu.editing());
-  TEST_ASSERT_TRUE(menu.rotate(1));
-  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::Exception), static_cast<int>(menu.activeGrammar()));
-  TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
-  TEST_ASSERT_TRUE(menu.click());
-  TEST_ASSERT_FALSE(menu.editing());
-  TEST_ASSERT_EQUAL_UINT32(4, g_nvs_write_count);
-  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::Exception), static_cast<int>(menu.storedGrammar()));
-  TEST_ASSERT_TRUE(menu.click());
+  TEST_ASSERT_TRUE(menu.click(100));
+  const uint8_t expected_viewports[] = {0, 0, 1, 2, 3, 3};
+  for (uint8_t cursor = 0; cursor < MenuController::kRootRowCount; ++cursor) {
+    TEST_ASSERT_EQUAL_UINT8(cursor, menu.state().cursor);
+    TEST_ASSERT_EQUAL_UINT8(expected_viewports[cursor],
+                            menu.state().viewport_start);
+    if (cursor + 1 < MenuController::kRootRowCount) {
+      TEST_ASSERT_TRUE(menu.rotate(1, 101 + cursor));
+    }
+  }
+  TEST_ASSERT_FALSE(menu.rotate(1, 200));
+  TEST_ASSERT_EQUAL_UINT8(5, menu.state().cursor);
+  TEST_ASSERT_TRUE(menu.click(201));
   TEST_ASSERT_FALSE(menu.open());
 
-  menu.click();
-  menu.rotate(1);
-  menu.click();
-  const uint32_t writes_before_revert = g_nvs_write_count;
-  menu.rotate(1);
+  menu.click(300);
+  TEST_ASSERT_TRUE(menu.click(301));
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Theme),
+                    static_cast<int>(menu.mode()));
+  TEST_ASSERT_FALSE(menu.rotate(-1, 302));
+  TEST_ASSERT_TRUE(menu.rotate(20, 303));
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Instrument),
+                    static_cast<int>(menu.activeTheme()));
+  TEST_ASSERT_FALSE(menu.rotate(1, 304));
+  TEST_ASSERT_TRUE(menu.click(305));
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Root),
+                    static_cast<int>(menu.mode()));
+
+  TEST_ASSERT_TRUE(menu.rotate(1, 400));
+  TEST_ASSERT_TRUE(menu.click(401));
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Leds),
+                    static_cast<int>(menu.mode()));
+  TEST_ASSERT_TRUE(menu.rotate(20, 402));
+  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::MeterLamps),
+                    static_cast<int>(menu.activeGrammar()));
+  TEST_ASSERT_TRUE(menu.click(403));
+
+  TEST_ASSERT_TRUE(menu.rotate(2, 500));
+  TEST_ASSERT_TRUE(menu.click(501));
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Health),
+                    static_cast<int>(menu.mode()));
+  const uint8_t cursor = menu.state().cursor;
+  TEST_ASSERT_FALSE(menu.rotate(1, 502));
+  TEST_ASSERT_EQUAL_UINT8(cursor, menu.state().cursor);
+  TEST_ASSERT_TRUE(menu.click(503));
+  TEST_ASSERT_EQUAL_UINT8(cursor, menu.state().cursor);
+  TEST_ASSERT_TRUE(menu.rotate(1, 504));
+  TEST_ASSERT_TRUE(menu.click(505));
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::About),
+                    static_cast<int>(menu.mode()));
+  TEST_ASSERT_TRUE(menu.click(506));
+  TEST_ASSERT_EQUAL_UINT8(4, menu.state().cursor);
+}
+
+void test_menu_brightness_previews_confirms_and_reverts_locally() {
+  SettingsStore settings;
+  settings.load();
+  MenuController menu(settings);
+  menu.resetFromStore();
+  menu.click(0);
+  menu.rotate(2, 1);
+  menu.click(2);
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Brightness),
+                    static_cast<int>(menu.mode()));
+  TEST_ASSERT_TRUE(menu.rotate(-20, 3));
+  TEST_ASSERT_EQUAL_UINT8(10, menu.activeBrightness());
+  uint8_t brightness = 0;
+  TEST_ASSERT_TRUE(menu.takeBrightnessIntent(brightness));
+  TEST_ASSERT_EQUAL_UINT8(10, brightness);
+  TEST_ASSERT_FALSE(menu.rotate(-1, 4));
+  TEST_ASSERT_FALSE(menu.takeBrightnessIntent(brightness));
+  const uint32_t writes_before_cancel = g_nvs_write_count;
   TEST_ASSERT_TRUE(menu.cancel());
+  TEST_ASSERT_TRUE(menu.takeBrightnessIntent(brightness));
+  TEST_ASSERT_EQUAL_UINT8(80, brightness);
+  TEST_ASSERT_EQUAL_UINT32(writes_before_cancel, g_nvs_write_count);
+
+  menu.click(10);
+  menu.rotate(2, 11);
+  menu.click(12);
+  TEST_ASSERT_TRUE(menu.rotate(2, 13));
+  TEST_ASSERT_TRUE(menu.takeBrightnessIntent(brightness));
+  TEST_ASSERT_EQUAL_UINT8(100, brightness);
+  TEST_ASSERT_TRUE(menu.click(14));
+  TEST_ASSERT_EQUAL_UINT8(100, menu.storedBrightness());
+  TEST_ASSERT_EQUAL_UINT32(SettingsStore::kSchemaVersion, g_nvs["ver"]);
+  TEST_ASSERT_FALSE(menu.takeBrightnessIntent(brightness));
+}
+
+void test_menu_encoder_only_timeout_is_wrap_safe_and_reverts_preview() {
+  SettingsStore settings;
+  settings.load();
+  MenuController menu(settings);
+  menu.resetFromStore();
+  const uint32_t opened = 0xFFF00000U;
+  menu.click(opened);
+  menu.rotate(2, opened + 10U);
+  menu.click(opened + 20U);
+  menu.rotate(-1, opened + 30U);
+  uint8_t brightness = 0;
+  TEST_ASSERT_TRUE(menu.takeBrightnessIntent(brightness));
+  TEST_ASSERT_FALSE(
+      menu.expire(opened + 30U + MenuController::kInactivityUs - 1U));
+  TEST_ASSERT_TRUE(
+      menu.expire(opened + 30U + MenuController::kInactivityUs));
   TEST_ASSERT_FALSE(menu.open());
-  TEST_ASSERT_EQUAL_UINT32(writes_before_revert, g_nvs_write_count);
-  TEST_ASSERT_EQUAL(static_cast<int>(LedGrammarId::Exception), static_cast<int>(menu.storedGrammar()));
+  TEST_ASSERT_TRUE(menu.takeBrightnessIntent(brightness));
+  TEST_ASSERT_EQUAL_UINT8(80, brightness);
+  TEST_ASSERT_EQUAL_UINT32(0, g_nvs_write_count);
 }
 
 void test_each_theme_composes_menu_vocabulary() {
@@ -1588,13 +1690,11 @@ int runAllTests() {
   RUN_TEST(test_terminal_feedback_does_not_block_next_press);
   RUN_TEST(test_pending_press_is_superseded_by_new_press);
   RUN_TEST(test_multiple_agent_keys_capture_without_waiting);
-  RUN_TEST(test_settings_fresh_device_falls_back_without_write);
-  RUN_TEST(test_settings_valid_roundtrip);
-  RUN_TEST(test_settings_corrupt_version_falls_back_without_write);
-  RUN_TEST(test_settings_out_of_range_enum_falls_back_without_write);
-  RUN_TEST(test_settings_confirm_rejects_out_of_range);
+  RUN_TEST(test_settings_fresh_and_legacy_load_without_boot_write);
+  RUN_TEST(test_settings_v2_roundtrip_and_bounded_brightness);
+  RUN_TEST(test_settings_invalid_records_fall_back_without_write);
   RUN_TEST(test_failed_theme_redraw_enters_sync_and_disables_bindings);
-  RUN_TEST(test_settings_failed_replacement_never_loads_hybrid_pair);
+  RUN_TEST(test_settings_failed_replacement_restores_prior_record_and_active_values);
   RUN_TEST(test_ledger_full_vocabulary);
   RUN_TEST(test_beacon_full_vocabulary);
   RUN_TEST(test_instrument_full_vocabulary);
@@ -1624,7 +1724,9 @@ int runAllTests() {
   RUN_TEST(test_codex_failures_use_health_overlays_and_focus_preempts_them);
   RUN_TEST(test_menu_all_off_and_grammar_switch_keep_led_engine_precedence);
   RUN_TEST(test_blocked_motion_recomposes_blocked_panel_only);
-  RUN_TEST(test_menu_controller_clamps_previews_and_persists_only_on_confirm);
+  RUN_TEST(test_menu_controller_walks_six_clamped_rows_and_all_pages);
+  RUN_TEST(test_menu_brightness_previews_confirms_and_reverts_locally);
+  RUN_TEST(test_menu_encoder_only_timeout_is_wrap_safe_and_reverts_preview);
   RUN_TEST(test_each_theme_composes_menu_vocabulary);
   RUN_TEST(test_menu_redraw_is_panel4_only);
   return UNITY_END();

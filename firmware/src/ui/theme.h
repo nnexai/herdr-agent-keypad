@@ -5,16 +5,30 @@
 
 #include "render_state.h"
 
-// Panel-4 encoder menu state. The controller owns transitions and persistence;
+// Panel-4 menu pages. The controller owns transitions and persistence;
 // themes only render this bounded view.
+enum class MenuPage : uint8_t {
+  Root = 0,
+  Theme,
+  Leds,
+  Brightness,
+  Health,
+  About,
+};
+
+// Complete bounded menu state passed to the active theme.
 struct MenuState {
   bool open = false;
   uint8_t cursor = 0;
+  uint8_t viewport_start = 0;
   bool editing = false;
+  MenuPage page = MenuPage::Root;
   ThemeId theme_candidate = ThemeId::SignalEdge;
   LedGrammarId grammar_candidate = LedGrammarId::RailEcho;
+  uint8_t brightness_candidate = 80;
   ThemeId theme_stored = ThemeId::SignalEdge;
   LedGrammarId grammar_stored = LedGrammarId::RailEcho;
+  uint8_t brightness_stored = 80;
 };
 
 // A display language. Every implementation composes complete frames into the

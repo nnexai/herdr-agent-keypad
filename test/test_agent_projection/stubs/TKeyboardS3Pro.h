@@ -128,6 +128,13 @@ class Preferences {
     ++g_nvs_write_count;
     return sizeof(uint8_t);
   }
+  bool remove(const char* key) {
+    if (!open_ || read_only_) return false;
+    g_nvs.erase(key);
+    ++g_nvs_write_count;
+    return true;
+  }
+
 
  private:
   bool open_ = false;
