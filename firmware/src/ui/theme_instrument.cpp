@@ -178,11 +178,13 @@ class InstrumentTheme final : public ThemeRenderer {
     const uint16_t content = fence != nullptr ? kSettled : base.color;
     const bool motion_active = fence == nullptr && !state.syncing &&
                                (state.transition_active || state.ambient_phase != 0);
-    const uint8_t phase = motion_active
-                              ? (state.transition_active
-                                     ? static_cast<uint8_t>(state.transition_phase * 2U)
-                                     : state.ambient_phase) & 7U
-                              : 0;
+    const uint8_t phase = tile.feedback == TileFeedback::Pending
+                              ? static_cast<uint8_t>(tile.feedback_phase & 7U)
+                              : (motion_active
+                                     ? (state.transition_active
+                                            ? static_cast<uint8_t>(state.transition_phase * 2U)
+                                            : state.ambient_phase) & 7U
+                                     : 0);
     char row[18] = {};
 
     // Health channel: all four bezel ticks red on every panel simultaneously.

@@ -170,10 +170,12 @@ class SignalEdgeTheme final : public ThemeRenderer {
     const uint16_t content = fence != nullptr ? kSettled : base.color;
     const bool motion_active = fence == nullptr && !state.syncing &&
                                (state.transition_active || state.ambient_phase != 0);
-    const uint8_t phase = motion_active
-                              ? (state.transition_active ? state.transition_phase
-                                                         : state.ambient_phase) % 4U
-                              : 0;
+    const uint8_t phase = tile.feedback == TileFeedback::Pending
+                              ? static_cast<uint8_t>(tile.feedback_phase % 4U)
+                              : (motion_active
+                                     ? (state.transition_active ? state.transition_phase
+                                                                : state.ambient_phase) % 4U
+                                     : 0);
 
     if (tile.state == TileState::Empty) {
       drawDashedRect(sprite, 4, 4, 120, 120, kEmptyEdge);

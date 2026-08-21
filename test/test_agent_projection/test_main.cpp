@@ -1457,6 +1457,33 @@ void test_working_symbols_are_filled_in_every_theme() {
   }
 }
 
+void test_pending_feedback_phase_changes_all_theme_render_seams_when_ambient_static() {
+  ThemeRenderer* themes[] = {
+      &signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
+  state.slots[0].occupied = true;
+  state.slots[0].title = "Agent";
+  state.slots[0].discriminator = "repo";
+  state.slots[0].state = TileState::Working;
+  state.slots[0].feedback = TileFeedback::Pending;
+  state.ambient_phase = 0;
+  state.transition_active = false;
+  for (ThemeRenderer* theme : themes) {
+    state.slots[0].feedback_phase = 0;
+    resetLog();
+    theme->composeTile(sprite, 0, state);
+    const std::vector<std::string> first = g_render_log;
+    state.slots[0].feedback_phase = 1;
+    resetLog();
+    theme->composeTile(sprite, 0, state);
+    TEST_ASSERT_TRUE_MESSAGE(first != g_render_log,
+                             "pending feedback phase did not reach theme render seam");
+  }
+}
+
 void test_beacon_pending_uses_large_animated_takeover() {
   LGFX_Sprite sprite;
   RenderState state;
@@ -3117,6 +3144,7 @@ int runAllTests() {
   RUN_TEST(test_usage_placeholders_follow_theme_geometry);
   RUN_TEST(test_working_symbols_are_filled_in_every_theme);
   RUN_TEST(test_beacon_pending_uses_large_animated_takeover);
+  RUN_TEST(test_pending_feedback_phase_changes_all_theme_render_seams_when_ambient_static);
   RUN_TEST(test_beacon_and_instrument_phase_motion_is_distinct_and_semantically_fixed);
   RUN_TEST(test_beacon_and_instrument_fences_empty_and_codex_are_phase_static);
   RUN_TEST(test_blocked_pulse_cadence_and_phase);
