@@ -17,6 +17,8 @@ class MenuController final {
     About,
   };
   static constexpr uint32_t kInactivityUs = 30000000U;
+  static constexpr uint32_t kMenuOpenCloseDurationUs = 120000U;
+  static constexpr uint32_t kMenuSlideDurationUs = 200000U;
   static constexpr uint8_t kRootRowCount = 6;
 
   explicit MenuController(SettingsStore& settings) : settings_(settings) {}
@@ -43,14 +45,17 @@ class MenuController final {
   LedGrammarId storedGrammar() const { return state_.grammar_stored; }
   uint8_t storedBrightness() const { return state_.brightness_stored; }
   uint32_t lastEncoderActivityUs() const { return last_encoder_activity_us_; }
-
  private:
+
   void markDirty() { dirty_ = true; }
   void noteEncoderActivity(uint32_t now_us);
+  void startPresentation(MenuPresentationCause cause, int8_t direction,
+                         uint32_t now_us);
   void updateViewport();
-  void close();
-  void enter(MenuPage page, Mode mode);
-  bool confirmValue();
+  void close(uint32_t now_us, MenuPresentationCause cause);
+  void enter(MenuPage page, Mode mode, uint32_t now_us,
+             MenuPresentationCause cause);
+  bool confirmValue(uint32_t now_us);
   void emitBrightness(uint8_t brightness);
 
   SettingsStore& settings_;

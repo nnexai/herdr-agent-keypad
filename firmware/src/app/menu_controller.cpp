@@ -26,6 +26,19 @@ void MenuController::resetFromStore() {
 void MenuController::noteEncoderActivity(uint32_t now_us) {
   last_encoder_activity_us_ = now_us;
 }
+void MenuController::startPresentation(MenuPresentationCause cause,
+                                        int8_t direction, uint32_t now_us) {
+  state_.presentation_cause = cause;
+  state_.presentation_direction = direction > 0 ? 1 : direction < 0 ? -1 : 0;
+  state_.presentation_started_us = now_us;
+  state_.presentation_duration_us =
+      (cause == MenuPresentationCause::Navigate ||
+       cause == MenuPresentationCause::Brightness)
+          ? kMenuSlideDurationUs
+          : kMenuOpenCloseDurationUs;
+  state_.presentation_progress = 0;
+}
+
 
 void MenuController::updateViewport() {
   const uint8_t centered = state_.cursor > 0 ? state_.cursor - 1 : 0;
@@ -37,7 +50,8 @@ void MenuController::emitBrightness(uint8_t brightness) {
   brightness_intent_pending_ = true;
 }
 
-void MenuController::close() {
+void MenuController::close(uint32_t now_us, MenuPresentationCause cause) {
+  // Restore volatile candidates before publishing the close presentation.
   if (state_.brightness_candidate != state_.brightness_stored) {
     emitBrightness(state_.brightness_stored);
   }
@@ -48,17 +62,20 @@ void MenuController::close() {
   state_.theme_candidate = state_.theme_stored;
   state_.grammar_candidate = state_.grammar_stored;
   state_.brightness_candidate = state_.brightness_stored;
+  startPresentation(cause, -1, now_us);
   markDirty();
 }
 
-void MenuController::enter(MenuPage page, Mode mode) {
+void MenuController::enter(MenuPage page, Mode mode, uint32_t now_us,
+                            MenuPresentationCause cause) {
   mode_ = mode;
   state_.page = page;
   state_.editing = editing();
+  startPresentation(cause, 1, now_us);
   markDirty();
 }
 
-bool MenuController::confirmValue() {
+bool MenuController::confirmValue(uint32_t now_us) {
   if (!settings_.confirm(state_.theme_candidate, state_.grammar_candidate,
                          state_.brightness_candidate)) {
     return false;
@@ -69,9 +86,11 @@ bool MenuController::confirmValue() {
   mode_ = Mode::Root;
   state_.page = MenuPage::Root;
   state_.editing = false;
+  startPresentation(MenuPresentationCause::Confirm, -1, now_us);
   markDirty();
   return true;
 }
+
 
 bool MenuController::click(uint32_t now_us) {
   noteEncoderActivity(now_us);
@@ -85,35 +104,37 @@ bool MenuController::click(uint32_t now_us) {
     state_.theme_candidate = state_.theme_stored;
     state_.grammar_candidate = state_.grammar_stored;
     state_.brightness_candidate = state_.brightness_stored;
+    startPresentation(MenuPresentationCause::Open, 0, now_us);
     markDirty();
     return true;
   }
   if (mode_ == Mode::Theme || mode_ == Mode::Leds ||
       mode_ == Mode::Brightness) {
-    return confirmValue();
+    return confirmValue(now_us);
   }
   if (mode_ == Mode::Health || mode_ == Mode::About) {
-    enter(MenuPage::Root, Mode::Root);
+    enter(MenuPage::Root, Mode::Root, now_us, MenuPresentationCause::Detail);
     return true;
   }
   switch (state_.cursor) {
     case 0:
-      enter(MenuPage::Theme, Mode::Theme);
+      enter(MenuPage::Theme, Mode::Theme, now_us, MenuPresentationCause::Detail);
       return true;
     case 1:
-      enter(MenuPage::Leds, Mode::Leds);
+      enter(MenuPage::Leds, Mode::Leds, now_us, MenuPresentationCause::Detail);
       return true;
     case 2:
-      enter(MenuPage::Brightness, Mode::Brightness);
+      enter(MenuPage::Brightness, Mode::Brightness, now_us,
+            MenuPresentationCause::Brightness);
       return true;
     case 3:
-      enter(MenuPage::Health, Mode::Health);
+      enter(MenuPage::Health, Mode::Health, now_us, MenuPresentationCause::Detail);
       return true;
     case 4:
-      enter(MenuPage::About, Mode::About);
+      enter(MenuPage::About, Mode::About, now_us, MenuPresentationCause::Detail);
       return true;
     case 5:
-      close();
+      close(now_us, MenuPresentationCause::Close);
       return true;
     default:
       return false;
@@ -123,12 +144,15 @@ bool MenuController::click(uint32_t now_us) {
 bool MenuController::rotate(long delta, uint32_t now_us) {
   if (mode_ == Mode::Closed || delta == 0) return false;
   noteEncoderActivity(now_us);
+  const int8_t direction = delta > 0 ? 1 : -1;
   if (mode_ == Mode::Root) {
     const uint8_t next = clampValue(static_cast<long>(state_.cursor) + delta,
                                     0, kRootRowCount - 1);
     if (next == state_.cursor) return false;
+    const int8_t direction = next > state_.cursor ? 1 : -1;
     state_.cursor = next;
     updateViewport();
+    startPresentation(MenuPresentationCause::Navigate, direction, now_us);
     markDirty();
     return true;
   }
@@ -153,13 +177,16 @@ bool MenuController::rotate(long delta, uint32_t now_us) {
     state_.brightness_candidate = next;
     emitBrightness(next);
   }
+  startPresentation(mode_ == Mode::Brightness
+                        ? MenuPresentationCause::Brightness
+                        : MenuPresentationCause::Navigate,
+                    direction, now_us);
   markDirty();
   return true;
 }
-
 bool MenuController::cancel() {
   if (mode_ == Mode::Closed) return false;
-  close();
+  close(last_encoder_activity_us_, MenuPresentationCause::Cancel);
   return true;
 }
 
@@ -169,7 +196,7 @@ bool MenuController::expire(uint32_t now_us) {
           kInactivityUs) {
     return false;
   }
-  close();
+  close(now_us, MenuPresentationCause::Timeout);
   return true;
 }
 

@@ -16,6 +16,19 @@ enum class MenuPage : uint8_t {
   About,
 };
 
+enum class MenuPresentationCause : uint8_t {
+  None = 0,
+  Open,
+  Navigate,
+  Detail,
+  Brightness,
+  Confirm,
+  Close,
+  Cancel,
+  Timeout,
+};
+
+
 // Complete bounded menu state passed to the active theme.
 struct MenuState {
   bool open = false;
@@ -25,6 +38,12 @@ struct MenuState {
   MenuPage page = MenuPage::Root;
   ThemeId theme_candidate = ThemeId::SignalEdge;
   LedGrammarId grammar_candidate = LedGrammarId::RailEcho;
+  MenuPresentationCause presentation_cause =
+      MenuPresentationCause::None;
+  int8_t presentation_direction = 0;
+  uint32_t presentation_started_us = 0;
+  uint32_t presentation_duration_us = 0;
+  uint8_t presentation_progress = 0;
   uint8_t brightness_candidate = 80;
   ThemeId theme_stored = ThemeId::SignalEdge;
   LedGrammarId grammar_stored = LedGrammarId::RailEcho;
