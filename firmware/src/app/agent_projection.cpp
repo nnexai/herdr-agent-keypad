@@ -517,6 +517,13 @@ void AgentProjection::beginSemanticEvent(uint32_t now_us) {
   semantic_event_started_us_ = now_us != 0 ? now_us : 1;
 }
 
+void AgentProjection::beginFocusSemanticEvent(uint8_t slot, uint32_t now_us) {
+  if (slot >= kSlotCount) return;
+  ++focus_event_epoch_[slot];
+  if (focus_event_epoch_[slot] == 0) focus_event_epoch_[slot] = 1;
+  focus_event_started_us_[slot] = now_us != 0 ? now_us : 1;
+}
+
 void AgentProjection::disableActive(BoardAdapter* board) {
   committed_ = false;
   syncing_ = true;
@@ -688,6 +695,10 @@ bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
   out.age = tile.age;
   out.state = tile.state;
   out.feedback_phase = feedback_phase_[slot];
+  out.semantic_event_epoch = focus_event_epoch_[slot];
+  out.semantic_event_started_us = focus_event_started_us_[slot];
+  out.semantic_event_phase =
+      semanticEventPhase(now_us, focus_event_started_us_[slot]);
   out.press_impulse = press_impulse_[slot];
   state.codex.source_state = strcmp(generation.codex_source_state, "current") == 0 ? CodexSourceState::Current :
                              strcmp(generation.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
@@ -734,6 +745,7 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       press_impulse_[slot] = false;
       feedback_phase_[slot] = 0;
       feedback_[slot] = Feedback::Uncertain;
+      beginFocusSemanticEvent(slot, now_us);
       beginSemanticEvent(now_us);
       feedback_until_[slot] = now_us + kFeedbackHoldUs;
       renderTileAt(board, slot, committed_generation_.tiles[slot], feedback_[slot], now_us);
@@ -890,11 +902,15 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     RenderState::Slot& output = state.slots[slot];
     const Tile& tile = committed_generation_.tiles[slot];
-    output.occupied = tile.binding.occupied;
     output.title = tile.title;
     output.discriminator = tile.discriminator;
     output.since = tile.since;
     output.age = tile.age;
+    output.semantic_event_epoch = focus_event_epoch_[slot];
+    output.semantic_event_started_us = focus_event_started_us_[slot];
+    output.semantic_event_phase =
+        semanticEventPhase(now_us, focus_event_started_us_[slot]);
+    output.press_impulse = press_impulse_[slot];
     output.state = tile.state;
     output.feedback = feedback_[slot];
     output.feedback_phase = feedback_phase_[slot];
@@ -937,6 +953,7 @@ bool AgentProjection::captureFocusIntent(uint8_t key, const char* action_id, Jso
   pending_action_[key] = next_action_++;
   if (next_action_ == 0) next_action_ = 1;
   const uint32_t started = micros();
+  beginFocusSemanticEvent(key, started);
   beginSemanticEvent(started);
   pending_deadline_[key] = started + kPendingDeadlineUs;
   pending_step_[key] = started + kPendingStepUs;
@@ -982,6 +999,7 @@ bool AgentProjection::applyFocusResult(JsonObjectConst payload) {
   press_impulse_[slot] = false;
   feedback_phase_[slot] = 0;
   const uint32_t result_started_us = micros();
+  beginFocusSemanticEvent(slot, result_started_us);
   beginSemanticEvent(result_started_us);
   if (strcmp(outcome, "accepted") == 0 && payload["focused"].as<bool>()) feedback_[slot] = Feedback::Success;
   else if (strcmp(outcome, "stale_target") == 0) feedback_[slot] = Feedback::Stale;

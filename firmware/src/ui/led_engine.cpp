@@ -103,30 +103,20 @@ void LedEngine::render(const RenderState& state, const LedEvents& events,
                        uint32_t now_us, BoardAdapter& board) {
   LedEvents effective = events;
   const LedSemanticEvent resolved_event = ledSemanticEvent(state, events);
-  const bool menu_preempted =
-      resolved_event != events.semantic_event &&
-      (events.menu_open || events.semantic_event == LedSemanticEvent::MenuOpen);
   effective.semantic_event = resolved_event;
-  if (menu_preempted) {
-    effective.semantic_epoch = state.semantic_event_epoch;
-    effective.semantic_start_us = state.semantic_event_started_us;
-    effective.semantic_phase = state.semantic_event_phase;
-  } else {
-    effective.semantic_epoch = ledSemanticEpoch(state, events);
-  }
-  if (effective.semantic_event != LedSemanticEvent::None) {
-    if (effective.semantic_start_us != 0) {
-      constexpr uint32_t kSemanticPhaseUs = 100000UL;
-      const int32_t signed_elapsed =
-          static_cast<int32_t>(now_us - effective.semantic_start_us);
-      effective.semantic_phase = signed_elapsed < 0
-                                     ? 0
-                                     : static_cast<uint8_t>(
-                                           (static_cast<uint32_t>(signed_elapsed) /
-                                            kSemanticPhaseUs) & 0x07U);
-    } else if (menu_preempted || events.semantic_event == LedSemanticEvent::None) {
-      effective.semantic_phase = ledSemanticPhase(state, events);
-    }
+  effective.semantic_epoch = ledSemanticEpoch(state, events);
+  effective.semantic_start_us = ledSemanticStartUs(state, events);
+  effective.semantic_phase = ledSemanticPhase(state, events);
+  if (effective.semantic_event != LedSemanticEvent::None &&
+      effective.semantic_start_us != 0) {
+    constexpr uint32_t kSemanticPhaseUs = 100000UL;
+    const int32_t signed_elapsed =
+        static_cast<int32_t>(now_us - effective.semantic_start_us);
+    effective.semantic_phase = signed_elapsed < 0
+                                   ? 0
+                                   : static_cast<uint8_t>(
+                                         (static_cast<uint32_t>(signed_elapsed) /
+                                          kSemanticPhaseUs) & 0x07U);
   }
   LedSegment segments[kLedGrammarMaxSegments]{};
   const size_t count =

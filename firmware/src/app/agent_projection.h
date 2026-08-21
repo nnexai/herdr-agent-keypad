@@ -167,6 +167,7 @@ class AgentProjection final {
   bool copyOptional(char* destination, size_t capacity, JsonVariantConst value, bool& present) const;
   bool copyDisplay(char* destination, size_t capacity, const char* source, const char* fallback) const;
   void beginSemanticEvent(uint32_t now_us);
+  void beginFocusSemanticEvent(uint8_t slot, uint32_t now_us);
   bool matchingResult(JsonObjectConst payload, const Binding& binding, uint8_t slot) const;
   TileState parseState(const char* state) const;
   void disableActive(BoardAdapter* board);
@@ -205,5 +206,7 @@ class AgentProjection final {
   AnimationScheduler animation_{};
   uint32_t semantic_event_epoch_ = 0;
   uint32_t semantic_event_started_us_ = 0;
+  uint32_t focus_event_epoch_[kSlotCount]{};
+  uint32_t focus_event_started_us_[kSlotCount]{};
   bool transition_after_commit_ = false;
 };

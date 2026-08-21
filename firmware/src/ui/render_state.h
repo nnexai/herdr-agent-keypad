@@ -66,10 +66,15 @@ struct RenderState {
     TileFeedback feedback = TileFeedback::Disabled;
     // Phase of the bounded feedback cue, separate from ambient theme phase.
     uint8_t feedback_phase = 0;
+    // Semantic focus clock owned by this slot.  A concurrent result on
+    // another slot must never replace this event's epoch or start time.
+    uint32_t semantic_event_epoch = 0;
+    uint32_t semantic_event_started_us = 0;
+    uint8_t semantic_event_phase = 0;
     // One complete-frame physical press cue. Presentation only: it never
     // changes request authority or implies host acknowledgement.
     bool press_impulse = false;
-  };
+    };
   CodexRenderView codex;
   DiagnosticsRenderView diagnostics;
 
