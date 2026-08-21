@@ -260,11 +260,17 @@ Plans:
   4. Motion improves hierarchy and feedback without making state meaning depend on movement, color, timing, or animation completion; reduced/degraded/static modes remain truthful and visually coherent.
   5. All four themes and four LED grammars receive exact-device visual checks under normal refresh, rapid interaction, live data changes, stale/offline transitions, and reconnect/reset conditions, with measured evidence for the accepted quality bar.
 
-**Plans:** TBD
+**Plans:** 7 plans
 
 Plans:
 
-- [ ] 03.1-01: TBD during phase planning
+- [ ] 03.1-01-PLAN.md — Measure the exact-device baseline and lock cadence/resource budgets
+- [ ] 03.1-02-PLAN.md — Prove the shared scheduler and Signal Edge transition tracer
+- [ ] 03.1-03-PLAN.md — Complete distinct motion systems for all four themes
+- [ ] 03.1-04-PLAN.md — Deliver immediate focus feedback and truthful outcomes
+- [ ] 03.1-05-PLAN.md — Polish menu navigation and immediate brightness response
+- [ ] 03.1-06-PLAN.md — Synchronize all four LED grammars with semantic display events
+- [ ] 03.1-07-PLAN.md — Produce exhaustive logical and exact-device acceptance evidence
 
 **UI hint:** yes
 **Depends on:** Phase 03.1
