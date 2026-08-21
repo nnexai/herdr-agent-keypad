@@ -78,10 +78,8 @@ bool elapsed(uint32_t now, uint32_t deadline) {
 }
 uint8_t menuPresentationProgress(const MenuState& menu, uint32_t now_us,
                                  AnimationScheduler::Level level) {
-  if (level == AnimationScheduler::Level::Static ||
-      menu.presentation_duration_us == 0) {
-    return menu.presentation_progress;
-  }
+  if (level == AnimationScheduler::Level::Static) return 3;
+  if (menu.presentation_duration_us == 0) return 3;
   const int32_t signed_elapsed =
       static_cast<int32_t>(now_us - menu.presentation_started_us);
   if (signed_elapsed <= 0) return menu.presentation_progress;

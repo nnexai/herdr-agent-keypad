@@ -302,6 +302,13 @@ class InstrumentTheme final : public ThemeRenderer {
     sprite.fillScreen(kBackground);
     drawBezelTicks(sprite, kSettled);
     drawMenuPage(sprite, menu, MenuVisual::Instrument);
+    if (menu.presentation_progress < 3 &&
+        menu.presentation_cause != MenuPresentationCause::None) {
+      const int32_t cue_x =
+          16 + static_cast<int32_t>(menu.presentation_direction) *
+                   (3 - menu.presentation_progress) * 2;
+      sprite.drawLine(cue_x, 43, cue_x + 96, 43, kAccent);
+    }
   }
 
   void composeSync(LGFX_Sprite& sprite) override {

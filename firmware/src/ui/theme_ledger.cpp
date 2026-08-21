@@ -250,6 +250,13 @@ class LedgerTheme final : public ThemeRenderer {
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);
     drawMenuPage(sprite, menu, MenuVisual::Ledger);
+    if (menu.presentation_progress < 3 &&
+        menu.presentation_cause != MenuPresentationCause::None) {
+      const int32_t cue_y =
+          18 + static_cast<int32_t>(menu.presentation_direction) *
+                   (3 - menu.presentation_progress) * 2;
+      sprite.fillRect(4, cue_y, 120, 2, kAccent);
+    }
   }
 
   void composeSync(LGFX_Sprite& sprite) override {

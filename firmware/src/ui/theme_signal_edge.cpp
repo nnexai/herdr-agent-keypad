@@ -279,6 +279,13 @@ class SignalEdgeTheme final : public ThemeRenderer {
     sprite.fillScreen(kBackground);
     sprite.fillRect(0, 0, 8, 128, kAccent);
     drawMenuPage(sprite, menu, MenuVisual::SignalEdge);
+    if (menu.presentation_progress < 3 &&
+        menu.presentation_cause != MenuPresentationCause::None) {
+      const int32_t cue_x =
+          12 + static_cast<int32_t>(menu.presentation_direction) *
+                   (3 - menu.presentation_progress) * 2;
+      sprite.drawRect(cue_x, 20, 112, 24, kAccent);
+    }
   }
 
   void composeSync(LGFX_Sprite& sprite) override {

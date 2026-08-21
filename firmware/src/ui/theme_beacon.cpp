@@ -313,6 +313,13 @@ class BeaconTheme final : public ThemeRenderer {
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);
     drawMenuPage(sprite, menu, MenuVisual::Beacon);
+    if (menu.presentation_progress < 3 &&
+        menu.presentation_cause != MenuPresentationCause::None) {
+      const int32_t cue_x =
+          64 + static_cast<int32_t>(menu.presentation_direction) *
+                   (3 - menu.presentation_progress) * 2;
+      sprite.drawCircle(cue_x, 56, 8, kAccent);
+    }
   }
 
   void composeSync(LGFX_Sprite& sprite) override {

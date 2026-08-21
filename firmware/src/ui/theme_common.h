@@ -447,9 +447,12 @@ inline void drawMenuBrightness(LGFX_Sprite& sprite, const MenuState& menu,
                                MenuVisual visual) {
   drawMenuTitle(sprite, visual, "BRIGHTNESS");
   char value[5] = {};
-  snprintf(value, sizeof(value), "%u%%",
-           static_cast<unsigned>(menu.brightness_candidate));
-  sprite.setTextSize(2);
+  const uint8_t bounded =
+      menu.brightness_candidate < 10
+          ? 10
+          : (menu.brightness_candidate > 100 ? 100
+                                              : menu.brightness_candidate);
+  snprintf(value, sizeof(value), "%u%%", static_cast<unsigned>(bounded));
   sprite.setTextColor(kAccent, kBackground);
   const int32_t large_x =
       (128 - static_cast<int32_t>(strlen(value)) * 12) / 2;
