@@ -758,11 +758,13 @@ def validate_phase31_current_deployment_identity(
         ("device_id", "paired_device_id", "device identity"),
         ("firmware", "hello_firmware", "firmware"),
         ("protocol", "protocol_version", "protocol"),
-        ("device_boot_id", "boot_id", "boot"),
     )
     for hello_key, deployment_key, label in expected:
         if hello.get(hello_key) != deployment.get(deployment_key):
             raise ValueError(f"current hello {label} differs from deployment lock")
+    current_boot_id = hello.get("device_boot_id")
+    if not valid_publication_identity(current_boot_id):
+        raise ValueError("current hello boot identity is missing")
     if not valid_publication_identity(session_id):
         raise ValueError("current hello session identity is missing")
     if publication.get("binary_sha256") != deployment.get("firmware_sha256"):
@@ -771,9 +773,10 @@ def validate_phase31_current_deployment_identity(
     if not isinstance(publication_hello, Mapping):
         raise ValueError("fresh publication hello is missing")
     for hello_key, deployment_key, label in expected:
-        publication_key = "boot_id" if hello_key == "device_boot_id" else hello_key
-        if publication_hello.get(publication_key) != deployment.get(deployment_key):
+        if publication_hello.get(hello_key) != deployment.get(deployment_key):
             raise ValueError(f"fresh publication {label} differs from deployment lock")
+    if publication_hello.get("boot_id") != current_boot_id:
+        raise ValueError("fresh publication boot identity differs from current hello")
     if not valid_publication_identity(publication_hello.get("session_id")):
         raise ValueError("fresh publication session identity is missing")
     ack = publication.get("snapshot_ack")
@@ -786,10 +789,35 @@ def validate_phase31_current_deployment_identity(
     return {
         "deployment_id": deployment_id,
         "device_id": deployment["paired_device_id"],
-        "boot_id": deployment["boot_id"],
+        "boot_id": current_boot_id,
         "session_id": session_id,
         "publication_session_id": publication_hello["session_id"],
         "publication_snapshot_revision": ack["snapshot_revision"],
+    }
+
+
+def validate_phase31_reset_epoch(
+    previous: Mapping[str, Any], current: Mapping[str, Any]
+) -> dict[str, Any]:
+    """A reset row must prove a new device boot and host session."""
+    for label, item in (("previous", previous), ("current", current)):
+        if (
+            not valid_publication_identity(item.get("device_id"))
+            or not valid_publication_identity(item.get("boot_id"))
+            or not valid_publication_identity(item.get("session_id"))
+        ):
+            raise ValueError(f"{label} epoch identity is incomplete")
+    if previous["device_id"] != current["device_id"]:
+        raise ValueError("reset epoch changed exact paired device")
+    if previous["boot_id"] == current["boot_id"]:
+        raise ValueError("reset epoch did not produce a fresh boot identity")
+    if previous["session_id"] == current["session_id"]:
+        raise ValueError("reset epoch did not produce a fresh session identity")
+    return {
+        "from_boot_id": previous["boot_id"],
+        "to_boot_id": current["boot_id"],
+        "from_session_id": previous["session_id"],
+        "to_session_id": current["session_id"],
     }
 
 
@@ -1643,14 +1671,12 @@ def run_phase31_current_deployment(args: argparse.Namespace) -> int:
     )
     try:
         hello = dict(session.device)
-        if hello.get("device_boot_id") != deployment["boot_id"]:
-            raise RuntimeError("fresh hello boot identity differs from locked deployment")
         machine_metrics = _phase31_machine_metrics(session)
         session_id = session.session_id
     finally:
         link.close()
     with phase31_guarded_bridge(
-        args, deployment, deployment["boot_id"], timeout=args.timeout
+        args, deployment, hello["device_boot_id"], timeout=args.timeout
     ) as (_bridge, publication, publication_sha):
         accepted = validate_phase31_current_deployment_identity(
             deployment, hello, session_id, publication
@@ -1726,14 +1752,14 @@ def run_phase31_run(args: argparse.Namespace) -> int:
     )
     try:
         hello = dict(session.device)
-        if hello.get("device_boot_id") != deployment["boot_id"]:
-            raise RuntimeError("pre-row hello boot identity differs from locked deployment")
+        if not valid_publication_identity(hello.get("device_boot_id")):
+            raise RuntimeError("fresh hello boot identity is missing")
         session_id = session.session_id
         machine_metrics = _phase31_machine_metrics(session)
     finally:
         link.close()
     with phase31_guarded_bridge(
-        args, deployment, deployment["boot_id"], timeout=args.timeout
+        args, deployment, hello["device_boot_id"], timeout=args.timeout
     ) as (_bridge, publication, _publication_sha):
         validate_phase31_current_deployment_identity(
             deployment, hello, session_id, publication
@@ -1796,13 +1822,36 @@ def run_phase31_run(args: argparse.Namespace) -> int:
         validate_phase31_current_deployment_identity(
             active_deployment, final_hello, final_session_id, publication
         )
-        if active_deployment["boot_id"] != deployment["boot_id"]:
+        current_epoch = {
+            "device_id": final_hello.get("device_id"),
+            "boot_id": final_hello.get("device_boot_id"),
+            "session_id": final_session_id,
+        }
+        initial_epoch = {
+            "device_id": hello.get("device_id"),
+            "boot_id": hello.get("device_boot_id"),
+            "session_id": session_id,
+        }
+        reset_row = next(
+            row for row in evidence["physical_observations"]
+            if row["id"] == "stress-firmware-reset"
+        )
+        reset_transition = (
+            validate_phase31_reset_epoch(initial_epoch, current_epoch)
+            if reset_row.get("result") == "pass"
+            else None
+        )
+        if active_deployment["boot_id"] != deployment["boot_id"] or reset_transition:
+            transition = reset_transition or {
+                "from_boot_id": deployment["boot_id"],
+                "to_boot_id": active_deployment["boot_id"],
+                "from_session_id": session_id,
+                "to_session_id": final_session_id,
+            }
             evidence["deployment_transitions"].append({
                 "id": f"transition-{time.time_ns()}",
                 "kind": "explicit-reconnect-or-reset",
-                "from_boot_id": deployment["boot_id"],
-                "to_boot_id": active_deployment["boot_id"],
-                "session_id": final_session_id,
+                **transition,
                 "publication_sha256": publication_sha,
                 "deployment_id": deployment["deployment_id"],
             })
