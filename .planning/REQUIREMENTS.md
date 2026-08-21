@@ -27,6 +27,14 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **FOCS-03**: The user sees focus success only after herdr acknowledges the exact target, and sees a distinct rejected, failed, or uncertain result when success cannot be established.
 - [x] **FOCS-04**: Focusing from the keypad may apply Herdr's documented native seen/manual-unread effects, but it does not settle, dismiss, reply to, approve for, or invoke arbitrary actions on the agent.
 
+### Focus-Then-Hold Input
+
+- [ ] **HOLD-01**: A short press on an occupied agent key retains the existing immediate exact-focus behavior and never emits a Space keyboard event.
+- [ ] **HOLD-02**: A deliberate hold emits USB HID Space-down only after Herdr has acknowledged exact focus for the same action, opaque binding, host epoch, snapshot revision, and USB session, and only while that physical key remains held.
+- [ ] **HOLD-03**: Release before focus acknowledgment cancels the pending hold; stale identity, late result, focus failure, unavailable source, or disconnected host never emits Space.
+- [ ] **HOLD-04**: Once Space-down is active, it behaves like a physical system keyboard across later focus changes and ends on physical release or USB-device removal; controlled reset and suspend paths release all keys.
+- [ ] **HOLD-05**: The exact keypad passes fresh composite CDC + HID qualification for USB identity, pairing, bounded NDJSON transport, reconnect, suspend/resume, flashing, boot recovery, input latency, and stuck-key behavior before recovery acceptance begins.
+
 ### Codex Usage
 
 - [x] **CODEX-01**: The fourth display remains dedicated to read-only Codex subscription usage and shows both primary and secondary usage-window percentages when the installed account supplies them.
@@ -41,7 +49,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **SYNC-03**: Agent-inbox freshness, Codex freshness, and device-link health are tracked and rendered independently.
 - [ ] **SYNC-04**: A keypress made while disconnected or against an uncertain result is never queued, replayed, or optimistically retried after reconnection.
 - [x] **SAFE-01**: Herdr and Codex credentials remain on the host; firmware receives only bounded normalized display data, opaque identities, freshness metadata, and focus results.
-- [x] **SAFE-02**: The device can request only the typed focus action for its currently displayed binding and cannot invoke arbitrary herdr methods, host commands, or provider APIs.
+- [ ] **SAFE-02**: The device can request only typed focus for its currently displayed binding and, after an acknowledged exact focus action, emit only the fixed USB HID Space hold defined by HOLD-01 through HOLD-04; it cannot invoke arbitrary Herdr methods, host commands, configurable keys, macros, text, or provider APIs.
 
 ### Rotary Menu
 
@@ -52,7 +60,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### End-to-End Acceptance
 
-- [ ] **E2E-01**: On the actual connected device, a real highest-priority herdr entry appears with correct identity and state, its physical key focuses that exact pane under the documented native focus semantics, both Codex usage windows render truthfully, and the display visibly converges after a real disconnect or restart.
+- [ ] **E2E-01**: On the actual connected device, a real highest-priority Herdr entry appears with correct identity and state, its short physical keypress focuses that exact pane, a deliberate hold produces and releases the fixed system-wide Space input only after acknowledged focus, both Codex usage windows render truthfully, and the display visibly converges after a real disconnect or restart.
 
 ## v2 Requirements
 
@@ -79,7 +87,7 @@ Deferred capabilities tracked for later releases; they are not part of the curre
 | Settle, dismiss, mark-read/unread, or acknowledgement commands on agent keys | v1 navigation permits only Herdr's documented native focus effects; explicit triage remains in herdr. |
 | Independent firmware or bridge priority rules | The installed herdr inbox remains the sole authority for agent order and lifecycle semantics. |
 | Encoder-required browsing for the core three agents | It would remove direct one-press selection and make visible key bindings modal. |
-| Generic configurable macros | Configuration, authorization, and failure semantics would dilute the physical inbox and expand its attack surface. |
+| Generic configurable macros | The fixed focus-authorized Space hold in HOLD-01 through HOLD-04 is the sole exception; arbitrary keys, text, commands, and macros remain excluded. |
 | Copilot, Anthropic, or other provider collectors in v1 | Each provider requires separate API, authentication, null, and freshness validation. |
 | Standalone public server or broad hook ecosystem in v1 | Personal herdr integration must be proven before extracting a general service boundary. |
 | Credentials, raw prompts, transcripts, chain-of-thought, or host paths on firmware | These are unnecessary for selection, unreadable on 128x128 panels, and violate the host-side security boundary. |
@@ -104,6 +112,11 @@ Every v1 requirement maps to exactly one roadmap phase.
 | FOCS-02 | Phase 2 | Complete |
 | FOCS-03 | Phase 2 | Complete |
 | FOCS-04 | Phase 2 | Complete |
+| HOLD-01 | Phase 03.2 | Pending |
+| HOLD-02 | Phase 03.2 | Pending |
+| HOLD-03 | Phase 03.2 | Pending |
+| HOLD-04 | Phase 03.2 | Pending |
+| HOLD-05 | Phase 03.2 | Pending |
 | CODEX-01 | Phase 3 | Complete |
 | CODEX-02 | Phase 3 | Complete |
 | CODEX-03 | Phase 3 | Complete |
@@ -113,7 +126,7 @@ Every v1 requirement maps to exactly one roadmap phase.
 | SYNC-03 | Phase 3 | Complete |
 | SYNC-04 | Phase 4 | Pending |
 | SAFE-01 | Phase 3 | Complete |
-| SAFE-02 | Phase 2 | Complete |
+| SAFE-02 | Phase 03.2 | Pending |
 | MENU-01 | Phase 3 | Complete |
 | MENU-02 | Phase 3 | Complete |
 | MENU-03 | Phase 3 | Complete |
@@ -122,10 +135,11 @@ Every v1 requirement maps to exactly one roadmap phase.
 
 **Coverage:**
 
-- v1 requirements: 26 total
-- Mapped to phases: 26
+- v1 requirements: 31 total
+- Mapped to phases: 31
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-18 — Phase 02.2 amendments to SYNC-02 and the decorative-animation exclusion (R-1/R-2)*
+*Last updated: 2026-08-21 — Phase 03.2 adds focus-authorized system-wide USB HID Space hold requirements and narrows SAFE-02's fixed-input exception.*
+*Previous amendment: 2026-08-18 — Phase 02.2 amendments to SYNC-02 and the decorative-animation exclusion (R-1/R-2).*

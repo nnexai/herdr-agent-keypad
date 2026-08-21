@@ -2,7 +2,7 @@
 
 ## Overview
 
-Herdr Agent Keypad reaches its first usable release through seven roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; raise animation and interaction quality to a measured high-fidelity bar; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, approves, or invokes arbitrary actions.
+Herdr Agent Keypad reaches its first usable release through eight roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; raise animation and interaction quality to a measured high-fidelity bar; prove focus-then-hold behavior through a real composite USB keyboard; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, or approves. The sole additional host-input capability is a fixed Space hold authorized by an acknowledged exact focus action.
 
 ## Phases
 
@@ -14,6 +14,7 @@ Herdr Agent Keypad reaches its first usable release through seven roadmap phases
 - [x] **Phase 02.2: Firmware Themes, LED Bars, and Device Selection Menu** - All four proposed display languages and LED grammars are implemented in firmware and selectable from the encoder menu without weakening direct agent focus. (completed 2026-08-20)
 - [x] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness. (completed 2026-08-21)
 - [x] **Phase 03.1: High-Fidelity Animation and Interaction Polish** - Smooth and stable motion, transitions, and feedback are measured and refined on the actual keypad without weakening semantic clarity, input responsiveness, or focus safety. (INSERTED) (completed 2026-08-21)
+- [ ] **Phase 03.2: Focus-Then-Hold USB Keyboard** - A short agent-key press remains focus-only, while a deliberate hold first focuses the exact rendered pane and then behaves as a real held Space key through composite USB HID. (INSERTED)
 - [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
 
 ## Phase Details
@@ -245,6 +246,7 @@ Plans:
 
 **UI hint:** yes
 
+
 ### Phase 03.1: High-Fidelity Animation and Interaction Polish (INSERTED)
 
 **Goal:** The keypad feels responsive and polished rather than stop-motion: animation, transitions, and interaction feedback are smooth, stable, and intentional across the four display themes and LED grammars, while semantic states remain immediately legible and direct agent focus remains unchanged.
@@ -300,13 +302,40 @@ Plans:
 - UI-LONG-TEXT: At the exact device's lowest accepted 10% brightness, every theme keeps the 8 px metadata floor, ASCII ellipsis, and 4 px safe inset without clipping, overlap, ticker motion, or bezel collision.
 
 **UI hint:** yes
+
+### Phase 03.2: Focus-Then-Hold USB Keyboard (INSERTED)
+
+**Goal:** As a user of the keypad, I want a deliberate agent-key hold to focus the exact displayed Herdr pane and then behave as a real held Space key, so that any application using ordinary keyboard hold behavior can receive system-wide input without CLI-specific integration.
+**Mode:** mvp
 **Depends on:** Phase 03.1
+**Requirements:** HOLD-01, HOLD-02, HOLD-03, HOLD-04, HOLD-05, SAFE-02
+**Research flag:** Mandatory exploration must precede permanent USB migration. It must prototype composite TinyUSB CDC + HID on the exact board and compare it with Herdr pane key-repeat, per-OS virtual-keyboard injection, and a possible explicit Herdr key-state API. The decision record must measure focus-to-HID ordering, short-click separation, key-repeat behavior, release and stuck-key failure modes, USB identity/pairing, CDC framing and throughput, reconnect, suspend/resume, flashing, and boot recovery. Composite HID is the selected product direction only after this gate passes; an exploration failure returns the transport decision for explicit reconsideration rather than silently selecting a narrower backend.
+
+**Success Criteria** (what must be TRUE):
+
+  1. A bounded exploration run records reproducible evidence for every candidate path and proves or rejects composite CDC + HID on the exact keypad before implementation commits to a replacement USB stack.
+  2. A short press retains the existing immediate exact-focus behavior and never emits Space; crossing a physically validated hold threshold arms only local firmware gesture state correlated to the existing generation-, binding-, action-, and session-bound focus result.
+  3. Firmware emits HID Space-down only after Herdr acknowledges exact focus and only while the same physical key remains held; release-before-ack, stale identity, late result, focus failure, unavailable source, or disconnected host never emits Space.
+  4. Once HID Space-down is active, later focus changes do not cancel it; the input behaves like a physical keyboard and ends on physical release or USB-device removal, with controlled reset and suspend paths releasing all keys.
+  5. The fixed Space hold adds no configurable key, macro, text, command, provider, or arbitrary Herdr-action surface, and pending, active, cancelled, and failed hold states remain visibly distinct.
+  6. Fresh exact-device evidence requalifies composite USB identity, pairing, bounded NDJSON CDC exchange, reconnect, suspend/resume, flashing, recovery, input latency, and stuck-key behavior before Phase 4 acceptance begins.
+
+**Planning gate:** Phase planning must schedule the comparative exploration and exact-device decision record before any production transport, firmware, or host migration plan. The exploration must first test whether the existing correlated `focus_result` is sufficient authorization so the hold path does not add protocol messages without need.
+
+**Plans:** TBD
+
+Plans:
+
+- [ ] 03.2-00: Comparative exploration and exact-device composite USB decision gate
+- [ ] Remaining implementation plans are defined only after 03.2-00 records a passing direction
+
+**UI hint:** yes
 
 ### Phase 4: Independent Recovery and Actual-Device Acceptance
 
 **Goal:** The user can rely on the complete keypad workflow after real component failures, restarts, and reconnections on the actual Herdr setup.
 **Mode:** mvp
-**Depends on:** Phase 03.1
+**Depends on:** Phase 03.2
 **Requirements:** HARD-02, SYNC-01, SYNC-04, E2E-01
 **Research flag:** Planning must turn the selected transport and measured device behavior into physical recovery and soak thresholds; acceptance evidence must come from the connected unit and installed Herdr/Codex accounts, not mocks.
 **Success Criteria** (what must be TRUE):
@@ -314,7 +343,7 @@ Plans:
   1. Device, bridge, Herdr, Codex, and link startup or reconnection show deterministic booting, empty, stale, unavailable, or offline states until a complete authoritative four-tile snapshot arrives.
   2. Agent keys remain disabled before that full snapshot, and disconnected or uncertain keypresses are never queued, replayed, or optimistically retried after reconnection.
   3. Link health, inbox freshness, and Codex freshness can fail and recover independently without old entries or expired usage remaining visible as current.
-  4. On the actual connected device, a real highest-priority entry renders with correct identity/state, its key focuses that exact pane under documented native semantics, both real Codex windows render truthfully, and a real disconnect or restart visibly converges to current state.
+  4. On the actual connected device, a real highest-priority entry renders with correct identity/state, its short keypress focuses that exact pane, its deliberate hold produces and releases fixed system-wide Space only after focus acknowledgment, both real Codex windows render truthfully, and a real disconnect or restart visibly converges to current state.
 
 **Plans:** TBD
 
@@ -334,6 +363,7 @@ Plans:
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
+| 03.2 Focus-Then-Hold USB Keyboard | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 
 ## Backlog

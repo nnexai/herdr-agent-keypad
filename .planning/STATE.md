@@ -1,19 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-milestone_name: milestone
-current_phase: 4
-current_phase_name: Independent Recovery and Actual-Device Acceptance
-status: planning
+current_phase: 03.2
+current_phase_name: Focus-Then-Hold USB Keyboard
+status: Exploration gate required before implementation
 stopped_at: Completed 03.1-08-PLAN.md
-last_updated: "2026-08-21T19:19:54.572Z"
+last_updated: "2026-08-21T19:47:00.770Z"
 last_activity: 2026-08-21
-last_activity_desc: Completed Phase 03 Plan 08 exact-device capture and pending evidence
+last_activity_desc: Phase 03.2 inserted before Phase 4
+state_head: 8d3d05002126838f502513a7ba43db2c1ba7ce2b
 progress:
-  total_phases: 6
-  completed_phases: 6
+  total_phases: 8
+  completed_phases: 5
   total_plans: 43
   completed_plans: 43
+milestone_name: milestone
 ---
 
 Total Phases: 6
@@ -21,9 +22,9 @@ Total Phases: 6
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 03
-current_phase_name: Truthful Codex Capacity and Device Menu
-status: Ready to plan
+current_phase: 03.2
+current_phase_name: Focus-Then-Hold USB Keyboard
+status: Exploration gate required before implementation
 stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
@@ -42,14 +43,14 @@ progress:[██████████] 100%
 See: .planning/PROJECT.md (updated 2026-08-20)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 03.1 — High-Fidelity Animation and Interaction Polish
+**Current focus:** Phase 03.2 — Focus-Then-Hold USB Keyboard
 
 ## Current Position
 
-Phase: 4 — Independent Recovery and Actual-Device Acceptance
+Phase: 03.2 — Focus-Then-Hold USB Keyboard
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-08-21 — Phase 03.1 complete, transitioned to Phase 4
+Last activity: 2026-08-21 — Phase 03.2 inserted before Phase 4
 
 Progress: [██████████] 97%
 
@@ -207,6 +208,7 @@ None yet.
 - Phase 02.2 inserted after Phase 02.1: Firmware Themes, LED Bars, and Device Selection Menu (URGENT)
 - Phase 03.1 inserted after Phase 3: High-Fidelity Animation and Interaction Polish (URGENT)
 - Phase 03.2 inserted after Phase 3: Production Rust Herdr Bridge (URGENT)
+- Phase 03.2 inserted after Phase 03.1: Focus-Then-Hold USB Keyboard; comparative exploration gate required before composite USB commitment (URGENT)
 
 ## Deferred Items
 

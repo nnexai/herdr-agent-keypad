@@ -2,7 +2,7 @@
 
 ## What This Is
 
-Herdr Agent Keypad is dedicated companion hardware for a personal AI-agent workflow. A LILYGO T-Keyboard S3 Pro presents herdr's live agent inbox on its four display keys: up to three keys represent the agents currently highest in the inbox, while the fourth shows Codex subscription-limit information. Pressing an agent key tells herdr to focus that agent so the actual conversation and any deeper interaction continue in herdr.
+Herdr Agent Keypad is dedicated companion hardware for a personal AI-agent workflow. A LILYGO T-Keyboard S3 Pro presents Herdr's live agent inbox on its four display keys: up to three keys represent the agents currently highest in the inbox, while the fourth shows Codex subscription-limit information. A short agent-key press focuses that exact agent. A deliberate hold first requires the same exact focus acknowledgment and then behaves as a fixed system-wide held Space key through USB HID; deeper interaction remains in the focused application.
 
 The initial product consists of firmware for the keypad and a host-side bridge implemented as a herdr plugin. It starts with the user's current Linux/herdr setup, while keeping the protocol and firmware boundaries clean enough to later become a reusable firmware, device library, herdr integration, and standalone server for hook-based integrations.
 
@@ -24,11 +24,13 @@ The device must make agents that need attention immediately visible and let the 
 - [ ] The fourth display shows current Codex subscription-limit information and makes unavailable or stale data explicit.
 - [ ] The firmware and herdr plugin/bridge communicate reliably and recover visibly from disconnects or stale data.
 - [ ] The physical device works end to end on the user's actual herdr setup.
+- [ ] A short agent-key press remains focus-only, while a deliberate hold emits and releases a real system-wide Space key only after exact focus acknowledgment.
+- [ ] The exact keypad passes a comparative exploration gate before replacing the proven CDC/JTAG transport with composite CDC + HID.
 
 ### Out of Scope
 
-- Responding to prompts, choosing AskUserQuestion options, approving changes, or performing other deep agent interaction on the keypad — v1 selects the agent; interaction continues inside herdr.
-- A general-purpose configurable macro system — useful later for herdr actions, voice input, and other applications, but deferred until the inbox loop works reliably.
+- Responding to prompts, choosing AskUserQuestion options, approving changes, or performing other deep agent interaction on the keypad — the fixed held Space input is the sole interaction exception; the application receiving that ordinary keyboard input owns its meaning.
+- A general-purpose configurable macro system — the Phase 03.2 Space hold is fixed and focus-authorized; arbitrary keys, text, commands, and macros remain out of scope.
 - Copilot, Anthropic, and other provider subscription collectors — planned follow-on integrations after the Codex display is proven.
 - A standalone non-herdr server and hook-integration ecosystem — future generalization, not part of the personal-first v1.
 - Battery operation or portability — the connected device can remain USB powered for v1.
@@ -49,11 +51,11 @@ The device must make agents that need attention immediately visible and let the 
 - **Hardware**: Four display keys, RGB LEDs, and a clickable encoder on the connected LILYGO T-Keyboard S3 Pro — the primary workflow must fit this exact surface.
 - **Interaction**: Agent selection must be a direct keypress — the encoder and multi-step navigation cannot be required for the core loop.
 - **Source of truth**: Agent entries and their order come from the existing herdr inbox — the device must not invent a separate lifecycle.
-- **Selection semantics**: Selecting an entry focuses its agent pane only — no automatic settle, dismiss, acknowledge, or response.
-- **Transport**: The device requires wired power and USB is preferred, but USB serial versus Wi-Fi or a hybrid must be validated through research and physical bring-up before it is locked.
+- **Selection semantics**: A short press focuses its agent pane only. A deliberate hold may emit only fixed USB HID Space after that exact focus is acknowledged. Neither gesture automatically settles, dismisses, acknowledges, responds, or approves.
+- **Transport**: USB remains the selected wired transport. Phase 03.2 must compare candidate hold paths and requalify composite CDC + HID on the exact board before it may replace the proven hardware CDC/JTAG profile.
 - **Credentials**: Provider credentials and authenticated Codex access stay on the host — the firmware receives only device-scoped, normalized data.
 - **Truthfulness**: Offline, unavailable, and stale agent or usage data must be visibly distinguishable from current data.
-- **Compatibility**: v1 targets the user's current Linux host and herdr installation; broader operating-system support is later work.
+- **Compatibility**: v1 targets the user's current Linux/Herdr installation, while the fixed Space hold must use ordinary USB HID semantics rather than CLI-specific integration so the device input itself remains operating-system portable.
 
 ## Key Decisions
 
@@ -64,10 +66,10 @@ The device must make agents that need attention immediately visible and let the 
 | Use up to three keys as dynamic agent entries | Direct key-to-agent mapping provides glanceable state and one-press selection on the four-key device | — Pending |
 | Reserve the fourth display for Codex limits | Remaining subscription capacity is valuable ambient information and does not require encoder navigation | — Pending |
 | Keep deeper interaction inside herdr | Detecting and safely reproducing arbitrary agent prompts on four keys adds complexity without improving the primary selection workflow | — Pending |
-| Defer general macros | Voice input and configurable actions are useful, but the physical inbox must first be reliable | — Pending |
-| Prefer USB while researching transport | The device is already wired for power, but the best supported data path must be proven on real hardware | **Validated in Phase 1 Plan 01-06** — the exact paired unit passed strict USB qualification |
-| Require one physical end-to-end validation for v1 | A simulated bridge or renderer alone does not establish that the companion hardware is useful or reliable | **Validated once in Phase 1 Plan 01-06** — the immutable qualification result is the hardware baseline |
-| Do not rerun the long qualification profile | The 30-minute profile establishes a one-time hardware/transport baseline; repeating it adds operator cost without proving later host-only changes | Future work consumes the hash-bound result and uses bounded targeted smoke checks; the long profile is never rerun |
+| Keep general macros out; permit one fixed Space hold | A system-wide physical Space hold covers the desired push-to-talk gesture without creating configurable keys, text, commands, or CLI-specific integrations | **Selected for Phase 03.2**, gated on acknowledged exact focus |
+| Prefer USB while researching transport | The device is already wired for power, but the exact USB class composition must be proven on real hardware | **Hardware CDC/JTAG validated in Phase 1; composite CDC + HID requires a fresh Phase 03.2 decision gate** |
+| Require physical end-to-end validation for v1 | A simulated bridge or renderer alone does not establish that the companion hardware is useful or reliable | **Phase 1 is the original hardware baseline; Phase 03.2 must add exact-device composite-input evidence before Phase 4** |
+| Preserve the long baseline; qualify the changed composition separately | Repeating an unchanged 30-minute profile adds operator cost, but replacing the USB class composition invalidates transport assumptions | Do not rerun the legacy profile as if unchanged; run a bounded Phase 03.2 composite CDC + HID qualification covering the new risks |
 
 ## Evolution
 
@@ -87,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-20 after Phase 02.2 theme, LED, menu, and exact-device verification*
+*Last updated: 2026-08-21 after inserting Phase 03.2 focus-then-hold USB keyboard exploration and requirements*
