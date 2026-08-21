@@ -461,6 +461,7 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     reply["malformed"] = proofMetrics.malformed;
     reply["max_display_flush_us"] = proofMetrics.max_display_flush_us;
     reply["rejected"] = proofMetrics.rejected;
+    reply["received"] = proofMetrics.received;
     reply["reveal_max_us"] = proofMetrics.reveal_max_us;
     reply["sent"] = proofMetrics.sent;
     reply["skipped_frames"] = proofMetrics.skipped_frames;

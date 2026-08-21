@@ -354,7 +354,7 @@ class Phase31CurrentDeploymentTests(unittest.TestCase):
         source = (ROOT / "firmware/src/main.cpp").read_text(encoding="utf-8")
         required = (
             "minimum_free_heap", "largest_free_block", "max_key_poll_gap_us",
-            "parser_high_water", "queue_high_water", "out_of_order",
+            "parser_high_water", "queue_high_water", "out_of_order", "received",
             "compose_flush_max_us", "frame_count", "allocation_stable",
         )
         for name in required:
