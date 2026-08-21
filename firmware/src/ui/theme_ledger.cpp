@@ -153,8 +153,11 @@ class LedgerTheme final : public ThemeRenderer {
 
       if (tile.state == TileState::Blocked && fence == nullptr) {
         sprite.fillRect(0, 70, 128, 20, kBlocked);
-        sprite.fillRect(0, 70 + static_cast<int32_t>(state.blocked_phase * 2U),
-                        128, 2, kBackground);
+        // Keep BLOCKED's opaque semantic band and text untouched. The bounded
+        // phase cue travels through the quiet margin above it, never as a
+        // full-width erase over the warning row.
+        const int32_t cue_x = 8 + static_cast<int32_t>(state.blocked_phase % 8U) * 14;
+        sprite.fillRect(cue_x, 64, 12, 2, kBlocked);
         drawLedgerGlyph(sprite, tile.state, 16, 80, kBackground);
         sprite.setTextColor(kBackground, kBlocked);
         sprite.drawString(base.word, 30, 74);

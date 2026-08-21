@@ -42,6 +42,18 @@ void drawGapMask(LGFX_Sprite& sprite, int32_t gap_count) {
   }
 }
 
+void drawSymmetricBlockedGaps(LGFX_Sprite& sprite, uint8_t phase) {
+  // Four quarter-turn positions guarantee equal opposing arcs for every
+  // phase. Two adjacent scheduler phases intentionally share a pose.
+  const uint8_t rotation = static_cast<uint8_t>(phase % 4U);
+  for (uint8_t gap = 0; gap < 4; ++gap) {
+    const uint8_t point = static_cast<uint8_t>(rotation + gap * 4U);
+    const int32_t gx = kCx + kRingPoints[point][0];
+    const int32_t gy = kCy + kRingPoints[point][1];
+    sprite.fillRect(gx - 2, gy - 2, 5, 5, kBackground);
+  }
+}
+
 void drawDottedRing(LGFX_Sprite& sprite, uint16_t color) {
   for (const auto& point : kRingPoints) {
     sprite.fillCircle(kCx + point[0], kCy + point[1], 1, color);
@@ -66,7 +78,7 @@ void drawStateRing(LGFX_Sprite& sprite, TileState state, uint16_t color,
       sprite.drawCircle(kCx, kCy, kRadius, color);
       sprite.drawCircle(kCx, kCy, kRadius - 1, color);
       sprite.drawCircle(kCx, kCy, kRadius - 2, color);
-      drawGapMask(sprite, 4 + static_cast<int32_t>(phase % 8U));
+      drawSymmetricBlockedGaps(sprite, phase);
       break;
     case TileState::Unseen:
       sprite.drawCircle(kCx, kCy, kRadius, color);

@@ -1281,6 +1281,59 @@ void test_blocked_renderstate_motion_has_distinct_complete_frames() {
     TEST_ASSERT_GREATER_OR_EQUAL_UINT32(3, frames.size());
   }
 }
+void test_ledger_and_instrument_blocked_motion_stays_semantic_and_symmetric() {
+  AgentProjection projection;
+  std::vector<std::vector<std::string>> ledger_frames;
+  for (uint8_t phase = 0; phase < AnimationScheduler::kBlockedPhaseCount; ++phase) {
+    resetLog();
+    TEST_ASSERT_TRUE(projection.capturePanel(
+        0, &ledgerTheme(), CaptureScene::Blocked, AnimationScheduler::Level::Full, phase));
+    TEST_ASSERT_TRUE(logContainsText("BLOCKED"));
+    bool full_width_scanline = false;
+    for (const std::string& entry : g_render_log) {
+      if (entry == "fillRect:0:70:128:2") full_width_scanline = true;
+    }
+    TEST_ASSERT_FALSE(full_width_scanline);
+    TEST_ASSERT_TRUE(logContainsAny(
+        ("fillRect:" + std::to_string(8 + static_cast<int32_t>(phase) * 14) +
+         ":64:12:2").c_str()));
+    if (std::find(ledger_frames.begin(), ledger_frames.end(), g_render_log) ==
+        ledger_frames.end()) {
+      ledger_frames.push_back(g_render_log);
+    }
+  }
+  TEST_ASSERT_GREATER_OR_EQUAL_UINT32(3, ledger_frames.size());
+
+  for (uint8_t phase = 0; phase < AnimationScheduler::kBlockedPhaseCount; ++phase) {
+    resetLog();
+    TEST_ASSERT_TRUE(projection.capturePanel(
+        0, &instrumentTheme(), CaptureScene::Blocked, AnimationScheduler::Level::Full, phase));
+    TEST_ASSERT_TRUE(logContainsText("BLOCKED"));
+    std::vector<std::pair<int32_t, int32_t>> gaps;
+    for (const std::string& entry : g_render_log) {
+      int32_t x = 0;
+      int32_t y = 0;
+      int32_t width = 0;
+      int32_t height = 0;
+      if (std::sscanf(entry.c_str(), "fillRect:%d:%d:%d:%d",
+                      &x, &y, &width, &height) == 4 &&
+          width == 5 && height == 5) {
+        gaps.emplace_back(x + 2, y + 2);
+      }
+    }
+    TEST_ASSERT_EQUAL_UINT32(4, gaps.size());
+    for (size_t gap = 0; gap < gaps.size(); ++gap) {
+      bool has_opposite = false;
+      for (size_t other = 0; other < gaps.size(); ++other) {
+        if (gaps[gap].first + gaps[other].first == 128 &&
+            gaps[gap].second + gaps[other].second == 108) {
+          has_opposite = true;
+        }
+      }
+      TEST_ASSERT_TRUE(has_opposite);
+    }
+  }
+}
 
 void test_capture_slot_cardinality_is_bounded_and_semantic() {
   AgentProjection projection;
@@ -2930,6 +2983,7 @@ int runAllTests() {
   RUN_TEST(test_snapshot_commit_keeps_visible_sync_cutout_hidden);
   RUN_TEST(test_capture_phase_and_level_vocabulary_is_bounded_and_deterministic);
   RUN_TEST(test_blocked_renderstate_motion_has_distinct_complete_frames);
+  RUN_TEST(test_ledger_and_instrument_blocked_motion_stays_semantic_and_symmetric);
   RUN_TEST(test_capture_slot_cardinality_is_bounded_and_semantic);
   RUN_TEST(test_phase3_capture_scenes_use_production_panel4_renderers);
   RUN_TEST(test_rejected_diagnostics_preserve_committed_generation_and_binding);
