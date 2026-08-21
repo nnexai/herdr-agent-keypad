@@ -750,6 +750,8 @@ void loop() {
     const uint32_t free_heap_before = ESP.getFreeHeap();
     const uint32_t largest_before =
         heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+    const AnimationScheduler::Level rendered_level =
+        agentProjection.animation().level();
     const uint32_t tick_started = micros();
     agentProjection.tick(board, now);
     const uint32_t tick_finished = micros();
@@ -763,7 +765,7 @@ void loop() {
       agentProjection.animation().observeFlushCostAt(tick_cost, tick_finished);
       proofMetrics.observeAnimationFrame(
           tick_cost, agentProjection.animation().lastLoopWindowUs(),
-          static_cast<uint8_t>(agentProjection.animation().level()));
+          static_cast<uint8_t>(rendered_level));
     } else if (agentProjection.animation().level() ==
                AnimationScheduler::Level::Static) {
       proofMetrics.recordSkippedFrame();
@@ -773,7 +775,7 @@ void loop() {
       lastAnimationLevel = agentProjection.animation().level();
     }
     if (frame_observed &&
-        agentProjection.animation().level() != AnimationScheduler::Level::Full) {
+        rendered_level != AnimationScheduler::Level::Full) {
       proofMetrics.recordDegradedFrame();
     }
   }

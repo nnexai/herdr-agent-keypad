@@ -1648,6 +1648,35 @@ void test_main_loop_cadence_bounds_duty_and_does_not_oscillate_static() {
   TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Static),
                     static_cast<int>(scheduler.level()));
   TEST_ASSERT_EQUAL_UINT32(2, level_changes);
+
+  ProofMetrics frame_metrics;
+  AnimationScheduler classified;
+  classified.setAmbientPeriod(100000UL);
+  AnimationScheduler::Level rendered_level = classified.level();
+  classified.observeFlushCostAt(50000UL, 100000UL);
+  frame_metrics.observeAnimationFrame(
+      classified.lastFlushUs(), classified.lastLoopWindowUs(),
+      static_cast<uint8_t>(rendered_level));
+  TEST_ASSERT_EQUAL_UINT32(1, frame_metrics.full_frames);
+  TEST_ASSERT_EQUAL_UINT32(0, frame_metrics.half_frames);
+  TEST_ASSERT_EQUAL_UINT32(0, frame_metrics.static_frames);
+
+  rendered_level = classified.level();
+  classified.observeFlushCostAt(90000UL, 200000UL);
+  frame_metrics.observeAnimationFrame(
+      classified.lastFlushUs(), classified.lastLoopWindowUs(),
+      static_cast<uint8_t>(rendered_level));
+  TEST_ASSERT_EQUAL_UINT32(1, frame_metrics.full_frames);
+  TEST_ASSERT_EQUAL_UINT32(1, frame_metrics.half_frames);
+  TEST_ASSERT_EQUAL_UINT32(0, frame_metrics.static_frames);
+
+  AnimationScheduler wrap_safe;
+  wrap_safe.setAmbientPeriod(1000000UL);
+  wrap_safe.observeFlushCostAt(1000UL, 0);
+  wrap_safe.observeFlushCostAt(40000UL, 100000UL);
+  TEST_ASSERT_EQUAL_UINT32(100000UL, wrap_safe.lastLoopWindowUs());
+  TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Half),
+                    static_cast<int>(wrap_safe.level()));
 }
 
 void test_animation_metrics_bound_duty_and_measure_frame_allocation_pairs() {

@@ -22,6 +22,7 @@ class AnimationScheduler final {
     ambient_period_us_ = period_us;
     next_ambient_us_ = 0;
     last_frame_completed_at_us_ = 0;
+    has_last_frame_completion_ = false;
     ambient_phase_ = kNeutralPhase;
   }
 
@@ -44,10 +45,11 @@ class AnimationScheduler final {
   // loop-start cadence pairing. The first sample uses at least its own cost.
   void observeFlushCostAt(uint32_t flush_us, uint32_t completed_at_us) {
     uint32_t window = activePeriodUs();
-    if (last_frame_completed_at_us_ != 0) {
+    if (has_last_frame_completion_) {
       window = completed_at_us - last_frame_completed_at_us_;
     }
     last_frame_completed_at_us_ = completed_at_us;
+    has_last_frame_completion_ = true;
     recordObservation(flush_us, window);
     applyPressure(flush_us);
   }
@@ -228,6 +230,7 @@ class AnimationScheduler final {
   uint32_t last_loop_window_us_ = 0;
   uint32_t last_duty_percent_ = 0;
   uint32_t last_frame_completed_at_us_ = 0;
+  bool has_last_frame_completion_ = false;
   uint32_t transition_started_us_ = 0;
   uint32_t transition_epoch_ = 0;
   uint8_t transition_last_phase_ = kNeutralPhase;
