@@ -50,40 +50,45 @@ void drawDottedRing(LGFX_Sprite& sprite, uint16_t color) {
 
 // Stroke styles: solid(3px), thin(2px), heavy dashed, double, discrete
 // dotted points, hairline, and dashed hairline.
-void drawStateRing(LGFX_Sprite& sprite, TileState state, uint16_t color) {
+void drawStateRing(LGFX_Sprite& sprite, TileState state, uint16_t color,
+                   uint8_t phase, bool pulse_high) {
   switch (state) {
-    case TileState::Working:  // solid 3 px
+    case TileState::Working:
       sprite.drawCircle(kCx, kCy, kRadius, color);
       sprite.drawCircle(kCx, kCy, kRadius - 1, color);
       sprite.drawCircle(kCx, kCy, kRadius - 2, color);
       break;
-    case TileState::Idle:  // thin 1.5 px
+    case TileState::Idle:
       sprite.drawCircle(kCx, kCy, kRadius, color);
       sprite.drawCircle(kCx, kCy, kRadius - 1, color);
       break;
-    case TileState::Blocked:  // heavy dashed
+    case TileState::Blocked:
       sprite.drawCircle(kCx, kCy, kRadius, color);
       sprite.drawCircle(kCx, kCy, kRadius - 1, color);
       sprite.drawCircle(kCx, kCy, kRadius - 2, color);
-      drawGapMask(sprite, 8);
+      drawGapMask(sprite, pulse_high ? 8 : 4);
       break;
-    case TileState::Unseen:  // double ring
+    case TileState::Unseen:
       sprite.drawCircle(kCx, kCy, kRadius, color);
       sprite.drawCircle(kCx, kCy, kRadius - 5, color);
       break;
-    case TileState::Unknown:  // dotted
+    case TileState::Unknown:
       drawDottedRing(sprite, color);
       break;
-    case TileState::Settled:  // hairline
+    case TileState::Settled:
       sprite.drawCircle(kCx, kCy, kRadius, color);
       break;
-    case TileState::Empty:  // dashed hairline ring
+    case TileState::Empty:
       sprite.drawCircle(kCx, kCy, kRadius, color);
       drawGapMask(sprite, 4);
       break;
-    default:  // fence: hairline + cross inside
+    default:
       sprite.drawCircle(kCx, kCy, kRadius, color);
       break;
+  }
+  if (phase != 0 && (state == TileState::Working || state == TileState::Unseen)) {
+    const uint8_t point = static_cast<uint8_t>((phase * 2U) & 0x0FU);
+    sprite.fillCircle(kCx + kRingPoints[point][0], kCy + kRingPoints[point][1], 2, color);
   }
 }
 
@@ -159,15 +164,23 @@ class InstrumentTheme final : public ThemeRenderer {
     const StateStyle base = styleFor(tile.state);
     const StateStyle* feedback = feedbackStyle(tile.feedback);
     const uint16_t content = fence != nullptr ? kSettled : base.color;
+    const bool motion_active = fence == nullptr && !state.syncing &&
+                               (state.transition_active || state.ambient_phase != 0);
+    const uint8_t phase = motion_active
+                              ? (state.transition_active
+                                     ? static_cast<uint8_t>(state.transition_phase * 2U)
+                                     : state.ambient_phase) & 7U
+                              : 0;
     char row[18] = {};
 
     // Health channel: all four bezel ticks red on every panel simultaneously.
     drawBezelTicks(sprite, fence != nullptr ? kDestructive : kSettled);
 
     if (tile.state == TileState::Empty) {
-      drawStateRing(sprite, TileState::Empty, kEmptyEdge);
+      drawStateRing(sprite, TileState::Empty, kEmptyEdge, 0, true);
       drawInnerGlyph(sprite, TileState::Empty, kEmptyEdge);
       sprite.setTextColor(kMetadata, kBackground);
+      sprite.drawString("EMPTY", centeredX("EMPTY"), 80);
       sprite.drawString("NO AGENT", centeredX("NO AGENT"), 89);
       if (fence != nullptr) {
         sprite.setTextColor(kDestructive, kBackground);
@@ -184,21 +197,25 @@ class InstrumentTheme final : public ThemeRenderer {
     // Ring: feedback replaces the inner glyph with its own bounded primitive.
     if (feedback != nullptr) {
       if (tile.feedback == TileFeedback::Pending) {
-        drawStateRing(sprite, TileState::Blocked, feedback->color);
+        drawStateRing(sprite, TileState::Blocked, feedback->color, phase,
+                      state.blocked_pulse_high);
         sprite.drawCircle(kCx, kCy, 12, feedback->color);
-        sprite.fillCircle(kCx, kCy - 12, 2, feedback->color);
+        sprite.fillCircle(kCx, kCy - 12 + static_cast<int32_t>(phase % 3U), 2, feedback->color);
       } else if (tile.feedback == TileFeedback::Success) {
-        drawStateRing(sprite, TileState::Working, feedback->color);
+        drawStateRing(sprite, TileState::Working, feedback->color, phase,
+                      state.blocked_pulse_high);
         sprite.drawLine(kCx - 10, kCy, kCx - 3, kCy + 8, feedback->color);
         sprite.drawLine(kCx - 3, kCy + 8, kCx + 12, kCy - 9, feedback->color);
       } else {
-        drawStateRing(sprite, TileState::Working, feedback->color);
+        drawStateRing(sprite, TileState::Working, feedback->color, 0,
+                      state.blocked_pulse_high);
         sprite.drawLine(kCx - 10, kCy - 10, kCx + 10, kCy + 10, feedback->color);
         sprite.drawLine(kCx + 10, kCy - 10, kCx - 10, kCy + 10, feedback->color);
       }
     } else {
       const bool low = tile.state == TileState::Blocked && !state.blocked_pulse_high;
-      drawStateRing(sprite, tile.state, low ? dim565(content) : content);
+      drawStateRing(sprite, tile.state, low ? dim565(content) : content, phase,
+                    state.blocked_pulse_high);
       drawInnerGlyph(sprite, tile.state, content);
     }
 
@@ -245,6 +262,17 @@ class InstrumentTheme final : public ThemeRenderer {
                    gauge_color, kSettled);
     drawCodexTrack(sprite, 8, 52, 112, 8, codexValue(codex, false),
                    gauge_color, kSettled);
+    const bool motion_active = codex.source_state == CodexSourceState::Current &&
+                               !state.syncing &&
+                               (state.transition_active || state.ambient_phase != 0);
+    if (motion_active) {
+      const uint8_t phase = (state.transition_active
+                                 ? static_cast<uint8_t>(state.transition_phase * 2U)
+                                 : state.ambient_phase) & 7U;
+      const int32_t x = 10 + static_cast<int32_t>(phase) * 13;
+      if (codexValue(codex, true) >= 0) sprite.fillRect(x, 31, 2, 10, gauge_color);
+      if (codexValue(codex, false) >= 0) sprite.fillRect(x, 51, 2, 10, gauge_color);
+    }
     const uint16_t warning_color = codexHasLimit(codex) ? kDestructive : kBlocked;
     sprite.fillRect(92, 31, 2, 10, warning_color);
     sprite.fillRect(92, 51, 2, 10, warning_color);
@@ -277,6 +305,13 @@ class InstrumentTheme final : public ThemeRenderer {
     sprite.drawCircle(kCx, kCy, kRadius, kAccent);
     sprite.drawString("SYNC", centeredX("SYNC"), 50);
   }
+
+  uint8_t ambientTick(uint32_t now_us) override {
+    (void)now_us;
+    return 0x07;
+  }
+
+  uint32_t ambientPeriodUs() const override { return 33334UL; }
 
  private:
   static uint16_t dim565(uint16_t color) {

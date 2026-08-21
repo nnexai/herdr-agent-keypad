@@ -1246,9 +1246,9 @@ void test_beacon_and_instrument_phase_motion_is_distinct_and_semantically_fixed(
   beaconTheme().composeTile(sprite, 0, state);
   const std::vector<std::string> beacon_motion = g_render_log;
   TEST_ASSERT_TRUE(beacon_neutral != beacon_motion);
-  TEST_ASSERT_TRUE(logContainsTextAt("WORKING", 49, 73));
+  TEST_ASSERT_TRUE(logContainsTextAt("WORKING", 43, 73));
   TEST_ASSERT_TRUE(logContainsTextAt("Agent", 49, 100));
-  TEST_ASSERT_TRUE(logContainsTextAt("repo", 49, 112));
+  TEST_ASSERT_TRUE(logContainsTextAt("repo", 52, 112));
 
   state.transition_phase = 0;
   resetLog();
@@ -1259,7 +1259,7 @@ void test_beacon_and_instrument_phase_motion_is_distinct_and_semantically_fixed(
   instrumentTheme().composeTile(sprite, 0, state);
   const std::vector<std::string> instrument_motion = g_render_log;
   TEST_ASSERT_TRUE(instrument_neutral != instrument_motion);
-  TEST_ASSERT_TRUE(logContainsTextAt("WORKING", 48, 89));
+  TEST_ASSERT_TRUE(logContainsTextAt("WORKING", 43, 89));
   TEST_ASSERT_TRUE(logContainsTextAt("Agent", 49, 112));
   TEST_ASSERT_TRUE(beacon_motion != instrument_motion);
 }
@@ -1300,7 +1300,7 @@ void test_beacon_and_instrument_fences_empty_and_codex_are_phase_static() {
     theme->composePanel4(sprite, state);
     TEST_ASSERT_TRUE(first == g_render_log);
     TEST_ASSERT_TRUE(logContainsText("UNAVAILABLE"));
-    TEST_ASSERT_TRUE(logContainsText("N/A"));
+    TEST_ASSERT_TRUE(logContainsAny("N/A"));
   }
 }
 

@@ -1,0 +1,2467 @@
+{
+  "cadence_us": {
+    "Beacon": 66668,
+    "Instrument": 33334,
+    "Ledger": 33334,
+    "Signal Edge": 33334
+  },
+  "coverage": {
+    "codex_families_per_theme": 3,
+    "feedback_families_per_theme": 10,
+    "rows": 128,
+    "system_families_per_theme": 1,
+    "themes": 4,
+    "tile_states_per_theme": 17,
+    "transition_families_per_theme": 1
+  },
+  "degradation": {
+    "Full": "all listed phases",
+    "Half": "every second listed phase",
+    "Static": "neutral phase only"
+  },
+  "kind": "phase03.1-motion-inventory",
+  "phase": "03.1",
+  "phase_counts": {
+    "Beacon": 8,
+    "Instrument": 8,
+    "Ledger": 4,
+    "Signal Edge": 4
+  },
+  "rows": [
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Rail and short signal accents travel while identity and state copy stay fixed.",
+      "source_primitive": "rail / signal dash",
+      "state": "BLOCKED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Rail and short signal accents travel while identity and state copy stay fixed.",
+      "source_primitive": "rail / signal dash",
+      "state": "UNSEEN",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Rail and short signal accents travel while identity and state copy stay fixed.",
+      "source_primitive": "rail / signal dash",
+      "state": "WORKING",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "IDLE",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "SETTLED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNKNOWN",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "EMPTY",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "STALE",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "OFFLINE",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNAVAILABLE",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "SYNC",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Rail and short signal accents travel while identity and state copy stay fixed.",
+      "source_primitive": "rail / signal dash",
+      "state": "PENDING",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Rail and short signal accents travel while identity and state copy stay fixed.",
+      "source_primitive": "rail / signal dash",
+      "state": "FOCUSED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "REJECTED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "VANISHED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNCERTAIN",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "FAILED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Current values, reset, limit, and age cut directly; only the approved accent settles.",
+      "source_primitive": "rail / signal dash settle",
+      "state": "CODEX_CURRENT",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Missing/null fields remain N/A or RESET N/A; no motion fills absent truth.",
+      "source_primitive": "fixed Codex rows",
+      "state": "CODEX_PARTIAL",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "STALE, OFFLINE, AUTH REQUIRED, and UNAVAILABLE assert immediately with cached values veiled or N/A.",
+      "source_primitive": "fixed Codex veil / fence",
+      "state": "CODEX_FENCE",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "system",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "SYNC is a complete static fence until a validated generation is safely committed.",
+      "source_primitive": "fixed SYNC fence",
+      "state": "SYNC",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "transition",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "The shared bounded replacement phase moves only theme-owned accents and is interruptible by newer truth.",
+      "source_primitive": "rail / signal dash transition",
+      "state": "ORDINARY_REPLACEMENT",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "DISABLED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "READY",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Localized pending/success motion preserves fixed words and identity.",
+      "source_primitive": "rail / signal dash feedback",
+      "state": "PENDING",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Localized pending/success motion preserves fixed words and identity.",
+      "source_primitive": "rail / signal dash feedback",
+      "state": "SUCCESS",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "REJECTED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "STALE",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "VANISHED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "OFFLINE",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "UNCERTAIN",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "FAILED",
+      "static": [
+        0
+      ],
+      "theme": "Signal Edge"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "A bounded record underline or row cue advances without moving typographic baselines.",
+      "source_primitive": "underline / record row",
+      "state": "BLOCKED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "A bounded record underline or row cue advances without moving typographic baselines.",
+      "source_primitive": "underline / record row",
+      "state": "UNSEEN",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "A bounded record underline or row cue advances without moving typographic baselines.",
+      "source_primitive": "underline / record row",
+      "state": "WORKING",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "IDLE",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "SETTLED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNKNOWN",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "EMPTY",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "STALE",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "OFFLINE",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNAVAILABLE",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "SYNC",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "A bounded record underline or row cue advances without moving typographic baselines.",
+      "source_primitive": "underline / record row",
+      "state": "PENDING",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "A bounded record underline or row cue advances without moving typographic baselines.",
+      "source_primitive": "underline / record row",
+      "state": "FOCUSED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "REJECTED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "VANISHED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNCERTAIN",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "FAILED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Current values, reset, limit, and age cut directly; only the approved accent settles.",
+      "source_primitive": "underline / record row settle",
+      "state": "CODEX_CURRENT",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Missing/null fields remain N/A or RESET N/A; no motion fills absent truth.",
+      "source_primitive": "fixed Codex rows",
+      "state": "CODEX_PARTIAL",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "STALE, OFFLINE, AUTH REQUIRED, and UNAVAILABLE assert immediately with cached values veiled or N/A.",
+      "source_primitive": "fixed Codex veil / fence",
+      "state": "CODEX_FENCE",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "system",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "SYNC is a complete static fence until a validated generation is safely committed.",
+      "source_primitive": "fixed SYNC fence",
+      "state": "SYNC",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "transition",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "The shared bounded replacement phase moves only theme-owned accents and is interruptible by newer truth.",
+      "source_primitive": "underline / record row transition",
+      "state": "ORDINARY_REPLACEMENT",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "DISABLED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "READY",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Localized pending/success motion preserves fixed words and identity.",
+      "source_primitive": "underline / record row feedback",
+      "state": "PENDING",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "half": [
+        0,
+        2
+      ],
+      "mode": "animated",
+      "rationale": "Localized pending/success motion preserves fixed words and identity.",
+      "source_primitive": "underline / record row feedback",
+      "state": "SUCCESS",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "REJECTED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "STALE",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "VANISHED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "OFFLINE",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "UNCERTAIN",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "FAILED",
+      "static": [
+        0
+      ],
+      "theme": "Ledger"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A quantized low-contrast field or halo shifts inside the existing field pass.",
+      "source_primitive": "quantized field / halo",
+      "state": "BLOCKED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A quantized low-contrast field or halo shifts inside the existing field pass.",
+      "source_primitive": "quantized field / halo",
+      "state": "UNSEEN",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A quantized low-contrast field or halo shifts inside the existing field pass.",
+      "source_primitive": "quantized field / halo",
+      "state": "WORKING",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "IDLE",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "SETTLED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNKNOWN",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "EMPTY",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "STALE",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "OFFLINE",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNAVAILABLE",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "SYNC",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A quantized low-contrast field or halo shifts inside the existing field pass.",
+      "source_primitive": "quantized field / halo",
+      "state": "PENDING",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A quantized low-contrast field or halo shifts inside the existing field pass.",
+      "source_primitive": "quantized field / halo",
+      "state": "FOCUSED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "REJECTED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "VANISHED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNCERTAIN",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "FAILED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "Current values, reset, limit, and age cut directly; only the approved accent settles.",
+      "source_primitive": "quantized field / halo settle",
+      "state": "CODEX_CURRENT",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Missing/null fields remain N/A or RESET N/A; no motion fills absent truth.",
+      "source_primitive": "fixed Codex rows",
+      "state": "CODEX_PARTIAL",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "STALE, OFFLINE, AUTH REQUIRED, and UNAVAILABLE assert immediately with cached values veiled or N/A.",
+      "source_primitive": "fixed Codex veil / fence",
+      "state": "CODEX_FENCE",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "system",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "SYNC is a complete static fence until a validated generation is safely committed.",
+      "source_primitive": "fixed SYNC fence",
+      "state": "SYNC",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "transition",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "The shared bounded replacement phase moves only theme-owned accents and is interruptible by newer truth.",
+      "source_primitive": "quantized field / halo transition",
+      "state": "ORDINARY_REPLACEMENT",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "DISABLED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "READY",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "Localized pending/success motion preserves fixed words and identity.",
+      "source_primitive": "quantized field / halo feedback",
+      "state": "PENDING",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "Localized pending/success motion preserves fixed words and identity.",
+      "source_primitive": "quantized field / halo feedback",
+      "state": "SUCCESS",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "REJECTED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "STALE",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "VANISHED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "OFFLINE",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "UNCERTAIN",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "FAILED",
+      "static": [
+        0
+      ],
+      "theme": "Beacon"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A fixed ring-point marker or gauge cue travels around the unchanged bezel.",
+      "source_primitive": "ring marker / gauge",
+      "state": "BLOCKED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A fixed ring-point marker or gauge cue travels around the unchanged bezel.",
+      "source_primitive": "ring marker / gauge",
+      "state": "UNSEEN",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A fixed ring-point marker or gauge cue travels around the unchanged bezel.",
+      "source_primitive": "ring marker / gauge",
+      "state": "WORKING",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "IDLE",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "SETTLED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNKNOWN",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "EMPTY",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "STALE",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "OFFLINE",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNAVAILABLE",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "SYNC",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A fixed ring-point marker or gauge cue travels around the unchanged bezel.",
+      "source_primitive": "ring marker / gauge",
+      "state": "PENDING",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "A fixed ring-point marker or gauge cue travels around the unchanged bezel.",
+      "source_primitive": "ring marker / gauge",
+      "state": "FOCUSED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "REJECTED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "VANISHED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "UNCERTAIN",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "tile",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Intentional neutral frame keeps the literal state, cue, identity, and age legible without timing.",
+      "source_primitive": "fixed semantic glyph / text",
+      "state": "FAILED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "Current values, reset, limit, and age cut directly; only the approved accent settles.",
+      "source_primitive": "ring marker / gauge settle",
+      "state": "CODEX_CURRENT",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Missing/null fields remain N/A or RESET N/A; no motion fills absent truth.",
+      "source_primitive": "fixed Codex rows",
+      "state": "CODEX_PARTIAL",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "codex",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "STALE, OFFLINE, AUTH REQUIRED, and UNAVAILABLE assert immediately with cached values veiled or N/A.",
+      "source_primitive": "fixed Codex veil / fence",
+      "state": "CODEX_FENCE",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "system",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "SYNC is a complete static fence until a validated generation is safely committed.",
+      "source_primitive": "fixed SYNC fence",
+      "state": "SYNC",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "transition",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "The shared bounded replacement phase moves only theme-owned accents and is interruptible by newer truth.",
+      "source_primitive": "ring marker / gauge transition",
+      "state": "ORDINARY_REPLACEMENT",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "DISABLED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "READY",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "Localized pending/success motion preserves fixed words and identity.",
+      "source_primitive": "ring marker / gauge feedback",
+      "state": "PENDING",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "half": [
+        0,
+        2,
+        4,
+        6
+      ],
+      "mode": "animated",
+      "rationale": "Localized pending/success motion preserves fixed words and identity.",
+      "source_primitive": "ring marker / gauge feedback",
+      "state": "SUCCESS",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "REJECTED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "STALE",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "VANISHED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "OFFLINE",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "UNCERTAIN",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    },
+    {
+      "family": "feedback",
+      "full": [
+        0
+      ],
+      "half": [
+        0
+      ],
+      "mode": "static",
+      "rationale": "Immediate named feedback remains fully legible without animation.",
+      "source_primitive": "fixed feedback vehicle",
+      "state": "FAILED",
+      "static": [
+        0
+      ],
+      "theme": "Instrument"
+    }
+  ],
+  "schema_version": 1,
+  "semantic_invariants": [
+    "titles, discriminators, state words, values, ages, fences, and 128x128 geometry stay fixed",
+    "empty tiles show EMPTY and NO AGENT without retaining an occupant",
+    "null Codex fields remain N/A or RESET N/A",
+    "stale/offline/SYNC/failure rows cut immediately and never interpolate"
+  ]
+}
