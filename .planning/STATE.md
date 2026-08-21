@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03.1
 current_phase_name: High-Fidelity Animation and Interaction Polish
 status: executing
-stopped_at: Completed 03.1-01-PLAN.md
-last_updated: "2026-08-21T09:05:50.830Z"
+stopped_at: Completed 03.1-02-PLAN.md
+last_updated: "2026-08-21T09:21:02.543Z"
 last_activity: 2026-08-21
 last_activity_desc: Completed Phase 03 Plan 08 exact-device capture and pending evidence
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 43
-  completed_plans: 36
+  completed_plans: 37
 ---
 
 Total Phases: 6
@@ -28,7 +28,7 @@ stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
 last_activity_desc: "Completed Phase 03 Plan 08 exact-device capture and pending evidence"
-progress:[████████░░] 84%
+progress:[█████████░] 86%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.1 (High-Fidelity Animation and Interaction Polish) — EXECUTING
-Plan: 2 of 8
+Plan: 3 of 8
 Status: Ready to execute
 Last activity: 2026-08-21 — Phase 03.1 execution started
 
@@ -101,6 +101,7 @@ Progress: [██████████] 97%
 | Phase 03 P07 | 10min | 1 task | 8 files |
 | Phase 03 P09 | multi-session | 3 tasks | 19 files |
 | Phase 03.1 P01 | 55 | 2 tasks | 10 files |
+| Phase 03.1 P02 | 34min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -163,6 +164,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Keep metrics bounded and preserve focus/snapshot authority outside metrics_ack.
 - [Phase ?]: Record the human smoothness failure and measured resource gaps as blocking quality evidence.
 - [Phase ?]: Use UI-SPEC ceilings as target limits while retaining measured resource headroom.
+- [Phase ?]: Plan 03.1-02 uses a four-phase, 200 ms presentation transition and immediately interrupts it for newer generations or urgent source fences.
+- [Phase ?]: Animation duty is measured from complete compose/flush time over measured loop wall time; Static cancels queued decorative progress while retaining semantic frames.
 
 ### Pending Todos
 
@@ -199,5 +202,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-21T09:05:50.817Z
-Stopped at: Completed 03.1-01-PLAN.md
+Last session: 2026-08-21T09:21:02.528Z
+Stopped at: Completed 03.1-02-PLAN.md
