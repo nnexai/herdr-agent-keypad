@@ -76,6 +76,22 @@ bool printable(const char* value, bool allow_empty) {
 bool elapsed(uint32_t now, uint32_t deadline) {
   return static_cast<int32_t>(now - deadline) >= 0;
 }
+uint8_t menuPresentationProgress(const MenuState& menu, uint32_t now_us,
+                                 AnimationScheduler::Level level) {
+  if (level == AnimationScheduler::Level::Static ||
+      menu.presentation_duration_us == 0) {
+    return menu.presentation_progress;
+  }
+  const int32_t signed_elapsed =
+      static_cast<int32_t>(now_us - menu.presentation_started_us);
+  if (signed_elapsed <= 0) return menu.presentation_progress;
+  const uint32_t elapsed_us = static_cast<uint32_t>(signed_elapsed);
+  if (elapsed_us >= menu.presentation_duration_us) return 3;
+  const uint32_t phase =
+      (static_cast<uint64_t>(elapsed_us) * 4U) / menu.presentation_duration_us;
+  return static_cast<uint8_t>(phase > 3 ? 3 : phase);
+}
+
 
 RenderState captureFixture(CaptureScene scene) {
   RenderState state;
@@ -469,6 +485,7 @@ void AgentProjection::disableActive(BoardAdapter* board) {
     pending_step_[slot] = 0;
     feedback_until_[slot] = 0;
     press_impulse_[slot] = false;
+    feedback_phase_[slot] = 0;
     feedback_[slot] = Feedback::Disabled;
   }
   if (board != nullptr) renderSync(*board);
@@ -496,6 +513,7 @@ bool AgentProjection::commitSnapshot() {
     pending_deadline_[slot] = 0;
     pending_step_[slot] = 0;
     press_impulse_[slot] = false;
+    feedback_phase_[slot] = 0;
     feedback_[slot] = (committed_generation_.tiles[slot].binding.occupied && !urgent)
                           ? Feedback::Ready : Feedback::Disabled;
   }
@@ -650,6 +668,7 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       pending_deadline_[slot] = 0;
       pending_step_[slot] = 0;
       press_impulse_[slot] = false;
+      feedback_phase_[slot] = 0;
       feedback_[slot] = Feedback::Uncertain;
       feedback_until_[slot] = now_us + kFeedbackHoldUs;
       renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
@@ -657,6 +676,7 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
     } else if (pending_action_[slot] != 0 &&
                pending_step_[slot] != 0 && elapsed(now_us, pending_step_[slot])) {
       pending_step_[slot] = now_us + kPendingStepUs;
+      feedback_phase_[slot] = static_cast<uint8_t>((feedback_phase_[slot] + 1U) % 8U);
       renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
       feedback_dirty = true;
     } else if (pending_action_[slot] == 0 && feedback_until_[slot] != 0 &&
@@ -701,15 +721,19 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
   }
 }
 
-void AgentProjection::renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const {
+void AgentProjection::renderMenu(BoardAdapter& board, ThemeRenderer& theme,
+                                 const MenuState& menu) const {
   Display* display = board.displayAt(3);
   if (display == nullptr || !ensureComposition()) return;
+  const uint32_t now_us = micros();
   if (menu.open) {
     MenuState frame = menu;
-    frame.diagnostics = renderState(micros()).diagnostics;
+    frame.presentation_progress =
+        menuPresentationProgress(menu, now_us, animation_.level());
+    frame.diagnostics = renderState(now_us).diagnostics;
     theme.composeMenu(g_composition, frame);
   } else {
-    theme.composePanel4(g_composition, renderState(micros()));
+    theme.composePanel4(g_composition, renderState(now_us));
   }
   g_composition.pushSprite(display, 0, 0);
 }

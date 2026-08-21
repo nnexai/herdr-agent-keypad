@@ -175,6 +175,7 @@ class AgentProjection final {
   uint32_t pending_action_[kSlotCount]{};
   Feedback feedback_[kSlotCount]{};
   bool press_impulse_[kSlotCount]{};
+  uint8_t feedback_phase_[kSlotCount]{};
   char pending_action_text_[kSlotCount][kTextBytes] = {};
   uint32_t pending_deadline_[kSlotCount]{};
   uint32_t pending_step_[kSlotCount]{};

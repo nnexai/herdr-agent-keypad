@@ -64,6 +64,8 @@ struct RenderState {
     const char* age = "";
     TileState state = TileState::Empty;
     TileFeedback feedback = TileFeedback::Disabled;
+    // Phase of the bounded feedback cue, separate from ambient theme phase.
+    uint8_t feedback_phase = 0;
     // One complete-frame physical press cue. Presentation only: it never
     // changes request authority or implies host acknowledgement.
     bool press_impulse = false;
