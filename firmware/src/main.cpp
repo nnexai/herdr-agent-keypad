@@ -376,7 +376,16 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     return;
   }
   if (strcmp(type, "focus_result") == 0) {
+    const uint8_t slot = payload["slot"].as<uint8_t>();
+    const AgentProjection::Feedback before =
+        slot < AgentProjection::kSlotCount ? agentProjection.feedback(slot) :
+                                               AgentProjection::Feedback::Disabled;
     agentProjection.applyFocusResult(payload.as<JsonObjectConst>());
+    if (slot < AgentProjection::kSlotCount && agentProjection.feedback(slot) != before) {
+      // Failure, uncertainty, and success are semantic outcomes: publish their
+      // complete frame immediately instead of waiting for ambient cadence.
+      agentProjection.renderFeedback(board, slot);
+    }
     completeAdmission();
     return;
   }
