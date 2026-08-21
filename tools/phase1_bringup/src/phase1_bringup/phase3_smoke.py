@@ -385,6 +385,7 @@ def phase31_lock_from_baseline(baseline: Mapping[str, Any]) -> dict[str, Any]:
             + ", ".join(unavailable)
         )
     metrics = _phase31_metrics(baseline["metrics"])
+    _validate_phase31_machine_metrics(metrics)
     measured_ceiling_checks = (
         ("first_press_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),
         ("first_encoder_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),

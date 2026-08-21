@@ -501,6 +501,7 @@ class Phase31BudgetLockTests(unittest.TestCase):
                 "animation_duty_max_percent",
             )
         }
+        metrics["frame_count"] = 3
         baseline = {
             "schema_version": 1,
             "kind": "phase03.1-baseline-profile",
@@ -544,9 +545,10 @@ class Phase31BudgetLockTests(unittest.TestCase):
             "parser_high_water", "queue_high_water", "allocation_stable",
             "animation_duty_max_percent",
         )}
-        metrics["first_encoder_response_us"] = 120001
-        metrics["animation_duty_max_percent"] = 99
-        metrics["allocation_stable"] = 0
+        metrics["frame_count"] = 3
+        metrics["first_encoder_response_us"] = 1
+        metrics["animation_duty_max_percent"] = 1
+        metrics["allocation_stable"] = 1
         baseline = {
             "schema_version": 1,
             "kind": "phase03.1-baseline-profile",
@@ -570,9 +572,51 @@ class Phase31BudgetLockTests(unittest.TestCase):
         self.assertEqual(lock["status"], "blocked")
         self.assertEqual(lock["baseline_quality"]["status"], "failed")
         self.assertEqual(lock["baseline_quality"]["failed_observation_ids"], ["smoothness"])
-        self.assertTrue(lock["baseline_quality"]["resource_failures"])
+        self.assertFalse(lock["baseline_quality"]["resource_failures"])
         self.assertEqual(lock["limits"]["press_response_us"], 120000)
         self.assertEqual(lock["resource_headroom"]["target_period_us"], 33334)
+    def test_phase31_budget_lock_rejects_invalid_machine_metrics(self):
+        from phase1_bringup.phase3_smoke import phase31_lock_from_baseline
+
+        metrics = {name: 1 for name in (
+            "loop_wall_max_us", "compose_flush_max_us", "frame_count",
+            "full_frames", "half_frames", "static_frames", "level_changes",
+            "skipped_frames", "degraded_frames", "reveal_max_us",
+            "first_press_response_us", "first_encoder_response_us",
+            "max_key_poll_gap_us", "minimum_free_heap", "largest_free_block",
+            "parser_high_water", "queue_high_water", "allocation_stable",
+            "animation_duty_max_percent",
+        )}
+        metrics["frame_count"] = 3
+        observations = [
+            {"id": observation_id, "result": "pass", "method": "exact-device"}
+            for observation_id in (
+                "blocked-cycle", "direct-key-response", "encoder-response",
+                "display-led-alignment", "smoothness", "brightness-power",
+            )
+        ]
+        baseline = {
+            "schema_version": 1,
+            "kind": "phase03.1-baseline-profile",
+            "deployment": {"deployment_id": "deployment"},
+            "metrics": metrics,
+            "measurement_window": {"started_unix_ms": 1, "ended_unix_ms": 2},
+            "samples": [{"id": "sample", "metrics": metrics}],
+            "observations": observations,
+        }
+        invalid = (
+            ("frame_count", 1, "reconcile"),
+            ("max_key_poll_gap_us", 0, "zero"),
+            ("allocation_stable", 0, "allocation"),
+            ("max_key_poll_gap_us", 120001, "ceiling"),
+        )
+        for field, value, message in invalid:
+            with self.subTest(field=field, value=value):
+                candidate = dict(baseline)
+                candidate["metrics"] = dict(metrics)
+                candidate["metrics"][field] = value
+                with self.assertRaisesRegex(ValueError, message):
+                    phase31_lock_from_baseline(candidate)
 
 
 if __name__ == "__main__":
