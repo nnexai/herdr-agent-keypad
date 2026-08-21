@@ -350,6 +350,17 @@ class Phase31CurrentDeploymentTests(unittest.TestCase):
         transition = validate_phase31_reset_epoch(previous, current)
         self.assertEqual(transition["to_boot_id"], "boot-2")
 
+    def test_phase31_physical_metrics_ack_includes_full_protocol_shape(self):
+        source = (ROOT / "firmware/src/main.cpp").read_text(encoding="utf-8")
+        required = (
+            "minimum_free_heap", "largest_free_block", "max_key_poll_gap_us",
+            "parser_high_water", "queue_high_water", "out_of_order",
+            "compose_flush_max_us", "frame_count", "allocation_stable",
+        )
+        for name in required:
+            with self.subTest(name=name):
+                self.assertIn(f'reply["{name}"]', source)
+
     def test_phase31_current_deployment_rejects_unacknowledged_or_wrong_publication(self):
         deployment, publication = self.identity()
         publication["snapshot_ack"]["accepted"] = False
