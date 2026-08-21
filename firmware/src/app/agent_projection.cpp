@@ -698,7 +698,9 @@ bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
   out.semantic_event_epoch = focus_event_epoch_[slot];
   out.semantic_event_started_us = focus_event_started_us_[slot];
   out.semantic_event_phase =
-      semanticEventPhase(now_us, focus_event_started_us_[slot]);
+      feedback == Feedback::Pending
+          ? feedback_phase_[slot]
+          : semanticEventPhase(now_us, focus_event_started_us_[slot]);
   out.press_impulse = press_impulse_[slot];
   state.codex.source_state = strcmp(generation.codex_source_state, "current") == 0 ? CodexSourceState::Current :
                              strcmp(generation.codex_source_state, "stale") == 0 ? CodexSourceState::Stale :
@@ -909,7 +911,9 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
     output.semantic_event_epoch = focus_event_epoch_[slot];
     output.semantic_event_started_us = focus_event_started_us_[slot];
     output.semantic_event_phase =
-        semanticEventPhase(now_us, focus_event_started_us_[slot]);
+        feedback_[slot] == Feedback::Pending
+            ? feedback_phase_[slot]
+            : semanticEventPhase(now_us, focus_event_started_us_[slot]);
     output.press_impulse = press_impulse_[slot];
     output.state = tile.state;
     output.feedback = feedback_[slot];

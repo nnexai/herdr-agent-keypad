@@ -3107,6 +3107,7 @@ void test_led_grammars_keep_distinct_slot_feedback_phases() {
   state.slots[1].semantic_event_started_us = 2000;
   state.slots[1].semantic_event_phase = 0;
 
+  LedEvents closed;
   LedEvents menu;
   menu.menu_open = true;
   menu.semantic_event = LedSemanticEvent::MenuOpen;
@@ -3121,7 +3122,15 @@ void test_led_grammars_keep_distinct_slot_feedback_phases() {
       {&meterLampsGrammar(), 45},
   };
   for (const GrammarExpectation& expectation : grammars) {
-    const size_t count = expectation.grammar->frame(
+    size_t count = expectation.grammar->frame(
+        state, closed, 0, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
+    TEST_ASSERT_EQUAL_UINT8(0, segmentBrightness(segments, count, 1U << 1));
+    TEST_ASSERT_EQUAL_UINT8(expectation.bright_phase_zero,
+                            segmentBrightness(segments, count, 1U << 4));
+    TEST_ASSERT_EQUAL_UINT8(0, segmentBrightness(segments, count, 1U << 13));
+
+    count = expectation.grammar->frame(
         state, menu, 0, segments, kLedGrammarMaxSegments);
     TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
     TEST_ASSERT_EQUAL_UINT8(0, segmentBrightness(segments, count, 1U << 1));
@@ -3136,7 +3145,18 @@ void test_led_grammars_keep_distinct_slot_feedback_phases() {
   };
   for (const TileFeedback feedback : field_cases) {
     state.slots[0].feedback = feedback;
-    const size_t count = fieldExtensionGrammar().frame(
+    size_t count = fieldExtensionGrammar().frame(
+        state, closed, 0, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
+    if (feedback == TileFeedback::Pending) {
+      TEST_ASSERT_EQUAL_UINT8(45, segmentBrightness(segments, count, 1U << 1));
+    } else {
+      TEST_ASSERT_EQUAL_UINT8(0, segmentBrightness(segments, count, 1U << 1));
+    }
+    TEST_ASSERT_EQUAL_UINT8(30, segmentBrightness(segments, count, 1U << 4));
+    TEST_ASSERT_EQUAL_UINT8(0, segmentBrightness(segments, count, 1U << 13));
+
+    count = fieldExtensionGrammar().frame(
         state, menu, 0, segments, kLedGrammarMaxSegments);
     TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
     if (feedback == TileFeedback::Pending) {
