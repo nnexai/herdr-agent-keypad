@@ -3,6 +3,7 @@
 #include <unity.h>
 
 #include <string>
+#include <cstdio>
 #include <vector>
 
 #include "../../firmware/src/app/agent_projection.h"
@@ -11,12 +12,14 @@
 #include "../../firmware/src/ui/theme.h"
 #include "../../firmware/src/ui/led_engine.h"
 #include "../../firmware/src/app/menu_controller.h"
+#include "../../firmware/src/app/product_input_router.h"
 #include "../../firmware/src/ui/led_grammar.h"
 
 namespace {
 Display displays[4];
 struct LedCall { uint16_t hue; uint8_t saturation; uint8_t brightness; uint16_t mask; };
 std::vector<LedCall> g_led_calls;
+std::vector<uint8_t> g_brightness_calls;
 bool missing_panel = false;
 
 JsonDocument snapshot_document(uint32_t revision, const char* state0 = "working",
@@ -162,6 +165,10 @@ void BoardAdapter::setLeds(uint16_t hue, uint8_t saturation, uint8_t brightness,
   g_led_calls.push_back({hue, saturation, brightness, mask});
 }
 
+void BoardAdapter::setBrightness(uint8_t brightness) {
+  g_brightness_calls.push_back(brightness);
+}
+
 void setUp() {}
 void tearDown() {
   missing_panel = false;
@@ -171,6 +178,7 @@ void tearDown() {
   g_nvs_write_attempt = 0;
   resetLog();
   g_led_calls.clear();
+  g_brightness_calls.clear();
   g_sync_draw_count = 0;
 }
 
@@ -1517,6 +1525,171 @@ void test_led_grammar_scene_masks() {
   }
 }
 
+void test_product_input_router_orders_simultaneous_frame_without_state() {
+  ProductInputFrame frame;
+  frame.agent_pressed[2] = true;
+  frame.agent_pressed[0] = true;
+  frame.agent_pressed[1] = true;
+  frame.encoder_clicked = true;
+  frame.encoder_delta = -7;
+  const ProductInputActions actions = ProductInputRouter::route(frame);
+  TEST_ASSERT_EQUAL_UINT8(ProductInputActions::kCapacity, actions.count);
+  for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(ProductInputActionKind::AgentSlot),
+        static_cast<int>(actions[slot].kind));
+    TEST_ASSERT_EQUAL_INT(slot, actions[slot].value);
+  }
+  TEST_ASSERT_EQUAL(
+      static_cast<int>(ProductInputActionKind::EncoderClick),
+      static_cast<int>(actions[3].kind));
+  TEST_ASSERT_EQUAL(
+      static_cast<int>(ProductInputActionKind::EncoderRotate),
+      static_cast<int>(actions[4].kind));
+  TEST_ASSERT_EQUAL_INT(-7, actions[4].value);
+
+  const ProductInputActions empty =
+      ProductInputRouter::route(ProductInputFrame{});
+  TEST_ASSERT_EQUAL_UINT8(0, empty.count);
+}
+
+namespace {
+void openMenuMode(MenuController& menu, MenuController::Mode mode,
+                  uint32_t now_us) {
+  if (mode == MenuController::Mode::Closed) return;
+  menu.click(now_us++);
+  if (mode == MenuController::Mode::Root) return;
+  uint8_t cursor = 0;
+  switch (mode) {
+    case MenuController::Mode::Theme:
+      cursor = 0;
+      break;
+    case MenuController::Mode::Leds:
+      cursor = 1;
+      break;
+    case MenuController::Mode::Brightness:
+      cursor = 2;
+      break;
+    case MenuController::Mode::Health:
+      cursor = 3;
+      break;
+    case MenuController::Mode::About:
+      cursor = 4;
+      break;
+    default:
+      return;
+  }
+  if (cursor != 0) menu.rotate(cursor, now_us++);
+  menu.click(now_us);
+}
+
+void makeEverySlotFocusable(JsonDocument& document) {
+  JsonArray agents = document["agents"].as<JsonArray>();
+  const char* entries[] = {"entry-0", "entry-1", "entry-2"};
+  const char* panes[] = {"pane-0", "pane-1", "pane-2"};
+  const char* terminals[] = {"term-0", "term-1", "term-2"};
+  for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
+    JsonObject agent = agents[slot];
+    agent["entry_id"] = entries[slot];
+    agent["title"] = entries[slot];
+    agent["discriminator"] = "repo";
+    agent["state"] = "idle";
+    agent["pane_id"] = panes[slot];
+    agent["terminal_id"] = terminals[slot];
+    agent["source_revision"] = slot + 1;
+  }
+}
+}  // namespace
+
+void test_product_router_keeps_direct_keys_live_in_every_menu_mode() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(41);
+  makeEverySlotFocusable(document);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const MenuController::Mode modes[] = {
+      MenuController::Mode::Closed,     MenuController::Mode::Root,
+      MenuController::Mode::Theme,      MenuController::Mode::Leds,
+      MenuController::Mode::Brightness, MenuController::Mode::Health,
+      MenuController::Mode::About,
+  };
+  for (MenuController::Mode mode : modes) {
+    SettingsStore settings;
+    settings.load();
+    MenuController menu(settings);
+    menu.resetFromStore();
+    openMenuMode(menu, mode, 1000);
+    TEST_ASSERT_EQUAL(static_cast<int>(mode),
+                      static_cast<int>(menu.mode()));
+    const uint8_t cursor = menu.state().cursor;
+    const uint8_t viewport = menu.state().viewport_start;
+    const uint32_t activity = menu.lastEncoderActivityUs();
+
+    ProductInputFrame frame;
+    frame.agent_pressed[0] = true;
+    frame.agent_pressed[1] = true;
+    frame.agent_pressed[2] = true;
+    const ProductInputActions actions = ProductInputRouter::route(frame);
+    TEST_ASSERT_EQUAL_UINT8(3, actions.count);
+    for (uint8_t index = 0; index < actions.count; ++index) {
+      TEST_ASSERT_EQUAL(
+          static_cast<int>(ProductInputActionKind::AgentSlot),
+          static_cast<int>(actions[index].kind));
+      JsonDocument intent;
+      char action_id[16];
+      std::snprintf(action_id, sizeof(action_id), "mode-%u-%u",
+                    static_cast<unsigned>(mode),
+                    static_cast<unsigned>(index));
+      TEST_ASSERT_TRUE(projection.captureFocusIntent(
+          static_cast<uint8_t>(actions[index].value), action_id,
+          intent.to<JsonObject>()));
+      TEST_ASSERT_EQUAL_UINT8(index, intent["slot"].as<uint8_t>());
+      TEST_ASSERT_EQUAL_UINT32(
+          41, intent["snapshot_revision"].as<uint32_t>());
+    }
+    TEST_ASSERT_EQUAL(static_cast<int>(mode),
+                      static_cast<int>(menu.mode()));
+    TEST_ASSERT_EQUAL_UINT8(cursor, menu.state().cursor);
+    TEST_ASSERT_EQUAL_UINT8(viewport, menu.state().viewport_start);
+    TEST_ASSERT_EQUAL_UINT32(activity, menu.lastEncoderActivityUs());
+  }
+}
+
+void test_simultaneous_direct_keys_precede_click_and_rotation_dispatch() {
+  SettingsStore settings;
+  settings.load();
+  MenuController menu(settings);
+  menu.resetFromStore();
+  menu.click(10);
+  ProductInputFrame frame;
+  frame.agent_pressed[0] = true;
+  frame.agent_pressed[2] = true;
+  frame.encoder_clicked = true;
+  frame.encoder_delta = 2;
+  const ProductInputActions actions = ProductInputRouter::route(frame);
+  std::vector<int> dispatch_order;
+  for (uint8_t index = 0; index < actions.count; ++index) {
+    const ProductInputAction& action = actions[index];
+    if (action.kind == ProductInputActionKind::AgentSlot) {
+      dispatch_order.push_back(10 + action.value);
+    } else if (action.kind == ProductInputActionKind::EncoderClick) {
+      dispatch_order.push_back(20);
+      menu.click(20);
+    } else {
+      dispatch_order.push_back(30);
+      menu.rotate(action.value, 20);
+    }
+  }
+  const int expected[] = {10, 12, 20, 30};
+  TEST_ASSERT_EQUAL_INT_ARRAY(expected, dispatch_order.data(),
+                              dispatch_order.size());
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Theme),
+                    static_cast<int>(menu.mode()));
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon),
+                    static_cast<int>(menu.activeTheme()));
+}
+
 void test_menu_controller_walks_six_clamped_rows_and_all_pages() {
   SettingsStore settings;
   settings.load();
@@ -1580,6 +1753,7 @@ void test_menu_brightness_previews_confirms_and_reverts_locally() {
   SettingsStore settings;
   settings.load();
   MenuController menu(settings);
+  BoardAdapter board;
   menu.resetFromStore();
   menu.click(0);
   menu.rotate(2, 1);
@@ -1591,12 +1765,16 @@ void test_menu_brightness_previews_confirms_and_reverts_locally() {
   uint8_t brightness = 0;
   TEST_ASSERT_TRUE(menu.takeBrightnessIntent(brightness));
   TEST_ASSERT_EQUAL_UINT8(10, brightness);
+  board.setBrightness(brightness);
+  TEST_ASSERT_EQUAL_UINT8(10, g_brightness_calls.back());
   TEST_ASSERT_FALSE(menu.rotate(-1, 4));
   TEST_ASSERT_FALSE(menu.takeBrightnessIntent(brightness));
   const uint32_t writes_before_cancel = g_nvs_write_count;
   TEST_ASSERT_TRUE(menu.cancel());
   TEST_ASSERT_TRUE(menu.takeBrightnessIntent(brightness));
   TEST_ASSERT_EQUAL_UINT8(80, brightness);
+  board.setBrightness(brightness);
+  TEST_ASSERT_EQUAL_UINT8(80, g_brightness_calls.back());
   TEST_ASSERT_EQUAL_UINT32(writes_before_cancel, g_nvs_write_count);
 
   menu.click(10);
@@ -1605,6 +1783,8 @@ void test_menu_brightness_previews_confirms_and_reverts_locally() {
   TEST_ASSERT_TRUE(menu.rotate(2, 13));
   TEST_ASSERT_TRUE(menu.takeBrightnessIntent(brightness));
   TEST_ASSERT_EQUAL_UINT8(100, brightness);
+  board.setBrightness(brightness);
+  TEST_ASSERT_EQUAL_UINT8(100, g_brightness_calls.back());
   TEST_ASSERT_TRUE(menu.click(14));
   TEST_ASSERT_EQUAL_UINT8(100, menu.storedBrightness());
   TEST_ASSERT_EQUAL_UINT32(SettingsStore::kSchemaVersion, g_nvs["ver"]);
@@ -1724,6 +1904,9 @@ int runAllTests() {
   RUN_TEST(test_codex_failures_use_health_overlays_and_focus_preempts_them);
   RUN_TEST(test_menu_all_off_and_grammar_switch_keep_led_engine_precedence);
   RUN_TEST(test_blocked_motion_recomposes_blocked_panel_only);
+  RUN_TEST(test_product_input_router_orders_simultaneous_frame_without_state);
+  RUN_TEST(test_product_router_keeps_direct_keys_live_in_every_menu_mode);
+  RUN_TEST(test_simultaneous_direct_keys_precede_click_and_rotation_dispatch);
   RUN_TEST(test_menu_controller_walks_six_clamped_rows_and_all_pages);
   RUN_TEST(test_menu_brightness_previews_confirms_and_reverts_locally);
   RUN_TEST(test_menu_encoder_only_timeout_is_wrap_safe_and_reverts_preview);

@@ -15,6 +15,7 @@
 #include "app/agent_projection.h"
 #include "app/settings_store.h"
 #include "app/menu_controller.h"
+#include "app/product_input_router.h"
 #include "ui/theme.h"
 #include "ui/led_engine.h"
 
@@ -487,17 +488,20 @@ void reportEncoderTransition(const char *direction) {
   sendFrame("event", 0, event.as<JsonObjectConst>());
 }
 
-void reportAgentKey() {
-  if (!agentProjection.committed() || !board.ready()) return;
-  for (uint8_t key = 0; key < AgentProjection::kSlotCount; ++key) {
-    if (!board.consumePressed(key)) continue;
-    char actionId[32] = {};
-    std::snprintf(actionId, sizeof(actionId), "device-%lu", static_cast<unsigned long>(micros()));
-    JsonDocument intent;
-    if (agentProjection.captureFocusIntent(key, actionId, intent.to<JsonObject>())) {
-      agentProjection.renderFeedback(board, key);
-      sendFrame("focus_intent", 0, intent.as<JsonObjectConst>());
-    }
+void reportAgentKey(uint8_t key) {
+  if (!agentProjection.committed() || !board.ready() ||
+      key >= AgentProjection::kSlotCount) {
+    return;
+  }
+  char actionId[32] = {};
+  std::snprintf(actionId, sizeof(actionId), "device-%lu-%u",
+                static_cast<unsigned long>(micros()),
+                static_cast<unsigned>(key));
+  JsonDocument intent;
+  if (agentProjection.captureFocusIntent(key, actionId,
+                                         intent.to<JsonObject>())) {
+    agentProjection.renderFeedback(board, key);
+    sendFrame("focus_intent", 0, intent.as<JsonObjectConst>());
   }
 }
 
@@ -544,11 +548,41 @@ void refreshMenuPresentation() {
   agentProjection.renderMenu(board, menu_theme, menuController.state());
 }
 
-void pollMenu() {
-  if (board.consumePressed(4)) menuController.click();
-  const long delta = board.encoderDelta();
-  if (delta != 0) menuController.rotate(delta);
-  refreshMenuPresentation();
+ProductInputFrame captureProductInput() {
+  ProductInputFrame frame;
+  if (!board.ready()) return frame;
+  for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
+    frame.agent_pressed[slot] = board.consumePressed(slot);
+  }
+  frame.encoder_clicked = board.consumePressed(4);
+  frame.encoder_delta = static_cast<int32_t>(board.encoderDelta());
+  return frame;
+}
+
+void applyBrightnessIntent() {
+  uint8_t brightness = 0;
+  if (menuController.takeBrightnessIntent(brightness)) {
+    board.setBrightness(brightness);
+  }
+}
+
+void dispatchProductInput(const ProductInputActions& actions,
+                          uint32_t now_us) {
+  for (uint8_t index = 0; index < actions.count; ++index) {
+    const ProductInputAction& action = actions[index];
+    switch (action.kind) {
+      case ProductInputActionKind::AgentSlot:
+        reportAgentKey(static_cast<uint8_t>(action.value));
+        break;
+      case ProductInputActionKind::EncoderClick:
+        menuController.click(now_us);
+        break;
+      case ProductInputActionKind::EncoderRotate:
+        menuController.rotate(action.value, now_us);
+        break;
+    }
+  }
+  applyBrightnessIntent();
 }
 }  // namespace
 
@@ -567,7 +601,7 @@ void setup() {
   bootId = freshBootId(deviceId);
   protocolSession.reset(bootId.c_str(), "");
   if (board.ready()) {
-    board.setBrightness(80);
+    board.setBrightness(menuController.storedBrightness());
     render(BringupState::Wait, 0);
     agentProjection.renderMenu(board, themeById(menuController.storedTheme()), menuController.state());
   }
@@ -577,11 +611,13 @@ void setup() {
 void loop() {
   const uint32_t now = micros();
   board.update();
-  // Consume physical agent edges immediately after the single hardware poll.
-  // USB snapshot admission and display/LED composition can be comparatively
-  // expensive; polling after those operations lets a quick press expire
-  // before ButtonSense sees the next update.
-  reportAgentKey();
+  // Capture every product edge once immediately after the single hardware
+  // poll. The pure router emits all displayed agent slots before either
+  // secondary encoder action, including simultaneous frames.
+  const ProductInputFrame input = captureProductInput();
+  const ProductInputActions actions = ProductInputRouter::route(input);
+  dispatchProductInput(actions, now);
+  if (menuController.expire(now)) applyBrightnessIntent();
   readFrames();
   if (lastKeyPollAt != 0) proofMetrics.observeKeyPollGap(now - lastKeyPollAt);
   lastKeyPollAt = now;
@@ -593,7 +629,7 @@ void loop() {
     // delay + work); ProofMetrics keeps measuring flush transactions.
     if (tick_cost > 0) agentProjection.animation().observeFlushCost(tick_cost, 1000);
   }
-  pollMenu();
+  refreshMenuPresentation();
   LedEvents led_events;
   led_events.menu_open = menuController.open();
   ledEngine.render(agentProjection.renderState(now), led_events, now, board);
