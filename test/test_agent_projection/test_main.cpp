@@ -2172,7 +2172,8 @@ void test_product_input_router_orders_simultaneous_frame_without_state() {
   frame.encoder_clicked = true;
   frame.encoder_delta = -7;
   const ProductInputActions actions = ProductInputRouter::route(frame);
-  TEST_ASSERT_EQUAL_UINT8(ProductInputActions::kCapacity, actions.count);
+  TEST_ASSERT_EQUAL_UINT8(ProductInputFrame::kAgentSlotCount + 1 + 7,
+                           actions.count);
   for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
     TEST_ASSERT_EQUAL(
         static_cast<int>(ProductInputActionKind::AgentSlot),
@@ -2182,10 +2183,12 @@ void test_product_input_router_orders_simultaneous_frame_without_state() {
   TEST_ASSERT_EQUAL(
       static_cast<int>(ProductInputActionKind::EncoderClick),
       static_cast<int>(actions[3].kind));
-  TEST_ASSERT_EQUAL(
-      static_cast<int>(ProductInputActionKind::EncoderRotate),
-      static_cast<int>(actions[4].kind));
-  TEST_ASSERT_EQUAL_INT(-7, actions[4].value);
+  for (uint8_t index = 4; index < actions.count; ++index) {
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(ProductInputActionKind::EncoderRotate),
+        static_cast<int>(actions[index].kind));
+    TEST_ASSERT_EQUAL_INT(-1, actions[index].value);
+  }
 
   const ProductInputActions empty =
       ProductInputRouter::route(ProductInputFrame{});
@@ -2320,12 +2323,12 @@ void test_simultaneous_direct_keys_precede_click_and_rotation_dispatch() {
       menu.rotate(action.value, 20);
     }
   }
-  const int expected[] = {10, 12, 20, 30};
+  const int expected[] = {10, 12, 20, 30, 30};
   TEST_ASSERT_EQUAL_INT_ARRAY(expected, dispatch_order.data(),
                               dispatch_order.size());
   TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Theme),
                     static_cast<int>(menu.mode()));
-  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon),
+  TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Instrument),
                     static_cast<int>(menu.activeTheme()));
 }
 void test_menu_presentation_is_immediate_bounded_and_reversible() {

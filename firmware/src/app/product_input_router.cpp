@@ -19,8 +19,18 @@ ProductInputActions ProductInputRouter::route(const ProductInputFrame& frame) {
     append(actions, ProductInputActionKind::EncoderClick, 0);
   }
   if (frame.encoder_delta != 0) {
-    append(actions, ProductInputActionKind::EncoderRotate,
-           frame.encoder_delta);
+    const int32_t direction = frame.encoder_delta > 0 ? 1 : -1;
+    const uint32_t magnitude = frame.encoder_delta > 0
+                                   ? static_cast<uint32_t>(frame.encoder_delta)
+                                   : static_cast<uint32_t>(-
+                                         static_cast<int64_t>(frame.encoder_delta));
+    const uint32_t bounded =
+        magnitude > ProductInputActions::kMaxEncoderDetents
+            ? ProductInputActions::kMaxEncoderDetents
+            : magnitude;
+    for (uint32_t detent = 0; detent < bounded; ++detent) {
+      append(actions, ProductInputActionKind::EncoderRotate, direction);
+    }
   }
   return actions;
 }

@@ -22,8 +22,9 @@ struct ProductInputAction {
 };
 
 struct ProductInputActions {
+  static constexpr uint8_t kMaxEncoderDetents = 8;
   static constexpr uint8_t kCapacity =
-      ProductInputFrame::kAgentSlotCount + 2;
+      ProductInputFrame::kAgentSlotCount + 1 + kMaxEncoderDetents;
 
   ProductInputAction items[kCapacity]{};
   uint8_t count = 0;
