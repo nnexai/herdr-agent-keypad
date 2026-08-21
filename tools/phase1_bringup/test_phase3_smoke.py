@@ -360,6 +360,19 @@ class Phase31CurrentDeploymentTests(unittest.TestCase):
         for name in required:
             with self.subTest(name=name):
                 self.assertIn(f'reply["{name}"]', source)
+        ordered = (
+            "acknowledged", "allocation_stable", "animation_duty_max_percent",
+            "compose_flush_max_us", "degraded_frames", "digest_mismatch",
+            "duplicate", "first_encoder_response_us", "first_press_response_us",
+            "frame_count", "full_frames", "half_frames", "largest_free_block",
+            "level_changes", "loop_wall_max_us", "malformed", "max_display_flush_us",
+            "max_key_poll_gap_us", "minimum_free_heap", "out_of_order",
+            "parser_high_water", "queue_high_water", "received", "rejected",
+            "reveal_max_us", "sent", "skipped_frames", "static_frames",
+            "watchdog_reset",
+        )
+        offsets = [source.index(f'reply["{name}"]') for name in ordered]
+        self.assertEqual(offsets, sorted(offsets))
 
     def test_phase31_current_deployment_rejects_unacknowledged_or_wrong_publication(self):
         deployment, publication = self.identity()
