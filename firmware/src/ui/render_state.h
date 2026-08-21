@@ -71,6 +71,13 @@ struct RenderState {
   Slot slots[kSlotCount];
   const char* source_status = "";
   bool syncing = false;
+  // Shared presentation metadata only. These fields are derived from the
+  // committed generation and cannot authorize focus or replace host truth.
+  bool transition_active = false;
+  uint8_t transition_phase = 0;
+  uint32_t transition_epoch = 0;
+  uint32_t semantic_event_epoch = 0;
+  uint8_t ambient_phase = 0;
   // BLOCKED pulse phase from the AnimationScheduler (1.2 s period, LED
   // synced). Themes draw their alternate BLOCKED frame when false.
   bool blocked_pulse_high = true;

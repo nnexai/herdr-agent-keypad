@@ -1245,12 +1245,12 @@ void test_ambient_cadence_degrades_under_budget_pressure() {
   AnimationScheduler scheduler;
   scheduler.setAmbientPeriod(100000UL);  // 100 ms ambient cadence
   TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Full), static_cast<int>(scheduler.level()));
-  // Flush cost 50 ms per 100 ms period = 50 % duty > 30 % -> Half.
-  scheduler.observeFlushCost(50000UL, 1000000UL);
+  // Measured complete-frame cost is evaluated against the measured loop wall
+  // window, not a synthetic 1 ms approximation.
+  scheduler.observeFlushCost(50000UL, 100000UL);
   TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Half), static_cast<int>(scheduler.level()));
-  // Still over budget at halved cadence (50 ms / 200 ms = 25 %? no — 25 < 30,
-  // so feed a heavier cost to force Static).
-  scheduler.observeFlushCost(90000UL, 1000000UL);
+  // Still over budget at the measured window, so the next observation reaches Static.
+  scheduler.observeFlushCost(90000UL, 100000UL);
   TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Static), static_cast<int>(scheduler.level()));
   // Static level schedules no ambient frames.
   TEST_ASSERT_FALSE(scheduler.ambientFrameDue(1));
@@ -1281,7 +1281,7 @@ void test_half_samples_every_second_phase_and_static_keeps_semantics() {
   scheduler.setAmbientPeriod(100000UL);
   scheduler.beginTransition(1, 1);
   scheduler.setLevel(AnimationScheduler::Level::Half);
-  TEST_ASSERT_FALSE(scheduler.ambientFrameDue(100001));
+  TEST_ASSERT_FALSE(scheduler.ambientFrameDue(1));
   TEST_ASSERT_TRUE(scheduler.ambientFrameDue(200001));
   scheduler.setLevel(AnimationScheduler::Level::Static);
   TEST_ASSERT_FALSE(scheduler.ambientFrameDue(1000000));

@@ -183,4 +183,6 @@ class AgentProjection final {
   uint32_t next_action_ = 1;
   ThemeRenderer* theme_ = nullptr;
   AnimationScheduler animation_{};
+  uint32_t semantic_event_epoch_ = 0;
+  bool transition_after_commit_ = false;
 };

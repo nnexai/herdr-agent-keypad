@@ -29,7 +29,8 @@ void drawDashedRect(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w, int32_
 }
 
 // State rail x:0..15 — width plus fill pattern is the state channel.
-void drawRail(LGFX_Sprite& sprite, TileState state, uint16_t color, bool pulse_high) {
+void drawRail(LGFX_Sprite& sprite, TileState state, uint16_t color,
+              bool pulse_high, bool transition_active, uint8_t transition_phase) {
   switch (state) {
     case TileState::Blocked: {  // 16 px animated dashes — crawl by half a
       const int32_t offset = pulse_high ? 0 : 6;  // dash period per pulse phase
@@ -54,6 +55,13 @@ void drawRail(LGFX_Sprite& sprite, TileState state, uint16_t color, bool pulse_h
       break;
     default:
       break;  // Empty renders no rail.
+  }
+  // Signal Edge's ordinary transition is a bounded travelling break in the
+  // rail. It never runs for BLOCKED, calm states, or any fenced generation.
+  if (transition_active &&
+      (state == TileState::Working || state == TileState::Unseen)) {
+    const int32_t y = 8 + static_cast<int32_t>(transition_phase % 4U) * 28;
+    sprite.fillRect(12, y, 4, 8, kBackground);
   }
 }
 
@@ -164,7 +172,8 @@ class SignalEdgeTheme final : public ThemeRenderer {
       sprite.drawString("NO AGENT", centeredX("NO AGENT"), 104);
       drawGlyph(sprite, TileState::Empty, kEmptyEdge);
     } else {
-      drawRail(sprite, tile.state, content, state.blocked_pulse_high);
+      drawRail(sprite, tile.state, content, state.blocked_pulse_high,
+               state.transition_active && fence == nullptr, state.transition_phase);
       drawTitleRows(sprite, tile.title, fence != nullptr ? kSettled : kPrimary);
       sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
       sprite.drawString(tile.discriminator, 15, 32);

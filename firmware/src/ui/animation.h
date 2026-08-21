@@ -3,56 +3,123 @@
 #include <stdint.h>
 
 // Bounded frame scheduler (R-1). Owns all periodic recomposition: the
-// mandatory BLOCKED 1.2 s two-frame pulse and optional per-theme ambient
-// cadence. Every frame the scheduler requests is recomposed and flushed as a
-// complete frame through the existing projection path; the scheduler itself
+// mandatory BLOCKED 1.2 s two-frame pulse, semantic transitions, and optional
+// per-theme ambient cadence. Every frame requested here is recomposed and
+// flushed as a complete frame through AgentProjection; the scheduler itself
 // never draws and never allocates.
-//
-// Budget rule: animation flush time must stay ≤ 30 % of loop wall time. The
-// caller feeds measured flush costs (the same micros() deltas ProofMetrics
-// sees); when the projected animation load exceeds the budget the cadence
-// halves, and if still exceeded ambient freezes to static frames. The BLOCKED
-// pulse degrades last.
 class AnimationScheduler final {
  public:
-  static constexpr uint32_t kBlockedPeriodUs = 1200000UL;  // 1.2 s, LED-synced
+  static constexpr uint32_t kBlockedPeriodUs = 1200000UL;
+  static constexpr uint32_t kTransitionDurationUs = 200000UL;
   static constexpr uint32_t kBudgetPercent = 30;
+  static constexpr uint8_t kTransitionPhaseCount = 4;
+  static constexpr uint8_t kNeutralPhase = 0;
 
   enum class Level : uint8_t { Full = 0, Half, Static };
 
-  void setAmbientPeriod(uint32_t period_us) { ambient_period_us_ = period_us; }
+  void setAmbientPeriod(uint32_t period_us) {
+    ambient_period_us_ = period_us;
+    next_ambient_us_ = 0;
+  }
 
-  // Feed one measured per-panel compose+flush cost and the loop wall-time
-  // window it occurred in. Degradation is sticky within a window and recovers
-  // when the measured load falls back inside the budget.
+  // Test and capture seams use this only to model measured degradation.
+  // Production changes levels through observeFlushCost().
+  void setLevel(Level level) { level_ = level; }
+
+  // Feed one measured complete compose+flush cost and the wall-time window in
+  // which it occurred. Degradation is sticky within a window and recovers
+  // toward Full only at half the allowed duty.
   void observeFlushCost(uint32_t flush_us, uint32_t loop_window_us) {
     if (loop_window_us == 0) return;
     last_flush_us_ = flush_us;
-    // Projected animation duty at the current cadence: one frame of cost per
-    // active period. Duty in percent, computed in 64-bit to avoid overflow.
-    const uint32_t period = activePeriodUs();
-    if (period == 0) return;
-    const uint64_t duty = (static_cast<uint64_t>(flush_us) * 100U) / period;
-    if (duty > kBudgetPercent) {
-      level_ = level_ == Level::Full ? Level::Half : Level::Static;
-    } else if (duty * 2 <= kBudgetPercent) {
-      // Comfortable margin: step back toward full cadence.
-      level_ = level_ == Level::Static ? Level::Half : Level::Full;
+    last_loop_window_us_ = loop_window_us;
+    last_duty_percent_ = static_cast<uint32_t>(
+        (static_cast<uint64_t>(flush_us) * 100U) / loop_window_us);
+    if (last_duty_percent_ > kBudgetPercent) {
+      if (level_ == Level::Full) level_ = Level::Half;
+      else if (level_ == Level::Half) level_ = Level::Static;
+    } else if (last_duty_percent_ * 2U <= kBudgetPercent) {
+      if (level_ == Level::Static) level_ = Level::Half;
+      else if (level_ == Level::Half) level_ = Level::Full;
     }
   }
 
   Level level() const { return level_; }
+  uint32_t lastFlushUs() const { return last_flush_us_; }
+  uint32_t lastLoopWindowUs() const { return last_loop_window_us_; }
+  uint32_t lastDutyPercent() const { return last_duty_percent_; }
 
-  // BLOCKED phase reference for LED synchronization: both the display pulse
-  // and the LED engine derive their on/off half-period from this epoch.
+  // A complete frame marks the observation window for main-loop metrics.
+  void beginFrameWindow() { frame_composed_ = false; }
+  void noteCompleteFrame() const { frame_composed_ = true; }
+  bool consumeFrameObservation() {
+    const bool composed = frame_composed_;
+    frame_composed_ = false;
+    return composed;
+  }
+
+  bool beginTransition(uint32_t epoch, uint32_t now_us) {
+    transition_epoch_ = epoch;
+    transition_started_us_ = now_us;
+    transition_active_ = true;
+    transition_last_phase_ = kNeutralPhase;
+    return true;
+  }
+
+  // Urgent semantic changes and newer generations discard all decorative
+  // progress. The event epoch is retained only as a presentation correlation.
+  bool interruptTransition(uint32_t epoch) {
+    transition_epoch_ = epoch;
+    transition_started_us_ = 0;
+    transition_active_ = false;
+    transition_last_phase_ = kNeutralPhase;
+    return true;
+  }
+
+  void resetTransition() { interruptTransition(0); }
+  bool transitionActive() const { return transition_active_; }
+  uint32_t transitionEpoch() const { return transition_epoch_; }
+
+  uint8_t transitionProgress(uint32_t now_us) const {
+    if (!transition_active_) return kNeutralPhase;
+    const int32_t signed_elapsed = static_cast<int32_t>(now_us - transition_started_us_);
+    if (signed_elapsed < 0) return kNeutralPhase;
+    const uint32_t elapsed = static_cast<uint32_t>(signed_elapsed);
+    if (elapsed >= kTransitionDurationUs) return kTransitionPhaseCount - 1;
+    const uint32_t phase = (static_cast<uint64_t>(elapsed) * kTransitionPhaseCount) /
+                           kTransitionDurationUs;
+    return static_cast<uint8_t>(phase < kTransitionPhaseCount ? phase : kTransitionPhaseCount - 1);
+  }
+  bool transitionDue(uint32_t now_us) {
+    if (!transition_active_) return false;
+    const int32_t signed_elapsed = static_cast<int32_t>(now_us - transition_started_us_);
+    if (signed_elapsed < 0) return false;
+    const uint8_t phase = transitionProgress(now_us);
+    const bool due = phase != transition_last_phase_ ||
+                     static_cast<uint32_t>(signed_elapsed) >= kTransitionDurationUs;
+    if (!due) return false;
+    transition_last_phase_ = phase;
+    if (static_cast<uint32_t>(signed_elapsed) >= kTransitionDurationUs) {
+      transition_active_ = false;
+      transition_last_phase_ = kNeutralPhase;
+    }
+    return true;
+  }
+
+  uint8_t presentationPhase() const {
+    if (level_ == Level::Static || !transition_active_) return kNeutralPhase;
+    return transitionProgress(transition_started_us_ + 1U);
+  }
+
+  // BLOCKED phase reference for LED synchronization: both display and LED
+  // engines derive their on/off half-period from this epoch.
   uint32_t blockedPhaseEpoch() const { return blocked_epoch_us_; }
   uint32_t blockedPhaseEpochUs() const { return blocked_epoch_us_; }
   bool blockedPulseHigh(uint32_t now_us) const {
     return ((now_us - blocked_epoch_us_) / (kBlockedPeriodUs / 2)) % 2 == 0;
   }
 
-  // Returns true when the BLOCKED pulse crossed a half-period boundary since
-  // the last call — the caller recomposes+flushes BLOCKED panels then.
+  // Returns true when BLOCKED crossed a half-period boundary since last call.
   bool blockedFrameDue(uint32_t now_us) {
     if (blocked_epoch_us_ == 0) blocked_epoch_us_ = now_us != 0 ? now_us : 1;
     const uint32_t half = kBlockedPeriodUs / 2;
@@ -64,8 +131,8 @@ class AnimationScheduler final {
     return false;
   }
 
-  // Returns true when an ambient frame is due at the current (possibly
-  // degraded) cadence. Static level never schedules ambient frames.
+  // Full samples at the theme cadence, Half doubles only ambient cadence,
+  // Static never schedules ambient work. Semantic frames are not gated here.
   bool ambientFrameDue(uint32_t now_us) {
     if (ambient_period_us_ == 0 || level_ == Level::Static) return false;
     const uint32_t period = activePeriodUs();
@@ -80,16 +147,23 @@ class AnimationScheduler final {
     return false;
   }
 
- private:
   uint32_t activePeriodUs() const {
     if (ambient_period_us_ == 0) return 0;
-    return level_ == Level::Half ? ambient_period_us_ * 2 : ambient_period_us_;
+    return level_ == Level::Half ? ambient_period_us_ * 2U : ambient_period_us_;
   }
 
+ private:
   uint32_t ambient_period_us_ = 0;
   uint32_t next_ambient_us_ = 0;
   uint32_t blocked_epoch_us_ = 0;
   uint32_t last_blocked_phase_ = 0;
   uint32_t last_flush_us_ = 0;
+  uint32_t last_loop_window_us_ = 0;
+  uint32_t last_duty_percent_ = 0;
+  uint32_t transition_started_us_ = 0;
+  uint32_t transition_epoch_ = 0;
+  uint8_t transition_last_phase_ = kNeutralPhase;
+  bool transition_active_ = false;
+  mutable bool frame_composed_ = false;
   Level level_ = Level::Full;
 };

@@ -460,6 +460,7 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
 void AgentProjection::disableActive(BoardAdapter* board) {
   committed_ = false;
   syncing_ = true;
+  animation_.interruptTransition(staged_.snapshot_revision);
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     pending_[slot] = Binding();
     pending_action_[slot] = 0;
@@ -471,22 +472,26 @@ void AgentProjection::disableActive(BoardAdapter* board) {
   if (board != nullptr) renderSync(*board);
 }
 bool AgentProjection::commitSnapshot() {
-  if (!staged_valid_) return false;
-  if (staged_codex_only_) {
-    committed_generation_ = staged_;
-    staged_valid_ = false;
-    staged_codex_only_ = false;
-    return true;
-  }
+  const bool animate = transition_after_commit_ || committed_;
+  transition_after_commit_ = false;
   committed_generation_ = staged_;
-  committed_ = true;
-  syncing_ = false;
+  semantic_event_epoch_ = committed_generation_.snapshot_revision;
   staged_valid_ = false;
   staged_codex_only_ = false;
+  const bool urgent = strcmp(committed_generation_.source_status, "current") != 0;
+  if (urgent || !animate) {
+    animation_.interruptTransition(semantic_event_epoch_);
+  } else {
+    animation_.beginTransition(semantic_event_epoch_, micros());
+  }
+  if (!committed_) {
+    committed_ = true;
+    syncing_ = false;
+  }
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     pending_[slot] = Binding();
     pending_action_[slot] = 0;
-    feedback_[slot] = (committed_generation_.tiles[slot].binding.occupied && strcmp(committed_generation_.source_status, "current") == 0)
+    feedback_[slot] = (committed_generation_.tiles[slot].binding.occupied && !urgent)
                           ? Feedback::Ready : Feedback::Disabled;
   }
   return true;
@@ -499,6 +504,7 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board) {
 bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_theme,
                                      const MenuState& menu) {
   if (!staged_valid_ || !ensureComposition()) return false;
+  transition_after_commit_ = committed_;
   if (staged_codex_only_) {
     Display* display = board.displayAt(3);
     if (display == nullptr) {
@@ -506,9 +512,17 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_
       staged_codex_only_ = false;
       return false;
     }
+    const bool animate = transition_after_commit_;
+    transition_after_commit_ = false;
     committed_generation_ = staged_;
+    semantic_event_epoch_ = committed_generation_.snapshot_revision;
     staged_valid_ = false;
     staged_codex_only_ = false;
+    if (animate && strcmp(committed_generation_.source_status, "current") == 0) {
+      animation_.beginTransition(semantic_event_epoch_, micros());
+    } else {
+      animation_.interruptTransition(semantic_event_epoch_);
+    }
     if (menu.open) {
       renderMenu(board, panel4_theme, menu);
     } else {
@@ -556,9 +570,9 @@ bool AgentProjection::renderTile(BoardAdapter& board, uint8_t slot, const Tile& 
                                   Feedback feedback) const {
   return renderTile(board, theme(), committed_generation_, slot, tile, feedback);
 }
-
-bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer, uint8_t slot,
-                                  const Tile& tile, Feedback feedback) const {
+bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
+                                 uint8_t slot, const Tile& tile,
+                                 Feedback feedback) const {
   return renderTile(board, renderer, committed_generation_, slot, tile, feedback);
 }
 
@@ -570,6 +584,15 @@ bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
   RenderState state;
   state.source_status = generation.source_status;
   state.syncing = syncing_;
+  state.transition_epoch = animation_.transitionEpoch();
+  state.semantic_event_epoch = semantic_event_epoch_;
+  state.transition_active =
+      strcmp(generation.source_status, "current") == 0 &&
+      !syncing_ && animation_.level() != AnimationScheduler::Level::Static &&
+      animation_.transitionActive();
+  state.transition_phase = state.transition_active ? animation_.transitionProgress(micros()) :
+                           AnimationScheduler::kNeutralPhase;
+  state.ambient_phase = animation_.presentationPhase();
   state.blocked_pulse_high = animation_.blockedPulseHigh(micros());
   RenderState::Slot& out = state.slots[slot];
   out.occupied = tile.binding.occupied;
@@ -605,11 +628,15 @@ bool AgentProjection::renderTile(BoardAdapter& board, ThemeRenderer& renderer,
   out.feedback = feedback;
   renderer.composeTile(g_composition, slot, state);
   g_composition.pushSprite(display, 0, 0);
+  animation_.noteCompleteFrame();
   return true;
 }
 
 void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
+  animation_.beginFrameWindow();
   if (!committed_ || syncing_) return;
+
+  bool feedback_dirty = false;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     if (pending_action_[slot] != 0 && elapsed(now_us, pending_deadline_[slot])) {
       pending_action_[slot] = 0;
@@ -617,28 +644,41 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       feedback_[slot] = Feedback::Uncertain;
       feedback_until_[slot] = now_us + kFeedbackHoldUs;
       renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
-    } else if (pending_action_[slot] == 0 && feedback_until_[slot] != 0 && elapsed(now_us, feedback_until_[slot])) {
+      feedback_dirty = true;
+    } else if (pending_action_[slot] == 0 && feedback_until_[slot] != 0 &&
+               elapsed(now_us, feedback_until_[slot])) {
       feedback_until_[slot] = 0;
       feedback_[slot] = (committed_generation_.tiles[slot].binding.occupied &&
                          strcmp(committed_generation_.source_status, "current") == 0)
                             ? Feedback::Ready : Feedback::Disabled;
       renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+      feedback_dirty = true;
     }
   }
 
-  // Bounded animation (R-1): the scheduler decides when a frame is due; every
-  // frame is a complete recomposition flushed through the normal path.
-  // Semantic dominance: fences suppress all motion; per-slot feedback
-  // suppresses that slot's motion (Pending keeps its own spinner cadence via
-  // the BLOCKED clock so it still steps, bounded).
-  const bool fenced = strcmp(committed_generation_.source_status, "current") != 0;
+  // Urgent source truth and immediate feedback always win over motion.
+  if (feedback_dirty || strcmp(committed_generation_.source_status, "current") != 0) return;
+
+  if (animation_.level() != AnimationScheduler::Level::Static &&
+      animation_.transitionDue(now_us)) {
+    // Every transition sample is a complete frame for every panel. The
+    // renderer moves only presentation accents; identity and state remain
+    // committed and stable.
+    for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
+      renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);
+    }
+    return;
+  }
+
   const bool blocked_frame = animation_.blockedFrameDue(now_us);
   const bool ambient_frame = animation_.ambientFrameDue(now_us);
-  if (fenced || (!blocked_frame && !ambient_frame)) return;
+  if (!blocked_frame && !ambient_frame) return;
   const uint8_t ambient_mask = ambient_frame ? theme().ambientTick(now_us) : 0;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
-    const bool feedback_active = feedback_[slot] != Feedback::Ready && feedback_[slot] != Feedback::Disabled;
-    const bool blocked_dirty = blocked_frame && committed_generation_.tiles[slot].state == TileState::Blocked;
+    const bool feedback_active = feedback_[slot] != Feedback::Ready &&
+                                 feedback_[slot] != Feedback::Disabled;
+    const bool blocked_dirty = blocked_frame &&
+                               committed_generation_.tiles[slot].state == TileState::Blocked;
     const bool ambient_dirty = (ambient_mask & static_cast<uint8_t>(1U << slot)) != 0;
     const bool pending_dirty = blocked_frame && feedback_[slot] == Feedback::Pending;
     if (feedback_active && !pending_dirty) continue;
@@ -722,6 +762,15 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
   RenderState state;
   state.source_status = committed_generation_.source_status;
   state.syncing = syncing_;
+  state.transition_epoch = animation_.transitionEpoch();
+  state.semantic_event_epoch = semantic_event_epoch_;
+  state.transition_active =
+      strcmp(committed_generation_.source_status, "current") == 0 &&
+      !syncing_ && animation_.level() != AnimationScheduler::Level::Static &&
+      animation_.transitionActive();
+  state.transition_phase = state.transition_active ? animation_.transitionProgress(now_us) :
+                           AnimationScheduler::kNeutralPhase;
+  state.ambient_phase = animation_.presentationPhase();
   state.blocked_pulse_high = animation_.blockedPulseHigh(now_us);
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     RenderState::Slot& output = state.slots[slot];
