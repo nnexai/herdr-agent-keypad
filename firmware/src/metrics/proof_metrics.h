@@ -9,8 +9,10 @@
 
 // Fixed-width measurements at the protocol/link boundary. Protocol queue
 // counters are measured in pending frames; transport bytes are intentionally
-// not mixed into queue_high_water. The Phase 03.1 fields are monotonic
-// maxima/counters only: no per-frame history crosses the USB boundary.
+// not mixed into queue_high_water. Phase 03.1 counters remain monotonic. The
+// animation-duty maximum is scoped to the current scheduler quality epoch so
+// discarded calibration probes cannot masquerade as sustained duty after
+// Full/Half/Static degradation.
 struct ProofMetrics {
   uint32_t sent = 0;
   uint32_t received = 0;
@@ -120,6 +122,7 @@ struct ProofMetrics {
       if (duty > animation_duty_max_percent) animation_duty_max_percent = duty;
     }
   }
+  void beginAnimationLevelEpoch() { animation_duty_max_percent = 0; }
   void recordAnimationLevelChange() { ++level_changes; }
   void recordSkippedFrame() { ++skipped_frames; }
   void recordDegradedFrame() { ++degraded_frames; }

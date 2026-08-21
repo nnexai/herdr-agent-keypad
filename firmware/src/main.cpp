@@ -772,6 +772,7 @@ void loop() {
     }
     if (agentProjection.animation().level() != lastAnimationLevel) {
       proofMetrics.recordAnimationLevelChange();
+      proofMetrics.beginAnimationLevelEpoch();
       lastAnimationLevel = agentProjection.animation().level();
     }
     if (frame_observed &&

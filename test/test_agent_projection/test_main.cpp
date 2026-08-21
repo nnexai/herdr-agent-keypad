@@ -1683,6 +1683,10 @@ void test_animation_metrics_bound_duty_and_measure_frame_allocation_pairs() {
   ProofMetrics metrics;
   metrics.observeAnimationFrame(107587UL, 34000UL, 2);
   TEST_ASSERT_EQUAL_UINT32(100, metrics.animation_duty_max_percent);
+  metrics.beginAnimationLevelEpoch();
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.animation_duty_max_percent);
+  metrics.observeAnimationFrame(35000UL, 300000UL, 2);
+  TEST_ASSERT_EQUAL_UINT32(11, metrics.animation_duty_max_percent);
 
   metrics.observeAnimationAllocation(100000UL, 80000UL, 100000UL, 80000UL);
   TEST_ASSERT_EQUAL_UINT32(1, metrics.allocation_stable);
