@@ -47,6 +47,32 @@ struct LedEvents {
   uint8_t semantic_phase = 0;
 };
 
+// Keep the feedback-to-clock mapping in one place.  Stale and Offline are
+// health fences rather than focus-result clocks; every other focus result has
+// a distinct semantic event so its cue can follow the event-relative phase.
+inline LedSemanticEvent ledFeedbackSemanticEvent(TileFeedback feedback) {
+  switch (feedback) {
+    case TileFeedback::Pending: return LedSemanticEvent::Pending;
+    case TileFeedback::Success: return LedSemanticEvent::Focused;
+    case TileFeedback::Rejected: return LedSemanticEvent::Rejected;
+    case TileFeedback::Vanished: return LedSemanticEvent::Vanished;
+    case TileFeedback::Uncertain: return LedSemanticEvent::Uncertain;
+    case TileFeedback::Failed: return LedSemanticEvent::Failed;
+    case TileFeedback::Stale:
+    case TileFeedback::Offline: return LedSemanticEvent::Health;
+    default: return LedSemanticEvent::None;
+  }
+}
+
+inline bool ledFeedbackUsesSemanticPhase(TileFeedback feedback,
+                                         LedSemanticEvent event) {
+  if (feedback == TileFeedback::Pending && event == LedSemanticEvent::Press) {
+    return true;
+  }
+  return event != LedSemanticEvent::None &&
+         event == ledFeedbackSemanticEvent(feedback);
+}
+
 inline LedSemanticEvent ledSemanticEvent(const RenderState& state,
                                          const LedEvents& events);
 inline uint32_t ledSemanticEpoch(const RenderState& state,
@@ -72,17 +98,9 @@ inline LedSemanticEvent ledSemanticEvent(const RenderState& state,
   }
   for (const RenderState::Slot& slot : state.slots) {
     if (slot.press_impulse) return LedSemanticEvent::Press;
-    switch (slot.feedback) {
-      case TileFeedback::Pending: return LedSemanticEvent::Pending;
-      case TileFeedback::Success: return LedSemanticEvent::Focused;
-      case TileFeedback::Rejected: return LedSemanticEvent::Rejected;
-      case TileFeedback::Stale:
-      case TileFeedback::Offline: return LedSemanticEvent::Health;
-      case TileFeedback::Vanished: return LedSemanticEvent::Vanished;
-      case TileFeedback::Uncertain: return LedSemanticEvent::Uncertain;
-      case TileFeedback::Failed: return LedSemanticEvent::Failed;
-      default: break;
-    }
+    const LedSemanticEvent feedback_event =
+        ledFeedbackSemanticEvent(slot.feedback);
+    if (feedback_event != LedSemanticEvent::None) return feedback_event;
   }
   // MenuOpen is decoration only. It can provide an epoch when no higher
   // priority semantic event is active, while menu_open independently drives

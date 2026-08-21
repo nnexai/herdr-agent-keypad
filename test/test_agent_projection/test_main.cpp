@@ -3034,6 +3034,50 @@ void test_menu_open_keeps_focus_feedback_clock_and_l13_decoration() {
   TEST_ASSERT_TRUE(resolvedOn(success_engine, 13));
 }
 
+void test_menu_open_terminal_focus_feedback_uses_event_phase() {
+  RenderState state;
+  state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
+  state.slots[0].occupied = true;
+  state.slots[0].state = TileState::Working;
+  state.semantic_event_epoch = 7;
+  state.semantic_event_started_us = 1000;
+
+  struct TerminalCase {
+    TileFeedback feedback;
+    LedSemanticEvent event;
+  };
+  const TerminalCase cases[] = {
+      {TileFeedback::Vanished, LedSemanticEvent::Vanished},
+      {TileFeedback::Uncertain, LedSemanticEvent::Uncertain},
+      {TileFeedback::Failed, LedSemanticEvent::Failed},
+  };
+  LedEvents menu;
+  menu.menu_open = true;
+  menu.semantic_event = LedSemanticEvent::MenuOpen;
+  menu.semantic_epoch = 99;
+  menu.semantic_start_us = 900000;
+
+  for (const TerminalCase& terminal : cases) {
+    state.slots[0].feedback = terminal.feedback;
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(terminal.event),
+                            static_cast<uint8_t>(
+                                ledFeedbackSemanticEvent(terminal.feedback)));
+    for (LedGrammar* grammar : {&railEchoGrammar(), &exceptionChannelGrammar(),
+                                &meterLampsGrammar()}) {
+      LedEngine engine;
+      BoardAdapter board;
+      engine.setGrammar(*grammar);
+      engine.render(state, menu, 1000, board);
+      TEST_ASSERT_TRUE(engine.resolved(1).brightness > 0);
+      TEST_ASSERT_TRUE(resolvedOn(engine, 13));
+      engine.render(state, menu, 101000, board);
+      TEST_ASSERT_EQUAL_UINT8(0, engine.resolved(1).brightness);
+      TEST_ASSERT_TRUE(resolvedOn(engine, 13));
+    }
+  }
+}
+
 void test_led_semantic_events_align_grammar_starts_and_fences() {
   RenderState state;
   state.source_status = "current";
@@ -3091,6 +3135,7 @@ void test_led_semantic_events_align_grammar_starts_and_fences() {
 int runAllTests() {
   UNITY_BEGIN();
   RUN_TEST(test_menu_open_keeps_focus_feedback_clock_and_l13_decoration);
+  RUN_TEST(test_menu_open_terminal_focus_feedback_uses_event_phase);
   RUN_TEST(test_led_grammar_rest_truth_and_segment_bounds_across_phases);
   RUN_TEST(test_led_semantic_events_align_grammar_starts_and_fences);
   RUN_TEST(test_compose_then_flush_commits_generation);

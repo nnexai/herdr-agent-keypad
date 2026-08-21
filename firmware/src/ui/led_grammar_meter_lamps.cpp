@@ -39,15 +39,7 @@ bool active(TileFeedback feedback) {
 uint8_t feedbackBrightness(const RenderState& state, const LedEvents& events,
                            TileFeedback feedback, uint32_t now_us) {
   const LedSemanticEvent event = ledSemanticEvent(state, events);
-  const bool event_pulse =
-      (feedback == TileFeedback::Pending &&
-       (event == LedSemanticEvent::Press ||
-        event == LedSemanticEvent::Pending)) ||
-      (feedback == TileFeedback::Success &&
-       event == LedSemanticEvent::Focused) ||
-      (feedback != TileFeedback::Pending && feedback != TileFeedback::Success &&
-       event == LedSemanticEvent::Rejected);
-  if (event_pulse) {
+  if (ledFeedbackUsesSemanticPhase(feedback, event)) {
     return (ledSemanticPhase(state, events) & 1U) == 0 ? 45 : 0;
   }
   (void)now_us;
@@ -107,7 +99,7 @@ class MeterLamps final : public LedGrammar {
         value = feedbackBrightness(state, events, tile.feedback, now_us);
       } else if (active(tile.feedback)) {
         color = 0;
-        value = 45;
+        value = feedbackBrightness(state, events, tile.feedback, now_us);
       } else if (health) {
         continue;
       }

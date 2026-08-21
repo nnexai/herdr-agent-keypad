@@ -18,13 +18,7 @@ void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
 bool feedbackHigh(const RenderState& state, const LedEvents& events,
                   TileFeedback feedback, uint32_t now_us) {
   const LedSemanticEvent event = ledSemanticEvent(state, events);
-  if ((feedback == TileFeedback::Pending &&
-       (event == LedSemanticEvent::Press ||
-        event == LedSemanticEvent::Pending)) ||
-      (feedback == TileFeedback::Success &&
-       event == LedSemanticEvent::Focused) ||
-      (feedback != TileFeedback::Pending && feedback != TileFeedback::Success &&
-       event == LedSemanticEvent::Rejected)) {
+  if (ledFeedbackUsesSemanticPhase(feedback, event)) {
     return (ledSemanticPhase(state, events) & 1U) == 0;
   }
   return ((now_us / 150000UL) & 1U) == 0;
