@@ -168,6 +168,94 @@ class Phase3FinalizeTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, error):
                         finalize_evidence(args)
 
+class Phase31ProfileTests(unittest.TestCase):
+    def test_phase31_profile_rejects_unavailable_physical_observation(self):
+        from phase1_bringup.phase3_smoke import validate_phase31_baseline
+
+        baseline = {
+            "schema_version": 1,
+            "kind": "phase03.1-baseline-profile",
+            "deployment": {"deployment_id": "deployment"},
+            "metrics": {
+                name: 1 for name in (
+                    "loop_wall_max_us", "compose_flush_max_us", "frame_count",
+                    "full_frames", "half_frames", "static_frames", "level_changes",
+                    "skipped_frames", "degraded_frames", "reveal_max_us",
+                    "first_press_response_us", "first_encoder_response_us",
+                    "max_key_poll_gap_us", "minimum_free_heap", "largest_free_block",
+                    "parser_high_water", "queue_high_water", "allocation_stable",
+                    "animation_duty_max_percent",
+                )
+            },
+            "observations": [
+                {"id": "power", "result": "unavailable", "method": "not measured"},
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "power"):
+            validate_phase31_baseline(baseline)
+
+
+class Phase31BudgetLockTests(unittest.TestCase):
+    def test_phase31_budget_lock_caps_measurements_and_keeps_ids(self):
+        from phase1_bringup.phase3_smoke import phase31_lock_from_baseline
+
+        metrics = {
+            name: 1 for name in (
+                "loop_wall_max_us", "compose_flush_max_us", "frame_count",
+                "full_frames", "half_frames", "static_frames", "level_changes",
+                "skipped_frames", "degraded_frames", "reveal_max_us",
+                "first_press_response_us", "first_encoder_response_us",
+                "max_key_poll_gap_us", "minimum_free_heap", "largest_free_block",
+                "parser_high_water", "queue_high_water", "allocation_stable",
+                "animation_duty_max_percent",
+            )
+        }
+        baseline = {
+            "schema_version": 1,
+            "kind": "phase03.1-baseline-profile",
+            "deployment": {"deployment_id": "deployment"},
+            "metrics": metrics,
+            "observations": [
+                {"id": "timing", "result": "pass", "method": "exact-device"},
+                {"id": "memory", "result": "pass", "method": "exact-device"},
+                {"id": "power", "result": "pass", "method": "USB-powered exact-device"},
+            ],
+        }
+        lock = phase31_lock_from_baseline(baseline)
+        self.assertLessEqual(lock["ceilings"]["ordinary_transition_us"], 250000)
+        self.assertLessEqual(lock["limits"]["ordinary_transition_us"], 250000)
+        self.assertEqual(lock["limits"]["source_observation_ids"], ["timing", "memory", "power"])
+        self.assertIn("Beacon", lock["cadence_us"])
+        self.assertLessEqual(lock["limits"]["animation_duty_percent"], 30)
+
+
+    def test_phase31_budget_lock_rejects_measurement_above_hard_ceiling(self):
+        from phase1_bringup.phase3_smoke import phase31_lock_from_baseline
+
+        metrics = {name: 1 for name in (
+            "loop_wall_max_us", "compose_flush_max_us", "frame_count",
+            "full_frames", "half_frames", "static_frames", "level_changes",
+            "skipped_frames", "degraded_frames", "reveal_max_us",
+            "first_press_response_us", "first_encoder_response_us",
+            "max_key_poll_gap_us", "minimum_free_heap", "largest_free_block",
+            "parser_high_water", "queue_high_water", "allocation_stable",
+            "animation_duty_max_percent",
+        )}
+        metrics["first_press_response_us"] = 120001
+        baseline = {
+            "schema_version": 1,
+            "kind": "phase03.1-baseline-profile",
+            "deployment": {"deployment_id": "deployment"},
+            "metrics": metrics,
+            "observations": [
+                {"id": "timing", "result": "pass", "method": "exact-device"},
+                {"id": "memory", "result": "pass", "method": "exact-device"},
+                {"id": "power", "result": "pass", "method": "USB-powered exact-device"},
+            ],
+        }
+        with self.assertRaisesRegex(ValueError, "press"):
+            phase31_lock_from_baseline(baseline)
+
 
 if __name__ == "__main__":
     unittest.main()
