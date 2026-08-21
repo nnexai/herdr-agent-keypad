@@ -252,7 +252,7 @@ class Phase31BudgetLockTests(unittest.TestCase):
         self.assertLessEqual(lock["limits"]["animation_duty_percent"], 30)
 
 
-    def test_phase31_budget_lock_rejects_measurement_above_hard_ceiling(self):
+    def test_phase31_budget_lock_records_quality_failure_and_gap(self):
         from phase1_bringup.phase3_smoke import phase31_lock_from_baseline
 
         metrics = {name: 1 for name in (
@@ -264,7 +264,9 @@ class Phase31BudgetLockTests(unittest.TestCase):
             "parser_high_water", "queue_high_water", "allocation_stable",
             "animation_duty_max_percent",
         )}
-        metrics["first_press_response_us"] = 120001
+        metrics["first_encoder_response_us"] = 120001
+        metrics["animation_duty_max_percent"] = 99
+        metrics["allocation_stable"] = 0
         baseline = {
             "schema_version": 1,
             "kind": "phase03.1-baseline-profile",
@@ -275,7 +277,7 @@ class Phase31BudgetLockTests(unittest.TestCase):
             "observations": [
                 {
                     "id": observation_id,
-                    "result": "pass",
+                    "result": "failed" if observation_id == "smoothness" else "pass",
                     "method": "exact-device",
                 }
                 for observation_id in (
@@ -284,8 +286,13 @@ class Phase31BudgetLockTests(unittest.TestCase):
                 )
             ],
         }
-        with self.assertRaisesRegex(ValueError, "press"):
-            phase31_lock_from_baseline(baseline)
+        lock = phase31_lock_from_baseline(baseline)
+        self.assertEqual(lock["status"], "blocked")
+        self.assertEqual(lock["baseline_quality"]["status"], "failed")
+        self.assertEqual(lock["baseline_quality"]["failed_observation_ids"], ["smoothness"])
+        self.assertTrue(lock["baseline_quality"]["resource_failures"])
+        self.assertEqual(lock["limits"]["press_response_us"], 120000)
+        self.assertEqual(lock["resource_headroom"]["target_period_us"], 33334)
 
 
 if __name__ == "__main__":

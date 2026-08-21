@@ -19,82 +19,93 @@
   },
   "kind": "phase03.1-baseline-profile",
   "measurement_window": {
-    "ended_unix_ms": 1787300439791,
+    "ended_unix_ms": 1787302826478,
     "started_unix_ms": 1787300438508
   },
   "metrics": {
-    "allocation_stable": 1,
-    "animation_duty_max_percent": 0,
-    "compose_flush_max_us": 0,
+    "allocation_stable": 0,
+    "animation_duty_max_percent": 99,
+    "compose_flush_max_us": 105602,
     "degraded_frames": 0,
-    "first_encoder_response_us": 0,
-    "first_press_response_us": 0,
-    "frame_count": 0,
-    "full_frames": 0,
+    "first_encoder_response_us": 146888,
+    "first_press_response_us": 36642,
+    "frame_count": 3451,
+    "full_frames": 3451,
     "half_frames": 0,
     "largest_free_block": 8257524,
     "level_changes": 0,
-    "loop_wall_max_us": 4993,
-    "max_key_poll_gap_us": 5006,
-    "minimum_free_heap": 306856,
-    "parser_high_water": 184,
+    "loop_wall_max_us": 147995,
+    "max_key_poll_gap_us": 148012,
+    "minimum_free_heap": 303380,
+    "parser_high_water": 1581,
     "queue_high_water": 1,
-    "reveal_max_us": 0,
+    "reveal_max_us": 112017,
     "skipped_frames": 0,
     "static_frames": 0
   },
   "observations": [
     {
       "id": "blocked-cycle",
-      "method": "exact-device metrics window",
+      "method": "human exact-device observation under guarded bridge; correlated with follow-up metrics session",
       "observation": {
-        "duration_ms": 1250,
-        "sample_ids": [
-          "before-blocked",
-          "after-blocked"
-        ]
+        "visible": "BLOCKED stripe cycle exercised",
+        "metrics_session_id": "session-92e07b6fa894681c",
+        "recorded_at_unix_ms": 1787302826478
       },
       "result": "pass"
     },
     {
       "id": "direct-key-response",
-      "method": "physical operator observation required",
+      "method": "human exact-device input observation immediately before follow-up metrics session; not performed inside the metrics session",
       "observation": {
-        "reason": "no human visual confirmation supplied"
+        "visible": "direct agent-key impulse transitioned to PENDING",
+        "first_press_response_us": 36642,
+        "metrics_session_id": "session-92e07b6fa894681c",
+        "recorded_at_unix_ms": 1787302826478
       },
-      "result": "unavailable"
+      "result": "pass"
     },
     {
       "id": "encoder-response",
-      "method": "physical operator observation required",
+      "method": "human exact-device input observation immediately before follow-up metrics session; not performed inside the metrics session",
       "observation": {
-        "reason": "no human visual confirmation supplied"
+        "visible": "one encoder detent and one click each produced a response",
+        "first_encoder_response_us": 146888,
+        "metrics_session_id": "session-92e07b6fa894681c",
+        "recorded_at_unix_ms": 1787302826478
       },
-      "result": "unavailable"
+      "result": "pass"
     },
     {
       "id": "display-led-alignment",
-      "method": "physical operator observation required",
+      "method": "human exact-device optical observation under guarded bridge; correlated with follow-up metrics session",
       "observation": {
-        "reason": "framebuffer and metrics cannot prove LED/display alignment"
+        "visible": "LED/display alignment passed",
+        "metrics_session_id": "session-92e07b6fa894681c",
+        "recorded_at_unix_ms": 1787302826478
       },
-      "result": "unavailable"
+      "result": "pass"
     },
     {
       "id": "smoothness",
-      "method": "physical operator observation required",
+      "method": "human exact-device optical observation under guarded bridge; correlated with follow-up metrics session",
       "observation": {
-        "reason": "framebuffer and metrics cannot prove physical smoothness"
+        "visible": "BLOCKED stripe and comparable theme animations appeared approximately 2 FPS",
+        "metrics_session_id": "session-92e07b6fa894681c",
+        "recorded_at_unix_ms": 1787302826478
       },
-      "result": "unavailable"
+      "result": "failed"
     },
     {
       "id": "brightness-power",
-      "method": "physical power/brightness observation required",
+      "method": "human exact-device brightness observation plus documented USB power method under guarded bridge; no electrical headroom inferred",
       "observation": {
-        "reason": "power headroom cannot be inferred from USB enumeration"
+        "brightness_behavior": "pass",
+        "power_method": "USB supply during exact-device observation; electrical headroom not claimed",
+        "metrics_session_id": "session-92e07b6fa894681c",
+        "recorded_at_unix_ms": 1787302826478
       },
-      "result": "unavailable"
+      "result": "pass"
     }
   ],
   "samples": [
@@ -123,25 +134,25 @@
       }
     },
     {
-      "id": "after-blocked",
+      "id": "after-physical-observation",
       "metrics": {
-        "allocation_stable": 1,
-        "animation_duty_max_percent": 0,
-        "compose_flush_max_us": 0,
+        "allocation_stable": 0,
+        "animation_duty_max_percent": 99,
+        "compose_flush_max_us": 105602,
         "degraded_frames": 0,
-        "first_encoder_response_us": 0,
-        "first_press_response_us": 0,
-        "frame_count": 0,
-        "full_frames": 0,
+        "first_encoder_response_us": 146888,
+        "first_press_response_us": 36642,
+        "frame_count": 3451,
+        "full_frames": 3451,
         "half_frames": 0,
         "largest_free_block": 8257524,
         "level_changes": 0,
-        "loop_wall_max_us": 4993,
-        "max_key_poll_gap_us": 5006,
-        "minimum_free_heap": 306856,
-        "parser_high_water": 184,
+        "loop_wall_max_us": 147995,
+        "max_key_poll_gap_us": 148012,
+        "minimum_free_heap": 303380,
+        "parser_high_water": 1581,
         "queue_high_water": 1,
-        "reveal_max_us": 0,
+        "reveal_max_us": 112017,
         "skipped_frames": 0,
         "static_frames": 0
       }
@@ -153,7 +164,7 @@
     "device_id": "0000fccb0deabf8c",
     "firmware": "phase1-bringup",
     "protocol": 1,
-    "session_id": "session-3016235abb64409c",
+    "session_id": "session-92e07b6fa894681c",
     "usb_serial": "8C:BF:EA:0D:CB:FC"
   },
   "status": "blocked"

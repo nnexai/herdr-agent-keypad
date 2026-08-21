@@ -292,8 +292,12 @@ def validate_phase31_baseline_file(path: Path, *, require_current_deployment: bo
 def phase31_lock_from_baseline(baseline: Mapping[str, Any]) -> dict[str, Any]:
     validate_phase31_baseline(baseline)
     observations = baseline["observations"]
-    if any(row["result"] != "pass" for row in observations):
-        raise ValueError("budget lock requires every physical observation to pass")
+    unavailable = [row["id"] for row in observations if row["result"] in {"unavailable", "refused"}]
+    if unavailable:
+        raise ValueError(
+            "budget lock requires complete physical observations; missing: "
+            + ", ".join(unavailable)
+        )
     metrics = _phase31_metrics(baseline["metrics"])
     measured_ceiling_checks = (
         ("first_press_response_us", PHASE31_HARD_CEILINGS["press_response_us"]),
@@ -302,31 +306,37 @@ def phase31_lock_from_baseline(baseline: Mapping[str, Any]) -> dict[str, Any]:
         ("animation_duty_max_percent", PHASE31_HARD_CEILINGS["animation_duty_percent"]),
         ("compose_flush_max_us", PHASE31_HARD_CEILINGS["ordinary_transition_us"]),
     )
-    for field, ceiling in measured_ceiling_checks:
-        if metrics[field] > ceiling:
-            raise ValueError(f"budget lock measurement exceeds hard ceiling: {field}")
+    violations = [
+        {"metric": field, "measured": metrics[field], "ceiling": ceiling}
+        for field, ceiling in measured_ceiling_checks
+        if metrics[field] > ceiling
+    ]
+    resource_failures = []
+    if metrics["allocation_stable"] != 1:
+        resource_failures.append({
+            "metric": "allocation_stable",
+            "measured": metrics["allocation_stable"],
+            "required": 1,
+        })
     required = (
         "compose_flush_max_us", "reveal_max_us", "first_press_response_us",
         "first_encoder_response_us", "loop_wall_max_us",
     )
     if any(metrics[name] <= 0 for name in required):
         raise ValueError("budget lock requires non-zero exact-device timing observations")
-    if metrics["allocation_stable"] != 1:
-        raise ValueError("budget lock requires allocation-stability evidence")
     measured_frame = max(metrics["compose_flush_max_us"], metrics["reveal_max_us"])
-    frame_budget = max(1, measured_frame)
-    cadence = max(1_000, (frame_budget * 100 + 29) // 30)
+    resource_period = max(1_000, (measured_frame * 100 + 29) // 30)
+    target_period = 33_334
+    quality_failures = [row["id"] for row in observations if row["result"] == "failed"]
+    status = "blocked" if quality_failures or violations or resource_failures else "accepted"
     limits = {
-        "ordinary_transition_us": min(PHASE31_HARD_CEILINGS["ordinary_transition_us"], frame_budget),
-        "menu_slide_us": min(PHASE31_HARD_CEILINGS["menu_slide_us"], frame_budget),
-        "recovery_reveal_us": min(PHASE31_HARD_CEILINGS["recovery_reveal_us"], metrics["reveal_max_us"]),
-        "press_response_us": min(PHASE31_HARD_CEILINGS["press_response_us"], metrics["first_press_response_us"]),
-        "encoder_response_us": min(PHASE31_HARD_CEILINGS["press_response_us"], metrics["first_encoder_response_us"]),
+        "ordinary_transition_us": PHASE31_HARD_CEILINGS["ordinary_transition_us"],
+        "menu_slide_us": PHASE31_HARD_CEILINGS["menu_slide_us"],
+        "recovery_reveal_us": PHASE31_HARD_CEILINGS["recovery_reveal_us"],
+        "press_response_us": PHASE31_HARD_CEILINGS["press_response_us"],
+        "encoder_response_us": PHASE31_HARD_CEILINGS["press_response_us"],
         "success_hold_us": PHASE31_HARD_CEILINGS["success_hold_us"],
-        "animation_duty_percent": min(
-            PHASE31_HARD_CEILINGS["animation_duty_percent"],
-            metrics["animation_duty_max_percent"],
-        ),
+        "animation_duty_percent": PHASE31_HARD_CEILINGS["animation_duty_percent"],
         "compose_flush_max_us": metrics["compose_flush_max_us"],
         "max_key_poll_gap_us": metrics["max_key_poll_gap_us"],
         "minimum_free_heap": metrics["minimum_free_heap"],
@@ -334,14 +344,18 @@ def phase31_lock_from_baseline(baseline: Mapping[str, Any]) -> dict[str, Any]:
         "queue_high_water": metrics["queue_high_water"],
         "source_observation_ids": [row["id"] for row in observations],
     }
-    for field, ceiling in PHASE31_HARD_CEILINGS.items():
-        if field in limits and limits[field] > ceiling:
-            raise ValueError(f"budget lock exceeds hard ceiling: {field}")
     return {
         "schema_version": 1,
         "kind": "phase03.1-budget-lock",
-        "status": "accepted",
+        "status": status,
         "baseline_deployment_id": baseline["deployment"]["deployment_id"],
+        "baseline_quality": {
+            "status": "failed" if quality_failures or violations or resource_failures else "pass",
+            "failed_observation_ids": quality_failures,
+            "hard_ceiling_violations": violations,
+            "resource_failures": resource_failures,
+            "blocking": bool(quality_failures or violations or resource_failures),
+        },
         "baseline_metrics": {
             "source": "artifacts/phase03.1/03.1-BASELINE-PROFILE.json",
             "observation_ids": [row["id"] for row in observations],
@@ -349,16 +363,24 @@ def phase31_lock_from_baseline(baseline: Mapping[str, Any]) -> dict[str, Any]:
         },
         "ceilings": dict(PHASE31_HARD_CEILINGS),
         "cadence_us": {
-            "Signal Edge": cadence,
-            "Ledger": cadence,
-            "Beacon": cadence * 2,
-            "Instrument": cadence,
+            "Signal Edge": target_period,
+            "Ledger": target_period,
+            "Beacon": target_period * 2,
+            "Instrument": target_period,
+        },
+        "resource_headroom": {
+            "measured_frame_cost_us": measured_frame,
+            "measured_period_for_30_percent_duty_us": resource_period,
+            "target_period_us": target_period,
+            "source_metric_ids": ["compose_flush_max_us", "reveal_max_us", "animation_duty_max_percent"],
+            "method": "bounded metrics_ack maxima; target remains blocked until measured cost meets UI-SPEC duty",
         },
         "limits": limits,
         "degradation": {
             "levels": ["Full", "Half", "Static"],
             "full_to_half_duty_percent": 30,
             "half_to_static_duty_percent": 30,
+            "initial_level": "Static" if metrics["animation_duty_max_percent"] > 30 else "Full",
             "blocked_last": True,
             "semantic_frames_preserved": True,
         },

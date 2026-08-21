@@ -1,0 +1,108 @@
+{
+  "baseline_deployment_id": "67be7c6b77605be57c6e5702102e597e4b234a5a6e6cd8aaea8e985e25a1f8ba",
+  "baseline_metrics": {
+    "measurement_method": "exact paired keypad metrics_ack plus typed physical observation",
+    "observation_ids": [
+      "blocked-cycle",
+      "direct-key-response",
+      "encoder-response",
+      "display-led-alignment",
+      "smoothness",
+      "brightness-power"
+    ],
+    "source": "artifacts/phase03.1/03.1-BASELINE-PROFILE.json"
+  },
+  "baseline_quality": {
+    "blocking": true,
+    "failed_observation_ids": [
+      "smoothness"
+    ],
+    "hard_ceiling_violations": [
+      {
+        "ceiling": 120000,
+        "measured": 146888,
+        "metric": "first_encoder_response_us"
+      },
+      {
+        "ceiling": 30,
+        "measured": 99,
+        "metric": "animation_duty_max_percent"
+      }
+    ],
+    "resource_failures": [
+      {
+        "measured": 0,
+        "metric": "allocation_stable",
+        "required": 1
+      }
+    ],
+    "status": "failed"
+  },
+  "cadence_us": {
+    "Beacon": 66668,
+    "Instrument": 33334,
+    "Ledger": 33334,
+    "Signal Edge": 33334
+  },
+  "ceilings": {
+    "animation_duty_percent": 30,
+    "menu_slide_us": 200000,
+    "ordinary_transition_us": 250000,
+    "press_response_us": 120000,
+    "recovery_reveal_us": 250000,
+    "success_hold_us": 900000
+  },
+  "degradation": {
+    "blocked_last": true,
+    "full_to_half_duty_percent": 30,
+    "half_to_static_duty_percent": 30,
+    "initial_level": "Static",
+    "levels": [
+      "Full",
+      "Half",
+      "Static"
+    ],
+    "semantic_frames_preserved": true
+  },
+  "kind": "phase03.1-budget-lock",
+  "limits": {
+    "animation_duty_percent": 30,
+    "compose_flush_max_us": 105602,
+    "encoder_response_us": 120000,
+    "largest_free_block": 8257524,
+    "max_key_poll_gap_us": 148012,
+    "menu_slide_us": 200000,
+    "minimum_free_heap": 303380,
+    "ordinary_transition_us": 250000,
+    "press_response_us": 120000,
+    "queue_high_water": 1,
+    "recovery_reveal_us": 250000,
+    "source_observation_ids": [
+      "blocked-cycle",
+      "direct-key-response",
+      "encoder-response",
+      "display-led-alignment",
+      "smoothness",
+      "brightness-power"
+    ],
+    "success_hold_us": 900000
+  },
+  "power": {
+    "method": "human exact-device brightness observation plus documented USB power method under guarded bridge; no electrical headroom inferred",
+    "source_observation_id": "brightness-power",
+    "status": "observed"
+  },
+  "resource_headroom": {
+    "measured_frame_cost_us": 112017,
+    "measured_period_for_30_percent_duty_us": 373390,
+    "method": "bounded metrics_ack maxima; target remains blocked until measured cost meets UI-SPEC duty",
+    "source_metric_ids": [
+      "compose_flush_max_us",
+      "reveal_max_us",
+      "animation_duty_max_percent"
+    ],
+    "target_period_us": 33334
+  },
+  "schema_version": 1,
+  "status": "blocked"
+}
