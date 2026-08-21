@@ -13,6 +13,7 @@ from phase1_bringup.phase3_smoke import (
     finalize_evidence,
     run_guided,
     sha256_file,
+    validate_phase31_current_deployment_identity,
     write_json,
 )
 
@@ -245,6 +246,85 @@ class Phase31DeploymentLockTests(unittest.TestCase):
             firmware.write_bytes(b"stale replacement")
             with self.assertRaisesRegex(ValueError, "firmware binary hash"):
                 validate_deployment(record, firmware, device_id="device-1")
+class Phase31CurrentDeploymentTests(unittest.TestCase):
+    def identity(self) -> tuple[dict[str, object], dict[str, object]]:
+        deployment = {
+            "deployment_id": "deployment-1",
+            "firmware_sha256": "f" * 64,
+            "paired_device_id": "device-1",
+            "pair_identity_digest": "p" * 64,
+            "hello_firmware": "phase1-bringup",
+            "protocol_version": 1,
+            "boot_id": "boot-1",
+        }
+        publication = {
+            "binary_sha256": "f" * 64,
+            "hello": {
+                "device_id": "device-1",
+                "firmware": "phase1-bringup",
+                "protocol": 1,
+                "boot_id": "boot-1",
+                "session_id": "session-2",
+            },
+            "snapshot_ack": {
+                "accepted": True,
+                "snapshot_revision": 7,
+            },
+        }
+        return deployment, publication
+
+    def test_current_deployment_accepts_exact_hello_and_publication(self):
+        deployment, publication = self.identity()
+        accepted = validate_phase31_current_deployment_identity(
+            deployment,
+            {
+                "device_id": "device-1",
+                "firmware": "phase1-bringup",
+                "protocol": 1,
+                "device_boot_id": "boot-1",
+            },
+            "session-1",
+            publication,
+        )
+        self.assertEqual(accepted["deployment_id"], "deployment-1")
+        self.assertEqual(accepted["publication_snapshot_revision"], 7)
+
+    def test_current_deployment_rejects_stale_boot_or_firmware(self):
+        deployment, publication = self.identity()
+        for field, value, message in (
+            ("device_boot_id", "old-boot", "boot"),
+            ("firmware", "old-firmware", "firmware"),
+        ):
+            with self.subTest(field=field):
+                hello = {
+                    "device_id": "device-1",
+                    "firmware": "phase1-bringup",
+                    "protocol": 1,
+                    "device_boot_id": "boot-1",
+                }
+                hello[field] = value
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_phase31_current_deployment_identity(
+                        deployment, hello, "session-1", publication
+                    )
+
+    def test_current_deployment_rejects_unacknowledged_or_wrong_publication(self):
+        deployment, publication = self.identity()
+        publication["snapshot_ack"]["accepted"] = False
+        with self.assertRaisesRegex(ValueError, "publication"):
+            validate_phase31_current_deployment_identity(
+                deployment,
+                {
+                    "device_id": "device-1",
+                    "firmware": "phase1-bringup",
+                    "protocol": 1,
+                    "device_boot_id": "boot-1",
+                },
+                "session-1",
+                publication,
+            )
+
+
 
 class Phase31CaptureTests(unittest.TestCase):
     def test_phase31_capture_rejects_failed_manifest_before_strict_validation(self):
