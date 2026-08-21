@@ -5,15 +5,15 @@ milestone_name: milestone
 current_phase: 03.1
 current_phase_name: High-Fidelity Animation and Interaction Polish
 status: executing
-stopped_at: Completed 03.1-05-PLAN.md
-last_updated: "2026-08-21T10:10:07.414Z"
+stopped_at: Completed 03.1-06-PLAN.md
+last_updated: "2026-08-21T10:22:45.544Z"
 last_activity: 2026-08-21
 last_activity_desc: Completed Phase 03 Plan 08 exact-device capture and pending evidence
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 43
-  completed_plans: 40
+  completed_plans: 41
 ---
 
 Total Phases: 6
@@ -28,7 +28,7 @@ stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
 last_activity_desc: "Completed Phase 03 Plan 08 exact-device capture and pending evidence"
-progress:[█████████░] 93%
+progress:[██████████] 95%
   total_phases: 7
   completed_phases: 4
   total_plans: 35
@@ -47,7 +47,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.1 (High-Fidelity Animation and Interaction Polish) — EXECUTING
-Plan: 6 of 8
+Plan: 7 of 8
 Status: Ready to execute
 Last activity: 2026-08-21 — Phase 03.1 execution started
 
@@ -105,6 +105,7 @@ Progress: [██████████] 97%
 | Phase 03.1 P03 | 1min | 2 tasks | 8 files |
 | Phase 03.1 P04 | 15min | 2 tasks | 8 files |
 | Phase 03.1 P05 | 12min | 2 tasks | 10 files |
+| Phase 03.1 P06 | 12min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -178,6 +179,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: MenuController remains authoritative; immediate mutations start only bounded presentation metadata.
 - [Phase ?]: Fixed 120 ms open/close and 200 ms slide/detail bounds replace reversed phases without momentum.
 - [Phase ?]: Each theme moves only its rail, record stripe, beacon marker, or bezel cue while semantic copy stays stable.
+- [Phase ?]: LedEvents now carries bounded semantic event kind, epoch, and grammar-neutral phase while Codex truth remains in committed RenderState.
+- [Phase ?]: LedEngine owns immediate SYNC/all-off resolution; four grammars retain independent phase and physical-zone choreography.
 
 ### Pending Todos
 
@@ -214,5 +217,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-21T10:10:07.401Z
-Stopped at: Completed 03.1-05-PLAN.md
+Last session: 2026-08-21T10:22:45.531Z
+Stopped at: Completed 03.1-06-PLAN.md
