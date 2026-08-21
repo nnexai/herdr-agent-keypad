@@ -41,6 +41,61 @@ def _firmware_sha256() -> str:
         for chunk in iter(lambda: stream.read(65536), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _sha256_path(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_publication_receipt(path: Path, firmware: Path, bridge: PermanentBridge) -> None:
+    """Atomically record one bounded fresh-hello/current-publication receipt."""
+    resolved_firmware = firmware if firmware.is_absolute() else ROOT / firmware
+    resolved_firmware = resolved_firmware.resolve()
+    if not resolved_firmware.is_file():
+        raise RuntimeError("deployed firmware receipt input is missing")
+    hello = bridge.usb.device.get("hello", {}) if isinstance(bridge.usb.device, dict) else {}
+    ack = bridge.last_snapshot_ack
+    candidate = getattr(bridge.usb, "candidate", None)
+    required_hello = ("device_id", "firmware", "protocol", "boot_id", "session_id")
+    if not isinstance(ack, dict) or ack.get("accepted") is not True:
+        raise RuntimeError("fresh publication was not acknowledged")
+    if any(not hello.get(key) and hello.get(key) != 0 for key in required_hello):
+        raise RuntimeError("fresh hello is incomplete")
+    record = {
+        "schema_version": 1,
+        "kind": "phase3-bridge-publication-receipt",
+        "published_at_unix_ms": time.time_ns() // 1_000_000,
+        "binary_sha256": _sha256_path(resolved_firmware),
+        "hello": {
+            "device_id": hello["device_id"],
+            "firmware": hello["firmware"],
+            "protocol": hello["protocol"],
+            "boot_id": hello["boot_id"],
+            "session_id": hello["session_id"],
+            "usb_serial": getattr(candidate, "serial_number", None) or "unavailable",
+        },
+        "snapshot_ack": {
+            "accepted": True,
+            "snapshot_revision": ack.get("snapshot_revision"),
+        },
+    }
+    path = path.expanduser()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+    payload = json.dumps(record, sort_keys=True, indent=2, ensure_ascii=True) + "\n"
+    try:
+        temporary.write_text(payload, encoding="ascii")
+        os.chmod(temporary, 0o600)
+        os.replace(temporary, path)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
 from .herdr import HerdrClient
 from .projection import InboxProjection
 from .usb import UsbDeviceSession, binding_is_stable
@@ -236,7 +291,16 @@ def run_mode(args: argparse.Namespace) -> int:
     if pidfile:
         Path(pidfile).write_text(f"{os.getpid()}\n", encoding="ascii")
     try:
-        bridge.run(interval=args.interval)
+        deployed = os.environ.get("HERDR_DEPLOYED_FIRMWARE")
+        receipt = os.environ.get("HERDR_KEYPAD_PUBLICATION_EVIDENCE")
+        if bool(deployed) != bool(receipt):
+            raise RuntimeError(
+                "HERDR_DEPLOYED_FIRMWARE and HERDR_KEYPAD_PUBLICATION_EVIDENCE must be set together"
+            )
+        bridge.bootstrap()
+        if deployed and receipt:
+            write_publication_receipt(Path(receipt), Path(deployed), bridge)
+        bridge.run(interval=args.interval, bootstrapped=True)
     finally:
         if pidfile:
             try:

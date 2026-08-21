@@ -19,7 +19,7 @@ from herdr_keypad.bridge import (
     write_live_sync_evidence,
 )
 from herdr_keypad.codex import ChildExit, CodexResult, CodexView, Redaction
-from herdr_keypad.__main__ import main
+from herdr_keypad.__main__ import main, write_publication_receipt
 from herdr_keypad.herdr import HerdrClient, HerdrError
 from herdr_keypad.projection import InboxProjection
 from herdr_keypad.usb import UsbDeviceSession, UsbSessionError
@@ -762,6 +762,49 @@ class HerdrEventContractTests(unittest.TestCase):
             checksum = path.with_suffix(".sha256").read_text().split()[0]
             import hashlib
             self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), checksum)
+
+class Phase3PublicationReceiptTests(unittest.TestCase):
+    def test_receipt_is_atomic_bounded_and_acknowledgement_bound(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            firmware = root / "firmware.bin"
+            firmware.write_bytes(b"current-firmware")
+            receipt = root / "publication.json"
+            usb = SimpleNamespace(
+                device={"hello": {
+                    "device_id": "device-1",
+                    "firmware": "phase1-bringup",
+                    "protocol": 1,
+                    "boot_id": "boot-1",
+                    "session_id": "session-1",
+                }},
+                candidate=SimpleNamespace(serial_number="SERIAL-1"),
+            )
+            bridge = SimpleNamespace(
+                usb=usb,
+                last_snapshot_ack={"accepted": True, "snapshot_revision": 9},
+            )
+            write_publication_receipt(receipt, firmware, bridge)
+            record = json.loads(receipt.read_text(encoding="ascii"))
+            self.assertEqual(record["kind"], "phase3-bridge-publication-receipt")
+            self.assertEqual(record["hello"]["device_id"], "device-1")
+            self.assertEqual(record["snapshot_ack"], {"accepted": True, "snapshot_revision": 9})
+            self.assertEqual(len(record["binary_sha256"]), 64)
+            self.assertEqual(receipt.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(list(root.glob(".*.tmp-*")), [])
+
+    def test_receipt_rejects_missing_ack(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            firmware = root / "firmware.bin"
+            firmware.write_bytes(b"current-firmware")
+            bridge = SimpleNamespace(
+                usb=SimpleNamespace(device={"hello": {}}, candidate=None),
+                last_snapshot_ack=None,
+            )
+            with self.assertRaisesRegex(RuntimeError, "not acknowledged"):
+                write_publication_receipt(root / "publication.json", firmware, bridge)
+
 
 class Phase3ProtocolAdmissionTests(unittest.TestCase):
     def extended_payload(self):

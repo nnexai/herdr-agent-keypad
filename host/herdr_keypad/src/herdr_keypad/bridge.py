@@ -1074,12 +1074,11 @@ class PermanentBridge:
                 self.refresh_codex()
         return self._refresh_if_dirty(now)
 
-    def run(self, *, interval: float = 0.1) -> None:
+    def run(self, *, interval: float = 0.1, bootstrapped: bool = False) -> None:
         from .usb import UsbSessionError
 
-
-
-        self.bootstrap()
+        if not bootstrapped:
+            self.bootstrap()
         try:
             while True:
                 try:

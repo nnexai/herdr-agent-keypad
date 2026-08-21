@@ -53,6 +53,66 @@ PHYSICAL_ROWS = (
     "reboot-restores-confirmed-brightness",
     "fresh-bridge-resync-after-acceptance",
 )
+HUMAN_ROWS = PHYSICAL_ROWS[:-1]
+OBSERVATION_PROMPTS = {
+    "long-text-all-themes-at-10-percent": (
+        "At requested 10% brightness, use encoder click -> THEME -> click, rotate and save each "
+        "of SIGNAL EDGE, LEDGER, BEACON, and INSTRUMENT. In every theme verify the physical "
+        "panel keeps AUTH REQUIRED, CODEX OFFLINE, HOST OFFLINE, RESET WEEK ..., and the longest "
+        "ABOUT version values legible, with no clipping or bezel collision."
+    ),
+    "source-labels-remain-legible": (
+        "Verify the physical CODEX panel always retains the literal source-state word and AGE; "
+        "no N/A field appears as 0%, OK, or another positive claim."
+    ),
+    "direct-agent-keys-from-root": (
+        "Encoder-click to open MENU, then press keys 1, 2, and 3 in turn. Each must focus its "
+        "same displayed agent, show feedback only on that tile/LED zone, and leave the root "
+        "cursor and 30-second deadline unchanged."
+    ),
+    "direct-agent-keys-from-brightness": (
+        "Open MENU, rotate to BRIGHTNESS, click, then press keys 1, 2, and 3. Each must focus its "
+        "same displayed agent without changing the brightness candidate or extending the deadline."
+    ),
+    "direct-agent-keys-from-health": (
+        "Return to root, rotate to HEALTH, click, then press keys 1, 2, and 3. Each must focus its "
+        "same displayed agent; HEALTH stays open with its cursor/deadline unchanged."
+    ),
+    "direct-agent-keys-from-about": (
+        "Return to root, rotate to ABOUT, click, then press keys 1, 2, and 3. Each must focus its "
+        "same displayed agent; ABOUT stays open with its cursor/deadline unchanged."
+    ),
+    "brightness-ladder-10-through-100": (
+        "Open BRIGHTNESS and rotate through every displayed step 10%,20%,...,100%. The physical "
+        "panels must visibly change monotonically while remaining powered and legible."
+    ),
+    "brightness-zero-rejected": (
+        "At 10%, rotate further downward. The value must clamp at 10%; 0% must never appear and "
+        "the panels must remain visibly powered."
+    ),
+    "close-reverts-unconfirmed-preview": (
+        "Preview a brightness different from the stored value without clicking SAVE, then close "
+        "the menu through CLOSE. The physical brightness must return to the stored value."
+    ),
+    "timeout-reverts-unconfirmed-preview": (
+        "Preview a different brightness without saving, then give the encoder no input for 30 "
+        "seconds. Panel 4 must return to CODEX and physical brightness must revert."
+    ),
+    "led-preview-and-semantic-behavior": (
+        "Open LEDS and rotate candidates. Only the bounded candidate preview may change; after "
+        "returning/timeout the stored grammar and agent semantic/focus LED behavior must return, "
+        "with the encoder-open L13 cue and no brightness-driven LED semantic change."
+    ),
+    "confirmation-persists-setting": (
+        "Open BRIGHTNESS, choose a value, and click SAVE. Reopen BRIGHTNESS and verify that exact "
+        "value is the stored starting value."
+    ),
+    "reboot-restores-confirmed-brightness": (
+        "After saving brightness, reboot the keypad with its normal reset control. Verify startup "
+        "returns and the confirmed physical brightness, theme, LED grammar, and direct-key behavior "
+        "are restored."
+    ),
+}
 TRACER_LINK_KEYS = {
     "tracer_sha256", "elapsed_ms_path", "child_exit_path", "redaction_result_path"
 }
@@ -410,7 +470,158 @@ def run_capture(args: argparse.Namespace) -> int:
     return 0
 
 
-def validate_evidence(path: Path, allow_pending: bool) -> int:
+def preflight_run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, Any]]:
+    evidence_path = args.evidence.resolve()
+    validate_evidence(evidence_path, allow_pending=True)
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    deployment = evidence["deployment"]
+    firmware = args.firmware.resolve()
+    tracer = args.tracer.resolve()
+    if firmware != resolve_repo_path(deployment["binary_path"]):
+        raise RuntimeError("guided firmware path differs from captured deployment")
+    if sha256_file(firmware) != deployment["binary_sha256"]:
+        raise RuntimeError("guided firmware hash differs from captured deployment")
+    if tracer != resolve_repo_path(evidence["tracer"]["path"]):
+        raise RuntimeError("guided tracer path differs from linked installed tracer")
+    if sha256_file(tracer) != evidence["tracer_audit_link"]["tracer_sha256"]:
+        raise RuntimeError("guided tracer hash differs from linked installed tracer")
+    if evidence.get("r_bucket") != bucket_matrix() or evidence["r_bucket"].get("result") != "pass":
+        raise RuntimeError("R-BUCKET is incomplete")
+
+    binding = PairingStore(args.binding.resolve()).load()
+    if binding is None:
+        raise RuntimeError("paired keypad binding is missing")
+    selected, link, session, _transitions = reconnect_exact(
+        binding,
+        ports=None,
+        opener=lambda candidate: __import__("serial").Serial(
+            candidate.device, 115200, timeout=0.2, write_timeout=2.0),
+        timeout=args.timeout,
+    )
+    try:
+        hello = dict(session.device)
+        expected = {
+            "device_id": deployment["paired_device_id"],
+            "firmware": deployment["hello_firmware"],
+            "protocol": deployment["protocol_version"],
+            "device_boot_id": deployment["fresh_boot_id"],
+        }
+        if any(hello.get(key) != value for key, value in expected.items()):
+            raise RuntimeError("fresh exact-pair hello differs from captured deployment")
+        fresh = {
+            **expected,
+            "session_id": session.session_id,
+            "usb_serial": selected.serial_number or "unavailable",
+        }
+    finally:
+        link.close()
+    return evidence, fresh
+
+
+def run_guided(args: argparse.Namespace) -> int:
+    evidence, fresh = preflight_run(args)
+    run_suffix = evidence["run_id"][-8:].upper()
+    print(
+        "PREFLIGHT PASS "
+        f"deployment={evidence['deployment']['deployment_id']} "
+        f"firmware_sha256={evidence['deployment']['binary_sha256']} "
+        f"device={fresh['device_id']} hello={fresh['firmware']}/{fresh['protocol']} "
+        f"tracer={evidence['tracer_audit_link']['tracer_sha256']} R-BUCKET=pass",
+        flush=True,
+    )
+    rows = {row["id"]: row for row in evidence["physical_observations"]}
+    for number, row_id in enumerate(HUMAN_ROWS, 1):
+        row = rows[row_id]
+        if row.get("result") == "pass":
+            continue
+        print(f"\n[{number}/{len(HUMAN_ROWS)}] {row_id}", flush=True)
+        print(OBSERVATION_PROMPTS[row_id], flush=True)
+        try:
+            answer = input(f"Answer Y/N/R {row_id} {run_suffix}: ").strip().upper()
+        except EOFError as exc:
+            raise RuntimeError("guided observation input ended before the blocking gate completed") from exc
+        if answer not in {"Y", "N", "R"}:
+            raise RuntimeError("guided observation response must be exactly Y, N, or R")
+        row["result"] = {"Y": "pass", "N": "failed", "R": "refused"}[answer]
+        row["observation"] = {
+            "answer": answer,
+            "prompt": OBSERVATION_PROMPTS[row_id],
+            "observed_at_unix_ms": time.time_ns() // 1_000_000,
+            "fresh_hello_session_id": fresh["session_id"],
+        }
+        write_json(args.evidence.resolve(), evidence, checksum=True)
+        if answer != "Y":
+            print(f"CHECKPOINT FAILED {row_id}: {row['result']}", flush=True)
+            return 1
+    print("PHYSICAL OBSERVATIONS COMPLETE; release direct serial for fresh bridge publication", flush=True)
+    return 0
+
+
+def finalize_evidence(args: argparse.Namespace) -> int:
+    evidence_path = args.evidence.resolve()
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    deployment = evidence["deployment"]
+    if sha256_file(args.firmware.resolve()) != deployment["binary_sha256"]:
+        raise RuntimeError("final firmware hash differs from captured deployment")
+    rows = {row["id"]: row for row in evidence["physical_observations"]}
+    if any(rows[row_id].get("result") != "pass" for row_id in HUMAN_ROWS):
+        raise RuntimeError("human physical observations are not all explicit passes")
+    receipt_path = args.publication_receipt.expanduser().resolve()
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if set(receipt) != {
+        "schema_version", "kind", "published_at_unix_ms", "binary_sha256", "hello", "snapshot_ack"
+    } or receipt.get("kind") != "phase3-bridge-publication-receipt":
+        raise RuntimeError("fresh bridge publication receipt schema is invalid")
+    hello = receipt["hello"]
+    if (
+        receipt["binary_sha256"] != deployment["binary_sha256"]
+        or hello.get("device_id") != deployment["paired_device_id"]
+        or hello.get("firmware") != deployment["hello_firmware"]
+        or hello.get("protocol") != deployment["protocol_version"]
+        or hello.get("boot_id") != deployment["fresh_boot_id"]
+    ):
+        raise RuntimeError("fresh bridge publication differs from current deployment")
+    ack = receipt["snapshot_ack"]
+    if ack.get("accepted") is not True or not isinstance(ack.get("snapshot_revision"), int):
+        raise RuntimeError("fresh bridge publication was not acknowledged")
+    last_observed = max(
+        rows[row_id]["observation"]["observed_at_unix_ms"] for row_id in HUMAN_ROWS
+    )
+    if receipt.get("published_at_unix_ms", 0) <= last_observed:
+        raise RuntimeError("bridge publication receipt does not postdate physical observations")
+    receipt_sha = sha256_file(receipt_path)
+    resync = rows["fresh-bridge-resync-after-acceptance"]
+    resync.update({
+        "source": "machine",
+        "result": "pass",
+        "observation": {
+            "receipt_sha256": receipt_sha,
+            "published_at_unix_ms": receipt["published_at_unix_ms"],
+            "session_id": hello["session_id"],
+            "snapshot_revision": ack["snapshot_revision"],
+            "accepted": True,
+        },
+    })
+    for item in evidence["ui_considerations"]:
+        if item["id"] == "long-text":
+            item["result"] = "pass"
+    evidence["status"] = "pass"
+    write_json(evidence_path, evidence, checksum=True)
+    return validate_evidence(
+        evidence_path,
+        allow_pending=False,
+        require_current_deployment=True,
+        require_fresh_bridge_publication=True,
+    )
+
+
+def validate_evidence(
+    path: Path,
+    allow_pending: bool,
+    *,
+    require_current_deployment: bool = False,
+    require_fresh_bridge_publication: bool = False,
+) -> int:
     path = path.resolve()
     evidence = json.loads(path.read_text(encoding="utf-8"))
     expected_top = {
@@ -432,6 +643,8 @@ def validate_evidence(path: Path, allow_pending: bool) -> int:
         raise ValueError("deployed firmware binary hash mismatch")
     if deployment.get("platformio_environment") != "selected-usb" or deployment.get("upload_result") != "pass":
         raise ValueError("deployment is not a successful selected-usb upload")
+    if require_current_deployment and firmware != (ROOT / ".pio/build/selected-usb/firmware.bin").resolve():
+        raise ValueError("evidence does not reference the current selected-usb deployment")
 
     capture_ref = evidence["capture_manifest"]
     captures_path = resolve_repo_path(capture_ref["path"])
@@ -493,13 +706,35 @@ def validate_evidence(path: Path, allow_pending: bool) -> int:
     physical = evidence["physical_observations"]
     if {row.get("id") for row in physical} != set(PHYSICAL_ROWS):
         raise ValueError("physical observation matrix incomplete")
-    if any(row.get("source") != "physical" or row.get("deployment_id") != deployment_id for row in physical):
-        raise ValueError("physical observations have invalid source/deployment linkage")
+    for row in physical:
+        expected_source = (
+            "machine"
+            if row.get("id") == "fresh-bridge-resync-after-acceptance" and row.get("result") == "pass"
+            else "physical"
+        )
+        if row.get("source") != expected_source or row.get("deployment_id") != deployment_id:
+            raise ValueError("physical observations have invalid source/deployment linkage")
     pending = any(row.get("result") == "pending" for row in physical)
     if pending and not allow_pending:
         raise ValueError("physical observations remain pending")
     if evidence["status"] != ("pending" if pending else "pass"):
         raise ValueError("evidence status does not match physical observations")
+    if require_fresh_bridge_publication:
+        resync = next(row for row in physical if row["id"] == "fresh-bridge-resync-after-acceptance")
+        observation = resync.get("observation")
+        if (
+            resync.get("source") != "machine"
+            or resync.get("result") != "pass"
+            or not isinstance(observation, dict)
+            or observation.get("accepted") is not True
+            or not isinstance(observation.get("published_at_unix_ms"), int)
+            or not isinstance(observation.get("snapshot_revision"), int)
+            or not isinstance(observation.get("receipt_sha256"), str)
+            or len(observation["receipt_sha256"]) != 64
+        ):
+            raise ValueError("fresh bridge publication evidence is missing or invalid")
+        if any(item.get("result") not in {"pass", "machine-pass"} for item in evidence["ui_considerations"]):
+            raise ValueError("UI considerations are not complete")
     print(f"validated {'pending' if pending else 'complete'} Phase 3 evidence for {deployment_id}")
     return 0
 
@@ -514,13 +749,34 @@ def main(argv: list[str] | None = None) -> int:
     capture.add_argument("--evidence", type=Path, required=True)
     capture.add_argument("--captures", type=Path, required=True)
     capture.add_argument("--timeout", type=float, default=5.0)
+    run = subparsers.add_parser("run")
+    run.add_argument("--binding", type=Path, required=True)
+    run.add_argument("--firmware", type=Path, required=True)
+    run.add_argument("--tracer", type=Path, required=True)
+    run.add_argument("--evidence", type=Path, required=True)
+    run.add_argument("--timeout", type=float, default=5.0)
+    finalize = subparsers.add_parser("finalize")
+    finalize.add_argument("--evidence", type=Path, required=True)
+    finalize.add_argument("--firmware", type=Path, required=True)
+    finalize.add_argument("--publication-receipt", type=Path, required=True)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--evidence", type=Path, required=True)
     validate.add_argument("--allow-pending", action="store_true")
+    validate.add_argument("--require-current-deployment", action="store_true")
+    validate.add_argument("--require-fresh-bridge-publication", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "capture":
         return run_capture(args)
-    return validate_evidence(args.evidence, args.allow_pending)
+    if args.command == "run":
+        return run_guided(args)
+    if args.command == "finalize":
+        return finalize_evidence(args)
+    return validate_evidence(
+        args.evidence,
+        args.allow_pending,
+        require_current_deployment=args.require_current_deployment,
+        require_fresh_bridge_publication=args.require_fresh_bridge_publication,
+    )
 
 
 if __name__ == "__main__":
