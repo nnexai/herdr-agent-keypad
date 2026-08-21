@@ -1310,6 +1310,84 @@ void test_signal_edge_transition_changes_only_rail_accent() {
   TEST_ASSERT_TRUE(logContainsText("WORKING"));
   TEST_ASSERT_TRUE(first != g_render_log);
 }
+void test_signal_edge_and_ledger_phase_motion_is_distinct_and_semantically_fixed() {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "current";
+  state.slots[0].occupied = true;
+  state.slots[0].title = "Agent";
+  state.slots[0].discriminator = "repo";
+  state.slots[0].since = "4m";
+  state.slots[0].state = TileState::Working;
+  state.transition_active = true;
+
+  state.transition_phase = 0;
+  resetLog();
+  signalEdgeTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> signal_neutral = g_render_log;
+  state.transition_phase = 2;
+  resetLog();
+  signalEdgeTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> signal_motion = g_render_log;
+  TEST_ASSERT_TRUE(signal_neutral != signal_motion);
+  TEST_ASSERT_TRUE(logContainsTextAt("WORKING", 15, 110));
+  TEST_ASSERT_TRUE(logContainsTextAt("Agent", 15, 5));
+  TEST_ASSERT_TRUE(logContainsTextAt("repo", 15, 32));
+
+  state.transition_phase = 0;
+  resetLog();
+  ledgerTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> ledger_neutral = g_render_log;
+  state.transition_phase = 2;
+  resetLog();
+  ledgerTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> ledger_motion = g_render_log;
+  TEST_ASSERT_TRUE(ledger_neutral != ledger_motion);
+  TEST_ASSERT_TRUE(logContainsTextAt("WORKING", 30, 74));
+  TEST_ASSERT_TRUE(logContainsTextAt("Agent", 6, 22));
+  TEST_ASSERT_TRUE(logContainsTextAt("repo", 6, 7));
+  TEST_ASSERT_TRUE(signal_motion != ledger_motion);
+}
+
+void test_signal_edge_and_ledger_fences_empty_and_codex_are_phase_static() {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "stale";
+  state.slots[0].occupied = false;
+  state.slots[0].state = TileState::Empty;
+  state.transition_active = true;
+  state.transition_phase = 0;
+  for (ThemeRenderer* theme : {&signalEdgeTheme(), &ledgerTheme()}) {
+    resetLog();
+    theme->composeTile(sprite, 0, state);
+    const std::vector<std::string> first = g_render_log;
+    state.transition_phase = 3;
+    resetLog();
+    theme->composeTile(sprite, 0, state);
+    TEST_ASSERT_TRUE(first == g_render_log);
+    TEST_ASSERT_TRUE(logContainsText("NO AGENT"));
+    TEST_ASSERT_TRUE(logContainsText("STALE"));
+  }
+
+  state.source_status = "current";
+  state.slots[0].occupied = true;
+  state.slots[0].state = TileState::Working;
+  state.codex.source_state = CodexSourceState::Unavailable;
+  state.codex.primary = -1;
+  state.codex.secondary = -1;
+  state.transition_phase = 0;
+  for (ThemeRenderer* theme : {&signalEdgeTheme(), &ledgerTheme()}) {
+    resetLog();
+    theme->composePanel4(sprite, state);
+    const std::vector<std::string> first = g_render_log;
+    state.transition_phase = 3;
+    resetLog();
+    theme->composePanel4(sprite, state);
+    TEST_ASSERT_TRUE(first == g_render_log);
+    TEST_ASSERT_TRUE(logContainsText("UNAVAILABLE"));
+    TEST_ASSERT_TRUE(logContainsText("N/A"));
+  }
+}
 
 void test_render_state_transition_metadata_is_presentation_only() {
   AgentProjection projection;
@@ -2410,6 +2488,8 @@ int runAllTests() {
   RUN_TEST(test_transition_phase_is_bounded_and_interruptible);
   RUN_TEST(test_half_samples_every_second_phase_and_static_keeps_semantics);
   RUN_TEST(test_signal_edge_transition_changes_only_rail_accent);
+  RUN_TEST(test_signal_edge_and_ledger_phase_motion_is_distinct_and_semantically_fixed);
+  RUN_TEST(test_signal_edge_and_ledger_fences_empty_and_codex_are_phase_static);
   RUN_TEST(test_render_state_transition_metadata_is_presentation_only);
   RUN_TEST(test_urgent_generation_cuts_transition_and_fences_bindings);
   RUN_TEST(test_static_commit_flushes_complete_semantics_without_motion);
