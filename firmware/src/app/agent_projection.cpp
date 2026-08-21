@@ -893,6 +893,7 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
     output.title = tile.title;
     output.discriminator = tile.discriminator;
     output.since = tile.since;
+    output.age = tile.age;
     output.state = tile.state;
     output.feedback = feedback_[slot];
     output.feedback_phase = feedback_phase_[slot];
