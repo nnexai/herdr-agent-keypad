@@ -401,6 +401,61 @@ void test_pending_feedback_advances_at_bounded_300ms_steps() {
 
 // --- Per-panel reveal fencing (R-2) ----------------------------------------
 
+void test_beacon_and_instrument_press_impulse_and_exact_focus_outcomes() {
+  ThemeRenderer* themes[] = {&beaconTheme(), &instrumentTheme()};
+  for (ThemeRenderer* theme : themes) {
+    AgentProjection projection;
+    projection.setTheme(*theme);
+    BoardAdapter board;
+    JsonDocument document = snapshot_document(1);
+    TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+    TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+
+    JsonDocument impulse;
+    TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "theme-impulse", impulse.to<JsonObject>()));
+    resetLog();
+    projection.renderFeedback(board, 0);
+    TEST_ASSERT_FALSE(logContainsText("PENDING"));
+    TEST_ASSERT_FALSE(logContainsText("FOCUSED"));
+    resetLog();
+    projection.renderFeedback(board, 0);
+    TEST_ASSERT_TRUE(logContainsText("PENDING"));
+
+    // Accepted delivery without focused=true is a rejection, never optimistic
+    // success.
+    JsonDocument not_focused = focus_result_document("theme-impulse", "accepted");
+    not_focused["focused"] = false;
+    not_focused["snapshot_revision"] = 1;
+    TEST_ASSERT_FALSE(projection.applyFocusResult(not_focused.as<JsonObjectConst>()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Rejected),
+                      static_cast<int>(projection.feedback(0)));
+
+    JsonDocument exact;
+    TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "theme-exact", exact.to<JsonObject>()));
+    exact["snapshot_revision"] = 1;
+    JsonDocument accepted = focus_result_document("theme-exact", "accepted");
+    accepted["snapshot_revision"] = 1;
+    TEST_ASSERT_TRUE(projection.applyFocusResult(accepted.as<JsonObjectConst>()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Success),
+                      static_cast<int>(projection.feedback(0)));
+    resetLog();
+    projection.renderFeedback(board, 0);
+    TEST_ASSERT_TRUE(logContainsText("FOCUSED"));
+
+    // A generation replacement fences the old action and leaves no replay.
+    JsonDocument pending;
+    TEST_ASSERT_TRUE(projection.captureFocusIntent(0, "theme-old", pending.to<JsonObject>()));
+    JsonDocument replacement = snapshot_document(2);
+    TEST_ASSERT_TRUE(projection.stageSnapshot(replacement.as<JsonObjectConst>()));
+    TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+    JsonDocument old_result = focus_result_document("theme-old", "accepted");
+    old_result["snapshot_revision"] = 1;
+    TEST_ASSERT_FALSE(projection.applyFocusResult(old_result.as<JsonObjectConst>()));
+    TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Ready),
+                      static_cast<int>(projection.feedback(0)));
+  }
+}
+
 void test_reveal_window_press_is_inert() {
   // A press after the first panel flush but before the third must capture no
   // binding: bindings deactivate at stage time via commitSnapshot's
@@ -2619,6 +2674,7 @@ int runAllTests() {
   RUN_TEST(test_signal_edge_and_ledger_phase_motion_is_distinct_and_semantically_fixed);
   RUN_TEST(test_press_impulse_precedes_pending_render);
   RUN_TEST(test_pending_feedback_advances_at_bounded_300ms_steps);
+  RUN_TEST(test_beacon_and_instrument_press_impulse_and_exact_focus_outcomes);
   RUN_TEST(test_signal_edge_and_ledger_fences_empty_and_codex_are_phase_static);
   RUN_TEST(test_render_state_transition_metadata_is_presentation_only);
   RUN_TEST(test_urgent_generation_cuts_transition_and_fences_bindings);
