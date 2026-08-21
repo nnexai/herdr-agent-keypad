@@ -2752,6 +2752,26 @@ void test_led_grammar_rest_truth_and_segment_bounds_across_phases() {
         grammar->frame(state, rest, 0, segments, kLedGrammarMaxSegments);
     TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
   }
+  struct EventProbe final : LedGrammar {
+    mutable LedEvents seen;
+    size_t frame(const RenderState&, const LedEvents& events, uint32_t,
+                 LedSegment*, size_t) const override {
+      seen = events;
+      return 0;
+    }
+  } probe;
+  state.transition_phase = 3;
+  LedEvents explicit_start;
+  explicit_start.semantic_event = LedSemanticEvent::Pending;
+  explicit_start.semantic_epoch = 91;
+  explicit_start.semantic_phase = 0;
+  LedEngine probe_engine;
+  BoardAdapter probe_board;
+  probe_engine.setGrammar(probe);
+  probe_engine.render(state, explicit_start, 0, probe_board);
+  TEST_ASSERT_EQUAL_UINT32(91, probe.seen.semantic_epoch);
+  TEST_ASSERT_EQUAL_UINT8(0, probe.seen.semantic_phase);
+
   state.syncing = true;
   rest.semantic_event = LedSemanticEvent::Sync;
   rest.semantic_epoch = 91;
