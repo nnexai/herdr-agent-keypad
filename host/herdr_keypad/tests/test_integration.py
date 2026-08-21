@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import tomllib
 from herdr_keypad.bridge import (
@@ -550,6 +551,51 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertIsNone(bridge._reconnect_due)
 
 
+
+
+    def test_run_fences_and_reconnects_after_transient_usb_error(self):
+        bridge = object.__new__(PermanentBridge)
+        disconnects: list[tuple[str, float]] = []
+        closed: list[bool] = []
+        marked: list[str] = []
+
+        def fail_once():
+            raise UsbSessionError("closed", "transient USB failure")
+
+        bridge.run_once = fail_once
+        bridge._clock = lambda: 12.5
+        bridge._disconnect = lambda reason, now: disconnects.append((reason, now))
+        bridge._mark_unavailable = lambda reason: marked.append(reason)
+        bridge.usb = SimpleNamespace(close=lambda: closed.append(True))
+
+        with patch("herdr_keypad.bridge.time.sleep", side_effect=KeyboardInterrupt):
+            bridge.run(bootstrapped=True)
+
+        self.assertEqual(disconnects, [("offline", 12.5)])
+        self.assertEqual(marked, ["offline"])
+        self.assertEqual(closed, [True])
+
+    def test_run_reconnects_after_initial_usb_bootstrap_failure(self):
+        clock = ManualClock()
+        usb = RecoveringUsb(unavailable_attempts=1)
+        bridge = PermanentBridge(
+            HerdrClient(requester=FakeHerdr().request),
+            usb,
+            InboxProjection(host_epoch="epoch-bootstrap-recovery"),
+        )
+        bridge._clock = clock
+
+        def advance_until_published(_interval: float) -> None:
+            if usb.published:
+                raise KeyboardInterrupt
+            clock.advance(0.5)
+
+        with patch("herdr_keypad.bridge.time.sleep", side_effect=advance_until_published):
+            bridge.run()
+
+        self.assertEqual(usb.connect_attempts, 2)
+        self.assertEqual(len(usb.published), 1)
+        self.assertTrue(bridge.last_snapshot_ack["accepted"])
 
 
 class ExactUsbSessionTests(unittest.TestCase):

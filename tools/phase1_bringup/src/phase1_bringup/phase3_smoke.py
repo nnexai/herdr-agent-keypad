@@ -1,6 +1,7 @@
 """Exact-pair Phase 3 deployment capture and pending-evidence validator."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 import argparse
 import binascii
 import hashlib
@@ -8,11 +9,12 @@ import json
 import os
 import struct
 import subprocess
+import signal
 import tempfile
 import time
 import zlib
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from herdr_keypad.codex import normalize_rate_limits
 
@@ -134,6 +136,13 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: stream.read(65536), b""):
             digest.update(block)
     return digest.hexdigest()
+
+def valid_snapshot_revision(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def valid_publication_identity(value: object) -> bool:
+    return isinstance(value, str) and bool(value)
 
 
 def relative(path: Path) -> str:
@@ -518,6 +527,112 @@ def preflight_run(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str, A
     return evidence, fresh
 
 
+def _guided_receipt_matches(
+    receipt_path: Path,
+    evidence: dict[str, Any],
+    fresh: dict[str, Any],
+) -> bool:
+    try:
+        receipt = json.loads(receipt_path.read_text(encoding="ascii"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return False
+    deployment = evidence["deployment"]
+    hello = receipt.get("hello", {})
+    ack = receipt.get("snapshot_ack", {})
+    return (
+        receipt.get("kind") == "phase3-bridge-publication-receipt"
+        and receipt.get("binary_sha256") == deployment["binary_sha256"]
+        and hello.get("device_id") == fresh["device_id"]
+        and hello.get("firmware") == fresh["firmware"]
+        and hello.get("protocol") == fresh["protocol"]
+        and hello.get("boot_id") == fresh["device_boot_id"]
+        and hello.get("session_id") != fresh["session_id"]
+        and ack.get("accepted") is True
+        and isinstance(ack.get("snapshot_revision"), int)
+    )
+
+
+def _stop_guided_bridge(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    process.send_signal(signal.SIGINT)
+    try:
+        process.wait(timeout=5.0)
+        return
+    except subprocess.TimeoutExpired:
+        process.terminate()
+    try:
+        process.wait(timeout=1.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=1.0)
+
+
+@contextmanager
+def guided_bridge(
+    args: argparse.Namespace,
+    evidence: dict[str, Any],
+    fresh: dict[str, Any],
+) -> Iterator[subprocess.Popen[str]]:
+    guard = ROOT / "host/herdr_keypad/scripts/ensure-bridge.sh"
+    with tempfile.TemporaryDirectory(prefix="phase3-guided-") as directory:
+        temporary = Path(directory)
+        receipt_path = temporary / "publication.json"
+        log_path = temporary / "bridge.log"
+        environment = os.environ.copy()
+        environment.pop("HERDR_KEYPAD_PIDFILE", None)
+        environment["HERDR_DEPLOYED_FIRMWARE"] = str(args.firmware.resolve())
+        environment["HERDR_KEYPAD_PUBLICATION_EVIDENCE"] = str(receipt_path)
+        with log_path.open("w+", encoding="utf-8") as log:
+            process = subprocess.Popen(
+                [str(guard)],
+                cwd=ROOT,
+                env=environment,
+                stdin=subprocess.DEVNULL,
+                stdout=log,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            try:
+                deadline = time.monotonic() + max(10.0, float(args.timeout) * 4.0)
+                while time.monotonic() < deadline:
+                    if process.poll() is not None:
+                        break
+                    if _guided_receipt_matches(receipt_path, evidence, fresh):
+                        print(
+                            "LIVE BRIDGE PASS "
+                            f"pid={process.pid} device={fresh['device_id']} "
+                            f"session={fresh['session_id']}",
+                            flush=True,
+                        )
+                        try:
+                            yield process
+                        except BaseException:
+                            if process.poll() is not None:
+                                log.flush()
+                                log.seek(0)
+                                detail = log.read()[-480:].strip()
+                                print(
+                                    f"GUIDED BRIDGE EXIT code={process.returncode}: {detail}",
+                                    flush=True,
+                                )
+                            raise
+                        return
+                    time.sleep(0.05)
+                log.flush()
+                log.seek(0)
+                detail = log.read()[-240:].strip()
+                if process.poll() is None:
+                    raise RuntimeError(
+                        f"guided bridge did not publish a fresh acknowledged snapshot: {detail}"
+                    )
+                raise RuntimeError(
+                    f"guided bridge exited before physical prompts: {detail}"
+                )
+            finally:
+                _stop_guided_bridge(process)
+
+
 def run_guided(args: argparse.Namespace) -> int:
     evidence, fresh = preflight_run(args)
     run_suffix = evidence["run_id"][-8:].upper()
@@ -530,29 +645,36 @@ def run_guided(args: argparse.Namespace) -> int:
         flush=True,
     )
     rows = {row["id"]: row for row in evidence["physical_observations"]}
-    for number, row_id in enumerate(HUMAN_ROWS, 1):
-        row = rows[row_id]
-        if row.get("result") == "pass":
-            continue
-        print(f"\n[{number}/{len(HUMAN_ROWS)}] {row_id}", flush=True)
-        print(OBSERVATION_PROMPTS[row_id], flush=True)
-        try:
-            answer = input(f"Answer Y/N/R {row_id} {run_suffix}: ").strip().upper()
-        except EOFError as exc:
-            raise RuntimeError("guided observation input ended before the blocking gate completed") from exc
-        if answer not in {"Y", "N", "R"}:
-            raise RuntimeError("guided observation response must be exactly Y, N, or R")
-        row["result"] = {"Y": "pass", "N": "failed", "R": "refused"}[answer]
-        row["observation"] = {
-            "answer": answer,
-            "prompt": OBSERVATION_PROMPTS[row_id],
-            "observed_at_unix_ms": time.time_ns() // 1_000_000,
-            "fresh_hello_session_id": fresh["session_id"],
-        }
-        write_json(args.evidence.resolve(), evidence, checksum=True)
-        if answer != "Y":
-            print(f"CHECKPOINT FAILED {row_id}: {row['result']}", flush=True)
-            return 1
+    with guided_bridge(args, evidence, fresh) as bridge:
+        for number, row_id in enumerate(HUMAN_ROWS, 1):
+            row = rows[row_id]
+            if row.get("result") == "pass":
+                continue
+            if bridge.poll() is not None:
+                raise RuntimeError("guided bridge exited before the physical observation")
+            print(f"\n[{number}/{len(HUMAN_ROWS)}] {row_id}", flush=True)
+            print(OBSERVATION_PROMPTS[row_id], flush=True)
+            try:
+                answer = input(f"Answer Y/N/R {row_id} {run_suffix}: ").strip().upper()
+            except EOFError as exc:
+                raise RuntimeError(
+                    "guided observation input ended before the blocking gate completed"
+                ) from exc
+            if answer not in {"Y", "N", "R"}:
+                raise RuntimeError("guided observation response must be exactly Y, N, or R")
+            if bridge.poll() is not None:
+                raise RuntimeError("guided bridge exited during the physical observation")
+            row["result"] = {"Y": "pass", "N": "failed", "R": "refused"}[answer]
+            row["observation"] = {
+                "answer": answer,
+                "prompt": OBSERVATION_PROMPTS[row_id],
+                "observed_at_unix_ms": time.time_ns() // 1_000_000,
+                "fresh_hello_session_id": fresh["session_id"],
+            }
+            write_json(args.evidence.resolve(), evidence, checksum=True)
+            if answer != "Y":
+                print(f"CHECKPOINT FAILED {row_id}: {row['result']}", flush=True)
+                return 1
     print("PHYSICAL OBSERVATIONS COMPLETE; release direct serial for fresh bridge publication", flush=True)
     return 0
 
@@ -578,11 +700,14 @@ def finalize_evidence(args: argparse.Namespace) -> int:
         or hello.get("device_id") != deployment["paired_device_id"]
         or hello.get("firmware") != deployment["hello_firmware"]
         or hello.get("protocol") != deployment["protocol_version"]
-        or hello.get("boot_id") != deployment["fresh_boot_id"]
     ):
         raise RuntimeError("fresh bridge publication differs from current deployment")
+    if not valid_publication_identity(hello.get("boot_id")) or not valid_publication_identity(
+        hello.get("session_id")
+    ):
+        raise RuntimeError("fresh bridge publication identity is invalid")
     ack = receipt["snapshot_ack"]
-    if ack.get("accepted") is not True or not isinstance(ack.get("snapshot_revision"), int):
+    if ack.get("accepted") is not True or not valid_snapshot_revision(ack.get("snapshot_revision")):
         raise RuntimeError("fresh bridge publication was not acknowledged")
     last_observed = max(
         rows[row_id]["observation"]["observed_at_unix_ms"] for row_id in HUMAN_ROWS
@@ -597,6 +722,7 @@ def finalize_evidence(args: argparse.Namespace) -> int:
         "observation": {
             "receipt_sha256": receipt_sha,
             "published_at_unix_ms": receipt["published_at_unix_ms"],
+            "boot_id": hello["boot_id"],
             "session_id": hello["session_id"],
             "snapshot_revision": ack["snapshot_revision"],
             "accepted": True,
@@ -728,9 +854,11 @@ def validate_evidence(
             or not isinstance(observation, dict)
             or observation.get("accepted") is not True
             or not isinstance(observation.get("published_at_unix_ms"), int)
-            or not isinstance(observation.get("snapshot_revision"), int)
+            or not valid_snapshot_revision(observation.get("snapshot_revision"))
             or not isinstance(observation.get("receipt_sha256"), str)
             or len(observation["receipt_sha256"]) != 64
+            or not valid_publication_identity(observation.get("boot_id"))
+            or not valid_publication_identity(observation.get("session_id"))
         ):
             raise ValueError("fresh bridge publication evidence is missing or invalid")
         if any(item.get("result") not in {"pass", "machine-pass"} for item in evidence["ui_considerations"]):

@@ -352,7 +352,12 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     JsonObjectConst snapshot = payload.as<JsonObjectConst>();
     const uint32_t render_started = micros();
     const bool staged = agentProjection.stageSnapshot(snapshot);
-    const bool committed = staged && agentProjection.commitSnapshot(board);
+    const MenuState& menu_state = menuController.state();
+    const bool theme_preview = menuController.editing() && menu_state.cursor == 0;
+    ThemeRenderer& panel4_theme = themeById(
+        theme_preview ? menuController.activeTheme() : menuController.storedTheme());
+    const bool committed =
+        staged && agentProjection.commitSnapshot(board, panel4_theme, menu_state);
     proofMetrics.observeDisplayFlush(micros() - render_started);
     proofMetrics.sampleRuntime();
     JsonDocument reply;

@@ -892,6 +892,39 @@ void test_codex_limit_layers_without_hiding_source_state() {
   }
 }
 
+void test_codex_status_cues_do_not_cross_value_rows() {
+  CodexRenderView codex;
+  codex.source_state = CodexSourceState::AuthRequired;
+  codex.primary = -1;
+  codex.secondary = -1;
+  codex.reset_text = "RESET N/A";
+  codex.observation_age = "AGE N/A";
+  ThemeRenderer* top_right_marker[] = {
+      &signalEdgeTheme(), &ledgerTheme(), &instrumentTheme()};
+  for (ThemeRenderer* theme : top_right_marker) {
+    renderCodex(*theme, codex);
+    TEST_ASSERT_TRUE(logContainsAny("drawLine:112:8:124:20"));
+    TEST_ASSERT_TRUE(logContainsAny("drawLine:124:8:112:20"));
+    TEST_ASSERT_FALSE(logContainsAny("drawLine:16:20:124:59"));
+    TEST_ASSERT_FALSE(logContainsAny("drawLine:4:20:124:59"));
+    TEST_ASSERT_FALSE(logContainsAny("drawLine:8:20:120:59"));
+  }
+
+  codex.source_state = CodexSourceState::CodexOffline;
+  renderCodex(signalEdgeTheme(), codex);
+  TEST_ASSERT_FALSE(logContainsAny("drawLine:64:36:68:36"));
+  renderCodex(instrumentTheme(), codex);
+  TEST_ASSERT_FALSE(logContainsAny("drawLine:58:36:62:36"));
+  renderCodex(ledgerTheme(), codex);
+  TEST_ASSERT_FALSE(logContainsAny("drawLine:54:38:60:38"));
+
+  codex.source_state = CodexSourceState::Stale;
+  codex.primary = 42;
+  codex.secondary = 78;
+  renderCodex(ledgerTheme(), codex);
+  TEST_ASSERT_FALSE(logContainsAny("drawLine:4:38:24:20"));
+}
+
 void test_codex_exact_theme_geometry_and_shared_baselines() {
   CodexRenderView codex;
   codex.source_state = CodexSourceState::Current;
@@ -902,9 +935,9 @@ void test_codex_exact_theme_geometry_and_shared_baselines() {
 
   renderCodex(signalEdgeTheme(), codex);
   TEST_ASSERT_TRUE(logContainsTextAt("CODEX", 16, 4));
-  TEST_ASSERT_TRUE(logContainsTextAt("5H", 16, 30));
-  TEST_ASSERT_TRUE(logContainsTextAt("17%", 102, 30));
-  TEST_ASSERT_TRUE(logContainsTextAt("WEEK", 16, 50));
+  TEST_ASSERT_TRUE(logContainsTextAt("5H", 16, 22));
+  TEST_ASSERT_TRUE(logContainsTextAt("17%", 102, 22));
+  TEST_ASSERT_TRUE(logContainsTextAt("WEEK", 16, 42));
   TEST_ASSERT_TRUE(logContainsTextAt("RESET 5H 01:20", 16, 70));
   TEST_ASSERT_TRUE(logContainsTextAt("AGE 14M", 16, 86));
   TEST_ASSERT_TRUE(logContainsTextAt("CURRENT", 16, 114));
@@ -923,18 +956,18 @@ void test_codex_exact_theme_geometry_and_shared_baselines() {
 
   renderCodex(beaconTheme(), codex);
   TEST_ASSERT_TRUE(logContainsTextAt("CODEX", 49, 4));
-  TEST_ASSERT_TRUE(logContainsTextAt("5H 17%", 46, 30));
-  TEST_ASSERT_TRUE(logContainsTextAt("WEEK 83%", 40, 50));
-  TEST_ASSERT_TRUE(logContainsAny("drawCircle:64:40:19"));
-  TEST_ASSERT_TRUE(logContainsAny("drawCircle:64:40:12"));
+  TEST_ASSERT_TRUE(logContainsTextAt("5H 17%", 34, 30));
+  TEST_ASSERT_TRUE(logContainsTextAt("WEEK 83%", 34, 50));
+  TEST_ASSERT_TRUE(logContainsAny("drawCircle:18:34:8"));
+  TEST_ASSERT_TRUE(logContainsAny("drawCircle:18:54:8"));
   TEST_ASSERT_TRUE(logContainsTextAt("RESET 5H 01:20", 22, 70));
   TEST_ASSERT_TRUE(logContainsTextAt("AGE 14M", 43, 86));
   TEST_ASSERT_TRUE(logContainsTextAt("CURRENT", 43, 114));
 
   renderCodex(instrumentTheme(), codex);
   TEST_ASSERT_TRUE(logContainsTextAt("CODEX", 49, 4));
-  TEST_ASSERT_TRUE(logContainsTextAt("5H", 8, 30));
-  TEST_ASSERT_TRUE(logContainsTextAt("WEEK", 8, 50));
+  TEST_ASSERT_TRUE(logContainsTextAt("5H", 8, 22));
+  TEST_ASSERT_TRUE(logContainsTextAt("WEEK", 8, 42));
   TEST_ASSERT_TRUE(logContainsAny("drawRect:8:32:112:8"));
   TEST_ASSERT_TRUE(logContainsAny("drawRect:8:52:112:8"));
   TEST_ASSERT_TRUE(logContainsTextAt("RESET 5H 01:20", 22, 70));
@@ -1011,6 +1044,32 @@ void test_codex_only_same_revision_repaints_panel4_without_losing_focus_intent()
 
   JsonDocument drift = snapshot_document(7, "blocked");
   TEST_ASSERT_FALSE(projection.stageSnapshot(drift.as<JsonObjectConst>()));
+}
+
+void test_codex_only_same_revision_keeps_open_menu_on_panel4() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument initial = snapshot_document(7);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(initial.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+
+  MenuState menu;
+  menu.open = true;
+  menu.page = MenuPage::Root;
+  menu.cursor = 2;
+  menu.viewport_start = 1;
+  JsonDocument update = snapshot_document(7);
+  update["codex"]["primary"] = 90;
+  update["codex"]["observation_age"] = "AGE 1M";
+  update["diagnostics"]["codex_age"] = "AGE 1M";
+  TEST_ASSERT_TRUE(projection.stageSnapshot(update.as<JsonObjectConst>()));
+  resetLog();
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board, signalEdgeTheme(), menu));
+  const std::vector<int> order = pushOrder();
+  TEST_ASSERT_EQUAL_UINT32(1, order.size());
+  TEST_ASSERT_EQUAL_INT(3, order[0]);
+  TEST_ASSERT_TRUE(logContainsText("MENU"));
+  TEST_ASSERT_FALSE(logContainsText("CODEX"));
 }
 
 void test_feedback_and_sync_copy_is_not_duplicated() {
@@ -2048,7 +2107,7 @@ void test_all_theme_health_and_about_pages_are_fixed_bounded_allowlists() {
   menu.diagnostics.sync_age = "AGE 999M";
   menu.diagnostics.codex_age = "AGE N/A";
   menu.diagnostics.error_code = "E-2407";
-  const int32_t rows[] = {30, 46, 62, 78, 94, 110};
+  const int32_t rows[] = {24, 40, 56, 72, 88, 104};
   const char* labels[] = {"LINK", "HERDR", "CODEX", "SYNC AGE", "CODEX AGE",
                           "ERR"};
   const char* values[] = {"OK", "STALE", "AUTH REQUIRED", "999M", "N/A",
@@ -2075,7 +2134,7 @@ void test_all_theme_health_and_about_pages_are_fixed_bounded_allowlists() {
         "CLICK:BACK", theme == &ledgerTheme() ? 6
                       : theme == &signalEdgeTheme() ? 12
                                                     : 34,
-        122));
+        118));
     TEST_ASSERT_EQUAL_UINT32(0, logTextCount("NONE"));
     assertPanelTextBounded();
 
@@ -2089,15 +2148,15 @@ void test_all_theme_health_and_about_pages_are_fixed_bounded_allowlists() {
     resetLog();
     theme->composeMenu(sprite, menu);
     TEST_ASSERT_TRUE(logContainsText("ABOUT"));
-    TEST_ASSERT_TRUE(logContainsAny("1234567890..."));
+    TEST_ASSERT_TRUE(logContainsAny("1234567890ABCDEF"));
+    TEST_ASSERT_FALSE(logContainsAny("123456789012..."));
     TEST_ASSERT_TRUE(logContainsAny("N/A"));
-    TEST_ASSERT_FALSE(logContainsAny("1234567890ABCDEF"));
     TEST_ASSERT_TRUE(logContainsAny("ABCDEF"));
     TEST_ASSERT_TRUE(logContainsTextAt(
         "CLICK:BACK", theme == &ledgerTheme() ? 6
                       : theme == &signalEdgeTheme() ? 12
                                                     : 34,
-        122));
+        118));
     assertPanelTextBounded();
   }
 }
@@ -2188,6 +2247,8 @@ void test_menu_redraw_is_panel4_only() {
   TEST_ASSERT_EQUAL_INT(3, order[0]);
 }
 
+
+
 int runAllTests() {
   UNITY_BEGIN();
   RUN_TEST(test_compose_then_flush_commits_generation);
@@ -2224,10 +2285,12 @@ int runAllTests() {
   RUN_TEST(test_codex_rows_preserve_null_zero_partial_and_populated_values);
   RUN_TEST(test_codex_source_precedence_clears_or_retains_values_truthfully);
   RUN_TEST(test_codex_limit_layers_without_hiding_source_state);
+  RUN_TEST(test_codex_status_cues_do_not_cross_value_rows);
   RUN_TEST(test_codex_exact_theme_geometry_and_shared_baselines);
   RUN_TEST(test_codex_copy_is_tail_ellipsized_inside_safe_inset);
   RUN_TEST(test_codex_only_redraw_preserves_agents_bindings_and_snapshot_identity);
   RUN_TEST(test_codex_only_same_revision_repaints_panel4_without_losing_focus_intent);
+  RUN_TEST(test_codex_only_same_revision_keeps_open_menu_on_panel4);
   RUN_TEST(test_feedback_and_sync_copy_is_not_duplicated);
   RUN_TEST(test_phase3_capture_scenes_use_production_panel4_renderers);
   RUN_TEST(test_signal_edge_polish_geometry);

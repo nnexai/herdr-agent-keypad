@@ -1,29 +1,37 @@
 {
   "codex": {
-    "error_code": "E-2406",
-    "observation_age": "AGE N/A",
+    "error_code": "",
+    "observation_age": "AGE 0M",
     "primary": null,
     "reached_limit": null,
-    "reset_text": "RESET N/A",
-    "secondary": null,
-    "source_state": "codex_offline"
+    "reset_text": "RESET WEEK 6D0H49M",
+    "secondary": 41,
+    "source_state": "current"
   },
   "collector": {
-    "account_observed": false,
+    "account_observed": true,
     "child_exit": {
       "code": 0,
       "signal": null,
       "state": "terminated"
     },
     "deadline_ms": 3000,
-    "elapsed_ms": 184,
-    "handshake": [],
-    "rate_limits_observed": false,
+    "elapsed_ms": 961,
+    "handshake": [
+      "initialize",
+      "initialized",
+      "account/read",
+      "account/rateLimits/read"
+    ],
+    "rate_limits_observed": true,
     "redaction": {
       "bucket_manifest": {
-        "key_prefixes": [],
-        "observed_key_count": 0,
-        "present": false,
+        "key_prefixes": [
+          "57de4cf40144",
+          "d62616d234d8"
+        ],
+        "observed_key_count": 2,
+        "present": true,
         "selected_key": null,
         "truncated": false
       },
@@ -32,10 +40,10 @@
     }
   },
   "deployment": {
-    "binary_sha256": "cb4a78c33cbb3c6dd432d20bd1b2319b79454703f440966650dd4a66c4481fb3",
-    "deployment_id": "500789af6f20b17d451d99ab3c58c8289c976b6d167d1f24f77426813e74561d",
-    "fresh_boot_id": "0000fccb0deabf8c-0f166270",
-    "fresh_session_id": "session-849f9279b704a0ae",
+    "binary_sha256": "d188d8f4f3177c12a9116df80b728017dcb2ad97df66928e292422e70fc1f26e",
+    "deployment_id": "69b75b27e4d195c7e57533b5ee620e677b3936ec7005be509939313c0e0c5cbf",
+    "fresh_boot_id": "0000fccb0deabf8c-b4a3425e",
+    "fresh_session_id": "session-da3195f4aed473a2",
     "hello_firmware": "phase1-bringup",
     "paired_device_id": "0000fccb0deabf8c",
     "platformio_environment": "selected-usb",
@@ -46,25 +54,28 @@
     "available": true,
     "snapshot_revision": 1
   },
-  "error_code": "E-2406",
+  "error_code": "",
   "final_evidence_refs": {
     "child_exit": "/collector/child_exit",
     "elapsed_ms": "/collector/elapsed_ms",
     "redaction_result": "/redaction/result"
   },
   "hello": {
-    "boot_id": "0000fccb0deabf8c-0f166270",
+    "boot_id": "0000fccb0deabf8c-b4a3425e",
     "device_id": "0000fccb0deabf8c",
     "firmware": "phase1-bringup",
     "protocol": 1,
-    "session_id": "session-849f9279b704a0ae"
+    "session_id": "session-da3195f4aed473a2"
   },
   "kind": "phase3-codex-tracer",
   "redaction": {
     "bucket_manifest": {
-      "key_prefixes": [],
-      "observed_key_count": 0,
-      "present": false,
+      "key_prefixes": [
+        "57de4cf40144",
+        "d62616d234d8"
+      ],
+      "observed_key_count": 2,
+      "present": true,
       "selected_key": null,
       "truncated": false
     },
@@ -75,7 +86,7 @@
     "available": false,
     "source": "device-frame-not-returned"
   },
-  "result": "fail",
+  "result": "pass",
   "schema_version": 1,
   "source": {
     "fixtures": "separate-scripted-tests",

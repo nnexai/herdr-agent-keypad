@@ -148,6 +148,7 @@ void drawUsageGauge(LGFX_Sprite& sprite, int32_t track_y, const char* label) {
   sprite.fillRect(92, track_y - 1, 2, 12, kBlocked);
 }
 
+
 class InstrumentTheme final : public ThemeRenderer {
  public:
   void composeTile(LGFX_Sprite& sprite, uint8_t slot, const RenderState& state) override {
@@ -235,7 +236,7 @@ class InstrumentTheme final : public ThemeRenderer {
       drawCodexLimitHeader(sprite, codex, 94, 4);
     }
 
-    drawCodexRowsText(sprite, codex, 8, 120, 30, 50);
+    drawCodexRowsText(sprite, codex, 8, 120, 22, 42);
     const uint16_t gauge_color =
         codex.source_state == CodexSourceState::Current
             ? (codexHasLimit(codex) ? kDestructive : kAccent)
@@ -244,14 +245,12 @@ class InstrumentTheme final : public ThemeRenderer {
                    gauge_color, kSettled);
     drawCodexTrack(sprite, 8, 52, 112, 8, codexValue(codex, false),
                    gauge_color, kSettled);
-    drawCodexTrackVeil(sprite, codex, 8, 32, 112, 8);
-    drawCodexTrackVeil(sprite, codex, 8, 52, 112, 8);
     const uint16_t warning_color = codexHasLimit(codex) ? kDestructive : kBlocked;
     sprite.fillRect(92, 31, 2, 10, warning_color);
     sprite.fillRect(92, 51, 2, 10, warning_color);
     if (codex.source_state == CodexSourceState::AuthRequired) {
-      sprite.drawLine(8, 20, 120, 59, kDestructive);
-      sprite.drawLine(120, 20, 8, 59, kDestructive);
+      sprite.drawLine(112, 8, 124, 20, kDestructive);
+      sprite.drawLine(124, 8, 112, 20, kDestructive);
     }
 
     drawCodexMetaText(sprite, codex, 0, 70, 0, 86, true);

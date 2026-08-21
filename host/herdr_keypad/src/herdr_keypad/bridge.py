@@ -1078,15 +1078,24 @@ class PermanentBridge:
         from .usb import UsbSessionError
 
         if not bootstrapped:
-            self.bootstrap()
+            try:
+                self.bootstrap()
+            except V2ProtocolError as exc:
+                if exc.reason not in {"bootstrap_failed", "snapshot_rejected"}:
+                    raise
+                self._disconnect("unavailable", self._clock())
+            except UsbSessionError:
+                self._disconnect("offline", self._clock())
         try:
             while True:
                 try:
                     self.run_once()
                 except V2ProtocolError:
                     self._disconnect("unavailable", self._clock())
+                except UsbSessionError:
+                    self._disconnect("offline", self._clock())
                 time.sleep(interval)
-        except (KeyboardInterrupt, UsbSessionError):
+        except KeyboardInterrupt:
             self._mark_unavailable("offline")
             self.usb.close()
 

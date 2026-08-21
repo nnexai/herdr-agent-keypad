@@ -252,41 +252,14 @@ inline void drawCodexStateText(LGFX_Sprite& sprite, const CodexRenderView& view,
   sprite.drawString(word, centered ? centeredX(word) : x, y);
 }
 
-inline void drawHatchedTrack(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w,
-                             int32_t h, uint16_t color) {
-  sprite.drawRect(x, y, w, h, color);
-  for (int32_t start = x + 2; start < x + w - 2; start += 7) {
-    const int32_t end = start + 5 < x + w - 1 ? start + 5 : x + w - 1;
-    sprite.drawLine(start, y + h - 2, end, y + 1, color);
-  }
-}
-
-inline void drawCodexTrack(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w,
-                           int32_t h, int16_t value, uint16_t fill_color,
-                           uint16_t outline_color) {
-  if (value < 0) {
-    drawHatchedTrack(sprite, x, y, w, h, outline_color);
-    return;
-  }
-  if (value > 100) value = 100;
+inline void drawCodexTrack(LGFX_Sprite& sprite, int32_t x, int32_t y,
+                           int32_t w, int32_t h, int16_t value,
+                           uint16_t fill_color, uint16_t outline_color) {
   sprite.drawRect(x, y, w, h, outline_color);
+  if (value < 0) return;
+  if (value > 100) value = 100;
   const int32_t fill_width = (w * value) / 100;
   if (fill_width > 0) sprite.fillRect(x, y, fill_width, h, fill_color);
-}
-
-inline void drawCodexTrackVeil(LGFX_Sprite& sprite, const CodexRenderView& view,
-                               int32_t x, int32_t y, int32_t w, int32_t h) {
-  if (codexNeedsHatch(view)) {
-    for (int32_t start = x + 3; start < x + w - 2; start += 9) {
-      const int32_t end = start + 5 < x + w - 1 ? start + 5 : x + w - 1;
-      sprite.drawLine(start, y + h - 2, end, y + 1, kSettled);
-    }
-  }
-  if (codexIsOffline(view)) {
-    const int32_t mid = x + w / 2;
-    sprite.drawLine(mid - 6, y + h / 2, mid - 2, y + h / 2, kDestructive);
-    sprite.drawLine(mid + 2, y + h / 2, mid + 6, y + h / 2, kDestructive);
-  }
 }
 
 inline void drawCodexLimitHeader(LGFX_Sprite& sprite, const CodexRenderView& view,
@@ -532,11 +505,23 @@ inline const char* diagnosticVersion(const char* version) {
 inline void drawMenuDetailRow(LGFX_Sprite& sprite, MenuVisual visual,
                               const char* label, const char* source,
                               int32_t y) {
-  char value[14] = {};
-  ellipsize(value, sizeof(value), source);
+  char value[18] = {};
+  const size_t label_length = strlen(label);
+  size_t value_chars = 0;
+  if (visual == MenuVisual::Beacon) {
+    value_chars = 20 - label_length - 1;
+  } else {
+    const int32_t label_x = visual == MenuVisual::Ledger ? 6 : 12;
+    const int32_t value_x =
+        label_x + static_cast<int32_t>(label_length) * 6;
+    value_chars = static_cast<size_t>((120 - value_x) / 6);
+  }
+  size_t capacity = value_chars + 1;
+  if (capacity > sizeof(value)) capacity = sizeof(value);
+  ellipsize(value, capacity, source);
   sprite.setTextColor(kMetadata, kBackground);
   if (visual == MenuVisual::Beacon) {
-    char line[21] = {};
+    char line[22] = {};
     snprintf(line, sizeof(line), "%s %s", label, value);
     sprite.drawString(line, centeredX(line), y);
     return;
@@ -559,7 +544,7 @@ inline void drawMenuBackFooter(LGFX_Sprite& sprite, MenuVisual visual) {
                         : (visual == MenuVisual::SignalEdge
                                ? 12
                                : centeredX(footer)),
-                    122);
+                    118);
 }
 
 inline void drawMenuHealth(LGFX_Sprite& sprite, const MenuState& menu,
@@ -576,7 +561,7 @@ inline void drawMenuHealth(LGFX_Sprite& sprite, const MenuState& menu,
       diagnosticAge(diagnostics.codex_age),
       allowedMenuError(diagnostics.error_code) ? diagnostics.error_code
                                                : "NONE"};
-  static constexpr int32_t kRows[] = {30, 46, 62, 78, 94, 110};
+  static constexpr int32_t kRows[] = {24, 40, 56, 72, 88, 104};
   for (uint8_t row = 0; row < 6; ++row) {
     drawMenuDetailRow(sprite, visual, labels[row], values[row], kRows[row]);
   }
@@ -608,7 +593,7 @@ inline void drawMenuAbout(LGFX_Sprite& sprite, const MenuState& menu,
       diagnosticSuffix(menu.diagnostics.device_suffix),
       diagnosticSuffix(menu.diagnostics.session_suffix),
       diagnosticSuffix(menu.diagnostics.revision_suffix)};
-  static constexpr int32_t kRows[] = {30, 46, 62, 78, 94, 110};
+  static constexpr int32_t kRows[] = {24, 40, 56, 72, 88, 104};
   for (uint8_t row = 0; row < 6; ++row) {
     drawMenuDetailRow(sprite, visual, labels[row], values[row], kRows[row]);
   }

@@ -96,13 +96,6 @@ def write_publication_receipt(path: Path, firmware: Path, bridge: PermanentBridg
             temporary.unlink()
         except FileNotFoundError:
             pass
-from .herdr import HerdrClient
-from .projection import InboxProjection
-from .usb import UsbDeviceSession, binding_is_stable
-
-
-ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_BINDING = Path(os.path.expanduser("~/.config/herdr/keypad-binding.json"))
 
 
 def _bridge(args: argparse.Namespace) -> PermanentBridge:

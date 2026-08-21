@@ -4,15 +4,82 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from types import SimpleNamespace
 
 from phase1_bringup.phase3_smoke import (
     HUMAN_ROWS,
     ROOT,
     finalize_evidence,
+    run_guided,
     sha256_file,
     write_json,
 )
+
+
+class FakeLiveBridge:
+    def __init__(self) -> None:
+        self.active = False
+
+    def __enter__(self) -> "FakeLiveBridge":
+        self.active = True
+        return self
+
+    def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
+        self.active = False
+
+    def poll(self) -> None:
+        return None
+
+
+class Phase3GuidedRunTests(unittest.TestCase):
+    def test_guided_run_keeps_live_bridge_during_physical_prompt(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            root = Path(directory)
+            evidence = json.loads(
+                (ROOT / "artifacts/phase3/03-DEVICE-EVIDENCE.json").read_text(encoding="utf-8")
+            )
+            for row in evidence["physical_observations"]:
+                if row["id"] in HUMAN_ROWS:
+                    row["result"] = "pass"
+            target = next(
+                row for row in evidence["physical_observations"]
+                if row["id"] == "direct-agent-keys-from-root"
+            )
+            target["result"] = "pending"
+            target["observation"] = None
+            args = SimpleNamespace(
+                binding=root / "binding.json",
+                firmware=root / "firmware.bin",
+                tracer=root / "tracer.json",
+                evidence=root / "evidence.json",
+                timeout=0.1,
+            )
+            bridge = FakeLiveBridge()
+            fresh = {
+                "device_id": evidence["deployment"]["paired_device_id"],
+                "firmware": evidence["deployment"]["hello_firmware"],
+                "protocol": evidence["deployment"]["protocol_version"],
+                "session_id": "session-guided",
+            }
+
+            def answer(_prompt: str) -> str:
+                self.assertTrue(bridge.active)
+                return "Y"
+
+            with (
+                patch(
+                    "phase1_bringup.phase3_smoke.preflight_run",
+                    return_value=(evidence, fresh),
+                ),
+                patch(
+                    "phase1_bringup.phase3_smoke.guided_bridge",
+                    return_value=bridge,
+                ),
+                patch("builtins.input", side_effect=answer),
+            ):
+                self.assertEqual(run_guided(args), 0)
+            self.assertFalse(bridge.active)
 
 
 class Phase3FinalizeTests(unittest.TestCase):
@@ -40,7 +107,7 @@ class Phase3FinalizeTests(unittest.TestCase):
                 "device_id": deployment["paired_device_id"],
                 "firmware": deployment["hello_firmware"],
                 "protocol": deployment["protocol_version"],
-                "boot_id": deployment["fresh_boot_id"],
+                "boot_id": "rebooted-device-boot",
                 "session_id": "session-bridge",
                 "usb_serial": deployment["usb_serial"],
             },
@@ -66,6 +133,7 @@ class Phase3FinalizeTests(unittest.TestCase):
             )
             self.assertEqual(resync["source"], "machine")
             self.assertTrue(resync["observation"]["accepted"])
+            self.assertEqual(resync["observation"]["boot_id"], "rebooted-device-boot")
             self.assertEqual(
                 sha256_file(args.evidence),
                 args.evidence.with_suffix(".json.sha256").read_text().split()[0],
@@ -76,6 +144,29 @@ class Phase3FinalizeTests(unittest.TestCase):
             args = self.fixture(Path(directory), receipt_time=100)
             with self.assertRaisesRegex(RuntimeError, "does not postdate"):
                 finalize_evidence(args)
+
+    def test_finalize_rejects_invalid_revision_and_publication_identity(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            root = Path(directory)
+            cases = (
+                ("negative-revision", "revision", -1, "not acknowledged"),
+                ("boolean-revision", "revision", True, "not acknowledged"),
+                ("missing-boot", "boot_id", "", "identity is invalid"),
+                ("missing-session", "session_id", "", "identity is invalid"),
+            )
+            for index, (name, field, value, error) in enumerate(cases):
+                with self.subTest(name=name):
+                    case_root = root / str(index)
+                    case_root.mkdir()
+                    args = self.fixture(case_root)
+                    receipt = json.loads(args.publication_receipt.read_text(encoding="ascii"))
+                    if field == "revision":
+                        receipt["snapshot_ack"]["snapshot_revision"] = value
+                    else:
+                        receipt["hello"][field] = value
+                    args.publication_receipt.write_text(json.dumps(receipt), encoding="ascii")
+                    with self.assertRaisesRegex(RuntimeError, error):
+                        finalize_evidence(args)
 
 
 if __name__ == "__main__":

@@ -77,6 +77,8 @@ class AgentProjection final {
   bool stageSnapshot(JsonObjectConst payload);
   bool commitSnapshot();
   bool commitSnapshot(BoardAdapter& board);
+  bool commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_theme,
+                      const MenuState& menu);
   void tick(BoardAdapter& board, uint32_t now_us);
   void renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const;
   // Recompose every committed agent tile after a confirmed theme change.

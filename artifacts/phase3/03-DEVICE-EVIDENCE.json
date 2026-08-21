@@ -1,15 +1,15 @@
 {
   "capture_manifest": {
-    "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+    "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
     "path": "artifacts/phase3/screenshots/captures.json",
-    "sha256": "985b313ad46da01de06f6f765a28313f614e85d7b8acf8b3a1a103b9e780eeca"
+    "sha256": "4628c6298b4332b514ad4a309d6bf43483aadbfbbafe82315fbc14b1ee3fad05"
   },
   "deployment": {
     "binary_path": ".pio/build/selected-usb/firmware.bin",
-    "binary_sha256": "3886923cb0eddd0a15a192efce49fb7d9a8da6a7f32ab7d4f52104343f87b5e6",
-    "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
-    "fresh_boot_id": "0000fccb0deabf8c-ccb0623e",
-    "fresh_session_id": "session-a7fba2c7cb2db6f9",
+    "binary_sha256": "d188d8f4f3177c12a9116df80b728017dcb2ad97df66928e292422e70fc1f26e",
+    "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
+    "fresh_boot_id": "0000fccb0deabf8c-e0b96f5e",
+    "fresh_session_id": "session-311de1aefe493159",
     "hello_firmware": "phase1-bringup",
     "paired_device_id": "0000fccb0deabf8c",
     "platformio_environment": "selected-usb",
@@ -27,102 +27,174 @@
   "kind": "phase3-device-evidence",
   "physical_observations": [
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "long-text-all-themes-at-10-percent",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-c8da51c2c02f375e",
+        "observed_at_unix_ms": 1787280590381,
+        "prompt": "At requested 10% brightness, use encoder click -> THEME -> click, rotate and save each of SIGNAL EDGE, LEDGER, BEACON, and INSTRUMENT. In every theme verify the physical panel keeps AUTH REQUIRED, CODEX OFFLINE, HOST OFFLINE, RESET WEEK ..., and the longest ABOUT version values legible, with no clipping or bezel collision."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "source-labels-remain-legible",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-c8da51c2c02f375e",
+        "observed_at_unix_ms": 1787280595627,
+        "prompt": "Verify the physical CODEX panel always retains the literal source-state word and AGE; no N/A field appears as 0%, OK, or another positive claim."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "direct-agent-keys-from-root",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787280967275,
+        "prompt": "Encoder-click to open MENU, then press keys 1, 2, and 3 in turn. Each must focus its same displayed agent, show feedback only on that tile/LED zone, and leave the root cursor and 30-second deadline unchanged."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "direct-agent-keys-from-brightness",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787280981108,
+        "prompt": "Open MENU, rotate to BRIGHTNESS, click, then press keys 1, 2, and 3. Each must focus its same displayed agent without changing the brightness candidate or extending the deadline."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "direct-agent-keys-from-health",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787280994508,
+        "prompt": "Return to root, rotate to HEALTH, click, then press keys 1, 2, and 3. Each must focus its same displayed agent; HEALTH stays open with its cursor/deadline unchanged."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "direct-agent-keys-from-about",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787281007219,
+        "prompt": "Return to root, rotate to ABOUT, click, then press keys 1, 2, and 3. Each must focus its same displayed agent; ABOUT stays open with its cursor/deadline unchanged."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "brightness-ladder-10-through-100",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787281063946,
+        "prompt": "Open BRIGHTNESS and rotate through every displayed step 10%,20%,...,100%. The physical panels must visibly change monotonically while remaining powered and legible."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "brightness-zero-rejected",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787281075720,
+        "prompt": "At 10%, rotate further downward. The value must clamp at 10%; 0% must never appear and the panels must remain visibly powered."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "close-reverts-unconfirmed-preview",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787281093860,
+        "prompt": "Preview a brightness different from the stored value without clicking SAVE, then close the menu through CLOSE. The physical brightness must return to the stored value."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "timeout-reverts-unconfirmed-preview",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787281105235,
+        "prompt": "Preview a different brightness without saving, then give the encoder no input for 30 seconds. Panel 4 must return to CODEX and physical brightness must revert."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "led-preview-and-semantic-behavior",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787281195924,
+        "prompt": "Open LEDS and rotate candidates. Only the bounded candidate preview may change; after returning/timeout the stored grammar and agent semantic/focus LED behavior must return, with the encoder-open L13 cue and no brightness-driven LED semantic change."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "confirmation-persists-setting",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787281208717,
+        "prompt": "Open BRIGHTNESS, choose a value, and click SAVE. Reopen BRIGHTNESS and verify that exact value is the stored starting value."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "reboot-restores-confirmed-brightness",
-      "observation": null,
-      "result": "pending",
+      "observation": {
+        "answer": "Y",
+        "fresh_hello_session_id": "session-6fa9593b1b646234",
+        "observed_at_unix_ms": 1787281221132,
+        "prompt": "After saving brightness, reboot the keypad with its normal reset control. Verify startup returns and the confirmed physical brightness, theme, LED grammar, and direct-key behavior are restored."
+      },
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "fresh-bridge-resync-after-acceptance",
-      "observation": null,
-      "result": "pending",
-      "source": "physical"
+      "observation": {
+        "accepted": true,
+        "boot_id": "0000fccb0deabf8c-b4a3425e",
+        "published_at_unix_ms": 1787282728019,
+        "receipt_sha256": "3ee64d6a88828dedd66847927bd12b88088cfd4a322b548c9efc480a1b2767bd",
+        "session_id": "session-c85c51f40fb8a3f7",
+        "snapshot_revision": 1
+      },
+      "result": "pass",
+      "source": "machine"
     }
   ],
   "r_bucket": {
@@ -194,146 +266,146 @@
   },
   "requirements": [
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "CODEX-01",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "CODEX-02",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "CODEX-03",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "CODEX-04",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "SYNC-03",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "SAFE-01",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "MENU-01",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "MENU-02",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "MENU-03",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "MENU-04",
       "result": "machine-pass",
       "source": "automated-production-matrix"
     }
   ],
-  "run_id": "phase3-d2bc313730c8cb69",
+  "run_id": "phase3-9d1b8a7090930faf",
   "schema_version": 1,
-  "status": "pending",
+  "status": "pass",
   "tracer": {
     "codex": {
-      "error_code": "E-2406",
-      "observation_age": "AGE N/A",
+      "error_code": "",
+      "observation_age": "AGE 0M",
       "primary": null,
       "reached_limit": null,
-      "reset_text": "RESET N/A",
-      "secondary": null,
-      "source_state": "codex_offline"
+      "reset_text": "RESET WEEK 6D0H49M",
+      "secondary": 41,
+      "source_state": "current"
     },
     "path": "artifacts/phase3/03-CODEX-TRACER.json",
-    "result": "fail",
+    "result": "pass",
     "source": "installed"
   },
   "tracer_audit_link": {
     "child_exit_path": "/collector/child_exit",
     "elapsed_ms_path": "/collector/elapsed_ms",
     "redaction_result_path": "/redaction/result",
-    "tracer_sha256": "9f793477d7f7c06fc96bf7bdc76ffb9715ca49346f79b5d68b01415ad6e8985b"
+    "tracer_sha256": "fa365c0ea20561f075cf57a6a2575166e4a7451b002279884dfb6e0e774e1ce8"
   },
   "ui_considerations": [
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "empty",
       "result": "machine-pass",
       "source": "framebuffer"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "loading",
       "result": "machine-pass",
       "source": "framebuffer"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "error",
       "result": "machine-pass",
       "source": "framebuffer"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "populated",
       "result": "machine-pass",
       "source": "framebuffer"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "partial",
       "result": "machine-pass",
       "source": "framebuffer"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "overflow",
       "result": "machine-pass",
       "source": "framebuffer"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "zero-one-many",
       "result": "machine-pass",
       "source": "framebuffer"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "long-text",
-      "result": "pending",
+      "result": "pass",
       "source": "physical"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "interaction",
       "result": "machine-pass",
       "source": "framebuffer"
     },
     {
-      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "deployment_id": "9d1b8a7090930fafb42dd3f68cd3ea34267ad032e576118a310ba71ab2978f4b",
       "id": "persistence",
       "result": "machine-pass",
       "source": "framebuffer"

@@ -492,6 +492,12 @@ bool AgentProjection::commitSnapshot() {
   return true;
 }
 bool AgentProjection::commitSnapshot(BoardAdapter& board) {
+  MenuState closed;
+  return commitSnapshot(board, theme(), closed);
+}
+
+bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_theme,
+                                     const MenuState& menu) {
   if (!staged_valid_ || !ensureComposition()) return false;
   if (staged_codex_only_) {
     Display* display = board.displayAt(3);
@@ -503,8 +509,12 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board) {
     committed_generation_ = staged_;
     staged_valid_ = false;
     staged_codex_only_ = false;
-    theme().composePanel4(g_composition, renderState(micros()));
-    g_composition.pushSprite(display, 0, 0);
+    if (menu.open) {
+      renderMenu(board, panel4_theme, menu);
+    } else {
+      theme().composePanel4(g_composition, renderState(micros()));
+      g_composition.pushSprite(display, 0, 0);
+    }
     return true;
   }
   // Per-panel direct-cut reveal (R-2): panels flip old-complete -> new-complete

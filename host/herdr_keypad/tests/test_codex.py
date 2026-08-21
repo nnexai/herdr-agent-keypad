@@ -5,6 +5,7 @@ import io
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from herdr_keypad.bridge import write_codex_tracer_evidence
@@ -86,6 +87,23 @@ class CodexCollectorTests(unittest.TestCase):
         self.assertEqual(result.redaction.result, "pass")
         self.assertTrue(process.terminated)
 
+    def test_initialize_identifies_client_with_required_metadata(self):
+        _result, process = self.collect(self.success_messages({"rateLimits": {
+            "primary": {"usedPercent": 12},
+        }}))
+        requests = [json.loads(line) for line in process.stdin.getvalue().splitlines()]
+        self.assertEqual(requests[0], {
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "clientInfo": {
+                    "name": "herdr_agent_keypad",
+                    "title": "Herdr Agent Keypad",
+                    "version": "0.1.0",
+                }
+            },
+        })
+
     def test_auth_evidence_is_distinct_from_process_failure(self):
         result, _ = self.collect([
             {"id": 1, "result": {}},
@@ -128,6 +146,70 @@ class CodexCollectorTests(unittest.TestCase):
         self.assertEqual(neither.error_code, "E-2401")
         unusable, _ = normalize_rate_limits({"rateLimits": []})
         self.assertEqual(unusable.error_code, "E-2401")
+
+    def test_window_duration_maps_weekly_only_account_without_false_five_hour_claim(self):
+        view, _ = normalize_rate_limits({"rateLimits": {
+            "primary": {
+                "usedPercent": 40,
+                "windowDurationMins": 10_080,
+                "resetsAt": 4_102_444_800,
+            },
+            "secondary": None,
+        }})
+        self.assertIsNone(view.primary)
+        self.assertEqual(view.secondary, 40)
+        self.assertTrue(view.reset_text.startswith("RESET WEEK "))
+
+        collector = CodexCollector()
+        collector.apply_full_response({"rateLimits": {
+            "primary": {"usedPercent": 40, "windowDurationMins": 10_080},
+            "secondary": None,
+        }})
+        self.assertTrue(collector.apply_sparse_update({"rateLimits": {
+            "primary": {"usedPercent": 41},
+        }}))
+        self.assertIsNone(collector.view().primary)
+        self.assertEqual(collector.view().secondary, 41)
+
+    def test_explicit_unsupported_or_conflicting_durations_fail_closed(self):
+        for duration in (60, 1_440):
+            with self.subTest(duration=duration):
+                view, _ = normalize_rate_limits({"rateLimits": {
+                    "primary": {"usedPercent": 40, "windowDurationMins": duration},
+                }})
+                self.assertEqual(view.source_state, "unavailable")
+                self.assertEqual(view.error_code, "E-2401")
+                self.assertIsNone(view.primary)
+                self.assertIsNone(view.secondary)
+
+        conflicting, _ = normalize_rate_limits({"rateLimits": {
+            "primary": {"usedPercent": 40, "windowDurationMins": 300},
+            "secondary": {"usedPercent": 41, "windowDurationMins": 300},
+        }})
+        self.assertEqual(conflicting.source_state, "unavailable")
+        self.assertEqual(conflicting.error_code, "E-2401")
+
+    def test_reset_countdown_uses_bounded_day_hour_minute_units(self):
+        with patch("herdr_keypad.codex.time.time", return_value=1_000):
+            view, _ = normalize_rate_limits({"rateLimits": {
+                "primary": {
+                    "usedPercent": 40,
+                    "windowDurationMins": 10_080,
+                    "resetsAt": 1_000 + ((6 * 24 * 60 + 53) * 60),
+                },
+                "secondary": None,
+            }})
+            self.assertEqual(view.reset_text, "RESET WEEK 6D0H53M")
+
+            view, _ = normalize_rate_limits({"rateLimits": {
+                "primary": {
+                    "usedPercent": 40,
+                    "windowDurationMins": 10_080,
+                    "resetsAt": 1_000 + ((6 * 24 * 60 + 60 + 53) * 60),
+                },
+                "secondary": None,
+            }})
+            self.assertEqual(view.reset_text, "RESET WEEK 6D1H53M")
 
     def test_structured_unauthorized_and_bounded_jsonl_failures(self):
         result, _ = self.collect([

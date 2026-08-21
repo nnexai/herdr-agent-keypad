@@ -196,7 +196,7 @@ class SignalEdgeTheme final : public ThemeRenderer {
     sprite.setTextColor(kPrimary, kBackground);
     sprite.drawString("CODEX", 16, 4);
 
-    drawCodexRowsText(sprite, codex, 16, 120, 30, 50);
+    drawCodexRowsText(sprite, codex, 16, 120, 22, 42);
     const uint16_t gauge_color =
         codex.source_state == CodexSourceState::Current
             ? (codexHasLimit(codex) ? kDestructive : kAccent)
@@ -205,13 +205,11 @@ class SignalEdgeTheme final : public ThemeRenderer {
                    gauge_color, kSettled);
     drawCodexTrack(sprite, 16, 52, 108, 8, codexValue(codex, false),
                    gauge_color, kSettled);
-    drawCodexTrackVeil(sprite, codex, 16, 32, 108, 8);
-    drawCodexTrackVeil(sprite, codex, 16, 52, 108, 8);
     drawCodexMetaText(sprite, codex, 16, 70, 16, 86);
 
     if (codex.source_state == CodexSourceState::AuthRequired) {
-      sprite.drawLine(16, 20, 124, 59, kDestructive);
-      sprite.drawLine(124, 20, 16, 59, kDestructive);
+      sprite.drawLine(112, 8, 124, 20, kDestructive);
+      sprite.drawLine(124, 8, 112, 20, kDestructive);
     } else if (codex.source_state == CodexSourceState::HostOffline) {
       sprite.fillRect(0, 0, 128, 2, kDestructive);
     }

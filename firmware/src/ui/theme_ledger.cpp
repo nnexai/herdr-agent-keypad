@@ -184,18 +184,9 @@ class LedgerTheme final : public ThemeRenderer {
     sprite.drawString(secondary, rightAlignedX(secondary, 120), 50);
     sprite.drawLine(4, 38, 124, 38, kSettled);
     sprite.drawLine(4, 58, 124, 58, kSettled);
-    if (codexNeedsHatch(codex)) {
-      sprite.drawLine(4, 38, 24, 20, kSettled);
-      sprite.drawLine(28, 38, 48, 20, kSettled);
-      sprite.drawLine(4, 58, 24, 40, kSettled);
-      sprite.drawLine(28, 58, 48, 40, kSettled);
-    }
     if (codex.source_state == CodexSourceState::AuthRequired) {
-      sprite.drawLine(4, 20, 124, 59, kDestructive);
-      sprite.drawLine(124, 20, 4, 59, kDestructive);
-    } else if (codex.source_state == CodexSourceState::CodexOffline) {
-      sprite.drawLine(54, 38, 60, 38, kDestructive);
-      sprite.drawLine(68, 38, 74, 38, kDestructive);
+      sprite.drawLine(112, 8, 124, 20, kDestructive);
+      sprite.drawLine(124, 8, 112, 20, kDestructive);
     }
 
     drawCodexMetaText(sprite, codex, 6, 70, 6, 86);

@@ -66,6 +66,8 @@ class _CacheSnapshot:
     reached_limit: bool | None = None
     plan_type: str | None = None
     spend_control_reached: bool | None = None
+    source_primary_slot: str = "primary"
+    source_secondary_slot: str = "secondary"
 
 @dataclass(frozen=True)
 class BucketManifest:
@@ -188,17 +190,57 @@ def _window(window: Any) -> int | None:
         raise ValueError("window percentage is invalid")
     return value
 
+def _window_slot(source_name: str, window: Any) -> str:
+    if not isinstance(window, Mapping):
+        return source_name
+    duration = window.get("windowDurationMins")
+    if duration is None:
+        return source_name
+    if not isinstance(duration, int) or isinstance(duration, bool) or duration <= 0:
+        raise ValueError("window duration is invalid")
+    if duration == 300:
+        return "primary"
+    if duration == 10_080:
+        return "secondary"
+    raise ValueError("unsupported window duration")
+
+
+def _source_slots(rate_limits: Mapping[str, Any]) -> dict[str, str]:
+    slots: dict[str, str] = {}
+    owners: dict[str, str] = {}
+    for source_name in ("primary", "secondary"):
+        slot = _window_slot(source_name, rate_limits.get(source_name))
+        owner = owners.get(slot)
+        if owner is not None:
+            alternate = "secondary" if slot == "primary" else "primary"
+            if rate_limits.get(source_name) is None:
+                slot = alternate
+            elif rate_limits.get(owner) is None:
+                slots[owner] = alternate
+                owners[alternate] = owner
+            else:
+                raise ValueError("window durations are ambiguous")
+        slots[source_name] = slot
+        owners[slot] = source_name
+    return slots
+
 
 def _cache_from_full(rate_limits: Mapping[str, Any]) -> _CacheSnapshot:
-    primary = _window(rate_limits.get("primary"))
-    secondary = _window(rate_limits.get("secondary"))
-    resets: list[int | None] = []
-    for name in ("primary", "secondary"):
-        window = rate_limits.get(name)
+    slots = _source_slots(rate_limits)
+    values: dict[str, Any] = {
+        "primary": None,
+        "secondary": None,
+        "primary_reset": None,
+        "secondary_reset": None,
+    }
+    for source_name in ("primary", "secondary"):
+        window = rate_limits.get(source_name)
+        slot = slots[source_name]
+        values[slot] = _window(window)
         reset = window.get("resetsAt") if isinstance(window, Mapping) else None
         if reset is not None and (not isinstance(reset, int) or isinstance(reset, bool)):
             raise ValueError("window reset is invalid")
-        resets.append(reset)
+        values[f"{slot}_reset"] = reset
     reached = rate_limits.get("rateLimitReachedType")
     if reached is not None and not isinstance(reached, str):
         raise ValueError("reached state is invalid")
@@ -209,13 +251,12 @@ def _cache_from_full(rate_limits: Mapping[str, Any]) -> _CacheSnapshot:
     if plan is not None and not isinstance(plan, str):
         raise ValueError("plan type is invalid")
     return _CacheSnapshot(
-        primary=primary,
-        secondary=secondary,
-        primary_reset=resets[0],
-        secondary_reset=resets[1],
+        **values,
         reached_limit=True if reached else (False if reached is not None else None),
         plan_type=plan,
         spend_control_reached=spend,
+        source_primary_slot=slots["primary"],
+        source_secondary_slot=slots["secondary"],
     )
 
 
@@ -223,8 +264,21 @@ def _reset_text_from_cache(cache: _CacheSnapshot) -> str:
     candidates: list[tuple[int, str]] = []
     now = int(time.time())
     for reset, label in ((cache.primary_reset, "5H"), (cache.secondary_reset, "WEEK")):
-        if isinstance(reset, int) and reset > now:
-            candidates.append((reset, f"RESET {label} {max(1, (reset - now) // 60)}M"))
+        if not isinstance(reset, int) or reset <= now:
+            continue
+        remaining = max(1, (reset - now + 59) // 60)
+        days, day_minutes = divmod(remaining, 24 * 60)
+        hours, minutes = divmod(day_minutes, 60)
+        prefix = f"RESET {label} "
+        if days > 0:
+            duration = f"{days}D{hours}H{minutes}M"
+            if len(prefix) + len(duration) > 18:
+                duration = f"{days}D{hours}H"
+        elif hours > 0:
+            duration = f"{hours}H{minutes}M" if minutes > 0 else f"{hours}H"
+        else:
+            duration = f"{minutes}M"
+        candidates.append((reset, prefix + duration))
     return min(candidates)[1] if candidates else "RESET N/A"
 
 
@@ -398,23 +452,29 @@ class CodexCollector:
             "reached_limit": current.reached_limit,
             "plan_type": current.plan_type,
             "spend_control_reached": current.spend_control_reached,
+            "source_primary_slot": current.source_primary_slot,
+            "source_secondary_slot": current.source_secondary_slot,
         }
         seen = False
         try:
-            for name, reset_name in (("primary", "primary_reset"), ("secondary", "secondary_reset")):
-                if name not in rate_limits:
+            for source_name in ("primary", "secondary"):
+                if source_name not in rate_limits:
                     continue
                 seen = True
-                window = rate_limits[name]
+                slot = getattr(current, f"source_{source_name}_slot")
+                reset_name = f"{slot}_reset"
+                window = rate_limits[source_name]
                 if window is None:
-                    values[name] = None
+                    values[slot] = None
                     values[reset_name] = None
                 elif isinstance(window, Mapping):
-                    unknown = set(window) - {"usedPercent", "resetsAt"}
+                    unknown = set(window) - {"usedPercent", "resetsAt", "windowDurationMins"}
                     if unknown or not ({"usedPercent", "resetsAt"} & set(window)):
                         raise ValueError("unknown sparse window field")
+                    if "windowDurationMins" in window and _window_slot(source_name, window) != slot:
+                        raise ValueError("sparse window duration changed slots")
                     if "usedPercent" in window:
-                        values[name] = _window(window)
+                        values[slot] = _window(window)
                     if "resetsAt" in window:
                         reset = window["resetsAt"]
                         if reset is not None and (not isinstance(reset, int) or isinstance(reset, bool)):
@@ -562,7 +622,17 @@ class CodexCollector:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
-            self._send({"id": 1, "method": "initialize", "params": {}})
+            self._send({
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "clientInfo": {
+                        "name": "herdr_agent_keypad",
+                        "title": "Herdr Agent Keypad",
+                        "version": "0.1.0",
+                    }
+                },
+            })
             self._message(1, deadline)
             stages.append("initialize")
             self._send({"method": "initialized", "params": {}})
