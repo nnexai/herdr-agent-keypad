@@ -2196,6 +2196,41 @@ void test_simultaneous_direct_keys_precede_click_and_rotation_dispatch() {
   TEST_ASSERT_EQUAL(static_cast<int>(ThemeId::Beacon),
                     static_cast<int>(menu.activeTheme()));
 }
+void test_menu_presentation_is_immediate_bounded_and_reversible() {
+  SettingsStore settings;
+  settings.load();
+  MenuController menu(settings);
+  menu.resetFromStore();
+
+  TEST_ASSERT_TRUE(menu.click(100));
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuPresentationCause::Open),
+                    static_cast<int>(menu.state().presentation_cause));
+  TEST_ASSERT_EQUAL_INT8(0, menu.state().presentation_direction);
+  TEST_ASSERT_EQUAL_UINT32(100, menu.state().presentation_started_us);
+  TEST_ASSERT_TRUE(menu.state().presentation_duration_us <= 120000U);
+
+  TEST_ASSERT_TRUE(menu.rotate(1, 200));
+  TEST_ASSERT_EQUAL_UINT8(1, menu.state().cursor);
+  TEST_ASSERT_EQUAL_INT8(1, menu.state().presentation_direction);
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuPresentationCause::Navigate),
+                    static_cast<int>(menu.state().presentation_cause));
+  TEST_ASSERT_EQUAL_UINT32(200, menu.state().presentation_started_us);
+  TEST_ASSERT_EQUAL_UINT8(0, menu.state().presentation_progress);
+
+  TEST_ASSERT_TRUE(menu.rotate(-1, 250));
+  TEST_ASSERT_EQUAL_UINT8(0, menu.state().cursor);
+  TEST_ASSERT_EQUAL_INT8(-1, menu.state().presentation_direction);
+  TEST_ASSERT_EQUAL_UINT32(250, menu.state().presentation_started_us);
+  TEST_ASSERT_TRUE(menu.state().presentation_duration_us <= 200000U);
+
+  TEST_ASSERT_TRUE(menu.click(300));
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuController::Mode::Theme),
+                    static_cast<int>(menu.mode()));
+  TEST_ASSERT_EQUAL(static_cast<int>(MenuPresentationCause::Detail),
+                    static_cast<int>(menu.state().presentation_cause));
+  TEST_ASSERT_EQUAL_UINT8(0, menu.state().presentation_progress);
+}
+
 
 void test_menu_controller_walks_six_clamped_rows_and_all_pages() {
   SettingsStore settings;
@@ -2659,6 +2694,7 @@ int runAllTests() {
   RUN_TEST(test_codex_copy_is_tail_ellipsized_inside_safe_inset);
   RUN_TEST(test_codex_only_redraw_preserves_agents_bindings_and_snapshot_identity);
   RUN_TEST(test_codex_only_same_revision_repaints_panel4_without_losing_focus_intent);
+  RUN_TEST(test_menu_presentation_is_immediate_bounded_and_reversible);
   RUN_TEST(test_codex_only_same_revision_keeps_open_menu_on_panel4);
   RUN_TEST(test_feedback_and_sync_copy_is_not_duplicated);
   RUN_TEST(test_phase3_capture_scenes_use_production_panel4_renderers);
