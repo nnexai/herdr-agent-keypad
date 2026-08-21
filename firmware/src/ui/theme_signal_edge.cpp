@@ -30,7 +30,7 @@ void drawDashedRect(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w, int32_
 
 // State rail x:0..15 — width plus fill pattern is the state channel.
 void drawRail(LGFX_Sprite& sprite, TileState state, uint16_t color,
-              bool pulse_high, bool transition_active, uint8_t transition_phase) {
+              bool pulse_high, bool motion_active, uint8_t phase) {
   switch (state) {
     case TileState::Blocked: {  // 16 px animated dashes — crawl by half a
       const int32_t offset = pulse_high ? 0 : 6;  // dash period per pulse phase
@@ -58,9 +58,9 @@ void drawRail(LGFX_Sprite& sprite, TileState state, uint16_t color,
   }
   // Signal Edge's ordinary transition is a bounded travelling break in the
   // rail. It never runs for BLOCKED, calm states, or any fenced generation.
-  if (transition_active &&
+  if (motion_active &&
       (state == TileState::Working || state == TileState::Unseen)) {
-    const int32_t y = 8 + static_cast<int32_t>(transition_phase % 4U) * 28;
+    const int32_t y = 8 + static_cast<int32_t>(phase % 4U) * 28;
     sprite.fillRect(12, y, 4, 8, kBackground);
   }
 }
@@ -137,13 +137,17 @@ void drawHatchedGauge(LGFX_Sprite& sprite, int32_t x, int32_t y, int32_t w, int3
   }
 }
 
-void drawFeedbackGlyph(LGFX_Sprite& sprite, TileFeedback feedback, bool phase_high) {
+void drawFeedbackGlyph(LGFX_Sprite& sprite, TileFeedback feedback, uint8_t phase) {
   if (feedback == TileFeedback::Pending) {
-    const uint8_t dots = phase_high ? 3 : 2;
+    const uint8_t dots = static_cast<uint8_t>(2U + (phase % 3U));
     for (uint8_t dot = 0; dot < dots; ++dot) sprite.fillRect(11 + dot * 6, 117, 2, 2, kBackground);
   } else if (feedback == TileFeedback::Success) {
     sprite.drawLine(9, 118, 14, 123, kBackground);
     sprite.drawLine(14, 123, 24, 112, kBackground);
+    if (phase != 0) {
+      const int32_t x = 28 + static_cast<int32_t>(phase % 4U) * 4;
+      sprite.fillRect(x, 119, 2, 2, kBackground);
+    }
   } else if (feedback == TileFeedback::Uncertain) {
     sprite.fillRect(15, 112, 2, 8, kBackground);
     sprite.fillCircle(16, 123, 1, kBackground);
@@ -163,8 +167,13 @@ class SignalEdgeTheme final : public ThemeRenderer {
     const char* fence = fenceWord(state.source_status);
     const StateStyle base = styleFor(tile.state);
     const StateStyle* feedback = feedbackStyle(tile.feedback);
-    // Fence desaturates content; feedback band always wins the bottom band.
     const uint16_t content = fence != nullptr ? kSettled : base.color;
+    const bool motion_active = fence == nullptr && !state.syncing &&
+                               (state.transition_active || state.ambient_phase != 0);
+    const uint8_t phase = motion_active
+                              ? (state.transition_active ? state.transition_phase
+                                                         : state.ambient_phase) % 4U
+                              : 0;
 
     if (tile.state == TileState::Empty) {
       drawDashedRect(sprite, 4, 4, 120, 120, kEmptyEdge);
@@ -173,7 +182,7 @@ class SignalEdgeTheme final : public ThemeRenderer {
       drawGlyph(sprite, TileState::Empty, kEmptyEdge);
     } else {
       drawRail(sprite, tile.state, content, state.blocked_pulse_high,
-               state.transition_active && fence == nullptr, state.transition_phase);
+               motion_active, phase);
       drawTitleRows(sprite, tile.title, fence != nullptr ? kSettled : kPrimary);
       sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
       sprite.drawString(tile.discriminator, 15, 32);
@@ -188,7 +197,7 @@ class SignalEdgeTheme final : public ThemeRenderer {
 
     if (feedback != nullptr) {
       sprite.fillRect(0, 108, 128, 20, feedback->color);
-      drawFeedbackGlyph(sprite, tile.feedback, state.blocked_pulse_high);
+      drawFeedbackGlyph(sprite, tile.feedback, phase);
       sprite.setTextColor(kBackground, feedback->color);
       sprite.drawString(feedback->word, 34, 114);
     } else if (fence != nullptr) {
@@ -214,6 +223,16 @@ class SignalEdgeTheme final : public ThemeRenderer {
                    gauge_color, kSettled);
     drawCodexTrack(sprite, 16, 52, 108, 8, codexValue(codex, false),
                    gauge_color, kSettled);
+    const bool motion_active = codex.source_state == CodexSourceState::Current &&
+                               !state.syncing &&
+                               (state.transition_active || state.ambient_phase != 0);
+    if (motion_active) {
+      const uint8_t phase = (state.transition_active ? state.transition_phase
+                                                     : state.ambient_phase) % 4U;
+      const int32_t x = 18 + static_cast<int32_t>(phase) * 24;
+      if (codexValue(codex, true) >= 0) sprite.drawLine(x, 31, x + 8, 31, gauge_color);
+      if (codexValue(codex, false) >= 0) sprite.drawLine(x, 51, x + 8, 51, gauge_color);
+    }
     drawCodexMetaText(sprite, codex, 16, 70, 16, 86);
 
     if (codex.source_state == CodexSourceState::AuthRequired) {
@@ -221,6 +240,10 @@ class SignalEdgeTheme final : public ThemeRenderer {
       sprite.drawLine(124, 8, 112, 20, kDestructive);
     } else if (codex.source_state == CodexSourceState::HostOffline) {
       sprite.fillRect(0, 0, 128, 2, kDestructive);
+    }
+    if (codexHasLimit(codex) &&
+        codex.source_state != CodexSourceState::Current) {
+      drawCodexLimitHeader(sprite, codex, 94, 4);
     }
 
     const bool alert = codex.source_state != CodexSourceState::Current ||
@@ -239,11 +262,13 @@ class SignalEdgeTheme final : public ThemeRenderer {
     } else {
       drawCodexStateText(sprite, codex, 16, 114, false);
     }
-    if (codexHasLimit(codex) &&
-        codex.source_state != CodexSourceState::Current) {
-      drawCodexLimitHeader(sprite, codex, 94, 4);
-    }
   }
+  uint8_t ambientTick(uint32_t now_us) override {
+    (void)now_us;
+    return 0x07;
+  }
+
+  uint32_t ambientPeriodUs() const override { return 33334UL; }
 
   void composeMenu(LGFX_Sprite& sprite, const MenuState& menu) override {
     sprite.fillScreen(kBackground);

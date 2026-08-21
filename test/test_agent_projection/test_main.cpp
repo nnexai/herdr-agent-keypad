@@ -1389,6 +1389,7 @@ void test_signal_edge_and_ledger_fences_empty_and_codex_are_phase_static() {
   }
 }
 
+
 void test_render_state_transition_metadata_is_presentation_only() {
   AgentProjection projection;
   BoardAdapter board;

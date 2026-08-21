@@ -20,6 +20,7 @@ class AnimationScheduler final {
   void setAmbientPeriod(uint32_t period_us) {
     ambient_period_us_ = period_us;
     next_ambient_us_ = 0;
+    ambient_phase_ = kNeutralPhase;
   }
 
   void setLevel(Level level) {
@@ -113,13 +114,15 @@ class AnimationScheduler final {
   }
 
   uint8_t presentationPhase() const {
-    if (level_ == Level::Static || !transition_active_) return kNeutralPhase;
-    return transition_last_phase_;
+    if (level_ == Level::Static) return kNeutralPhase;
+    if (transition_active_) return transition_last_phase_;
+    return ambient_phase_;
   }
 
   uint8_t presentationPhase(uint32_t now_us) const {
-    if (level_ == Level::Static || !transition_active_) return kNeutralPhase;
-    return transitionProgress(now_us);
+    if (level_ == Level::Static) return kNeutralPhase;
+    if (transition_active_) return transitionProgress(now_us);
+    return ambient_phase_;
   }
 
   // BLOCKED phase reference for LED synchronization: both display and LED
@@ -153,6 +156,8 @@ class AnimationScheduler final {
     }
     if (static_cast<int32_t>(now_us - next_ambient_us_) >= 0) {
       next_ambient_us_ = now_us + period;
+      ambient_phase_ = static_cast<uint8_t>(
+          (ambient_phase_ + (level_ == Level::Half ? 2U : 1U)) % 8U);
       return true;
     }
     return false;
@@ -166,6 +171,7 @@ class AnimationScheduler final {
  private:
   uint32_t ambient_period_us_ = 0;
   uint32_t next_ambient_us_ = 0;
+  uint8_t ambient_phase_ = kNeutralPhase;
   uint32_t blocked_epoch_us_ = 0;
   uint32_t last_blocked_phase_ = 0;
   uint32_t last_flush_us_ = 0;

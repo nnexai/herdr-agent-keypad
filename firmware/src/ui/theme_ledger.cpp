@@ -18,26 +18,34 @@ using namespace theme_common;
 
 // Underline geometry per state (weight in px; style markers keep the channel
 // distinguishable in the native call log independent of color).
-void drawStateUnderline(LGFX_Sprite& sprite, TileState state, int32_t x, int32_t y, int32_t w, uint16_t color) {
+// Underline geometry per state (weight in px; style markers keep the channel
+// distinguishable in the native call log independent of color).
+void drawStateUnderline(LGFX_Sprite& sprite, TileState state, int32_t x, int32_t y,
+                        int32_t w, uint16_t color, uint8_t phase) {
+  int32_t weight = 0;
   switch (state) {
-    case TileState::Working:  // full weight
-      sprite.fillRect(x, y, w, 5, color);
-      break;
-    case TileState::Unseen:  // double underline
-      sprite.fillRect(x, y, w, 2, color);
-      sprite.fillRect(x, y + 4, w, 2, color);
-      break;
-    case TileState::Idle:  // 2 px
-      sprite.fillRect(x, y, w, 2, color);
-      break;
-    case TileState::Settled:  // 1 px hairline
-      sprite.fillRect(x, y, w, 1, color);
-      break;
-    case TileState::Unknown:  // dotted
+    case TileState::Working: weight = 5; break;
+    case TileState::Unseen: weight = 2; break;
+    case TileState::Idle: weight = 2; break;
+    case TileState::Settled: weight = 1; break;
+    case TileState::Unknown:
       for (int32_t dx = 0; dx < w; dx += 6) sprite.fillRect(x + dx, y, 3, 2, color);
-      break;
+      return;
     default:
-      break;  // BLOCKED handled by inversion band; empty draws none.
+      return;  // BLOCKED handled by inversion band; empty draws none.
+  }
+  if (state == TileState::Unseen) {
+    sprite.fillRect(x, y, w, weight, color);
+    sprite.fillRect(x, y + 4, w, weight, color);
+  } else {
+    sprite.fillRect(x, y, w, weight, color);
+  }
+  // A record's active row gets one bounded travelling gap. Baselines and
+  // underline weight remain fixed; only the typographic accent moves.
+  if (phase != 0 && (state == TileState::Working || state == TileState::Unseen)) {
+    const int32_t gap_x = x + 4 + static_cast<int32_t>(phase % 4U) * 16;
+    sprite.fillRect(gap_x, y, 8, weight, kBackground);
+    if (state == TileState::Unseen) sprite.fillRect(gap_x, y + 4, 8, weight, kBackground);
   }
 }
 void drawLedgerGlyph(LGFX_Sprite& sprite, TileState state, int32_t cx, int32_t cy, uint16_t color) {
@@ -84,6 +92,12 @@ class LedgerTheme final : public ThemeRenderer {
     const uint16_t ink = fence != nullptr ? kSettled : kPrimary;
     const uint16_t meta = fence != nullptr ? kSettled : kMetadata;
     const uint16_t state_color = fence != nullptr ? kSettled : base.color;
+    const bool motion_active = fence == nullptr && !state.syncing &&
+                               (state.transition_active || state.ambient_phase != 0);
+    const uint8_t phase = motion_active
+                              ? (state.transition_active ? state.transition_phase
+                                                         : state.ambient_phase) % 4U
+                              : 0;
     char row[16] = {};
 
     // Header y:5..16 — feedback takeover wins, then fence band, then disc·age.
@@ -91,6 +105,12 @@ class LedgerTheme final : public ThemeRenderer {
       sprite.fillRect(0, 4, 128, 14, feedback->color);
       sprite.setTextColor(kBackground, feedback->color);
       sprite.drawString(feedback->word, 6, 7);
+      if (tile.feedback == TileFeedback::Pending && phase != 0) {
+        sprite.fillRect(8 + static_cast<int32_t>(phase) * 16, 16, 12, 2,
+                        kBackground);
+      } else if (tile.feedback == TileFeedback::Success && phase != 0) {
+        sprite.drawLine(92, 8, 98 + static_cast<int32_t>(phase), 14, kBackground);
+      }
     } else if (fence != nullptr) {
       sprite.fillRect(0, 4, 128, 14, kDestructive);
       sprite.setTextColor(kBackground, kDestructive);
@@ -105,7 +125,9 @@ class LedgerTheme final : public ThemeRenderer {
 
     if (tile.state == TileState::Empty) {
       sprite.setTextColor(kMetadata, kBackground);
+      sprite.drawString("EMPTY", 6, 40);
       sprite.drawString("SLOT EMPTY", 6, 56);
+      sprite.drawString("NO AGENT", 6, 72);
     } else {
       char first[16] = {};
       ellipsize(first, 15, tile.title);
@@ -127,6 +149,7 @@ class LedgerTheme final : public ThemeRenderer {
 
       if (tile.state == TileState::Blocked && fence == nullptr) {
         sprite.fillRect(0, 70, 128, 20, kBlocked);
+        if (!state.blocked_pulse_high) sprite.fillRect(0, 70, 128, 2, kBackground);
         drawLedgerGlyph(sprite, tile.state, 16, 80, kBackground);
         sprite.setTextColor(kBackground, kBlocked);
         sprite.drawString(base.word, 30, 74);
@@ -136,7 +159,7 @@ class LedgerTheme final : public ThemeRenderer {
         sprite.drawString(base.word, 30, 74);
         ellipsize(row, 6, tile.since);
         sprite.drawString(row, rightAlignedX(row), 74);
-        drawStateUnderline(sprite, tile.state, 30, 86, 64, state_color);
+        drawStateUnderline(sprite, tile.state, 30, 86, 64, state_color, phase);
       }
     }
 
@@ -184,6 +207,16 @@ class LedgerTheme final : public ThemeRenderer {
     sprite.drawString(secondary, rightAlignedX(secondary, 120), 50);
     sprite.drawLine(4, 38, 124, 38, kSettled);
     sprite.drawLine(4, 58, 124, 58, kSettled);
+    const bool motion_active = codex.source_state == CodexSourceState::Current &&
+                               !state.syncing &&
+                               (state.transition_active || state.ambient_phase != 0);
+    if (motion_active) {
+      const uint8_t phase = (state.transition_active ? state.transition_phase
+                                                     : state.ambient_phase) % 4U;
+      const int32_t x = 8 + static_cast<int32_t>(phase) * 24;
+      if (codexValue(codex, true) >= 0) sprite.drawLine(x, 38, x + 8, 38, row_color);
+      if (codexValue(codex, false) >= 0) sprite.drawLine(x, 58, x + 8, 58, row_color);
+    }
     if (codex.source_state == CodexSourceState::AuthRequired) {
       sprite.drawLine(112, 8, 124, 20, kDestructive);
       sprite.drawLine(124, 8, 112, 20, kDestructive);
@@ -225,6 +258,13 @@ class LedgerTheme final : public ThemeRenderer {
     sprite.drawLine(8, 58, 112, 58, kSettled);
     sprite.drawLine(8, 74, 72, 74, kSettled);
   }
+
+  uint8_t ambientTick(uint32_t now_us) override {
+    (void)now_us;
+    return 0x07;
+  }
+
+  uint32_t ambientPeriodUs() const override { return 33334UL; }
 };
 
 LedgerTheme g_ledger;
