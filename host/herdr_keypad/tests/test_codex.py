@@ -103,7 +103,7 @@ class CodexCollectorTests(unittest.TestCase):
         result, _ = self.collect([{ "id": 1, "result": {} }, b"bad"])
         self.assertEqual(result.view.source_state, "codex_offline")
 
-    def test_top_level_map_shapes_and_explicit_null_presence(self):
+    def test_r_bucket_six_shapes_top_level_authority_and_no_undocumented_selection(self):
         top_level = {"rateLimits": {"primary": {"usedPercent": 12}}}
         view, redaction = normalize_rate_limits(top_level)
         self.assertEqual(view.primary, 12)
@@ -148,8 +148,17 @@ class CodexCollectorTests(unittest.TestCase):
         self.assertEqual(result.child_exit, ChildExit("exited", 7, None))
         self.assertEqual(result.redaction.result, "pass")
 
-    def test_bucket_manifest_is_bounded_and_hash_only(self):
-        keys = {f"bucket-{index}" : {} for index in range(12)}
+    def test_r_bucket_manifest_is_bounded_hash_only_for_over_eight_non_ascii_keys(self):
+        for count in (0, 1, 8):
+            bounded_keys = {f"bounded-{index}": {} for index in range(count)}
+            _view, bounded = normalize_rate_limits(
+                {"rateLimits": {}, "rateLimitsByLimitId": bounded_keys}
+            )
+            self.assertEqual(bounded.bucket_manifest.observed_key_count, count)
+            self.assertEqual(len(bounded.bucket_manifest.key_prefixes), count)
+            self.assertFalse(bounded.bucket_manifest.truncated)
+            self.assertIsNone(bounded.bucket_manifest.selected_key)
+        keys = {f"bucket-{index}-\u00e9" : {} for index in range(12)}
         _view, redaction = normalize_rate_limits({"rateLimits": {}, "rateLimitsByLimitId": keys})
         manifest = redaction.bucket_manifest
         self.assertIsInstance(manifest, BucketManifest)
