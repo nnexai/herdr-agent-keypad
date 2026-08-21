@@ -12,7 +12,7 @@ Herdr Agent Keypad reaches its first usable release through seven roadmap phases
 - [x] **Phase 2: Authoritative Agent Projection and Exact Focus** - Three keys mirror the installed inbox and focus only the exact rendered target with truthful outcomes.
 - [ ] **Phase 02.1: Reliable Live Synchronization, Focus, and Flicker-Free Rendering** - Live Herdr changes converge to complete ACKed generations and composed panel images without unsafe focus or black flashes.
 - [x] **Phase 02.2: Firmware Themes, LED Bars, and Device Selection Menu** - All four proposed display languages and LED grammars are implemented in firmware and selectable from the encoder menu without weakening direct agent focus. (completed 2026-08-20)
-- [ ] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness.
+- [x] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness. (completed 2026-08-21)
 - [ ] **Phase 03.1: High-Fidelity Animation and Interaction Polish** - Smooth and stable motion, transitions, and feedback are measured and refined on the actual keypad without weakening semantic clarity, input responsiveness, or focus safety. (INSERTED)
 - [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
 
@@ -203,7 +203,7 @@ Plans:
   4. The menu independently reports link, Herdr, and Codex health; last full synchronization and Codex observation; bounded troubleshooting identifiers; and firmware/protocol versions without credentials, prompts, transcripts, or host paths.
   5. The user can change and persist display brightness from the menu without changing authoritative inbox order, rendered target identity, or focus semantics.
 
-**Plans:** 9/9 plans executed
+**Plans:** 9/9 plans complete
 
 Plans:
 
@@ -299,7 +299,7 @@ Plans:
 | 2. Authoritative Agent Projection and Exact Focus | 4/5 | In Progress|  |
 | 02.1 Reliable Live Synchronization, Focus, and Flicker-Free Rendering | 3/3 | Complete | 2026-08-17 |
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
-| 3. Truthful Codex Capacity and Device Menu | 9/9 | In Progress|  |
+| 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 0/TBD | Not started | - |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 

@@ -45,10 +45,10 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Rotary Menu
 
-- [ ] **MENU-01**: Clicking the rotary encoder opens and closes a secondary device menu without making encoder navigation part of the three direct agent-selection paths.
-- [ ] **MENU-02**: The rotary menu shows device-host link state, independent herdr and Codex source health, last full synchronization, and last Codex observation.
-- [ ] **MENU-03**: The rotary menu shows bounded troubleshooting identifiers and the installed firmware and protocol versions without exposing credentials, transcripts, raw prompts, or host filesystem paths.
-- [ ] **MENU-04**: The user can change and persist display brightness from the rotary menu without changing inbox ordering or key-action semantics.
+- [x] **MENU-01**: Clicking the rotary encoder opens and closes a secondary device menu without making encoder navigation part of the three direct agent-selection paths.
+- [x] **MENU-02**: The rotary menu shows device-host link state, independent herdr and Codex source health, last full synchronization, and last Codex observation.
+- [x] **MENU-03**: The rotary menu shows bounded troubleshooting identifiers and the installed firmware and protocol versions without exposing credentials, transcripts, raw prompts, or host filesystem paths.
+- [x] **MENU-04**: The user can change and persist display brightness from the rotary menu without changing inbox ordering or key-action semantics.
 
 ### End-to-End Acceptance
 
@@ -114,10 +114,10 @@ Every v1 requirement maps to exactly one roadmap phase.
 | SYNC-04 | Phase 4 | Pending |
 | SAFE-01 | Phase 3 | Complete |
 | SAFE-02 | Phase 2 | Complete |
-| MENU-01 | Phase 3 | Pending |
-| MENU-02 | Phase 3 | Pending |
-| MENU-03 | Phase 3 | Pending |
-| MENU-04 | Phase 3 | Pending |
+| MENU-01 | Phase 3 | Complete |
+| MENU-02 | Phase 3 | Complete |
+| MENU-03 | Phase 3 | Complete |
+| MENU-04 | Phase 3 | Complete |
 | E2E-01 | Phase 4 | Pending |
 
 **Coverage:**
