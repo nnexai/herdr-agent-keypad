@@ -1223,6 +1223,86 @@ void test_beacon_pending_uses_large_animated_takeover() {
   TEST_ASSERT_TRUE(logContainsText("FOCUS SENT"));
   TEST_ASSERT_TRUE(logContainsAny("fillCircle:42:52:2"));
 }
+void test_beacon_and_instrument_phase_motion_is_distinct_and_semantically_fixed() {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "current";
+  state.slots[0].occupied = true;
+  state.slots[0].title = "Agent";
+  state.slots[0].discriminator = "repo";
+  state.slots[0].since = "4m";
+  state.slots[0].state = TileState::Working;
+  state.transition_active = true;
+
+  TEST_ASSERT_EQUAL_UINT32(66668UL, beaconTheme().ambientPeriodUs());
+  TEST_ASSERT_EQUAL_UINT32(33334UL, instrumentTheme().ambientPeriodUs());
+
+  state.transition_phase = 0;
+  resetLog();
+  beaconTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> beacon_neutral = g_render_log;
+  state.transition_phase = 2;
+  resetLog();
+  beaconTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> beacon_motion = g_render_log;
+  TEST_ASSERT_TRUE(beacon_neutral != beacon_motion);
+  TEST_ASSERT_TRUE(logContainsTextAt("WORKING", 49, 73));
+  TEST_ASSERT_TRUE(logContainsTextAt("Agent", 49, 100));
+  TEST_ASSERT_TRUE(logContainsTextAt("repo", 49, 112));
+
+  state.transition_phase = 0;
+  resetLog();
+  instrumentTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> instrument_neutral = g_render_log;
+  state.transition_phase = 2;
+  resetLog();
+  instrumentTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> instrument_motion = g_render_log;
+  TEST_ASSERT_TRUE(instrument_neutral != instrument_motion);
+  TEST_ASSERT_TRUE(logContainsTextAt("WORKING", 48, 89));
+  TEST_ASSERT_TRUE(logContainsTextAt("Agent", 49, 112));
+  TEST_ASSERT_TRUE(beacon_motion != instrument_motion);
+}
+
+void test_beacon_and_instrument_fences_empty_and_codex_are_phase_static() {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "offline";
+  state.slots[0].occupied = false;
+  state.slots[0].state = TileState::Empty;
+  state.transition_active = true;
+  state.transition_phase = 0;
+  for (ThemeRenderer* theme : {&beaconTheme(), &instrumentTheme()}) {
+    resetLog();
+    theme->composeTile(sprite, 0, state);
+    const std::vector<std::string> first = g_render_log;
+    state.transition_phase = 3;
+    resetLog();
+    theme->composeTile(sprite, 0, state);
+    TEST_ASSERT_TRUE(first == g_render_log);
+    TEST_ASSERT_TRUE(logContainsText("NO AGENT"));
+    TEST_ASSERT_TRUE(logContainsText("OFFLINE"));
+  }
+
+  state.source_status = "current";
+  state.slots[0].occupied = true;
+  state.slots[0].state = TileState::Working;
+  state.codex.source_state = CodexSourceState::Unavailable;
+  state.codex.primary = -1;
+  state.codex.secondary = -1;
+  state.transition_phase = 0;
+  for (ThemeRenderer* theme : {&beaconTheme(), &instrumentTheme()}) {
+    resetLog();
+    theme->composePanel4(sprite, state);
+    const std::vector<std::string> first = g_render_log;
+    state.transition_phase = 3;
+    resetLog();
+    theme->composePanel4(sprite, state);
+    TEST_ASSERT_TRUE(first == g_render_log);
+    TEST_ASSERT_TRUE(logContainsText("UNAVAILABLE"));
+    TEST_ASSERT_TRUE(logContainsText("N/A"));
+  }
+}
 
 // --- Plan 02: animation scheduler -------------------------------------------
 
@@ -2484,6 +2564,8 @@ int runAllTests() {
   RUN_TEST(test_usage_placeholders_follow_theme_geometry);
   RUN_TEST(test_working_symbols_are_filled_in_every_theme);
   RUN_TEST(test_beacon_pending_uses_large_animated_takeover);
+  RUN_TEST(test_beacon_and_instrument_phase_motion_is_distinct_and_semantically_fixed);
+  RUN_TEST(test_beacon_and_instrument_fences_empty_and_codex_are_phase_static);
   RUN_TEST(test_blocked_pulse_cadence_and_phase);
   RUN_TEST(test_ambient_cadence_degrades_under_budget_pressure);
   RUN_TEST(test_transition_phase_is_bounded_and_interruptible);
