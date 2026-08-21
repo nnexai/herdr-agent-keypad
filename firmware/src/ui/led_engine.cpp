@@ -103,10 +103,11 @@ void LedEngine::render(const RenderState& state, const LedEvents& events,
                        uint32_t now_us, BoardAdapter& board) {
   LedEvents effective = events;
   const LedSemanticEvent resolved_event = ledSemanticEvent(state, events);
-  const bool use_state_clock =
-      events.semantic_event != resolved_event;
+  const bool menu_preempted =
+      resolved_event != events.semantic_event &&
+      (events.menu_open || events.semantic_event == LedSemanticEvent::MenuOpen);
   effective.semantic_event = resolved_event;
-  if (use_state_clock) {
+  if (menu_preempted) {
     effective.semantic_epoch = state.semantic_event_epoch;
     effective.semantic_start_us = state.semantic_event_started_us;
     effective.semantic_phase = state.semantic_event_phase;
@@ -123,7 +124,7 @@ void LedEngine::render(const RenderState& state, const LedEvents& events,
                                      : static_cast<uint8_t>(
                                            (static_cast<uint32_t>(signed_elapsed) /
                                             kSemanticPhaseUs) & 0x07U);
-    } else if (use_state_clock || events.semantic_event == LedSemanticEvent::None) {
+    } else if (menu_preempted || events.semantic_event == LedSemanticEvent::None) {
       effective.semantic_phase = ledSemanticPhase(state, events);
     }
   }
