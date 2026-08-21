@@ -2565,6 +2565,56 @@ void test_all_theme_health_and_about_pages_are_fixed_bounded_allowlists() {
   }
 }
 
+void test_all_theme_menu_motion_is_decorative_and_brightness_safe() {
+  ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(),
+                             &beaconTheme(), &instrumentTheme()};
+  LGFX_Sprite sprite;
+  MenuState menu;
+  menu.open = true;
+  menu.page = MenuPage::Root;
+  menu.presentation_duration_us = 200000U;
+  menu.cursor = 1;
+  menu.viewport_start = 0;
+  menu.presentation_cause = MenuPresentationCause::Navigate;
+  menu.presentation_direction = 1;
+  menu.presentation_progress = 0;
+  for (ThemeRenderer* theme : themes) {
+    menu.presentation_progress = 0;
+    theme->composeMenu(sprite, menu);
+    const std::vector<std::string> first = g_render_log;
+    TEST_ASSERT_TRUE(logContainsText("MENU"));
+    TEST_ASSERT_TRUE(theme == &beaconTheme() ? logContainsFragment("LEDS")
+                                             : logContainsText("LEDS"));
+    assertPanelTextBounded();
+
+    menu.presentation_progress = 3;
+    resetLog();
+    theme->composeMenu(sprite, menu);
+    const std::vector<std::string> settled = g_render_log;
+    TEST_ASSERT_FALSE_MESSAGE(
+        first == settled,
+        theme == &signalEdgeTheme()
+            ? "signal motion missing"
+            : theme == &ledgerTheme()
+                  ? "ledger motion missing"
+                  : theme == &beaconTheme() ? "beacon motion missing"
+                                             : "instrument motion missing");
+    TEST_ASSERT_TRUE(theme == &beaconTheme() ? logContainsFragment("LEDS")
+                                             : logContainsText("LEDS"));
+    assertPanelTextBounded();
+  }
+
+  menu.page = MenuPage::Brightness;
+  menu.brightness_candidate = 0;
+  for (ThemeRenderer* theme : themes) {
+    resetLog();
+    theme->composeMenu(sprite, menu);
+    TEST_ASSERT_TRUE(logContainsText("10%"));
+    TEST_ASSERT_FALSE(logContainsText("0%"));
+    assertPanelTextBounded();
+  }
+}
+
 void test_menu_projection_injects_only_committed_diagnostics_and_preserves_state() {
   AgentProjection projection;
   BoardAdapter board;
@@ -2735,6 +2785,7 @@ int runAllTests() {
   RUN_TEST(test_all_theme_root_viewports_use_exact_three_row_geometry);
   RUN_TEST(test_all_theme_value_and_brightness_pages_use_approved_bands);
   RUN_TEST(test_all_theme_health_and_about_pages_are_fixed_bounded_allowlists);
+  RUN_TEST(test_all_theme_menu_motion_is_decorative_and_brightness_safe);
   RUN_TEST(test_menu_projection_injects_only_committed_diagnostics_and_preserves_state);
   RUN_TEST(test_diagnostic_identifier_and_version_admission_is_closed);
   RUN_TEST(test_menu_redraw_is_panel4_only);
