@@ -6,10 +6,11 @@ struct ProductInputFrame {
   static constexpr uint8_t kAgentSlotCount = 3;
 
   bool agent_pressed[kAgentSlotCount]{};
+  uint32_t agent_latched_at_us[kAgentSlotCount]{};
   bool encoder_clicked = false;
+  uint32_t encoder_click_latched_at_us = 0;
   int32_t encoder_delta = 0;
-  // Timestamp from the board adapter's single poll/latch seam.
-  uint32_t latched_at_us = 0;
+  uint32_t encoder_delta_latched_at_us = 0;
 };
 
 enum class ProductInputActionKind : uint8_t {

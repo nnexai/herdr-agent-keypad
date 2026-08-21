@@ -19,14 +19,14 @@ class BoardAdapter {
   void update(uint32_t now_us);
   uint32_t inputLatchedAt() const { return input_latched_at_us_; }
   long encoderDelta();
-  long consumeEncoderDelta();
+  long consumeEncoderDelta(uint32_t* latched_at_us = nullptr);
   bool ready() const { return ready_; }
 
   Display* displayAt(uint8_t index);
   uint8_t screenCount() const;
   button::ButtonSense* key(uint8_t index);
   bool wasPressed(uint8_t logical_index);
-  bool consumePressed(uint8_t logical_index);
+  bool consumePressed(uint8_t logical_index, uint32_t* latched_at_us = nullptr);
   bool mapKeyLabel(uint8_t label, uint8_t& library_index) const;
   bool mapEncoderClick(uint8_t& library_index) const;
   long encoderPosition() const;

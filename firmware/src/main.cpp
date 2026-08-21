@@ -636,18 +636,29 @@ void refreshMenuPresentation() {
     proofMetrics.observeFirstEncoderResponse(micros() - encoderInputAt);
     encoderResponsePending = false;
   }
+}
 ProductInputFrame captureProductInput(uint32_t now_us) {
   ProductInputFrame frame;
   if (!board.ready()) return frame;
-  // Capture before draining: once the first key is consumed, the adapter's
-  // latch may advance to a still-pending encoder event.
-  frame.latched_at_us = board.inputLatchedAt();
   for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
-    frame.agent_pressed[slot] = board.consumePressed(slot);
+    frame.agent_pressed[slot] =
+        board.consumePressed(slot, &frame.agent_latched_at_us[slot]);
   }
-  frame.encoder_clicked = board.consumePressed(4);
-  frame.encoder_delta = static_cast<int32_t>(board.consumeEncoderDelta());
-  if (frame.latched_at_us == 0) frame.latched_at_us = now_us;
+  frame.encoder_clicked =
+      board.consumePressed(4, &frame.encoder_click_latched_at_us);
+  frame.encoder_delta = static_cast<int32_t>(
+      board.consumeEncoderDelta(&frame.encoder_delta_latched_at_us));
+  if (frame.encoder_clicked && frame.encoder_click_latched_at_us == 0) {
+    frame.encoder_click_latched_at_us = now_us;
+  }
+  if (frame.encoder_delta != 0 && frame.encoder_delta_latched_at_us == 0) {
+    frame.encoder_delta_latched_at_us = now_us;
+  }
+  for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
+    if (frame.agent_pressed[slot] && frame.agent_latched_at_us[slot] == 0) {
+      frame.agent_latched_at_us[slot] = now_us;
+    }
+  }
   return frame;
 }
 
@@ -664,19 +675,25 @@ void dispatchProductInput(const ProductInputActions& actions,
   for (uint8_t index = 0; index < actions.count; ++index) {
     const ProductInputAction& action = actions[index];
     switch (action.kind) {
-      case ProductInputActionKind::AgentSlot:
-        reportAgentKey(static_cast<uint8_t>(action.value), input.latched_at_us);
+      case ProductInputActionKind::AgentSlot: {
+        const uint8_t slot = static_cast<uint8_t>(action.value);
+        reportAgentKey(slot, input.agent_latched_at_us[slot]);
         break;
+      }
       case ProductInputActionKind::EncoderClick:
         if (menuController.click(now_us)) {
           encoderResponsePending = true;
-          encoderInputAt = input.latched_at_us;
+          encoderInputAt = input.encoder_click_latched_at_us != 0
+                               ? input.encoder_click_latched_at_us
+                               : now_us;
         }
         break;
       case ProductInputActionKind::EncoderRotate:
         if (menuController.rotate(action.value, now_us)) {
           encoderResponsePending = true;
-          encoderInputAt = input.latched_at_us;
+          encoderInputAt = input.encoder_delta_latched_at_us != 0
+                               ? input.encoder_delta_latched_at_us
+                               : now_us;
         }
         break;
     }
@@ -696,7 +713,6 @@ void setup() {
   agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());
   ledEngine.setGrammar(ledGrammarById(menuController.storedGrammar()));
   deviceId = opaqueId();
-
   bootId = freshBootId(deviceId);
   protocolSession.reset(bootId.c_str(), "");
   if (board.ready()) {
@@ -711,9 +727,6 @@ void loop() {
   const uint32_t loop_started = micros();
   const uint32_t now = loop_started;
   board.update(now);
-  // Capture every product edge once immediately after the single hardware
-  // poll. The pure router emits all displayed agent slots before either
-  // secondary encoder action, including simultaneous frames.
   const ProductInputFrame input = captureProductInput(now);
   const ProductInputActions actions = ProductInputRouter::route(input);
   dispatchProductInput(actions, input, now);
@@ -723,17 +736,15 @@ void loop() {
   lastKeyPollAt = now;
   {
     const uint32_t tick_started = micros();
+    agentProjection.animation().advanceCadence(now);
     agentProjection.tick(board, now);
     const uint32_t tick_cost = micros() - tick_started;
-    const uint32_t loop_window = micros() - loop_started;
-    // Only a tick that composed a complete frame feeds the scheduler. The
-    // window is measured wall time from the same loop, so Half/Static decisions
-    // cannot be polluted by bookkeeping-only ticks.
-    const bool frame_observed = agentProjection.animation().consumeFrameObservation();
+    const bool frame_observed =
+        agentProjection.animation().consumeFrameObservation();
     if (frame_observed) {
-      agentProjection.animation().observeFlushCost(tick_cost, loop_window);
+      agentProjection.animation().observeFlushCostAt(tick_cost, now);
       proofMetrics.observeAnimationFrame(
-          tick_cost, loop_window,
+          tick_cost, agentProjection.animation().lastLoopWindowUs(),
           static_cast<uint8_t>(agentProjection.animation().level()));
     } else if (agentProjection.animation().level() == AnimationScheduler::Level::Static) {
       proofMetrics.recordSkippedFrame();
@@ -742,7 +753,8 @@ void loop() {
       proofMetrics.recordAnimationLevelChange();
       lastAnimationLevel = agentProjection.animation().level();
     }
-    if (frame_observed && agentProjection.animation().level() != AnimationScheduler::Level::Full) {
+    if (frame_observed &&
+        agentProjection.animation().level() != AnimationScheduler::Level::Full) {
       proofMetrics.recordDegradedFrame();
     }
   }

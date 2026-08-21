@@ -94,8 +94,9 @@ bool BoardAdapter::wasPressed(uint8_t logical_index) {
   return (pressed_latch_ & static_cast<uint8_t>(1U << logical_index)) != 0;
 }
 
-bool BoardAdapter::consumePressed(uint8_t logical_index) {
+bool BoardAdapter::consumePressed(uint8_t logical_index, uint32_t* latched_at_us) {
   if (!wasPressed(logical_index)) return false;
+  if (latched_at_us != nullptr) *latched_at_us = key_latched_at_us_[logical_index];
   pressed_latch_ &= static_cast<uint8_t>(~(1U << logical_index));
   key_latched_at_us_[logical_index] = 0;
   refreshInputLatchTimestamp();
@@ -117,8 +118,9 @@ long BoardAdapter::encoderDelta() {
   return encoder_delta_latch_;
 }
 
-long BoardAdapter::consumeEncoderDelta() {
+long BoardAdapter::consumeEncoderDelta(uint32_t* latched_at_us) {
   if (!ready_) return 0;
+  if (latched_at_us != nullptr) *latched_at_us = encoder_latched_at_us_;
   const long delta = encoder_delta_latch_;
   encoder_delta_latch_ = 0;
   encoder_latched_at_us_ = 0;
