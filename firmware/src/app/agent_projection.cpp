@@ -91,6 +91,16 @@ uint8_t menuPresentationProgress(const MenuState& menu, uint32_t now_us,
 }
 
 
+bool isSlotCardinalityCapture(CaptureScene scene) {
+  return scene >= CaptureScene::SlotsZero && scene <= CaptureScene::SlotsThree;
+}
+
+uint8_t slotCardinality(CaptureScene scene) {
+  if (!isSlotCardinalityCapture(scene)) return RenderState::kSlotCount;
+  return static_cast<uint8_t>(scene) -
+         static_cast<uint8_t>(CaptureScene::SlotsZero);
+}
+
 RenderState captureFixture(CaptureScene scene) {
   RenderState state;
   state.source_status = "current";
@@ -127,12 +137,34 @@ RenderState captureFixture(CaptureScene scene) {
     case CaptureScene::Failed: feedback = TileFeedback::Failed; break;
     default: break;
   }
+  const uint8_t occupied_count = slotCardinality(scene);
   for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
     state.slots[slot].state = tile_state;
     state.slots[slot].feedback = feedback;
-    if (tile_state == TileState::Empty) state.slots[slot].occupied = false;
+    if (tile_state == TileState::Empty || slot >= occupied_count) {
+      state.slots[slot].occupied = false;
+      state.slots[slot].state = TileState::Empty;
+      state.slots[slot].feedback = TileFeedback::Disabled;
+    }
   }
   return state;
+}
+
+uint8_t capturePhase(CaptureLevel level, uint8_t phase) {
+  if (level == CaptureLevel::Static) return 0;
+  if (level == CaptureLevel::Half) return static_cast<uint8_t>(phase & 0xFE);
+  return phase;
+}
+
+void applyCapturePresentation(RenderState& state, CaptureLevel level, uint8_t phase) {
+  const uint8_t resolved = capturePhase(level, phase);
+  state.ambient_phase = resolved;
+  state.transition_phase = static_cast<uint8_t>(resolved % AnimationScheduler::kTransitionPhaseCount);
+  state.transition_active = level != CaptureLevel::Static;
+  state.blocked_pulse_high = (resolved & 1U) == 0;
+  for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
+    state.slots[slot].feedback_phase = resolved;
+  }
 }
 
 bool isCodexCapture(CaptureScene scene) {
@@ -751,8 +783,10 @@ bool AgentProjection::redrawTiles(BoardAdapter& board, ThemeRenderer& candidate)
   theme_ = &candidate;
   return true;
 }
-bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer, CaptureScene scene) {
-  if (panel >= 4 || !ensureComposition()) return false;
+bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer,
+                                   CaptureScene scene, CaptureLevel level,
+                                   uint8_t phase) {
+  if (panel >= 4 || !ensureComposition() || phase >= kCapturePhaseCount) return false;
   ThemeRenderer& selected = renderer != nullptr ? *renderer : theme();
   if (scene == CaptureScene::Sync) {
     selected.composeSync(g_composition);
@@ -760,17 +794,22 @@ bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer, Captu
   }
   if (isMenuCapture(scene)) {
     if (panel != 3) return false;
-    selected.composeMenu(g_composition, menuCaptureFixture(scene));
+    MenuState menu = menuCaptureFixture(scene);
+    menu.presentation_cause = MenuPresentationCause::Navigate;
+    menu.presentation_direction = (phase & 1U) == 0 ? -1 : 1;
+    menu.presentation_progress =
+        level == CaptureLevel::Static ? 3 : static_cast<uint8_t>(capturePhase(level, phase) % 4);
+    selected.composeMenu(g_composition, menu);
     return true;
   }
-  const RenderState state =
+  RenderState state =
       scene == CaptureScene::Current ? renderState(micros()) :
       (isCodexCapture(scene) ? codexCaptureFixture(scene) : captureFixture(scene));
+  applyCapturePresentation(state, level, phase);
   if (panel < kSlotCount) selected.composeTile(g_composition, panel, state);
   else selected.composePanel4(g_composition, state);
   return true;
 }
-
 const uint16_t* AgentProjection::capturePixels() const {
   return static_cast<const uint16_t*>(g_composition.getBuffer());
 }

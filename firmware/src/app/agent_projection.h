@@ -50,7 +50,13 @@ enum class CaptureScene : uint8_t {
   MenuBrightness,
   MenuHealth,
   MenuAbout,
+  SlotsZero,
+  SlotsOne,
+  SlotsTwo,
+  SlotsThree,
 };
+using CaptureLevel = AnimationScheduler::Level;
+static constexpr uint8_t kCapturePhaseCount = 8;
 class AgentProjection final {
  public:
   static constexpr uint8_t kSlotCount = 3;
@@ -90,7 +96,9 @@ class AgentProjection final {
   // without flushing it, then expose the existing PSRAM-backed RGB565 sprite
   // for a bounded USB dump.
   bool capturePanel(uint8_t panel, ThemeRenderer* renderer = nullptr,
-                    CaptureScene scene = CaptureScene::Current);
+                    CaptureScene scene = CaptureScene::Current,
+                    CaptureLevel level = CaptureLevel::Full,
+                    uint8_t phase = 0);
   const uint16_t* capturePixels() const;
   bool committed() const { return committed_ && !syncing_; }
   void renderFeedback(BoardAdapter& board, uint8_t slot);

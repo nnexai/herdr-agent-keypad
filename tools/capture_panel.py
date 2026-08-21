@@ -60,7 +60,12 @@ SCENES = {
     "menu-brightness": "b",
     "menu-health": "e",
     "menu-about": "d",
+    "slots-0": "0",
+    "slots-1": "1",
+    "slots-2": "2",
+    "slots-3": "3",
 }
+LEVELS = {"full": "F", "half": "H", "static": "S"}
 
 
 def read_exact(connection: object, count: int, timeout: float) -> bytes:
@@ -95,6 +100,8 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--theme", choices=THEMES)
     parser.add_argument("--scene", choices=SCENES, default="current")
+    parser.add_argument("--level", choices=LEVELS, default="full")
+    parser.add_argument("--phase", type=int, choices=range(8), default=0)
     args = parser.parse_args()
 
     binding = PairingStore(args.binding).load()
@@ -114,9 +121,17 @@ def main() -> int:
                 "fresh hello does not match paired firmware/protocol identity"
             )
         stimulus = f"CAPTURE:{args.panel}"
-        if args.theme is not None or args.scene != "current":
+        if (
+            args.theme is not None
+            or args.scene != "current"
+            or args.level != "full"
+            or args.phase != 0
+        ):
             theme = THEMES[args.theme or "signal-edge"]
-            stimulus = f"{stimulus}:{theme}:{SCENES[args.scene]}"
+            stimulus = (
+                f"{stimulus}:{theme}:{SCENES[args.scene]}:"
+                f"{LEVELS[args.level]}:{args.phase}"
+            )
         payload = {"panel": args.panel + 1, "step_id": "screen-capture", "stimulus": stimulus}
         frame, _fact = session.request("probe", payload, {"probe_ack"})
         if not frame["payload"].get("accepted"):

@@ -261,9 +261,11 @@ void completeAdmission() {
 }
 
 bool parseCaptureRequest(const char* stimulus, uint8_t& panel, ThemeRenderer*& renderer,
-                         CaptureScene& scene) {
+                         CaptureScene& scene, CaptureLevel& level, uint8_t& phase) {
   renderer = nullptr;
   scene = CaptureScene::Current;
+  level = CaptureLevel::Full;
+  phase = 0;
   if (stimulus == nullptr || strncmp(stimulus, "CAPTURE:", 8) != 0 ||
       stimulus[8] < '0' || stimulus[8] > '3') {
     return false;
@@ -271,11 +273,12 @@ bool parseCaptureRequest(const char* stimulus, uint8_t& panel, ThemeRenderer*& r
   panel = static_cast<uint8_t>(stimulus[8] - '0');
   if (stimulus[9] == '\0') return true;
   if (stimulus[9] != ':' || stimulus[10] < '0' || stimulus[10] > '3' ||
-      stimulus[11] != ':' || stimulus[12] == '\0' || stimulus[13] != '\0') {
+      stimulus[11] != ':' || stimulus[12] == '\0') {
     return false;
   }
   renderer = &themeById(static_cast<ThemeId>(stimulus[10] - '0'));
-  switch (stimulus[12]) {
+  const char scene_token = stimulus[12];
+  switch (scene_token) {
     case 'C': scene = CaptureScene::Current; break;
     case 'B': scene = CaptureScene::Blocked; break;
     case 'U': scene = CaptureScene::Unseen; break;
@@ -305,10 +308,18 @@ bool parseCaptureRequest(const char* stimulus, uint8_t& panel, ThemeRenderer*& r
     case 'h': scene = CaptureScene::HostOffline; break;
     case 'l': scene = CaptureScene::CodexLimit; break;
     case 'g': scene = CaptureScene::CodexLong; break;
-    case '0': scene = CaptureScene::MenuRoot0; break;
-    case '1': scene = CaptureScene::MenuRoot1; break;
-    case '2': scene = CaptureScene::MenuRoot2; break;
-    case '3': scene = CaptureScene::MenuRoot3; break;
+    case '0':
+      scene = panel == 3 ? CaptureScene::MenuRoot0 : CaptureScene::SlotsZero;
+      break;
+    case '1':
+      scene = panel == 3 ? CaptureScene::MenuRoot1 : CaptureScene::SlotsOne;
+      break;
+    case '2':
+      scene = panel == 3 ? CaptureScene::MenuRoot2 : CaptureScene::SlotsTwo;
+      break;
+    case '3':
+      scene = panel == 3 ? CaptureScene::MenuRoot3 : CaptureScene::SlotsThree;
+      break;
     case '4': scene = CaptureScene::MenuRoot4; break;
     case '5': scene = CaptureScene::MenuRoot5; break;
     case 'b': scene = CaptureScene::MenuBrightness; break;
@@ -316,6 +327,20 @@ bool parseCaptureRequest(const char* stimulus, uint8_t& panel, ThemeRenderer*& r
     case 'd': scene = CaptureScene::MenuAbout; break;
     default: return false;
   }
+  const size_t scene_length = strlen(stimulus + 12);
+  if (scene_length == 1) return true;
+  if (scene_length != 5 || stimulus[13] != ':' || stimulus[15] != ':' ||
+      stimulus[14] == '\0' || stimulus[16] == '\0' || stimulus[17] != '\0') {
+    return false;
+  }
+  switch (stimulus[14]) {
+    case 'F': level = CaptureLevel::Full; break;
+    case 'H': level = CaptureLevel::Half; break;
+    case 'S': level = CaptureLevel::Static; break;
+    default: return false;
+  }
+  if (stimulus[16] < '0' || stimulus[16] > '7') return false;
+  phase = static_cast<uint8_t>(stimulus[16] - '0');
   return true;
 }
 bool streamCapturedPanel() {
@@ -430,12 +455,6 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     reply["loop_wall_max_us"] = proofMetrics.loop_wall_max_us;
     reply["malformed"] = proofMetrics.malformed;
     reply["max_display_flush_us"] = proofMetrics.max_display_flush_us;
-    reply["max_key_poll_gap_us"] = proofMetrics.max_key_poll_gap_us;
-    reply["minimum_free_heap"] = proofMetrics.minimum_free_heap;
-    reply["out_of_order"] = proofMetrics.out_of_order;
-    reply["parser_high_water"] = proofMetrics.parser_high_water;
-    reply["queue_high_water"] = proofMetrics.queue_high_water;
-    reply["received"] = proofMetrics.received;
     reply["rejected"] = proofMetrics.rejected;
     reply["reveal_max_us"] = proofMetrics.reveal_max_us;
     reply["sent"] = proofMetrics.sent;
@@ -459,8 +478,12 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     uint8_t capturePanel = 0;
     ThemeRenderer* captureTheme = nullptr;
     CaptureScene captureScene = CaptureScene::Current;
-    if (parseCaptureRequest(stimulus, capturePanel, captureTheme, captureScene)) {
-      if (!agentProjection.capturePanel(capturePanel, captureTheme, captureScene)) {
+    CaptureLevel captureLevel = CaptureLevel::Full;
+    uint8_t capturePhase = 0;
+    if (parseCaptureRequest(stimulus, capturePanel, captureTheme, captureScene,
+                            captureLevel, capturePhase)) {
+      if (!agentProjection.capturePanel(capturePanel, captureTheme, captureScene,
+                                         captureLevel, capturePhase)) {
         sendError("capture_failed", "panel composition unavailable", admission.frame.sequence);
         completeAdmission();
         return;
