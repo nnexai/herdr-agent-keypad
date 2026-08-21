@@ -322,12 +322,24 @@ Plans:
 
 **Planning gate:** Phase planning must schedule the composite CDC + HID feasibility run and exact-device decision record before any production transport, firmware, or host migration plan. It must also test whether the existing correlated `focus_result` is sufficient authorization so the hold path does not add protocol messages without need. Alternative backends remain out of scope unless this gate records a composite failure and the direction is explicitly reconsidered.
 
-**Plans:** TBD
+**Plans:** 6 plans
 
 Plans:
+**Wave 1**
+- [ ] 03.2-00-PLAN.md — Run the isolated exact-device composite CDC plus fixed-Space feasibility gate and freeze the terminal decision
 
-- [ ] 03.2-00: Composite CDC + HID feasibility run and exact-device decision gate
-- [ ] Remaining implementation plans are defined only after 03.2-00 records a passing direction
+**Wave 2** *(requires a checksum-valid 03.2-00 PASS)*
+- [ ] 03.2-01-PLAN.md — Migrate production and deliver the immediate-focus, authorized-hold tracer with all overlap rules
+
+**Wave 3** *(requires Wave 2; plans have no file overlap)*
+- [ ] 03.2-02-PLAN.md — Harden physical input, lifecycle release, exact pairing/session, protocol closure, and safety metrics
+- [ ] 03.2-03-PLAN.md — Extend normalized hold presentation and all four display themes
+
+**Wave 4** *(requires both Wave 3 plans)*
+- [ ] 03.2-04-PLAN.md — Complete all four LED grammars and lock deployment-linked logical evidence
+
+**Wave 5** *(requires every production plan)*
+- [ ] 03.2-05-PLAN.md — Requalify the final exact device and publish the strict Phase 4 release gate
 
 **UI hint:** yes
 
