@@ -168,6 +168,84 @@ class Phase3FinalizeTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, error):
                         finalize_evidence(args)
 
+class Phase31DeploymentLockTests(unittest.TestCase):
+    def _fake_session(self, *, device_id: str = "device-1", boot_id: str = "boot-2",
+                      session_id: str = "session-2") -> tuple[object, object, object]:
+        binding = SimpleNamespace(device_id="device-1", firmware="phase1-bringup", protocol=1)
+        candidate = SimpleNamespace(serial_number="USB-SERIAL", device="/dev/paired")
+        link = SimpleNamespace(close=lambda: None)
+        session = SimpleNamespace(
+            device={
+                "device_id": device_id,
+                "firmware": "phase1-bringup",
+                "protocol": 1,
+                "device_boot_id": boot_id,
+            },
+            session_id=session_id,
+        )
+        return binding, candidate, link, session
+
+    def test_phase31_deploy_lock_binds_pair_digest_and_post_upload_identity(self):
+        from phase1_bringup.phase3_smoke import (
+            deployment_id_for,
+            fresh_deployment,
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            firmware = Path(directory) / "firmware.bin"
+            firmware.write_bytes(b"new selected-usb firmware")
+            binding, candidate, link, session = self._fake_session()
+            with (
+                patch("phase1_bringup.phase3_smoke.PairingStore") as store_type,
+                patch(
+                    "phase1_bringup.phase3_smoke.reconnect_exact",
+                    return_value=(candidate, link, session, {}),
+                ),
+            ):
+                store_type.return_value.load.return_value = binding
+                deployment = fresh_deployment(Path(directory) / "binding.json", firmware, 0.1)
+            self.assertEqual(deployment["platformio_environment"], "selected-usb")
+            self.assertEqual(deployment["upload_result"], "pass")
+            self.assertEqual(deployment["firmware_sha256"], sha256_file(firmware))
+            self.assertEqual(deployment["boot_id"], "boot-2")
+            self.assertEqual(deployment["session_id"], "session-2")
+            self.assertEqual(
+                deployment["deployment_id"], deployment_id_for(deployment)
+            )
+            self.assertEqual(len(deployment["pair_identity_digest"]), 64)
+
+    def test_phase31_deploy_lock_rejects_wrong_pair_and_stale_binary(self):
+        from phase1_bringup.phase3_smoke import (
+            deployment_id_for,
+            validate_deployment,
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            root = Path(directory)
+            firmware = root / "firmware.bin"
+            firmware.write_bytes(b"selected-usb firmware")
+            record = {
+                "platformio_environment": "selected-usb",
+                "binary_path": "artifacts/firmware.bin",
+                "firmware_sha256": sha256_file(firmware),
+                "binary_sha256": sha256_file(firmware),
+                "upload_result": "pass",
+                "paired_device_id": "device-1",
+                "pair_identity_digest": "digest",
+                "hello_firmware": "phase1-bringup",
+                "protocol_version": 1,
+                "fresh_boot_id": "boot-2",
+                "fresh_session_id": "session-2",
+                "boot_id": "boot-2",
+                "session_id": "session-2",
+                "usb_serial": "USB-SERIAL",
+                "observed_at_unix_ms": 1,
+            }
+            record["deployment_id"] = deployment_id_for(record)
+            with self.assertRaisesRegex(ValueError, "pair identity"):
+                validate_deployment(record, firmware, device_id="other-device")
+            firmware.write_bytes(b"stale replacement")
+            with self.assertRaisesRegex(ValueError, "firmware binary hash"):
+                validate_deployment(record, firmware, device_id="device-1")
+
 class Phase31ProfileTests(unittest.TestCase):
     def test_phase31_profile_preserves_unavailable_physical_observation(self):
         from phase1_bringup.phase3_smoke import phase31_lock_from_baseline, validate_phase31_baseline
