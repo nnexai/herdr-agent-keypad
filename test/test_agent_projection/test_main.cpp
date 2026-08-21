@@ -983,6 +983,36 @@ void test_codex_only_redraw_preserves_agents_bindings_and_snapshot_identity() {
   TEST_ASSERT_EQUAL_UINT32(7, intent["snapshot_revision"].as<uint32_t>());
 }
 
+void test_codex_only_same_revision_repaints_panel4_without_losing_focus_intent() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument initial = snapshot_document(7);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(initial.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(
+      projection.captureFocusIntent(0, "codex-pending", intent.to<JsonObject>()));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(TileFeedback::Pending),
+                        static_cast<int>(projection.feedback(0)));
+
+  JsonDocument update = snapshot_document(7);
+  update["codex"]["primary"] = 90;
+  update["codex"]["observation_age"] = "AGE 1M";
+  update["diagnostics"]["codex_age"] = "AGE 1M";
+  resetLog();
+  TEST_ASSERT_TRUE(projection.stageSnapshot(update.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const std::vector<int> order = pushOrder();
+  TEST_ASSERT_EQUAL_UINT32(1, order.size());
+  TEST_ASSERT_EQUAL_INT(3, order[0]);
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(TileFeedback::Pending),
+                        static_cast<int>(projection.feedback(0)));
+
+  JsonDocument drift = snapshot_document(7, "blocked");
+  TEST_ASSERT_FALSE(projection.stageSnapshot(drift.as<JsonObjectConst>()));
+}
+
 void test_feedback_and_sync_copy_is_not_duplicated() {
   AgentProjection projection;
   ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
@@ -996,6 +1026,54 @@ void test_feedback_and_sync_copy_is_not_duplicated() {
     TEST_ASSERT_EQUAL_UINT32(1, logTextCount("SYNC"));
     TEST_ASSERT_EQUAL_UINT32(0, logTextCount("UPDATING"));
   }
+}
+
+void test_phase3_capture_scenes_use_production_panel4_renderers() {
+  AgentProjection projection;
+  ThemeRenderer* themes[] = {
+      &signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  struct SceneWord {
+    CaptureScene scene;
+    const char* word;
+  };
+  const SceneWord codex_scenes[] = {
+      {CaptureScene::CodexCurrent, "CURRENT"},
+      {CaptureScene::CodexPartial, "CURRENT"},
+      {CaptureScene::CodexStale, "STALE"},
+      {CaptureScene::CodexUnavailable, "UNAVAILABLE"},
+      {CaptureScene::CodexAuthRequired, "AUTH REQUIRED"},
+      {CaptureScene::CodexOffline, "CODEX OFFLINE"},
+      {CaptureScene::HostOffline, "HOST OFFLINE"},
+      {CaptureScene::CodexLimit, "LIMIT"},
+      {CaptureScene::CodexLong, "CURRENT"},
+  };
+  const SceneWord menu_scenes[] = {
+      {CaptureScene::MenuRoot0, "MENU"},
+      {CaptureScene::MenuRoot1, "MENU"},
+      {CaptureScene::MenuRoot2, "MENU"},
+      {CaptureScene::MenuRoot3, "MENU"},
+      {CaptureScene::MenuRoot4, "MENU"},
+      {CaptureScene::MenuRoot5, "MENU"},
+      {CaptureScene::MenuBrightness, "100%"},
+      {CaptureScene::MenuHealth, "HEALTH"},
+      {CaptureScene::MenuAbout, "ABOUT"},
+  };
+  for (ThemeRenderer* theme : themes) {
+    for (const SceneWord& item : codex_scenes) {
+      resetLog();
+      TEST_ASSERT_TRUE(projection.capturePanel(3, theme, item.scene));
+      TEST_ASSERT_TRUE_MESSAGE(logContainsText(item.word), item.word);
+      assertPanelTextBounded();
+    }
+    for (const SceneWord& item : menu_scenes) {
+      resetLog();
+      TEST_ASSERT_TRUE(projection.capturePanel(3, theme, item.scene));
+      TEST_ASSERT_TRUE_MESSAGE(logContainsText(item.word), item.word);
+      assertPanelTextBounded();
+    }
+  }
+  TEST_ASSERT_FALSE(
+      projection.capturePanel(0, &signalEdgeTheme(), CaptureScene::MenuHealth));
 }
 
 void test_signal_edge_polish_geometry() {
@@ -2149,7 +2227,9 @@ int runAllTests() {
   RUN_TEST(test_codex_exact_theme_geometry_and_shared_baselines);
   RUN_TEST(test_codex_copy_is_tail_ellipsized_inside_safe_inset);
   RUN_TEST(test_codex_only_redraw_preserves_agents_bindings_and_snapshot_identity);
+  RUN_TEST(test_codex_only_same_revision_repaints_panel4_without_losing_focus_intent);
   RUN_TEST(test_feedback_and_sync_copy_is_not_duplicated);
+  RUN_TEST(test_phase3_capture_scenes_use_production_panel4_renderers);
   RUN_TEST(test_signal_edge_polish_geometry);
   RUN_TEST(test_usage_placeholders_follow_theme_geometry);
   RUN_TEST(test_working_symbols_are_filled_in_every_theme);

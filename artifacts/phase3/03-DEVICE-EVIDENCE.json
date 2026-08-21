@@ -1,0 +1,342 @@
+{
+  "capture_manifest": {
+    "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+    "path": "artifacts/phase3/screenshots/captures.json",
+    "sha256": "985b313ad46da01de06f6f765a28313f614e85d7b8acf8b3a1a103b9e780eeca"
+  },
+  "deployment": {
+    "binary_path": ".pio/build/selected-usb/firmware.bin",
+    "binary_sha256": "3886923cb0eddd0a15a192efce49fb7d9a8da6a7f32ab7d4f52104343f87b5e6",
+    "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+    "fresh_boot_id": "0000fccb0deabf8c-ccb0623e",
+    "fresh_session_id": "session-a7fba2c7cb2db6f9",
+    "hello_firmware": "phase1-bringup",
+    "paired_device_id": "0000fccb0deabf8c",
+    "platformio_environment": "selected-usb",
+    "protocol_version": 1,
+    "upload_result": "pass",
+    "usb_serial": "8C:BF:EA:0D:CB:FC"
+  },
+  "evidence_kinds": {
+    "deterministic_fixtures": "scripted",
+    "framebuffer_pixels": "logical-only",
+    "installed_codex": "installed",
+    "machine_ack": "machine",
+    "physical_observations": "pending-y-n-r"
+  },
+  "kind": "phase3-device-evidence",
+  "physical_observations": [
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "long-text-all-themes-at-10-percent",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "source-labels-remain-legible",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "direct-agent-keys-from-root",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "direct-agent-keys-from-brightness",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "direct-agent-keys-from-health",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "direct-agent-keys-from-about",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "brightness-ladder-10-through-100",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "brightness-zero-rejected",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "close-reverts-unconfirmed-preview",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "timeout-reverts-unconfirmed-preview",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "led-preview-and-semantic-behavior",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "confirmation-persists-setting",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "reboot-restores-confirmed-brightness",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "fresh-bridge-resync-after-acceptance",
+      "observation": null,
+      "result": "pending",
+      "source": "physical"
+    }
+  ],
+  "r_bucket": {
+    "allowlisted_error_code": "E-2401",
+    "bounded_manifest": {
+      "key_prefixes": [
+        "23273a7229bc",
+        "32cac0df9a32",
+        "4145e89c4ce1",
+        "42ef8af5d4cf",
+        "5d7904875eea",
+        "8eda53d74204",
+        "953494db1583",
+        "a0cc45412d75"
+      ],
+      "observed_key_count": 12,
+      "present": true,
+      "selected_key": null,
+      "truncated": true
+    },
+    "id": "R-BUCKET",
+    "internal_reason": "bucket_unavailable",
+    "result": "pass",
+    "shapes": [
+      {
+        "error_code": "",
+        "primary": 12,
+        "selected_key": null,
+        "shape": "top-level-only",
+        "source_state": "current"
+      },
+      {
+        "error_code": "E-2401",
+        "primary": null,
+        "selected_key": null,
+        "shape": "map-only",
+        "source_state": "unavailable"
+      },
+      {
+        "error_code": "",
+        "primary": 12,
+        "selected_key": null,
+        "shape": "both",
+        "source_state": "current"
+      },
+      {
+        "error_code": "E-2401",
+        "primary": null,
+        "selected_key": null,
+        "shape": "neither",
+        "source_state": "unavailable"
+      },
+      {
+        "error_code": "",
+        "primary": 12,
+        "selected_key": null,
+        "shape": "explicit-null-map",
+        "source_state": "current"
+      },
+      {
+        "error_code": "E-2401",
+        "primary": null,
+        "selected_key": null,
+        "shape": "unusable-map",
+        "source_state": "unavailable"
+      }
+    ],
+    "source": "scripted-production-normalizer"
+  },
+  "requirements": [
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "CODEX-01",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "CODEX-02",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "CODEX-03",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "CODEX-04",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "SYNC-03",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "SAFE-01",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "MENU-01",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "MENU-02",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "MENU-03",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "MENU-04",
+      "result": "machine-pass",
+      "source": "automated-production-matrix"
+    }
+  ],
+  "run_id": "phase3-d2bc313730c8cb69",
+  "schema_version": 1,
+  "status": "pending",
+  "tracer": {
+    "codex": {
+      "error_code": "E-2406",
+      "observation_age": "AGE N/A",
+      "primary": null,
+      "reached_limit": null,
+      "reset_text": "RESET N/A",
+      "secondary": null,
+      "source_state": "codex_offline"
+    },
+    "path": "artifacts/phase3/03-CODEX-TRACER.json",
+    "result": "fail",
+    "source": "installed"
+  },
+  "tracer_audit_link": {
+    "child_exit_path": "/collector/child_exit",
+    "elapsed_ms_path": "/collector/elapsed_ms",
+    "redaction_result_path": "/redaction/result",
+    "tracer_sha256": "9f793477d7f7c06fc96bf7bdc76ffb9715ca49346f79b5d68b01415ad6e8985b"
+  },
+  "ui_considerations": [
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "empty",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "loading",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "error",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "populated",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "partial",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "overflow",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "zero-one-many",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "long-text",
+      "result": "pending",
+      "source": "physical"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "interaction",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    },
+    {
+      "deployment_id": "d2bc313730c8cb690a0d579cf0418bd86f5f717c229a0366b1b9faeedca4be5e",
+      "id": "persistence",
+      "result": "machine-pass",
+      "source": "framebuffer"
+    }
+  ]
+}

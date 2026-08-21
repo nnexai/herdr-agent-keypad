@@ -32,6 +32,24 @@ enum class CaptureScene : uint8_t {
   Sync,
   MenuTheme,
   MenuLed,
+  CodexCurrent,
+  CodexPartial,
+  CodexStale,
+  CodexUnavailable,
+  CodexAuthRequired,
+  CodexOffline,
+  HostOffline,
+  CodexLimit,
+  CodexLong,
+  MenuRoot0,
+  MenuRoot1,
+  MenuRoot2,
+  MenuRoot3,
+  MenuRoot4,
+  MenuRoot5,
+  MenuBrightness,
+  MenuHealth,
+  MenuAbout,
 };
 class AgentProjection final {
  public:
@@ -157,6 +175,7 @@ class AgentProjection final {
   uint32_t pending_deadline_[kSlotCount]{};
   uint32_t feedback_until_[kSlotCount]{};
   bool staged_valid_ = false;
+  bool staged_codex_only_ = false;
   bool committed_ = false;
   bool syncing_ = true;
   uint32_t next_action_ = 1;

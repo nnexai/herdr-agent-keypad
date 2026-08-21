@@ -293,6 +293,24 @@ bool parseCaptureRequest(const char* stimulus, uint8_t& panel, ThemeRenderer*& r
     case 'Y': scene = CaptureScene::Sync; break;
     case 'M': scene = CaptureScene::MenuTheme; break;
     case 'L': scene = CaptureScene::MenuLed; break;
+    case 'c': scene = CaptureScene::CodexCurrent; break;
+    case 'p': scene = CaptureScene::CodexPartial; break;
+    case 's': scene = CaptureScene::CodexStale; break;
+    case 'u': scene = CaptureScene::CodexUnavailable; break;
+    case 'a': scene = CaptureScene::CodexAuthRequired; break;
+    case 'o': scene = CaptureScene::CodexOffline; break;
+    case 'h': scene = CaptureScene::HostOffline; break;
+    case 'l': scene = CaptureScene::CodexLimit; break;
+    case 'g': scene = CaptureScene::CodexLong; break;
+    case '0': scene = CaptureScene::MenuRoot0; break;
+    case '1': scene = CaptureScene::MenuRoot1; break;
+    case '2': scene = CaptureScene::MenuRoot2; break;
+    case '3': scene = CaptureScene::MenuRoot3; break;
+    case '4': scene = CaptureScene::MenuRoot4; break;
+    case '5': scene = CaptureScene::MenuRoot5; break;
+    case 'b': scene = CaptureScene::MenuBrightness; break;
+    case 'e': scene = CaptureScene::MenuHealth; break;
+    case 'd': scene = CaptureScene::MenuAbout; break;
     default: return false;
   }
   return true;

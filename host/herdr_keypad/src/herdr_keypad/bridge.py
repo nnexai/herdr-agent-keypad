@@ -1082,7 +1082,10 @@ class PermanentBridge:
         self.bootstrap()
         try:
             while True:
-                self.run_once()
+                try:
+                    self.run_once()
+                except V2ProtocolError:
+                    self._disconnect("unavailable", self._clock())
                 time.sleep(interval)
         except (KeyboardInterrupt, UsbSessionError):
             self._mark_unavailable("offline")

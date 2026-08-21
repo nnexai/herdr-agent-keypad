@@ -120,6 +120,129 @@ RenderState captureFixture(CaptureScene scene) {
   }
   return state;
 }
+
+bool isCodexCapture(CaptureScene scene) {
+  return scene >= CaptureScene::CodexCurrent && scene <= CaptureScene::CodexLong;
+}
+
+RenderState codexCaptureFixture(CaptureScene scene) {
+  RenderState state = captureFixture(CaptureScene::Working);
+  state.codex.source_state = CodexSourceState::Current;
+  state.codex.primary = 42;
+  state.codex.secondary = 78;
+  state.codex.reset_text = "RESET 5H 01:20";
+  state.codex.observation_age = "AGE 14M";
+  state.codex.reached_limit = 0;
+  state.codex.error_code = "";
+
+  switch (scene) {
+    case CaptureScene::CodexPartial:
+      state.codex.primary = -1;
+      state.codex.secondary = 7;
+      state.codex.reset_text = "RESET WEEK 2D";
+      state.codex.reached_limit = -1;
+      break;
+    case CaptureScene::CodexStale:
+      state.codex.source_state = CodexSourceState::Stale;
+      state.codex.observation_age = "AGE 18M";
+      break;
+    case CaptureScene::CodexUnavailable:
+      state.codex.source_state = CodexSourceState::Unavailable;
+      state.codex.primary = -1;
+      state.codex.secondary = -1;
+      state.codex.reset_text = "RESET N/A";
+      state.codex.observation_age = "AGE N/A";
+      state.codex.reached_limit = -1;
+      state.codex.error_code = "E-2401";
+      break;
+    case CaptureScene::CodexAuthRequired:
+      state.codex.source_state = CodexSourceState::AuthRequired;
+      state.codex.primary = -1;
+      state.codex.secondary = -1;
+      state.codex.reset_text = "RESET N/A";
+      state.codex.observation_age = "AGE N/A";
+      state.codex.reached_limit = -1;
+      state.codex.error_code = "E-2404";
+      break;
+    case CaptureScene::CodexOffline:
+      state.codex.source_state = CodexSourceState::CodexOffline;
+      state.codex.observation_age = "AGE 59M";
+      state.codex.error_code = "E-2406";
+      break;
+    case CaptureScene::HostOffline:
+      state.codex.source_state = CodexSourceState::HostOffline;
+      state.codex.observation_age = "AGE 59M";
+      state.codex.error_code = "E-2408";
+      break;
+    case CaptureScene::CodexLimit:
+      state.codex.reached_limit = 1;
+      break;
+    case CaptureScene::CodexLong:
+      state.codex.primary = 100;
+      state.codex.secondary = 100;
+      state.codex.reset_text = "RESET WEEK 999D";
+      state.codex.observation_age = "AGE 999H";
+      break;
+    default:
+      break;
+  }
+  return state;
+}
+
+bool isMenuCapture(CaptureScene scene) {
+  return scene == CaptureScene::MenuTheme || scene == CaptureScene::MenuLed ||
+         (scene >= CaptureScene::MenuRoot0 && scene <= CaptureScene::MenuAbout);
+}
+
+MenuState menuCaptureFixture(CaptureScene scene) {
+  MenuState menu;
+  menu.open = true;
+  menu.theme_candidate = ThemeId::Instrument;
+  menu.grammar_candidate = LedGrammarId::MeterLamps;
+  menu.brightness_candidate = 100;
+  menu.theme_stored = ThemeId::Instrument;
+  menu.grammar_stored = LedGrammarId::MeterLamps;
+  menu.brightness_stored = 100;
+  menu.diagnostics.link_status = "offline";
+  menu.diagnostics.herdr_status = "unavailable";
+  menu.diagnostics.codex_status = "auth_required";
+  menu.diagnostics.sync_age = "AGE 999H";
+  menu.diagnostics.codex_age = "AGE 999H";
+  menu.diagnostics.firmware_version = "2026.08.21-RC1";
+  menu.diagnostics.protocol_version = 2;
+  menu.diagnostics.bridge_version = "2026.08.21-RC1";
+  menu.diagnostics.device_suffix = "ABCDEF";
+  menu.diagnostics.session_suffix = "123456";
+  menu.diagnostics.revision_suffix = "FEDCBA";
+  menu.diagnostics.error_code = "E-2401";
+
+  if (scene >= CaptureScene::MenuRoot0 && scene <= CaptureScene::MenuRoot5) {
+    menu.page = MenuPage::Root;
+    menu.cursor = static_cast<uint8_t>(scene) -
+                  static_cast<uint8_t>(CaptureScene::MenuRoot0);
+    menu.viewport_start = menu.cursor == 0 ? 0 :
+                          (menu.cursor >= 4 ? 3 : menu.cursor - 1);
+  } else if (scene == CaptureScene::MenuTheme) {
+    menu.page = MenuPage::Theme;
+    menu.cursor = 0;
+    menu.editing = true;
+  } else if (scene == CaptureScene::MenuLed) {
+    menu.page = MenuPage::Leds;
+    menu.cursor = 1;
+    menu.editing = true;
+  } else if (scene == CaptureScene::MenuBrightness) {
+    menu.page = MenuPage::Brightness;
+    menu.cursor = 2;
+    menu.editing = true;
+  } else if (scene == CaptureScene::MenuHealth) {
+    menu.page = MenuPage::Health;
+    menu.cursor = 3;
+  } else if (scene == CaptureScene::MenuAbout) {
+    menu.page = MenuPage::About;
+    menu.cursor = 4;
+  }
+  return menu;
+}
 }  // namespace
 
 AgentProjection::AgentProjection() : feedback_{} {
@@ -181,6 +304,7 @@ AgentProjection::TileState AgentProjection::parseState(const char* state) const 
 }
 
 bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
+  staged_codex_only_ = false;
   const char* epoch = payload["host_epoch"].as<const char*>();
   const char* source_status = payload["source_status"].as<const char*>();
   const uint32_t revision = payload["snapshot_revision"].as<uint32_t>();
@@ -196,7 +320,7 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
     return false;
   }
   if (committed_ && strcmp(committed_generation_.host_epoch, candidate.host_epoch) == 0 &&
-      revision <= committed_generation_.snapshot_revision) {
+      revision < committed_generation_.snapshot_revision) {
     staged_valid_ = false;
     return false;
   }
@@ -317,6 +441,17 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
     if (!tile.binding.occupied && tile.binding.source_revision != 0) { staged_valid_ = false; return false; }
   }
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) if (!seen[slot]) { staged_valid_ = false; return false; }
+  if (committed_ &&
+      strcmp(committed_generation_.host_epoch, candidate.host_epoch) == 0 &&
+      revision == committed_generation_.snapshot_revision) {
+    if (strcmp(committed_generation_.source_status, candidate.source_status) != 0 ||
+        memcmp(committed_generation_.tiles, candidate.tiles,
+               sizeof(candidate.tiles)) != 0) {
+      staged_valid_ = false;
+      return false;
+    }
+    staged_codex_only_ = true;
+  }
   staged_ = candidate;
   staged_valid_ = true;
   return true;
@@ -337,10 +472,17 @@ void AgentProjection::disableActive(BoardAdapter* board) {
 }
 bool AgentProjection::commitSnapshot() {
   if (!staged_valid_) return false;
+  if (staged_codex_only_) {
+    committed_generation_ = staged_;
+    staged_valid_ = false;
+    staged_codex_only_ = false;
+    return true;
+  }
   committed_generation_ = staged_;
   committed_ = true;
   syncing_ = false;
   staged_valid_ = false;
+  staged_codex_only_ = false;
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) {
     pending_[slot] = Binding();
     pending_action_[slot] = 0;
@@ -351,6 +493,20 @@ bool AgentProjection::commitSnapshot() {
 }
 bool AgentProjection::commitSnapshot(BoardAdapter& board) {
   if (!staged_valid_ || !ensureComposition()) return false;
+  if (staged_codex_only_) {
+    Display* display = board.displayAt(3);
+    if (display == nullptr) {
+      staged_valid_ = false;
+      staged_codex_only_ = false;
+      return false;
+    }
+    committed_generation_ = staged_;
+    staged_valid_ = false;
+    staged_codex_only_ = false;
+    theme().composePanel4(g_composition, renderState(micros()));
+    g_composition.pushSprite(display, 0, 0);
+    return true;
+  }
   // Per-panel direct-cut reveal (R-2): panels flip old-complete -> new-complete
   // sequentially with no SYNC veil for ordinary refreshes.  Bindings deactivate
   // here at stage time and activate only after the third flush, so a press
@@ -517,20 +673,14 @@ bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer, Captu
     selected.composeSync(g_composition);
     return true;
   }
-  if (scene == CaptureScene::MenuTheme || scene == CaptureScene::MenuLed) {
+  if (isMenuCapture(scene)) {
     if (panel != 3) return false;
-    MenuState menu;
-    menu.open = true;
-    menu.cursor = scene == CaptureScene::MenuTheme ? 0 : 1;
-    menu.page = scene == CaptureScene::MenuTheme ? MenuPage::Theme
-                                                 : MenuPage::Leds;
-    menu.editing = true;
-    menu.theme_candidate = ThemeId::Instrument;
-    menu.grammar_candidate = LedGrammarId::MeterLamps;
-    selected.composeMenu(g_composition, menu);
+    selected.composeMenu(g_composition, menuCaptureFixture(scene));
     return true;
   }
-  const RenderState state = scene == CaptureScene::Current ? renderState(micros()) : captureFixture(scene);
+  const RenderState state =
+      scene == CaptureScene::Current ? renderState(micros()) :
+      (isCodexCapture(scene) ? codexCaptureFixture(scene) : captureFixture(scene));
   if (panel < kSlotCount) selected.composeTile(g_composition, panel, state);
   else selected.composePanel4(g_composition, state);
   return true;

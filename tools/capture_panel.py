@@ -42,6 +42,24 @@ SCENES = {
     "sync": "Y",
     "menu-theme": "M",
     "menu-led": "L",
+    "codex-current": "c",
+    "codex-partial": "p",
+    "codex-stale": "s",
+    "codex-unavailable": "u",
+    "codex-auth": "a",
+    "codex-offline": "o",
+    "host-offline": "h",
+    "codex-limit": "l",
+    "codex-long": "g",
+    "menu-root-0": "0",
+    "menu-root-1": "1",
+    "menu-root-2": "2",
+    "menu-root-3": "3",
+    "menu-root-4": "4",
+    "menu-root-5": "5",
+    "menu-brightness": "b",
+    "menu-health": "e",
+    "menu-about": "d",
 }
 
 
@@ -89,6 +107,12 @@ def main() -> int:
         timeout=args.timeout,
     )
     try:
+        hello_firmware = session.device.get("firmware")
+        hello_protocol = session.device.get("protocol")
+        if hello_firmware != binding.firmware or hello_protocol != binding.protocol:
+            raise RuntimeError(
+                "fresh hello does not match paired firmware/protocol identity"
+            )
         stimulus = f"CAPTURE:{args.panel}"
         if args.theme is not None or args.scene != "current":
             theme = THEMES[args.theme or "signal-edge"]
