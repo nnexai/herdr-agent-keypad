@@ -1261,6 +1261,70 @@ void test_ambient_cadence_degrades_under_budget_pressure() {
   scheduler.observeFlushCost(1000UL, 1000000UL);
   TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Full), static_cast<int>(scheduler.level()));
 }
+void test_transition_phase_is_bounded_and_interruptible() {
+  AnimationScheduler scheduler;
+  TEST_ASSERT_TRUE(scheduler.beginTransition(7, 1000));
+  TEST_ASSERT_TRUE(scheduler.transitionActive());
+  TEST_ASSERT_EQUAL_UINT32(0, scheduler.transitionProgress(1000));
+  TEST_ASSERT_TRUE(scheduler.transitionProgress(101000) > 0);
+  TEST_ASSERT_TRUE(scheduler.transitionProgress(101000) < AnimationScheduler::kTransitionPhaseCount);
+  TEST_ASSERT_TRUE(scheduler.transitionDue(250999));
+  TEST_ASSERT_FALSE(scheduler.transitionActive());
+  TEST_ASSERT_TRUE(scheduler.beginTransition(8, 500000));
+  TEST_ASSERT_TRUE(scheduler.interruptTransition(9));
+  TEST_ASSERT_FALSE(scheduler.transitionActive());
+  TEST_ASSERT_EQUAL_UINT32(9, scheduler.transitionEpoch());
+}
+
+void test_half_samples_every_second_phase_and_static_keeps_semantics() {
+  AnimationScheduler scheduler;
+  scheduler.setAmbientPeriod(100000UL);
+  scheduler.beginTransition(1, 1);
+  scheduler.setLevel(AnimationScheduler::Level::Half);
+  TEST_ASSERT_FALSE(scheduler.ambientFrameDue(100001));
+  TEST_ASSERT_TRUE(scheduler.ambientFrameDue(200001));
+  scheduler.setLevel(AnimationScheduler::Level::Static);
+  TEST_ASSERT_FALSE(scheduler.ambientFrameDue(1000000));
+  TEST_ASSERT_EQUAL(static_cast<int>(AnimationScheduler::Level::Static),
+                    static_cast<int>(scheduler.level()));
+  TEST_ASSERT_EQUAL_UINT32(AnimationScheduler::kNeutralPhase,
+                            scheduler.presentationPhase());
+}
+
+void test_signal_edge_transition_changes_only_rail_accent() {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.source_status = "current";
+  state.slots[0].occupied = true;
+  state.slots[0].title = "Agent";
+  state.slots[0].discriminator = "repo";
+  state.slots[0].state = TileState::Working;
+  state.transition_active = true;
+  state.transition_phase = 0;
+  resetLog();
+  signalEdgeTheme().composeTile(sprite, 0, state);
+  const std::vector<std::string> first = g_render_log;
+  state.transition_phase = 2;
+  resetLog();
+  signalEdgeTheme().composeTile(sprite, 0, state);
+  TEST_ASSERT_TRUE(logContainsText("WORKING"));
+  TEST_ASSERT_TRUE(first != g_render_log);
+}
+
+void test_render_state_transition_metadata_is_presentation_only() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument first = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(first.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  JsonDocument second = snapshot_document(2);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(second.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const RenderState state = projection.renderState(1000);
+  TEST_ASSERT_EQUAL_UINT32(2, state.transition_epoch);
+  TEST_ASSERT_TRUE(state.transition_active);
+  TEST_ASSERT_TRUE(projection.hasBinding(0));
+}
 
 void test_blocked_motion_suppressed_by_fence_and_no_alloc() {
   AgentProjection projection;
@@ -2299,6 +2363,10 @@ int runAllTests() {
   RUN_TEST(test_beacon_pending_uses_large_animated_takeover);
   RUN_TEST(test_blocked_pulse_cadence_and_phase);
   RUN_TEST(test_ambient_cadence_degrades_under_budget_pressure);
+  RUN_TEST(test_transition_phase_is_bounded_and_interruptible);
+  RUN_TEST(test_half_samples_every_second_phase_and_static_keeps_semantics);
+  RUN_TEST(test_signal_edge_transition_changes_only_rail_accent);
+  RUN_TEST(test_render_state_transition_metadata_is_presentation_only);
   RUN_TEST(test_blocked_motion_suppressed_by_fence_and_no_alloc);
   RUN_TEST(test_led_grammars_and_policy);
   RUN_TEST(test_led_policy_clamps_bright_led_count_and_all_off);
