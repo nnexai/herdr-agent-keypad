@@ -21,6 +21,26 @@ PhysicalMap verified_map() {
 
 void setUp() {}
 void tearDown() {}
+void test_complete_tap_between_main_updates_is_latched() {
+  board_stub::reset();
+  PhysicalMap map = verified_map();
+  BoardAdapter adapter;
+  TEST_ASSERT_TRUE(adapter.begin(map));
+
+  board_stub::sample(0, true, false, false);
+  adapter.captureRawKeySampleForTest(100U);
+  board_stub::sample(0, false, false, false);
+  adapter.captureRawKeySampleForTest(110U);
+
+  adapter.update(200U);
+  uint32_t latched_at = 0;
+  TEST_ASSERT_TRUE(adapter.consumePressed(0, &latched_at));
+  TEST_ASSERT_EQUAL_UINT32(100U, latched_at);
+  TEST_ASSERT_TRUE(adapter.consumeReleased(0));
+  TEST_ASSERT_FALSE(adapter.isDown(0));
+}
+
+
 
 void test_one_sample_exposes_press_down_and_release() {
   board_stub::reset();
@@ -152,7 +172,7 @@ void test_same_poll_pairs_preserve_chord_and_one_sample_timestamp() {
   }
 }
 
-void test_sequential_edges_keep_timestamps_and_refresh_release_sample() {
+void test_sequential_edges_keep_timestamps_and_release_until_consumed() {
   board_stub::reset();
   PhysicalMap map = verified_map();
   BoardAdapter adapter;
@@ -185,7 +205,8 @@ void test_sequential_edges_keep_timestamps_and_refresh_release_sample() {
   board_stub::sample(0, false, false, false);
   board_stub::sample(1, true, false, false);
   adapter.update(0x00000030U);
-  TEST_ASSERT_EQUAL_UINT8(0x00U, adapter.agentReleasedMask());
+  TEST_ASSERT_EQUAL_UINT8(0x01U, adapter.agentReleasedMask());
+  TEST_ASSERT_TRUE(adapter.consumeReleased(0));
 }
 
 void test_repeated_down_samples_do_not_repeat_press_or_release_edges() {
@@ -213,7 +234,9 @@ void test_repeated_down_samples_do_not_repeat_press_or_release_edges() {
 
     board_stub::sample(slot, false, false, false);
     adapter.update(400U);
-    TEST_ASSERT_EQUAL_UINT8(0x00U, adapter.agentReleasedMask());
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(1U << slot),
+                            adapter.agentReleasedMask());
+    TEST_ASSERT_TRUE(adapter.consumeReleased(slot));
   }
 }
 
@@ -245,12 +268,13 @@ void test_map_failure_clears_pending_lifecycle_and_stays_closed() {
 
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_complete_tap_between_main_updates_is_latched);
   RUN_TEST(test_one_sample_exposes_press_down_and_release);
   RUN_TEST(test_edge_timestamp_survives_later_down_polls_until_consumed);
   RUN_TEST(test_invalid_map_never_exposes_actionable_lifecycle);
   RUN_TEST(test_adapter_uses_one_official_update_per_sample);
   RUN_TEST(test_same_poll_pairs_preserve_chord_and_one_sample_timestamp);
-  RUN_TEST(test_sequential_edges_keep_timestamps_and_refresh_release_sample);
+  RUN_TEST(test_sequential_edges_keep_timestamps_and_release_until_consumed);
   RUN_TEST(test_repeated_down_samples_do_not_repeat_press_or_release_edges);
   RUN_TEST(test_map_failure_clears_pending_lifecycle_and_stays_closed);
   return UNITY_END();

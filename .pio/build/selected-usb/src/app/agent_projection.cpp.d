@@ -175,6 +175,7 @@
  /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/freertos_stats.h \
  /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
  /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/Arduino.h \
+ firmware/src/app/../ui/animation.h firmware/src/app/../ui/render_state.h \
  firmware/src/app/../board/board_adapter.h \
  .pio/libdeps/selected-usb/LILYGO\ T-Keyboard-S3-Pro\ Library/src/TKeyboardS3Pro.h \
  /home/nnex/.platformio/packages/framework-arduinoespressif32/libraries/Wire/src/Wire.h \
@@ -321,4 +322,8 @@
  .pio/libdeps/selected-usb/LovyanGFX/src/lgfx/v1/touch/Touch_XPT2046.hpp \
  .pio/libdeps/selected-usb/LovyanGFX/src/lgfx/v1/touch/Touch_RA8875.hpp \
  .pio/libdeps/selected-usb/LILYGO\ T-Keyboard-S3-Pro\ Library/src/utility/encoder.h \
- firmware/src/app/../board/physical_map.h
+ firmware/src/app/../board/physical_map.h firmware/src/app/../ui/theme.h \
+ firmware/src/app/hold_controller.h \
+ firmware/src/app/product_input_router.h \
+ firmware/src/app/../metrics/proof_metrics.h \
+ firmware/src/app/../transport/fixed_space_hid.h

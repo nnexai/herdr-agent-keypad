@@ -65,7 +65,7 @@ class FocusTests(unittest.TestCase):
         self.assertTrue(outcome.success)
         self.assertEqual([call[0] for call in client.calls], ["agent.list", "agent.focus", "agent.focus"])
 
-    def test_raw_revision_churn_focuses_but_material_projection_change_is_stale(self):
+    def test_same_exact_target_remains_focusable_during_projection_churn(self):
         revision_only = row(revision=99)
         focused = {**revision_only, "focused": True, "revision": 100}
         client = SpyClient(rows=[revision_only], result={"type": "agent_info", "agent": focused})
@@ -74,12 +74,18 @@ class FocusTests(unittest.TestCase):
         self.assertEqual([call[0] for call in client.calls], ["agent.list", "agent.focus"])
 
         changed = {**revision_only, "state_change_seq": 5}
-        stale = SpyClient(rows=[changed])
-        outcome = FocusExecutor(stale, self.projection).execute(self.intent)
-        self.assertEqual(outcome.status, "source_revision_changed")
-        self.assertEqual([call[0] for call in stale.calls], ["agent.list"])
+        stale_projection = SpyClient(
+            rows=[changed],
+            result={"type": "agent_info", "agent": {**changed, "focused": True}},
+        )
+        outcome = FocusExecutor(stale_projection, self.projection).execute(self.intent)
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual(
+            [call[0] for call in stale_projection.calls],
+            ["agent.list", "agent.focus"],
+        )
 
-    def test_stale_and_wrong_generation_are_rejected_before_io(self):
+    def test_stale_source_rejects_but_generation_churn_uses_live_identity(self):
         client = SpyClient()
         self.projection.invalidate("stale")
         outcome = FocusExecutor(client, self.projection).execute(self.intent)
@@ -87,8 +93,8 @@ class FocusTests(unittest.TestCase):
         self.assertEqual(client.calls, [])
         self.projection.refresh([row("p2")])
         outcome = FocusExecutor(client, self.projection).execute(self.intent)
-        self.assertIn(outcome.status, {"wrong_revision", "pane_reused"})
-        self.assertEqual(client.calls, [])
+        self.assertEqual(outcome.status, "accepted")
+        self.assertEqual([call[0] for call in client.calls], ["agent.list", "agent.focus"])
 
     def test_identity_mismatch_and_bad_response_never_succeed(self):
         wrong = SpyClient(result={"type": "agent_info", "agent": {**row(terminal="other"), "focused": True}})
@@ -103,7 +109,7 @@ class FocusTests(unittest.TestCase):
         timeout = SpyClient(error=HerdrError("timeout"))
         self.assertEqual(FocusExecutor(timeout, self.projection).execute(self.intent).status, "uncertain")
         self.projection.refresh([])
-        self.assertEqual(FocusExecutor(SpyClient(), self.projection).execute(self.intent).status, "wrong_revision")
+        self.assertEqual(FocusExecutor(SpyClient(), self.projection).execute(self.intent).status, "accepted")
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@ namespace button {
 
 class ButtonSense {
  public:
+  void setDebounceThresh(uint32_t msec) { debounce_ms_ = msec; }
+  uint32_t getDebounceThresh() const { return debounce_ms_; }
   bool isPressed() {
     ++is_down_reads_;
     return down_;
@@ -41,6 +43,7 @@ class ButtonSense {
   bool down_ = false;
   bool pressed_edge_ = false;
   bool released_edge_ = false;
+  uint32_t debounce_ms_ = 10;
   uint32_t is_down_reads_ = 0;
   uint32_t was_pressed_reads_ = 0;
   uint32_t was_released_reads_ = 0;
@@ -85,7 +88,12 @@ class TKeyboardS3ProClass {
  public:
   Display& displayAt(uint8_t index) { return displays[index < 4 ? index : 0]; }
 
-  bool begin(BoardConfig) { return true; }
+  bool begin(BoardConfig) {
+    for (uint8_t index = 0; index < 5; ++index) {
+      keys_[index].setDebounceThresh(10);
+    }
+    return true;
+  }
 
   void update() {
     ++board_stub::update_count;
@@ -95,8 +103,22 @@ class TKeyboardS3ProClass {
                              board_stub::next_released[index]);
     }
   }
+  uint8_t keys(uint8_t = 0x01) const {
+    uint8_t raw = 0;
+    for (uint8_t index = 0; index < 5; ++index) {
+      if (board_stub::next_down[index]) {
+        raw |= static_cast<uint8_t>(1U << (4U - index));
+      }
+    }
+    return raw;
+  }
+  uint8_t keyState() const { return keys(); }
+
 
   button::ButtonSense& key(uint8_t index) { return keys_[index < 5 ? index : 0]; }
+  uint32_t debounceThresh(uint8_t index) const {
+    return keys_[index < 5 ? index : 0].getDebounceThresh();
+  }
   long encoderPosition() const { return encoder.position(); }
   void setBrightness(uint8_t) {}
   void setLeds(uint16_t, uint8_t, uint8_t, uint16_t) {}

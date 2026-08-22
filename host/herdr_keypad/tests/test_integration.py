@@ -423,14 +423,14 @@ class PluginLifecycleTests(unittest.TestCase):
         bridge._publish_snapshot(snapshot)
         self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
 
-    def test_not_ready_focus_is_discarded_when_snapshot_generation_changes(self):
+    def test_not_ready_focus_survives_generation_change_when_exact_identity_is_alive(self):
         fake = FakeHerdr()
         usb = FakeUsb()
         bridge = PermanentBridge(HerdrClient(requester=fake.request), usb, InboxProjection(host_epoch="epoch"))
         bridge.bootstrap()
         binding = bridge.projection.binding(0)
         payload = {
-            "action_id": "stale-during-ack",
+            "action_id": "during-refresh",
             "host_epoch": binding.host_epoch,
             "snapshot_revision": binding.snapshot_revision,
             "slot": binding.slot,
@@ -443,8 +443,22 @@ class PluginLifecycleTests(unittest.TestCase):
         fake.rows[0] = {**fake.rows[0], "revision": 2, "state_change_seq": 5}
         changed = bridge.projection.bootstrap(bridge.client)
         bridge._publish_snapshot(changed)
-        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 0)
-        self.assertEqual(usb.results, [])
+        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
+        self.assertEqual(usb.results[-1]["outcome"], "accepted")
+
+    def test_current_refresh_keeps_ready_state_and_pending_focus(self):
+        fake = FakeHerdr()
+        usb = FakeUsb()
+        bridge = PermanentBridge(HerdrClient(requester=fake.request), usb, InboxProjection(host_epoch="epoch"))
+        bridge.bootstrap()
+        usb.pending_focus = {"action_id": "already-read-from-device"}
+
+        fake.rows[0] = {**fake.rows[0], "revision": 2, "state_change_seq": 5}
+        changed = bridge.projection.bootstrap(bridge.client)
+        bridge._publish_snapshot(changed)
+
+        self.assertTrue(bridge.ready)
+        self.assertEqual(usb.pending_focus, {"action_id": "already-read-from-device"})
 
     def test_revision_only_poll_reuses_generation_and_focuses_exact_target(self):
         fake = FakeHerdr()
@@ -472,40 +486,27 @@ class PluginLifecycleTests(unittest.TestCase):
         self.assertEqual(usb.results[-1]["outcome"], "accepted")
         self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
 
-    def test_material_projection_drift_rebinds_before_fresh_retry(self):
+    def test_material_projection_drift_does_not_block_live_exact_target(self):
         fake = FakeHerdr()
         usb = FakeUsb()
         bridge = PermanentBridge(HerdrClient(requester=fake.request), usb, InboxProjection(host_epoch="epoch"))
         bridge.bootstrap()
-        stale = bridge.projection.binding(0)
+        displayed = bridge.projection.binding(0)
         fake.rows[0] = {**fake.rows[0], "revision": 2, "state_change_seq": 5}
 
-        stale_payload = {
-            "action_id": "action-stale",
-            "host_epoch": stale.host_epoch,
-            "snapshot_revision": stale.snapshot_revision,
-            "slot": stale.slot,
-            "entry_id": stale.entry_id,
-            **stale.identity.as_payload(),
+        payload = {
+            "action_id": "action-during-drift",
+            "host_epoch": displayed.host_epoch,
+            "snapshot_revision": displayed.snapshot_revision,
+            "slot": displayed.slot,
+            "entry_id": displayed.entry_id,
+            **displayed.identity.as_payload(),
         }
-        stale_outcome = bridge.handle_frame(protocol.new_v2_frame("focus_intent", "boot", "session", 1, stale_payload))
-        self.assertEqual(stale_outcome.status, "source_revision_changed")
-        self.assertEqual(usb.results[-1]["outcome"], "stale_target")
-        self.assertEqual(usb.published[-1]["snapshot_revision"], 2)
-        self.assertEqual(usb.published[-1]["agents"][0]["source_revision"], 2)
-        self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 0)
+        outcome = bridge.handle_frame(
+            protocol.new_v2_frame("focus_intent", "boot", "session", 1, payload)
+        )
 
-        fresh = bridge.projection.binding(0)
-        fresh_payload = {
-            "action_id": "action-fresh",
-            "host_epoch": fresh.host_epoch,
-            "snapshot_revision": fresh.snapshot_revision,
-            "slot": fresh.slot,
-            "entry_id": fresh.entry_id,
-            **fresh.identity.as_payload(),
-        }
-        fresh_outcome = bridge.handle_frame(protocol.new_v2_frame("focus_intent", "boot", "session", 2, fresh_payload))
-        self.assertEqual(fresh_outcome.status, "accepted")
+        self.assertEqual(outcome.status, "accepted")
         self.assertEqual(usb.results[-1]["outcome"], "accepted")
         self.assertEqual([name for name, _ in fake.calls].count("agent.focus"), 1)
     def test_alive_bridge_reconnects_and_acks_complete_snapshot_before_ready(self):

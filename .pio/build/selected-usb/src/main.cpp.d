@@ -318,7 +318,15 @@
  .pio/libdeps/selected-usb/LovyanGFX/src/lgfx/v1/touch/Touch_XPT2046.hpp \
  .pio/libdeps/selected-usb/LovyanGFX/src/lgfx/v1/touch/Touch_RA8875.hpp \
  .pio/libdeps/selected-usb/LILYGO\ T-Keyboard-S3-Pro\ Library/src/utility/encoder.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/USB.h \
  firmware/src/board/board_adapter.h firmware/src/board/physical_map.h \
- firmware/src/metrics/proof_metrics.h firmware/src/protocol/protocol.h \
- firmware/src/transport/link.h firmware/src/ui/bringup_renderer.h \
- firmware/src/app/agent_projection.h
+ firmware/src/metrics/proof_metrics.h \
+ firmware/src/metrics/hid_reset_journal.h \
+ firmware/src/protocol/protocol.h firmware/src/transport/link.h \
+ firmware/src/transport/fixed_space_hid.h \
+ firmware/src/ui/bringup_renderer.h firmware/src/app/agent_projection.h \
+ firmware/src/app/../ui/animation.h firmware/src/app/../ui/render_state.h \
+ firmware/src/app/settings_store.h firmware/src/app/menu_controller.h \
+ firmware/src/app/../ui/theme.h firmware/src/app/product_input_router.h \
+ firmware/src/app/hold_controller.h firmware/src/ui/led_engine.h \
+ firmware/src/ui/led_grammar.h

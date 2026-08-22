@@ -4,10 +4,10 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: phase_complete
-stopped_at: Completed 03.2-09-PLAN.md; Phase 4 gate passed
-last_updated: "2026-08-22T18:18:10Z"
+stopped_at: Resolved post-gate quick-tap focus loss; Phase 4 gate artifact refresh required for changed firmware and bridge
+last_updated: "2026-08-22T18:50:24Z"
 last_activity: 2026-08-22
-last_activity_desc: Phase 03.2 exact-device production qualification passed with zero defects and final oracle UP
+last_activity_desc: Quick-tap focus passed exact-device six-switch and hold/release verification after bridge refresh fencing fix
 state_head: ed0e69e7fc6d47f5894dbad5bc7f594d5f02eb69
 progress:
   total_phases: 8
@@ -49,8 +49,8 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — COMPLETE
 Plan: 09 of 10 — Complete
-Status: Phase 4 release gate passed
-Last activity: 2026-08-22 — Final exact-device qualification passed; production bridge restored
+Status: Phase complete; prior Phase 4 gate remains valid only for its recorded deployment and requires refresh for the changed binary
+Last activity: 2026-08-22 — Quick-tap focus regression resolved on exact device; production bridge restored
 
 Progress: [██████████] 100%
 
@@ -235,6 +235,7 @@ None yet.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
 - [Phase 02.1]: Bounded live-sync smoke evidence and exact-device physical checkpoint passed; no long qualification rerun.
+- [Phase 03.2]: Post-gate quick-tap correction changed firmware and bridge hashes. Focused suites plus exact-device six-tap and hold/release checks pass, but the prior full qualification artifact remains bound to its recorded deployment and must not be cited for the new binary.
 
 ### Roadmap Evolution
 
@@ -263,5 +264,5 @@ None yet.
 
 **Resume file:** `.planning/phases/03.2-focus-then-hold-usb-keyboard/.continue-here.md`
 
-Last session: 2026-08-22T18:18:10Z
-Stopped at: Phase 03.2 Plan 09 complete; Phase 4 release gate passed
+Last session: 2026-08-22T18:50:24Z
+Stopped at: Phase 03.2 post-gate quick-tap fix complete; Phase 4 gate artifact refresh required

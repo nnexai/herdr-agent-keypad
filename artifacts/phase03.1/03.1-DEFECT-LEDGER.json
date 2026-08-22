@@ -1,9 +1,9 @@
 {
   "defects": [],
-  "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
-  "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
+  "deployment_id": "b2fef68d558d046a2b61213245e946b06c1dd0c2b6a2b7b73dba708caa409e4f",
+  "deployment_lock_sha256": "45a004426d36dd50aa9c15d6818949b716ba7ace31d3e42d6f7ec7b8f6b39be0",
   "kind": "phase03.1-defect-ledger",
-  "logical_manifest_sha256": "bd41ff67523ed94bad6eda65c2c03648d29e18fd88d557563ddc6823dd9a0196",
+  "logical_manifest_sha256": "b8c4746a99e5172e7805f97acc20a156b9f9c43bea32ea3cc1f6c829d686a46e",
   "schema_version": 1,
   "status": "pass"
 }

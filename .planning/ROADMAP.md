@@ -122,16 +122,16 @@ Plans:
 
 ### Phase 02.1: Reliable Live Synchronization, Focus, and Flicker-Free Rendering (INSERTED)
 
-**Goal:** As a user of the delivered keypad, I want live Herdr changes to converge to one ACKed authoritative generation with exact focus fenced during refresh and each tile painted as one composed image, so that the physical inbox stays current, safe, and visually stable.
+**Goal:** As a user of the delivered keypad, I want live Herdr changes to converge to one ACKed authoritative generation while every press remains bound to the exact pane represented by its pixels, without refresh downtime or partial tile painting.
 **Requirements:** TBD — no requirement IDs are assigned to this inserted phase; Phase 2, Phase 3, and Phase 4 requirement ownership remains unchanged.
 **Depends on:** Phase 2
 
 **Success Criteria** (what must be TRUE):
 
   1. Typed Herdr lifecycle events are invalidation signals only: bursts coalesce into complete authoritative three-slot reads, and equivalent normalized state does not advance the visible generation or redraw.
-  2. The host is ready for focus only after the exact current snapshot ACK; source, session, ACK, and refresh failures publish stale/offline state and fence focus without silently discarding or replaying an intent.
+  2. Newly rendered bindings become actionable only after their complete snapshot ACK. An intent already emitted for prior pixels remains queued and is revalidated against live immutable pane identity; source, session, ACK, and refresh failures publish stale/offline state and fence focus without silent discard or replay.
   3. Firmware composes each SYNC, tile, and feedback state completely in one reused bounded buffer, flushes panels sequentially through `BoardAdapter`, and activates bindings only after all three panels succeed.
-  4. Installed inbox rank/sequence order, opaque generation-bound identity, three fixed agent slots, stale/offline distinction, and `FocusExecutor` as the sole `agent.focus` path remain unchanged; panel 4, Codex/menu, and full recovery remain outside this phase.
+  4. Installed inbox rank/sequence order, opaque rendered-binding identity, three fixed agent slots, stale/offline distinction, and `FocusExecutor` as the sole `agent.focus` path remain unchanged; mutable ordering/status churn cannot invalidate an otherwise live exact pane, while pane, terminal, workspace, tab, or agent-session mismatch still rejects.
   5. Focused host/native checks, the selected USB build/metrics, and one bounded exact-device smoke prove a real Herdr change reaches a higher ACKed revision as complete images and the changed tile still focuses only its exact pane.
 
 **Plans:** 3/3 plans executed

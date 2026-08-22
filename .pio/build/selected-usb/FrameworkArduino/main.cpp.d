@@ -175,4 +175,5 @@
  /home/nnex/.platformio/packages/framework-arduinoespressif32-libs/esp32s3/include/esp_hw_support/include/hal/cpu_ll.h \
  /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/freertos_stats.h \
  /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/io_pin_remap.h \
+ /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/USB.h \
  /home/nnex/.platformio/packages/framework-arduinoespressif32/cores/esp32/chip-debug-report.h

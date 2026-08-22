@@ -2,48 +2,48 @@
   "capture_count": 184,
   "contact_sheets": [
     {
-      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_id": "b2fef68d558d046a2b61213245e946b06c1dd0c2b6a2b7b73dba708caa409e4f",
       "height": 1408,
       "kind": "tiles",
       "path": "artifacts/phase03.1/screenshots/tiles-contact.png",
-      "sha256": "923dd550638d3b211803959f1699cf78393c8adaa2a544d49df32e93cebfc5d0",
+      "sha256": "f422c28e566c7694efed4415ac1a025780d354fd57e2c2688b0adbdaee7b3061",
       "source_frame_height": 128,
       "source_frame_width": 128,
       "width": 1024
     },
     {
-      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_id": "b2fef68d558d046a2b61213245e946b06c1dd0c2b6a2b7b73dba708caa409e4f",
       "height": 640,
       "kind": "codex",
       "path": "artifacts/phase03.1/screenshots/codex-contact.png",
-      "sha256": "2a849b7117999b5f5ec4d6d4c4e3f1b535d1d3eb27e493ef0a2ce69d16989d17",
+      "sha256": "bcf4b896499e923cac0ec1454e2feb8884fb2994a4d1ef108407b752c7a00fde",
       "source_frame_height": 128,
       "source_frame_width": 128,
       "width": 1024
     },
     {
-      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_id": "b2fef68d558d046a2b61213245e946b06c1dd0c2b6a2b7b73dba708caa409e4f",
       "height": 640,
       "kind": "menu",
       "path": "artifacts/phase03.1/screenshots/menu-contact.png",
-      "sha256": "a531b20773fcb2e3cf60399d2b21697d67e060b27b57d66fb0e7ca0bacc3d9bc",
+      "sha256": "8d78e3706d351182af803a70af437d947c2f586b729de3e882bfe7c70b723563",
       "source_frame_height": 128,
       "source_frame_width": 128,
       "width": 1024
     },
     {
-      "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
+      "deployment_id": "b2fef68d558d046a2b61213245e946b06c1dd0c2b6a2b7b73dba708caa409e4f",
       "height": 512,
       "kind": "motion",
       "path": "artifacts/phase03.1/screenshots/motion-contact.png",
-      "sha256": "a62bac55325b41749e80bbd7b855045ba1cd9bb836f181088585364b135c4355",
+      "sha256": "b67cff98d94a68f1a544dec430caae801543ba89805101bce68942f6032f66a6",
       "source_frame_height": 128,
       "source_frame_width": 128,
       "width": 1024
     }
   ],
-  "deployment_id": "d5b30141f12cd3689f3bea1a594cad262681cb809b412ca4c77baad00872c07a",
-  "deployment_lock_sha256": "2a907e1bd3e1281ab6acddaadc7a4a3e8d0e45eda7ce4bfeea57d3bc141261ca",
+  "deployment_id": "b2fef68d558d046a2b61213245e946b06c1dd0c2b6a2b7b73dba708caa409e4f",
+  "deployment_lock_sha256": "45a004426d36dd50aa9c15d6818949b716ba7ace31d3e42d6f7ec7b8f6b39be0",
   "kind": "phase03.1-capture-receipt",
   "schema_version": 1,
   "status": "pass"

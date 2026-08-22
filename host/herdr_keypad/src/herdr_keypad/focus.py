@@ -6,7 +6,7 @@ from typing import Any, Mapping
 
 from .bridge import Binding, FocusIntent
 from .herdr import HerdrClient, HerdrError
-from .projection import InboxProjection, ProjectionUnavailable, _session_token
+from .projection import InboxProjection, _session_token
 OUTCOME_NAMES = {
     "accepted", "empty", "stale", "offline", "incompatible", "wrong_epoch", "wrong_revision",
     "wrong_slot", "pane_reused", "session_changed", "source_revision_changed", "vanished",
@@ -62,6 +62,8 @@ class FocusExecutor:
             return "pane_reused"
         if binding.identity.workspace_id and agent.get("workspace_id") != binding.identity.workspace_id:
             return "pane_reused"
+        if binding.identity.tab_id and agent.get("tab_id") != binding.identity.tab_id:
+            return "pane_reused"
         try:
             current_session = _session_token(agent.get("agent_session"))
         except Exception:
@@ -86,27 +88,10 @@ class FocusExecutor:
             return self._reject("wrong_epoch", intent, "device session differs")
         if binding.host_epoch != current.host_epoch:
             return self._reject("wrong_epoch", intent, "host epoch differs")
-        if binding.snapshot_revision != current.snapshot_revision:
-            return self._reject("wrong_revision", intent, "snapshot revision differs")
         if not 0 <= binding.slot < len(current.entries):
             return self._reject("wrong_slot", intent, "slot is outside fixed projection")
-        current_binding = self.projection.binding(binding.slot)
-        if current_binding is None:
-            return self._reject("empty", intent, "slot is not actionable")
-        if current_binding != binding:
-            if current_binding.host_epoch != binding.host_epoch:
-                return self._reject("wrong_epoch", intent, "binding epoch differs")
-            if current_binding.snapshot_revision != binding.snapshot_revision:
-                return self._reject("wrong_revision", intent, "binding revision differs")
-            if current_binding.slot != binding.slot:
-                return self._reject("wrong_slot", intent, "binding slot differs")
-            if current_binding.identity.pane_id != binding.identity.pane_id:
-                return self._reject("pane_reused", intent, "pane identity differs")
-            if current_binding.identity.terminal_id != binding.identity.terminal_id:
-                return self._reject("pane_reused", intent, "terminal identity differs")
-            if current_binding.identity.agent_session != binding.identity.agent_session:
-                return self._reject("session_changed", intent, "agent session differs")
-            return self._reject("source_revision_changed", intent, "source revision differs")
+        if binding.entry_id != binding.identity.pane_id:
+            return self._reject("pane_reused", intent, "entry and pane identity differ")
         try:
             rows = self.client.agent_list()
         except HerdrError as exc:
@@ -118,12 +103,10 @@ class FocusExecutor:
         mismatch = self._same_identity(agent, binding)
         if mismatch is not None:
             return self._reject(mismatch, intent, "current AgentInfo identity differs")
-        try:
-            generation_matches = self.projection.matches_current(rows)
-        except ProjectionUnavailable:
-            generation_matches = False
-        if not generation_matches:
-            return self._reject("source_revision_changed", intent, "current projection fields differ")
+        # Inbox ordering, status, and state_change_seq may change immediately
+        # after a prior focus. Those mutable projection fields must not turn a
+        # subsequent physical press into downtime. The live immutable identity
+        # check above is the focus authorization boundary.
         try:
             response = self.client.focus(binding.identity.pane_id)
         except HerdrError as exc:

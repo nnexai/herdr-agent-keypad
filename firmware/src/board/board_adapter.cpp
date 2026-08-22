@@ -10,8 +10,21 @@ void BoardAdapter::clearInputLatches() {
   encoder_delta_latch_ = 0;
   encoder_latched_at_us_ = 0;
   input_latched_at_us_ = 0;
+#ifdef ARDUINO
+  portENTER_CRITICAL(&input_sample_mux_);
+#endif
+  sampled_pressed_latch_ = 0;
+  sampled_down_latch_ = 0;
+  sampled_released_latch_ = 0;
+  for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
+    sampled_key_latched_at_us_[logical] = 0;
+  }
+  raw_sample_initialized_ = false;
   last_poll_at_us_ = 0;
   pending_max_poll_gap_us_ = 0;
+#ifdef ARDUINO
+  portEXIT_CRITICAL(&input_sample_mux_);
+#endif
 }
 
 bool BoardAdapter::begin(const PhysicalMap& physical_map) {
@@ -23,8 +36,136 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
   config.enableDisplay = true;
   config.enableEncoder = true;
   ready_ = board_.begin(config);
-  return ready_;
+  if (!ready_) return false;
+#ifdef ARDUINO
+  captureRawKeySample(board_.keys(), micros());
+  if (xTaskCreate(inputPollTaskEntry, "key-poll", 3072, this, 2,
+                  &input_poll_task_) != pdPASS) {
+    input_poll_task_ = nullptr;
+    ready_ = false;
+    clearInputLatches();
+    return false;
+  }
+#else
+  captureRawKeySample(board_.keys(), 0);
+#endif
+  return true;
 }
+
+uint8_t BoardAdapter::logicalKeyMask(uint8_t raw_key_state) const {
+  if (physical_map_ == nullptr || !physical_map_->complete()) return 0;
+  uint8_t logical_mask = 0;
+  for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
+    uint8_t library_index = 0;
+    if (!physical_map_->keyIndex(logical, library_index)) continue;
+    const uint8_t raw_bit =
+        static_cast<uint8_t>(1U << (PhysicalMap::kKeyCount - 1U - library_index));
+    if ((raw_key_state & raw_bit) != 0) {
+      logical_mask |= static_cast<uint8_t>(1U << logical);
+    }
+  }
+  return logical_mask;
+}
+
+void BoardAdapter::captureRawKeySample(uint8_t raw_key_state, uint32_t now_us) {
+  const uint8_t logical_down = logicalKeyMask(raw_key_state);
+#ifdef ARDUINO
+  portENTER_CRITICAL(&input_sample_mux_);
+#endif
+  if (!raw_sample_initialized_) {
+    sampled_down_latch_ = logical_down;
+    raw_sample_initialized_ = true;
+    last_poll_at_us_ = now_us;
+#ifdef ARDUINO
+    portEXIT_CRITICAL(&input_sample_mux_);
+#endif
+    return;
+  }
+
+  const uint32_t gap = now_us - last_poll_at_us_;
+  if (gap > pending_max_poll_gap_us_) pending_max_poll_gap_us_ = gap;
+  last_poll_at_us_ = now_us;
+  const uint8_t changed =
+      static_cast<uint8_t>(sampled_down_latch_ ^ logical_down);
+  const uint8_t pressed = static_cast<uint8_t>(changed & logical_down);
+  const uint8_t released =
+      static_cast<uint8_t>(changed & static_cast<uint8_t>(~logical_down));
+  for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
+    const uint8_t bit = static_cast<uint8_t>(1U << logical);
+    if ((pressed & bit) != 0 && (sampled_pressed_latch_ & bit) == 0) {
+      sampled_key_latched_at_us_[logical] = now_us;
+    }
+  }
+  sampled_pressed_latch_ |= pressed;
+  sampled_released_latch_ |= released;
+  sampled_down_latch_ = logical_down;
+#ifdef ARDUINO
+  portEXIT_CRITICAL(&input_sample_mux_);
+#endif
+}
+
+void BoardAdapter::drainRawKeySamples() {
+  uint8_t pressed = 0;
+  uint8_t down = 0;
+  uint8_t released = 0;
+  uint32_t pressed_at[PhysicalMap::kKeyCount] = {};
+#ifdef ARDUINO
+  portENTER_CRITICAL(&input_sample_mux_);
+#endif
+  pressed = sampled_pressed_latch_;
+  down = sampled_down_latch_;
+  released = sampled_released_latch_;
+  sampled_pressed_latch_ = 0;
+  sampled_released_latch_ = 0;
+  for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
+    pressed_at[logical] = sampled_key_latched_at_us_[logical];
+    sampled_key_latched_at_us_[logical] = 0;
+  }
+#ifdef ARDUINO
+  portEXIT_CRITICAL(&input_sample_mux_);
+#endif
+
+  for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
+    const uint8_t bit = static_cast<uint8_t>(1U << logical);
+    if ((pressed & bit) != 0 && (pressed_latch_ & bit) == 0) {
+      key_latched_at_us_[logical] = pressed_at[logical];
+    }
+  }
+  pressed_latch_ |= pressed;
+  released_latch_ |= released;
+  down_latch_ = down;
+  refreshInputLatchTimestamp();
+}
+
+uint32_t BoardAdapter::takeMaxPollGapUs() {
+#ifdef ARDUINO
+  portENTER_CRITICAL(&input_sample_mux_);
+#endif
+  const uint32_t gap = pending_max_poll_gap_us_;
+  pending_max_poll_gap_us_ = 0;
+#ifdef ARDUINO
+  portEXIT_CRITICAL(&input_sample_mux_);
+#endif
+  return gap;
+}
+
+#ifndef ARDUINO
+void BoardAdapter::captureRawKeySampleForTest(uint32_t now_us) {
+  captureRawKeySample(board_.keys(), now_us);
+}
+#else
+void BoardAdapter::inputPollTaskEntry(void* context) {
+  static_cast<BoardAdapter*>(context)->inputPollTask();
+}
+
+void BoardAdapter::inputPollTask() {
+  TickType_t next_poll = xTaskGetTickCount();
+  for (;;) {
+    captureRawKeySample(board_.keys(), micros());
+    vTaskDelayUntil(&next_poll, pdMS_TO_TICKS(kInputPollPeriodMs));
+  }
+}
+#endif
 
 void BoardAdapter::refreshInputLatchTimestamp() {
   uint32_t first = 0;
@@ -53,33 +194,9 @@ void BoardAdapter::update(uint32_t now_us) {
     clearInputLatches();
     return;
   }
-  if (last_poll_at_us_ != 0) {
-    const uint32_t gap = now_us - last_poll_at_us_;
-    if (gap > pending_max_poll_gap_us_) pending_max_poll_gap_us_ = gap;
-  }
-  last_poll_at_us_ = now_us;
-  // Release truth belongs to this captured sample only. Press edges and their
-  // timestamps remain pending until explicitly consumed.
-  released_latch_ = 0;
   board_.update();
-  for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
-    uint8_t library_index = 0;
-    if (!physical_map_->keyIndex(logical, library_index)) continue;
-    button::ButtonSense& button = board_.key(library_index);
-    if (button.isPressed()) {
-      down_latch_ |= static_cast<uint8_t>(1U << logical);
-    } else {
-      down_latch_ &= static_cast<uint8_t>(~(1U << logical));
-    }
-    if (button.wasReleased()) {
-      released_latch_ |= static_cast<uint8_t>(1U << logical);
-    }
-    if (button.wasPressed() &&
-        (pressed_latch_ & static_cast<uint8_t>(1U << logical)) == 0) {
-      pressed_latch_ |= static_cast<uint8_t>(1U << logical);
-      key_latched_at_us_[logical] = now_us;
-    }
-  }
+  captureRawKeySample(board_.keyState(), now_us);
+  drainRawKeySamples();
 
   const long raw_delta = board_.encoder.delta();
   if (raw_delta != 0) {
@@ -110,13 +227,6 @@ uint8_t BoardAdapter::screenCount() const {
   return ready_ && physical_map_ != nullptr ? PhysicalMap::kDisplayCount : 0;
 }
 
-button::ButtonSense* BoardAdapter::key(uint8_t index) {
-  uint8_t library_index = 0;
-  if (!ready_ || physical_map_ == nullptr || !physical_map_->keyIndex(index, library_index)) {
-    return nullptr;
-  }
-  return &board_.key(library_index);
-}
 
 bool BoardAdapter::wasPressed(uint8_t logical_index) {
   if (!ready_ || logical_index >= PhysicalMap::kKeyCount) return false;
