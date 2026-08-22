@@ -688,6 +688,7 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "physical_down": True,
                 "focus": {
                     "action_id": f"action-{index:03d}",
+                    "slot": index % 3,
                     "binding_digest": deployment["pair_digest"],
                     "host_epoch": "epoch-final",
                     "snapshot_revision": index + 1,
@@ -778,7 +779,6 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "protocol_version": 1,
             },
             "open_defects": [],
-
         }
     def test_phase32_final_gate_reconciles_production_matrix_and_lineage(self) -> None:
         deployment = self._deployment()
@@ -805,6 +805,55 @@ class FinalProductionQualificationTests(unittest.TestCase):
             validate_final_qualification(stale, deployment, logical)
         invalid = self._qualification()
         invalid["gesture_reconciliation"]["records"][0]["hid_values"] = [1, 0]
+        with self.assertRaisesRegex(CompositeQualificationError, "gesture"):
+            validate_final_qualification(invalid, deployment, logical)
+    def test_phase32_final_gate_rejects_invalid_hid_sequences_and_exact_focus_slot(self) -> None:
+        deployment = self._deployment()
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+        }
+        release_only = self._qualification()
+        release_only["gesture_reconciliation"]["records"][0]["hid_values"] = [0]
+        with self.assertRaisesRegex(CompositeQualificationError, "gesture"):
+            validate_final_qualification(release_only, deployment, logical)
+        boolean_value = self._qualification()
+        boolean_value["gesture_reconciliation"]["records"][90]["hid_values"] = [True, 2, 0]
+        with self.assertRaisesRegex(CompositeQualificationError, "gesture"):
+            validate_final_qualification(boolean_value, deployment, logical)
+        wrong_slot = self._qualification()
+        wrong_slot["gesture_reconciliation"]["records"][90]["focus"]["slot"] = 2
+        with self.assertRaisesRegex(CompositeQualificationError, "gesture"):
+            validate_final_qualification(wrong_slot, deployment, logical)
+
+    def test_phase32_final_gate_requires_logical_evidence_and_real_oracle_count(self) -> None:
+        deployment = self._deployment()
+        qualification = self._qualification()
+        with self.assertRaisesRegex(CompositeQualificationError, "logical evidence"):
+            validate_final_qualification(qualification, deployment)
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+        }
+        qualification["input_oracle"]["events_seen"] = True
+        with self.assertRaisesRegex(CompositeQualificationError, "oracle"):
+            validate_final_qualification(qualification, deployment, logical)
+
+    def test_phase32_final_gate_rejects_authorization_without_exact_focus_success(self) -> None:
+        deployment = self._deployment()
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+        }
+        invalid = self._qualification()
+        invalid["gesture_reconciliation"]["records"][90]["focus"]["outcome"] = "rejected"
+        invalid["gesture_reconciliation"]["records"][90]["focus"]["focused"] = False
         with self.assertRaisesRegex(CompositeQualificationError, "gesture"):
             validate_final_qualification(invalid, deployment, logical)
 
