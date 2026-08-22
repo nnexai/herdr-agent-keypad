@@ -4,6 +4,8 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
   physical_map_ = &physical_map;
   ready_ = false;
   pressed_latch_ = 0;
+  down_latch_ = 0;
+  released_latch_ = 0;
   for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
     key_latched_at_us_[logical] = 0;
   }
@@ -51,8 +53,17 @@ void BoardAdapter::update(uint32_t now_us) {
   board_.update();
   for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
     uint8_t library_index = 0;
-    if (physical_map_->keyIndex(logical, library_index) &&
-        board_.key(library_index).wasPressed() &&
+    if (!physical_map_->keyIndex(logical, library_index)) continue;
+    button::ButtonSense& button = board_.key(library_index);
+    if (button.isPressed()) {
+      down_latch_ |= static_cast<uint8_t>(1U << logical);
+    } else {
+      down_latch_ &= static_cast<uint8_t>(~(1U << logical));
+    }
+    if (button.wasReleased()) {
+      released_latch_ |= static_cast<uint8_t>(1U << logical);
+    }
+    if (button.wasPressed() &&
         (pressed_latch_ & static_cast<uint8_t>(1U << logical)) == 0) {
       pressed_latch_ |= static_cast<uint8_t>(1U << logical);
       key_latched_at_us_[logical] = now_us;
@@ -99,6 +110,19 @@ button::ButtonSense* BoardAdapter::key(uint8_t index) {
 bool BoardAdapter::wasPressed(uint8_t logical_index) {
   if (!ready_ || logical_index >= PhysicalMap::kKeyCount) return false;
   return (pressed_latch_ & static_cast<uint8_t>(1U << logical_index)) != 0;
+}
+
+bool BoardAdapter::isDown(uint8_t logical_index) const {
+  if (!ready_ || logical_index >= PhysicalMap::kKeyCount) return false;
+  return (down_latch_ & static_cast<uint8_t>(1U << logical_index)) != 0;
+}
+
+bool BoardAdapter::consumeReleased(uint8_t logical_index) {
+  if (!ready_ || logical_index >= PhysicalMap::kKeyCount) return false;
+  const uint8_t bit = static_cast<uint8_t>(1U << logical_index);
+  if ((released_latch_ & bit) == 0) return false;
+  released_latch_ &= static_cast<uint8_t>(~bit);
+  return true;
 }
 
 bool BoardAdapter::consumePressed(uint8_t logical_index, uint32_t* latched_at_us) {

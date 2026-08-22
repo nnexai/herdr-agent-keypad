@@ -31,6 +31,8 @@ class BoardAdapter {
   uint8_t screenCount() const;
   button::ButtonSense* key(uint8_t index);
   bool wasPressed(uint8_t logical_index);
+  bool isDown(uint8_t logical_index) const;
+  bool consumeReleased(uint8_t logical_index);
   bool consumePressed(uint8_t logical_index, uint32_t* latched_at_us = nullptr);
   bool mapKeyLabel(uint8_t label, uint8_t& library_index) const;
   bool mapEncoderClick(uint8_t& library_index) const;
@@ -46,6 +48,8 @@ class BoardAdapter {
   const PhysicalMap* physical_map_ = nullptr;
   bool ready_ = false;
   uint8_t pressed_latch_ = 0;
+  uint8_t down_latch_ = 0;
+  uint8_t released_latch_ = 0;
   uint32_t key_latched_at_us_[PhysicalMap::kKeyCount] = {};
   int32_t encoder_delta_latch_ = 0;
   uint32_t encoder_latched_at_us_ = 0;

@@ -6,6 +6,8 @@ struct ProductInputFrame {
   static constexpr uint8_t kAgentSlotCount = 3;
 
   bool agent_pressed[kAgentSlotCount]{};
+  bool agent_down[kAgentSlotCount]{};
+  bool agent_released[kAgentSlotCount]{};
   uint32_t agent_latched_at_us[kAgentSlotCount]{};
   bool encoder_clicked = false;
   uint32_t encoder_click_latched_at_us = 0;

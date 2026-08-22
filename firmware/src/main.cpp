@@ -1,6 +1,9 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <TKeyboardS3Pro.h>
+#if defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0
+#include <USB.h>
+#endif
 #include <esp_system.h>
 
 #include <string.h>
@@ -11,12 +14,14 @@
 #include "metrics/proof_metrics.h"
 #include "protocol/protocol.h"
 #include "transport/link.h"
+#include "transport/fixed_space_hid.h"
 #include "ui/bringup_renderer.h"
 #include "app/agent_projection.h"
 #include "app/settings_store.h"
 #include "app/menu_controller.h"
 #include "app/product_input_router.h"
 #include "ui/theme.h"
+#include "app/hold_controller.h"
 #include "ui/led_engine.h"
 
 namespace {
@@ -42,6 +47,8 @@ MenuController menuController(settingsStore);
 LedEngine ledEngine;
 ThemeId presentedTheme = ThemeId::SignalEdge;
 UsbCdcLink usbLink;
+FixedSpaceHid fixedSpaceHid;
+HoldController holdController(fixedSpaceHid);
 ProofMetrics proofMetrics;
 phase1::protocol::ProtocolSession protocolSession("", "", phase1::protocol::kQueueCapacity);
 // Result contains the bounded payload buffer; persistent storage avoids
@@ -365,7 +372,10 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
               "frame rejected before dispatch", replyTo);
     return;
   }
-  if (admission.session_transition) txSequence = 0;
+  if (admission.session_transition) {
+    txSequence = 0;
+    holdController.cancelAll();
+  }
   proofMetrics.observeQueue(protocolSession.pending_count());
 
   JsonDocument payload;
@@ -401,10 +411,12 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
   }
   if (strcmp(type, "focus_result") == 0) {
     const uint8_t slot = payload["slot"].as<uint8_t>();
+    const char* action_id = payload["action_id"].as<const char*>();
     const AgentProjection::Feedback before =
         slot < AgentProjection::kSlotCount ? agentProjection.feedback(slot) :
                                                AgentProjection::Feedback::Disabled;
-    agentProjection.applyFocusResult(payload.as<JsonObjectConst>());
+    const bool admitted = agentProjection.applyFocusResult(payload.as<JsonObjectConst>());
+    holdController.observeFocusResult(slot, action_id, admitted);
     if (slot < AgentProjection::kSlotCount && agentProjection.feedback(slot) != before) {
       // Failure, uncertainty, and success are semantic outcomes: publish their
       // complete frame immediately instead of waiting for ambient cadence.
@@ -581,15 +593,16 @@ void reportAgentKey(uint8_t key, uint32_t edge_latched_at_us) {
   const uint32_t metric_started =
       edge_latched_at_us != 0 ? edge_latched_at_us : response_started;
   char actionId[32] = {};
+  JsonDocument intent;
   std::snprintf(actionId, sizeof(actionId), "device-%lu-%u",
                 static_cast<unsigned long>(response_started),
                 static_cast<unsigned>(key));
-  JsonDocument intent;
   if (agentProjection.captureFocusIntent(key, actionId,
                                          intent.to<JsonObject>())) {
     agentProjection.renderFeedback(board, key);
     proofMetrics.observeFirstPressResponse(micros() - metric_started);
     sendFrame("focus_intent", 0, intent.as<JsonObjectConst>());
+    holdController.registerPress(key, actionId, edge_latched_at_us);
   }
 }
 
@@ -647,6 +660,8 @@ ProductInputFrame captureProductInput(uint32_t now_us) {
   for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
     frame.agent_pressed[slot] =
         board.consumePressed(slot, &frame.agent_latched_at_us[slot]);
+    frame.agent_down[slot] = board.isDown(slot);
+    frame.agent_released[slot] = board.consumeReleased(slot);
   }
   frame.encoder_clicked =
       board.consumePressed(4, &frame.encoder_click_latched_at_us);
@@ -704,17 +719,23 @@ void dispatchProductInput(const ProductInputActions& actions,
   }
   applyBrightnessIntent();
 }
-
 void dispatchAvailableProductInput(uint32_t now_us) {
   reportInput();
   const ProductInputFrame input = captureProductInput(now_us);
   const ProductInputActions actions = ProductInputRouter::route(input);
   dispatchProductInput(actions, input, now_us);
+  const bool hid_ready = usbLink.connected() && fixedSpaceHid.ready();
+  holdController.observeFrame(input, now_us, hid_ready);
 }
 }  // namespace
-
 void setup() {
   usbLink.begin(kBaud, sizeof(inputFrame));
+#if defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0
+  // Composite mode registers CDC first, then the fixed keyboard descriptor,
+  // and starts the shared USB device only after both interfaces exist.
+  (void)fixedSpaceHid.ready();
+  USB.begin();
+#endif
   physicalMap.loadVerified();
   board.begin(physicalMap);
   settingsStore.load();
@@ -739,6 +760,9 @@ void loop() {
   const uint32_t now = loop_started;
   board.update(now);
   dispatchAvailableProductInput(now);
+  if (holdController.active() || holdController.hasCandidate()) {
+    if (!usbLink.connected()) holdController.cancelAll();
+  }
   if (menuController.expire(now)) applyBrightnessIntent();
 
   const bool admission_processed = readFrame();
