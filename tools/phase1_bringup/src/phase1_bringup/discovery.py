@@ -11,6 +11,15 @@ EXPECTED_CDC_INTERFACE = "01"
 EXPECTED_HID_INTERFACE = "00"
 
 
+def _canonical_serial(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+    compact = value.replace(":", "").replace("-", "").upper()
+    if len(compact) == 12 and all(character in "0123456789ABCDEF" for character in compact):
+        return ":".join(compact[index:index + 2] for index in range(0, 12, 2))
+    return value
+
+
 class DiscoveryError(RuntimeError):
     """A discovery state that must not select a device."""
 
@@ -79,7 +88,7 @@ def candidate_from_port(port: Any) -> Candidate:
         device=str(getattr(port, "device", "")),
         vid=getattr(port, "vid", None),
         pid=getattr(port, "pid", None),
-        serial_number=getattr(port, "serial_number", None),
+        serial_number=_canonical_serial(getattr(port, "serial_number", None)),
         location=location,
         manufacturer=getattr(port, "manufacturer", None),
         product=getattr(port, "product", None),

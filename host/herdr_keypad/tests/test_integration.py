@@ -705,6 +705,21 @@ class ExactUsbSessionTests(unittest.TestCase):
         self.assertEqual([candidate.device for candidate in candidates], ["/dev/ttyACM0"])
         self.assertEqual(candidates[0].interface, EXPECTED_CDC_INTERFACE)
 
+    def test_pyserial_hex_serial_without_separators_matches_measured_pair(self):
+        class Port:
+            device = "/dev/ttyACM0"
+            vid = 0x303A
+            pid = 0x1001
+            serial_number = "8CBFEA0DCBFC"
+            location = "1-1:1.1"
+            manufacturer = "Espressif"
+            product = "USB composite CDC + keyboard"
+            interface = "TinyUSB CDC"
+
+        candidates = enumerate_candidates([Port()])
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].serial_number, EXPECTED_SERIAL)
+
     def test_wrong_composite_descriptor_cannot_reach_application_hello(self):
         class WrongSerialPort(self.Port):
             serial_number = "lookalike"
