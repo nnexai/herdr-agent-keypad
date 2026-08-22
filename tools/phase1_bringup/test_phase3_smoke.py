@@ -44,6 +44,7 @@ from phase1_bringup.phase3_smoke import (
     write_json,
     write_phase32_final_artifacts,
 )
+import phase1_bringup.phase3_smoke as phase3_smoke
 from phase1_bringup.protocol import classify_line, new_frame
 
 
@@ -931,6 +932,353 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
         self.assertNotIn("300", threshold_prompt)
         self.assertIn("all four themes", PHASE32_OPERATOR_PROMPTS[1][1])
         self.assertIn("unplug/replug", PHASE32_OPERATOR_PROMPTS[2][1])
+        self.assertIn("never touches live Herdr", PHASE32_OPERATOR_PROMPTS[1][1])
+    def test_phase32_fixture_controller_keeps_snapshot_and_exact_focus_round_trip_live(self) -> None:
+        completed = __import__("threading").Event()
+
+        class FakeUsb:
+            pending_focus_capacity = 16
+
+            def __init__(self) -> None:
+                self.closed = True
+                self.session_id = "qualification-session"
+                self.candidate = SimpleNamespace(serial_number="SERIAL")
+                self.device = {}
+                self.snapshot: dict[str, object] | None = None
+                self.frames: list[dict[str, object]] = []
+                self.results: list[dict[str, object]] = []
+
+            @property
+            def connected(self) -> bool:
+                return not self.closed
+
+            def connect(self) -> dict[str, object]:
+                self.closed = False
+                self.device = {
+                    "hello": {
+                        "device_id": "paired-device",
+                        "firmware": "production",
+                        "protocol": 1,
+                        "boot_id": "boot-1",
+                        "session_id": self.session_id,
+                    },
+                    "transitions": [],
+                }
+                return self.device
+
+            def request_metrics(self, *, reset: bool) -> dict[str, object]:
+                self.assert_open()
+                if not reset:
+                    raise AssertionError("qualification metrics must reset at initial admission")
+                return {"accepted": True}
+
+            def publish_snapshot(self, payload: dict[str, object]) -> dict[str, object]:
+                self.assert_open()
+                self.snapshot = payload
+                agents = payload["agents"]
+                assert isinstance(agents, list)
+                exact_payloads = [
+                    {
+                        "action_id": f"exact-action-{index}",
+                        "host_epoch": payload["host_epoch"],
+                        "snapshot_revision": payload["snapshot_revision"],
+                        "slot": agent["slot"],
+                        "entry_id": agent["entry_id"],
+                        "pane_id": agent["pane_id"],
+                        "terminal_id": agent["terminal_id"],
+                        "agent_session": agent["agent_session"],
+                        "source_revision": agent["source_revision"],
+                    }
+                    for index, agent in enumerate(agents, 1)
+                ]
+                stale = dict(
+                    exact_payloads[0],
+                    action_id="stale-action",
+                    entry_id="wrong-entry",
+                )
+                self.frames = [
+                    {
+                        "type": "focus_intent",
+                        "session_id": self.session_id,
+                        "payload": focus_payload,
+                    }
+                    for focus_payload in (*exact_payloads, stale)
+                ]
+                return {
+                    "accepted": True,
+                    "host_epoch": payload["host_epoch"],
+                    "snapshot_revision": payload["snapshot_revision"],
+                }
+
+            def poll(self) -> dict[str, object] | None:
+                self.assert_open()
+                return self.frames.pop(0) if self.frames else None
+
+            def send_focus_result(self, payload: dict[str, object]) -> None:
+                self.assert_open()
+                self.results.append(payload)
+                if len(self.results) == 4:
+                    completed.set()
+
+            def assert_open(self) -> None:
+                if self.closed:
+                    raise AssertionError("fixture controller closed its exact USB session")
+
+            def close(self) -> None:
+                self.closed = True
+
+        fake_usb = FakeUsb()
+        args = SimpleNamespace(
+            binding=Path("/qualification/binding.json"),
+            run_id="controller-regression",
+            timeout=0.1,
+        )
+        with patch("herdr_keypad.usb.UsbDeviceSession", return_value=fake_usb):
+            with phase3_smoke.phase32_live_bridge(args) as controller:
+                self.assertTrue(completed.wait(1.0))
+                controller.assert_batch("presentation")
+                self.assertFalse(controller.evidence()["live_herdr_connected"])
+                controller.assert_running()
+                self.assertIsNotNone(fake_usb.snapshot)
+                assert fake_usb.snapshot is not None
+                self.assertEqual(len(fake_usb.snapshot["agents"]), 3)
+                self.assertEqual(
+                    [(result["action_id"], result["outcome"], result["focused"]) for result in fake_usb.results],
+                    [
+                        ("exact-action-1", "accepted", True),
+                        ("exact-action-2", "accepted", True),
+                        ("exact-action-3", "accepted", True),
+                        ("stale-action", "stale_target", False),
+                    ],
+                )
+                accepted = fake_usb.results[0]
+                first = fake_usb.snapshot["agents"][0]
+                self.assertEqual(accepted["host_epoch"], fake_usb.snapshot["host_epoch"])
+                self.assertEqual(accepted["snapshot_revision"], fake_usb.snapshot["snapshot_revision"])
+                self.assertEqual(accepted["entry_id"], first["entry_id"])
+            self.assertTrue(fake_usb.closed)
+    def test_phase32_fixture_controller_reconnects_exact_and_republishes_snapshot(self) -> None:
+        from herdr_keypad.usb import UsbSessionError
+
+        republished = __import__("threading").Event()
+
+        class ReconnectingUsb:
+            def __init__(self) -> None:
+                self.closed = True
+                self.connect_count = 0
+                self.disconnected_once = False
+                self.session_id: str | None = None
+                self.candidate = SimpleNamespace(serial_number="SERIAL")
+                self.snapshots: list[tuple[str, int]] = []
+
+            @property
+            def connected(self) -> bool:
+                return not self.closed
+
+            def connect(self) -> dict[str, object]:
+                self.connect_count += 1
+                self.closed = False
+                self.session_id = f"session-{self.connect_count}"
+                return {
+                    "hello": {
+                        "device_id": "paired-device",
+                        "firmware": "production",
+                        "protocol": 1,
+                        "boot_id": f"boot-{self.connect_count}",
+                        "session_id": self.session_id,
+                    },
+                    "transitions": [],
+                }
+
+            def request_metrics(self, *, reset: bool) -> dict[str, object]:
+                if not reset:
+                    raise AssertionError("initial qualification metrics were not reset")
+                return {"accepted": True}
+
+            def publish_snapshot(self, payload: dict[str, object]) -> dict[str, object]:
+                identity = (payload["host_epoch"], payload["snapshot_revision"])
+                self.snapshots.append(identity)
+                if len(self.snapshots) == 2:
+                    republished.set()
+                return {
+                    "accepted": True,
+                    "host_epoch": identity[0],
+                    "snapshot_revision": identity[1],
+                }
+
+            def poll(self) -> None:
+                if not self.disconnected_once:
+                    self.disconnected_once = True
+                    raise UsbSessionError("io", "simulated exact-device disconnect")
+                return None
+
+            def send_focus_result(self, _payload: dict[str, object]) -> None:
+                raise AssertionError("no focus frame was scheduled in reconnect test")
+
+            def close(self) -> None:
+                self.closed = True
+                self.session_id = None
+
+        fake_usb = ReconnectingUsb()
+        args = SimpleNamespace(
+            binding=Path("/qualification/binding.json"),
+            run_id="controller-reconnect",
+            timeout=0.1,
+        )
+        with patch("herdr_keypad.usb.UsbDeviceSession", return_value=fake_usb):
+            with phase3_smoke.phase32_live_bridge(args) as controller:
+                self.assertTrue(republished.wait(1.0))
+                controller.assert_running()
+                self.assertEqual(fake_usb.connect_count, 2)
+                self.assertEqual(fake_usb.snapshots[0], fake_usb.snapshots[1])
+            self.assertTrue(fake_usb.closed)
+
+
+    def test_phase32_qualification_keeps_fixture_controller_live_through_every_prompt(self) -> None:
+        class FakeUsb:
+            def __init__(self) -> None:
+                self.closed = True
+                self.device = {
+                    "hello": {
+                        "device_id": "paired-device",
+                        "firmware": "production",
+                        "protocol": 1,
+                        "boot_id": "boot-1",
+                        "session_id": "session-1",
+                    },
+                    "transitions": [],
+                }
+                self.candidate = SimpleNamespace(serial_number="SERIAL")
+
+            def connect(self) -> dict[str, object]:
+                self.closed = False
+                return self.device
+
+            def request_metrics(self, *, reset: bool) -> dict[str, object]:
+                self.assert_open()
+                if not reset:
+                    raise AssertionError("qualification metrics reset was not requested")
+                return {"accepted": True}
+
+            def assert_open(self) -> None:
+                if self.closed:
+                    raise AssertionError("qualification closed the CDC controller before prompts")
+
+            def close(self) -> None:
+                self.closed = True
+
+        class FakeController:
+            def __init__(self) -> None:
+                self.usb = FakeUsb()
+                self.hello = self.usb.device
+                self.device_metrics = {"accepted": True}
+                self.serial_number = "SERIAL"
+                self.active = False
+                self.health_checks = 0
+                self.batches: list[str] = []
+
+            def start(self) -> "FakeController":
+                self.usb.connect()
+                self.active = True
+                return self
+
+            def close(self) -> None:
+                self.active = False
+                self.usb.close()
+
+            def __enter__(self) -> "FakeController":
+                return self.start()
+
+            def __exit__(self, *_args: object) -> None:
+                self.close()
+
+            def assert_running(self) -> None:
+                if not self.active:
+                    raise AssertionError("qualification focus/snapshot controller is not active")
+                self.usb.assert_open()
+                self.health_checks += 1
+            def assert_batch(self, step_id: str) -> None:
+                self.assert_running()
+                self.batches.append(step_id)
+
+            def evidence(self) -> dict[str, object]:
+                return {
+                    "mode": "controlled-fixture",
+                    "live_herdr_connected": False,
+                    "accepted_focus_slots": [0, 1, 2],
+                }
+
+        deployment = {
+            "deployment_id": "phase32-controller",
+            "firmware_sha256": "f" * 64,
+            "descriptor_tuple": {"vid": 0x303A, "pid": 0x1001},
+        }
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "a" * 64,
+        }
+        controller = FakeController()
+        prompt_states: list[tuple[bool, bool]] = []
+
+        def answer(_prompt: str) -> str:
+            prompt_states.append((controller.active, controller.usb.closed))
+            controller.assert_running()
+            return "Y"
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = SimpleNamespace(
+                binding=root / "binding.json",
+                decision=root / "decision.json",
+                firmware=root / "firmware.bin",
+                deployment=root / "deployment.json",
+                logical_evidence=root / "logical.json",
+                output_root=root / "output",
+                run_id="controller-regression",
+                checkpoint=root / "checkpoint.json",
+                timeout=0.1,
+            )
+            with (
+                patch("phase1_bringup.phase3_smoke.require_inherited_bridge_lock"),
+                patch(
+                    "phase1_bringup.phase3_smoke.validate_phase32_deployment_file",
+                    return_value=deployment,
+                ),
+                patch(
+                    "phase1_bringup.phase3_smoke.validate_phase32_framebuffer_evidence_file",
+                    return_value=logical,
+                ),
+                patch("phase1_bringup.phase3_smoke._phase31_sidecar", return_value="a" * 64),
+                patch("phase1_bringup.phase3_smoke._phase32_run_automated_preflight", return_value=[]),
+                patch(
+                    "phase1_bringup.phase3_smoke.phase32_live_bridge",
+                    return_value=controller,
+                    create=True,
+                ),
+                patch("herdr_keypad.usb.UsbDeviceSession", return_value=controller.usb),
+                patch(
+                    "phase1_bringup.composite_qualification._find_guided_keyboard_event",
+                    return_value=root / "event0",
+                ),
+                patch("phase1_bringup.phase3_smoke._phase32_start_observer", return_value=(object(), object(), [])),
+                patch("phase1_bringup.phase3_smoke._phase32_stop_observer", return_value=[]),
+                patch("phase1_bringup.phase3_smoke.validate_input_trace", return_value={"state": "UP"}),
+                patch("phase1_bringup.phase3_smoke.build_final_qualification", return_value={}),
+                patch(
+                    "phase1_bringup.phase3_smoke.write_phase32_final_artifacts",
+                    return_value={"qualification_sha256": "b" * 64, "gate_sha256": "c" * 64},
+                ),
+                patch("builtins.input", side_effect=answer),
+            ):
+                self.assertEqual(phase3_smoke.run_phase32_qualification(args), 0)
+
+        self.assertEqual(prompt_states, [(True, False)] * len(PHASE32_OPERATOR_PROMPTS))
+        self.assertGreaterEqual(controller.health_checks, len(PHASE32_OPERATOR_PROMPTS))
+        self.assertEqual(controller.batches, [step_id for step_id, _prompt in PHASE32_OPERATOR_PROMPTS])
+        self.assertFalse(controller.active)
+        self.assertTrue(controller.usb.closed)
 
     def test_phase32_checkpoint_round_trip_preserves_only_completed_batches(self) -> None:
         deployment = {

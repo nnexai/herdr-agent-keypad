@@ -84,9 +84,10 @@ PHASE32_OPERATOR_PROMPTS = (
     ),
     (
         "presentation",
-        "PRESENTATION BATCH: inspect all four themes and LED grammars while showing pending, active "
-        "owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, "
-        "mapped LED zones, and failure precedence. Reply Y/N.",
+        "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live "
+        "Herdr). Inspect all four themes and LED grammars while showing pending, active owner, "
+        "cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped "
+        "LED zones, and failure precedence. Reply Y/N.",
     ),
     (
         "lifecycle",
@@ -2035,6 +2036,186 @@ def _phase32_start_observer(
     observer = threading.Thread(target=capture, name="phase32-input-observer", daemon=True)
     observer.start()
     return stop, observer, captured
+class _Phase32FixtureController:
+    """Own the exact qualification USB session and its controlled focus script."""
+
+    _POLL_INTERVAL_SECONDS = 0.01
+    _RECONNECT_INTERVAL_SECONDS = 0.25
+
+    def __init__(self, args: argparse.Namespace) -> None:
+        from herdr_keypad.usb import UsbDeviceSession
+
+        self.usb = UsbDeviceSession(args.binding, timeout=args.timeout)
+        self.run_id = args.run_id
+        self.hello: dict[str, Any] = {}
+        self.device_metrics: dict[str, Any] = {}
+        self.serial_number: str | None = None
+        self._snapshot = self._fixture_snapshot()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._failure: BaseException | None = None
+        self._accepted_slots: set[int] = set()
+        self._rejected_focus_results = 0
+
+    def _fixture_snapshot(self) -> Any:
+        from herdr_keypad.bridge import AgentEntry, Identity, Snapshot
+
+        host_epoch = f"qualify-{hashlib.sha256(self.run_id.encode('utf-8')).hexdigest()[:24]}"
+        entries = tuple(
+            AgentEntry(
+                slot,
+                f"qualify:p{slot + 1}",
+                f"QUALIFY KEY {slot + 1}",
+                "CONTROLLED",
+                "NOW",
+                "0S",
+                "working",
+                Identity(
+                    f"qualify:p{slot + 1}",
+                    f"qualify-term-{slot + 1}",
+                    f"qualify-session-{slot + 1}",
+                    1,
+                ),
+            )
+            for slot in range(3)
+        )
+        return Snapshot(host_epoch, 1, "current", entries)
+
+    def _connect_and_publish(self, *, reset_metrics: bool) -> None:
+        hello = self.usb.connect()
+        if reset_metrics:
+            self.device_metrics = self.usb.request_metrics(reset=True)
+        ack = self.usb.publish_snapshot(self._snapshot.as_payload())
+        if (
+            ack.get("accepted") is not True
+            or ack.get("host_epoch") != self._snapshot.host_epoch
+            or ack.get("snapshot_revision") != self._snapshot.snapshot_revision
+        ):
+            raise RuntimeError("qualification fixture snapshot was not exactly acknowledged")
+        self.hello = dict(hello)
+        candidate = getattr(self.usb, "candidate", None)
+        if self.serial_number is None:
+            self.serial_number = getattr(candidate, "serial_number", None)
+
+    def _focus_result(self, frame: Mapping[str, Any]) -> dict[str, Any]:
+        from herdr_keypad.bridge import FocusResult, Identity
+
+        if frame.get("type") != "focus_intent":
+            raise RuntimeError("qualification controller received an unexpected device frame")
+        if frame.get("session_id") != getattr(self.usb, "session_id", None):
+            raise RuntimeError("qualification focus intent crossed USB sessions")
+        payload = frame.get("payload")
+        if not isinstance(payload, Mapping):
+            raise RuntimeError("qualification focus intent payload is invalid")
+        identity = Identity(
+            payload["pane_id"],
+            payload["terminal_id"],
+            payload["agent_session"],
+            payload["source_revision"],
+        )
+        slot = payload["slot"]
+        expected = self._snapshot.agents[slot] if isinstance(slot, int) and 0 <= slot < 3 else None
+        exact = (
+            expected is not None
+            and payload["host_epoch"] == self._snapshot.host_epoch
+            and payload["snapshot_revision"] == self._snapshot.snapshot_revision
+            and payload["entry_id"] == expected.entry_id
+            and identity == expected.identity
+        )
+        result = FocusResult(
+            payload["action_id"],
+            "accepted" if exact else "stale_target",
+            payload["host_epoch"],
+            payload["snapshot_revision"],
+            slot,
+            payload["entry_id"],
+            identity,
+            exact,
+        )
+        return result.as_payload()
+
+    def _run(self) -> None:
+        from herdr_keypad.usb import UsbSessionError
+
+        try:
+            while not self._stop.is_set():
+                if not self.usb.connected:
+                    try:
+                        self._connect_and_publish(reset_metrics=False)
+                    except UsbSessionError:
+                        self._stop.wait(self._RECONNECT_INTERVAL_SECONDS)
+                        continue
+                try:
+                    frame = self.usb.poll()
+                    if frame is not None:
+                        result = self._focus_result(frame)
+                        self.usb.send_focus_result(result)
+                        if result["outcome"] == "accepted":
+                            self._accepted_slots.add(result["slot"])
+                        else:
+                            self._rejected_focus_results += 1
+                except UsbSessionError:
+                    self.usb.close()
+                    continue
+                self._stop.wait(self._POLL_INTERVAL_SECONDS)
+        except BaseException as exc:
+            self._failure = exc
+
+    def start(self) -> "_Phase32FixtureController":
+        if self._thread is not None:
+            raise RuntimeError("qualification fixture controller already started")
+        try:
+            self._connect_and_publish(reset_metrics=True)
+        except BaseException:
+            self.usb.close()
+            raise
+        self._thread = threading.Thread(
+            target=self._run,
+            name="phase32-fixture-controller",
+            daemon=True,
+        )
+        self._thread.start()
+        return self
+
+    def assert_running(self) -> None:
+        if self._failure is not None:
+            raise RuntimeError("qualification fixture controller failed") from self._failure
+        if self._thread is None or not self._thread.is_alive():
+            raise RuntimeError("qualification fixture controller is not running")
+
+    def assert_batch(self, step_id: str) -> None:
+        self.assert_running()
+        if step_id == "presentation" and self._accepted_slots != {0, 1, 2}:
+            raise RuntimeError(
+                "presentation requires exact accepted focus round trips for all three fixture slots"
+            )
+
+    def evidence(self) -> dict[str, Any]:
+        return {
+            "mode": "controlled-fixture",
+            "live_herdr_connected": False,
+            "host_epoch": self._snapshot.host_epoch,
+            "snapshot_revision": self._snapshot.snapshot_revision,
+            "accepted_focus_slots": sorted(self._accepted_slots),
+            "rejected_focus_results": self._rejected_focus_results,
+        }
+
+    def close(self) -> None:
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=5.0)
+        self.usb.close()
+
+    def __enter__(self) -> "_Phase32FixtureController":
+        return self.start()
+
+    def __exit__(self, *_args: object) -> None:
+        self.close()
+
+
+def phase32_live_bridge(args: argparse.Namespace) -> _Phase32FixtureController:
+    """Create the isolated qualification controller; never connect to Herdr."""
+    return _Phase32FixtureController(args)
 
 
 def run_phase32_qualification(args: argparse.Namespace) -> int:
@@ -2072,19 +2253,10 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
         checkpoint["automation_runs"] = automation_runs
         _phase32_save_checkpoint(checkpoint_path, checkpoint)
 
-    from herdr_keypad.usb import UsbDeviceSession
     from .composite_qualification import _find_guided_keyboard_event
 
-    usb = UsbDeviceSession(args.binding, timeout=args.timeout)
-    try:
-        hello = usb.connect()
-        device_metrics = usb.request_metrics(reset=True)
-        serial_number = getattr(usb.candidate, "serial_number", None)
-    finally:
-        usb.close()
     descriptor = deployment["descriptor_tuple"]
     vid_pid = f"{int(descriptor['vid']):04x}:{int(descriptor['pid']):04x}"
-    event_path = _find_guided_keyboard_event(vid_pid, serial_number, timeout=args.timeout)
     observations = dict(checkpoint["observations"])
     events = list(checkpoint["input_events"])
     completed_steps = list(checkpoint["completed_steps"])
@@ -2092,10 +2264,22 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
     active_stop: threading.Event | None = None
     active_observer: threading.Thread | None = None
     active_captured: list[dict[str, Any]] | None = None
+    controller_evidence: dict[str, Any] = {}
+    controller = phase32_live_bridge(args)
+    controller.start()
     try:
+        hello = controller.hello
+        device_metrics = controller.device_metrics
+        serial_number = controller.serial_number
+        event_path = _find_guided_keyboard_event(
+            vid_pid,
+            serial_number,
+            timeout=args.timeout,
+        )
         for index, (step_id, prompt) in enumerate(PHASE32_OPERATOR_PROMPTS, 1):
             if step_id in completed_steps:
                 continue
+            controller.assert_running()
             event_path = _find_guided_keyboard_event(
                 vid_pid,
                 serial_number,
@@ -2136,6 +2320,7 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
             )
             active_stop = active_observer = active_captured = None
             checkpoint["input_events"] = events
+            controller.assert_running()
             if answer not in {"Y", "N"}:
                 _phase32_save_checkpoint(checkpoint_path, checkpoint)
                 raise RuntimeError("Phase 03.2 physical response must be exactly Y or N")
@@ -2145,6 +2330,7 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
                 checkpoint["failure_answer"] = answer
                 _phase32_save_checkpoint(checkpoint_path, checkpoint)
                 raise RuntimeError(f"physical qualification failed at {step_id}; preserving no PASS")
+            controller.assert_batch(step_id)
             observation = {
                 "answer": answer,
                 "prompt": prompt,
@@ -2173,6 +2359,8 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
             )
             checkpoint["input_events"] = events
             _phase32_save_checkpoint(checkpoint_path, checkpoint)
+        controller.close()
+        controller_evidence = controller.evidence()
 
     if completed_steps != [step_id for step_id, _prompt in PHASE32_OPERATOR_PROMPTS]:
         raise RuntimeError("Phase 03.2 physical qualification did not complete every batch")
@@ -2205,6 +2393,7 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
         "keyboard_event_path": str(event_path),
         "descriptor_vid_pid": vid_pid,
         "raw_input_event_count": len(events),
+        "qualification_controller": controller_evidence,
     }
     written = write_phase32_final_artifacts(
         args.output_root,
