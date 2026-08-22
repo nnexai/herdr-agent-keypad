@@ -72,6 +72,68 @@ inline const StateStyle* feedbackStyle(TileFeedback feedback) {
   }
 }
 
+inline bool holdMicFeedbackPermitted(TileFeedback feedback) {
+  switch (feedback) {
+    case TileFeedback::Disabled:
+    case TileFeedback::Rejected:
+    case TileFeedback::Stale:
+    case TileFeedback::Vanished:
+    case TileFeedback::Offline:
+    case TileFeedback::Uncertain:
+    case TileFeedback::Failed:
+      return false;
+    default:
+      return true;
+  }
+}
+
+inline bool holdMicStatePermitted(TileState state) {
+  switch (state) {
+    case TileState::Empty:
+    case TileState::Stale:
+    case TileState::Offline:
+    case TileState::Unavailable:
+    case TileState::Sync:
+    case TileState::Rejected:
+    case TileState::Vanished:
+    case TileState::Uncertain:
+    case TileState::Failed:
+      return false;
+    default:
+      return true;
+  }
+}
+
+inline bool holdMicPermitted(const RenderState& state,
+                             const RenderState::Slot& tile,
+                             const char* fence) {
+  return tile.occupied && fence == nullptr && !state.syncing &&
+         !state.hold_lifecycle_blocked && state.hold_empty_report_complete &&
+         holdMicFeedbackPermitted(tile.feedback) &&
+         holdMicStatePermitted(tile.state);
+}
+
+// Shared, allocation-free mic geometry. The outlined form is used only for a
+// threshold-qualified candidate; the filled form is reserved for the physical
+// Space owner. `phase` adds a small bounded pulse without a renderer timer.
+inline void drawHoldMic(LGFX_Sprite& sprite, int32_t cx, int32_t cy,
+                        uint16_t color, bool solid, uint8_t phase) {
+  if (solid) {
+    sprite.fillRect(cx - 4, cy - 8, 8, 12, color);
+    sprite.fillCircle(cx, cy - 8, 4, color);
+  } else {
+    sprite.drawRect(cx - 4, cy - 8, 8, 12, color);
+    sprite.drawCircle(cx, cy - 8, 4, color);
+    if ((phase & 1U) != 0) {
+      sprite.drawLine(cx - 10, cy - 10, cx - 8, cy - 12, color);
+      sprite.drawLine(cx + 10, cy - 10, cx + 8, cy - 12, color);
+    }
+  }
+  sprite.drawLine(cx - 7, cy + 6, cx + 7, cy + 6, color);
+  sprite.drawLine(cx, cy + 6, cx, cy + 10, color);
+}
+
+
 inline const char* fenceWord(const char* source_status) {
   if (source_status == nullptr) return nullptr;
   if (strcmp(source_status, "stale") == 0) return "STALE";

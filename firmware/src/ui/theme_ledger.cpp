@@ -172,6 +172,14 @@ class LedgerTheme final : public ThemeRenderer {
         drawStateUnderline(sprite, tile.state, 30, 86, 64, state_color, phase);
       }
     }
+    if (holdMicPermitted(state, tile, fence)) {
+      if (tile.hold_active_owner) {
+        drawHoldMic(sprite, 108, 58, kIdle, true, 0);
+      } else if (tile.hold_candidate && tile.hold_threshold_qualified) {
+        drawHoldMic(sprite, 108, 58, kAccent, false, phase);
+      }
+    }
+
 
     for (uint8_t dot = 0; dot < RenderState::kSlotCount; ++dot) {
       const int32_t cx = 100 + dot * 9;

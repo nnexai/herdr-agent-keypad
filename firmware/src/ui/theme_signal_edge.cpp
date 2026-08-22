@@ -196,6 +196,14 @@ class SignalEdgeTheme final : public ThemeRenderer {
       sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);
       sprite.drawString(since, rightAlignedX(since), 112);
     }
+    if (holdMicPermitted(state, tile, fence)) {
+      if (tile.hold_active_owner) {
+        drawHoldMic(sprite, 108, 64, kIdle, true, 0);
+      } else if (tile.hold_candidate && tile.hold_threshold_qualified) {
+        drawHoldMic(sprite, 108, 64, kAccent, false, phase);
+      }
+    }
+
 
     if (tile.press_impulse) {
       // A press is physical acknowledgement only: flash the local rail and
