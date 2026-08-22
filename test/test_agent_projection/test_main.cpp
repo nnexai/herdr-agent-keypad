@@ -1213,6 +1213,158 @@ void assertThemeVocabulary(ThemeRenderer& theme) {
 }
 }  // namespace
 
+namespace {
+RenderState holdMicFixture() {
+  RenderState state;
+  state.source_status = "current";
+  state.slots[0].occupied = true;
+  state.slots[0].title = "Agent";
+  state.slots[0].discriminator = "repo";
+  state.slots[0].since = "NOW";
+  state.slots[0].age = "0M";
+  state.slots[0].state = TileState::Working;
+  state.slots[0].feedback = TileFeedback::Pending;
+  state.slots[0].hold_candidate = true;
+  state.slots[0].hold_threshold_qualified = true;
+  return state;
+}
+
+bool hasSignalEdgeMicBody(bool solid) {
+  return logContainsAny(solid ? "fillRect:104:56:8:12"
+                              : "drawRect:104:56:8:12");
+}
+
+bool hasLedgerMicBody(bool solid) {
+  return logContainsAny(solid ? "fillRect:104:50:8:12"
+                              : "drawRect:104:50:8:12");
+}
+
+void composeHoldTile(ThemeRenderer& theme, const RenderState& state) {
+  LGFX_Sprite sprite;
+  resetLog();
+  theme.composeTile(sprite, 0, state);
+}
+}  // namespace
+
+void test_signal_edge_and_ledger_hold_mic_precedence() {
+  RenderState state = holdMicFixture();
+  composeHoldTile(signalEdgeTheme(), state);
+  TEST_ASSERT_TRUE(hasSignalEdgeMicBody(false));
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(true));
+  TEST_ASSERT_TRUE(logContainsAny("drawLine:101:70:115:70"));
+  TEST_ASSERT_TRUE(logContainsAny("drawLine:108:70:108:74"));
+
+  state.slots[0].feedback_phase = 1;
+  composeHoldTile(signalEdgeTheme(), state);
+  TEST_ASSERT_TRUE(hasSignalEdgeMicBody(false));
+  TEST_ASSERT_TRUE(logContainsAny("drawLine:98:54:100:52"));
+
+  state.slots[0].feedback = TileFeedback::Success;
+  state.slots[0].hold_candidate = false;
+  state.slots[0].hold_threshold_qualified = false;
+  state.slots[0].hold_active_owner = true;
+  composeHoldTile(signalEdgeTheme(), state);
+  TEST_ASSERT_TRUE(hasSignalEdgeMicBody(true));
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(false));
+
+  state.slots[1].occupied = true;
+  state.slots[1].feedback = TileFeedback::Pending;
+  state.slots[1].hold_active_owner = false;
+  composeHoldTile(signalEdgeTheme(), state);
+  TEST_ASSERT_TRUE(hasSignalEdgeMicBody(true));
+  composeHoldTile(signalEdgeTheme(), RenderState{});
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(false));
+
+  state = holdMicFixture();
+  state.slots[0].hold_candidate = false;
+  state.slots[0].hold_threshold_qualified = false;
+  composeHoldTile(signalEdgeTheme(), state);
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(false));
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(true));
+
+  const TileFeedback failures[] = {
+      TileFeedback::Rejected, TileFeedback::Stale, TileFeedback::Vanished,
+      TileFeedback::Offline, TileFeedback::Uncertain, TileFeedback::Failed,
+  };
+  for (const TileFeedback failure : failures) {
+    state = holdMicFixture();
+    state.slots[0].feedback = failure;
+    state.slots[0].hold_active_owner = true;
+    composeHoldTile(signalEdgeTheme(), state);
+    TEST_ASSERT_FALSE(hasSignalEdgeMicBody(false));
+    TEST_ASSERT_FALSE(hasSignalEdgeMicBody(true));
+  }
+
+  const char* fences[] = {"stale", "offline", "unavailable"};
+  for (const char* fence : fences) {
+    state = holdMicFixture();
+    state.source_status = fence;
+    state.slots[0].hold_active_owner = true;
+    composeHoldTile(signalEdgeTheme(), state);
+    TEST_ASSERT_FALSE(hasSignalEdgeMicBody(false));
+    TEST_ASSERT_FALSE(hasSignalEdgeMicBody(true));
+  }
+
+  state = holdMicFixture();
+  state.syncing = true;
+  state.slots[0].hold_active_owner = true;
+  composeHoldTile(signalEdgeTheme(), state);
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(false));
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(true));
+
+  state = holdMicFixture();
+  state.hold_lifecycle_blocked = true;
+  state.slots[0].hold_active_owner = true;
+  composeHoldTile(signalEdgeTheme(), state);
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(false));
+  TEST_ASSERT_FALSE(hasSignalEdgeMicBody(true));
+}
+
+void test_ledger_hold_mic_geometry_and_precedence() {
+  RenderState state = holdMicFixture();
+  composeHoldTile(ledgerTheme(), state);
+  TEST_ASSERT_TRUE(hasLedgerMicBody(false));
+  TEST_ASSERT_FALSE(hasLedgerMicBody(true));
+  TEST_ASSERT_TRUE(logContainsAny("drawLine:101:64:115:64"));
+  TEST_ASSERT_TRUE(logContainsAny("drawLine:108:64:108:68"));
+
+  state.slots[0].feedback = TileFeedback::Success;
+  state.slots[0].hold_candidate = false;
+  state.slots[0].hold_threshold_qualified = false;
+  state.slots[0].hold_active_owner = true;
+  composeHoldTile(ledgerTheme(), state);
+  TEST_ASSERT_TRUE(hasLedgerMicBody(true));
+  TEST_ASSERT_FALSE(hasLedgerMicBody(false));
+
+  state = holdMicFixture();
+  state.slots[0].hold_candidate = false;
+  state.slots[0].hold_threshold_qualified = false;
+  composeHoldTile(ledgerTheme(), state);
+  TEST_ASSERT_FALSE(hasLedgerMicBody(false));
+  TEST_ASSERT_FALSE(hasLedgerMicBody(true));
+
+  const TileFeedback failures[] = {
+      TileFeedback::Rejected, TileFeedback::Stale, TileFeedback::Vanished,
+      TileFeedback::Offline, TileFeedback::Uncertain, TileFeedback::Failed,
+  };
+  for (const TileFeedback failure : failures) {
+    state = holdMicFixture();
+    state.slots[0].feedback = failure;
+    state.slots[0].hold_active_owner = true;
+    composeHoldTile(ledgerTheme(), state);
+    TEST_ASSERT_FALSE(hasLedgerMicBody(false));
+    TEST_ASSERT_FALSE(hasLedgerMicBody(true));
+  }
+
+  state = holdMicFixture();
+  state.hold_empty_report_complete = false;
+  state.slots[0].hold_active_owner = true;
+  composeHoldTile(ledgerTheme(), state);
+  TEST_ASSERT_FALSE(hasLedgerMicBody(false));
+  TEST_ASSERT_FALSE(hasLedgerMicBody(true));
+}
+
+// --- Plan 02: three more themes -------------------------------------------
 void test_ledger_full_vocabulary() { assertThemeVocabulary(ledgerTheme()); }
 void test_beacon_full_vocabulary() { assertThemeVocabulary(beaconTheme()); }
 void test_instrument_full_vocabulary() { assertThemeVocabulary(instrumentTheme()); }
@@ -3715,6 +3867,8 @@ int runAllTests() {
   RUN_TEST(test_pending_press_is_superseded_by_new_press);
   RUN_TEST(test_render_state_exposes_passive_hold_candidate_and_owner);
   RUN_TEST(test_passive_owner_survives_focus_and_snapshot_generation_changes);
+  RUN_TEST(test_signal_edge_and_ledger_hold_mic_precedence);
+  RUN_TEST(test_ledger_hold_mic_geometry_and_precedence);
   RUN_TEST(test_hold_cancellation_returns_to_ordinary_focus_feedback);
   RUN_TEST(test_hold_prethreshold_release_never_exposes_cancellation_state);
   RUN_TEST(test_hold_success_expiry_keeps_qualified_candidate_visible);
