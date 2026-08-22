@@ -1,6 +1,8 @@
 ---
 name: "gsd-user-profiler"
 description: "Analyzes extracted session messages across 8 behavioral dimensions to produce a scored developer profile with confidence levels and evidence. Spawned by profile orchestration workflows."
+model: "openai-codex/gpt-5.6-sol"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

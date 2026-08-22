@@ -1,6 +1,8 @@
 ---
 name: "gsd-assumptions-analyzer"
 description: "Deeply analyzes codebase for a phase and returns structured assumptions with evidence. Spawned by discuss-phase assumptions mode."
+model: "openai-codex/gpt-5.6-sol"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

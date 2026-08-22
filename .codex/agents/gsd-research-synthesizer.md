@@ -1,6 +1,8 @@
 ---
 name: "gsd-research-synthesizer"
 description: "Synthesizes research outputs from parallel researcher agents into SUMMARY.md. Spawned by $gsd-new-project after 4 researcher agents complete."
+model: "openai-codex/gpt-5.6-luna"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

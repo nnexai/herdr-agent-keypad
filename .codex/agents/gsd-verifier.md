@@ -1,6 +1,8 @@
 ---
 name: "gsd-verifier"
 description: "Verifies phase goal achievement through goal-backward analysis. Checks codebase delivers what phase promised, not just that tasks completed. Creates VERIFICATION.md report."
+model: "openai-codex/gpt-5.6-terra"
+thinking-level: "medium"
 ---
 
 <codex_agent_role>

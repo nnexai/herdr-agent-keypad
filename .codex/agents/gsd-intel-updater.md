@@ -1,6 +1,8 @@
 ---
 name: "gsd-intel-updater"
 description: "Analyzes codebase and writes structured intel files to .planning/intel/."
+model: "openai-codex/gpt-5.6-luna"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

@@ -1,6 +1,8 @@
 ---
 name: "gsd-security-auditor"
 description: "Verifies threat mitigations from PLAN.md threat model exist in implemented code. Returns structured security verdict (SECURED / OPEN_THREATS / ESCALATE). Spawned by $gsd-secure-phase."
+model: "openai-codex/gpt-5.6-terra"
+thinking-level: "medium"
 ---
 
 <codex_agent_role>

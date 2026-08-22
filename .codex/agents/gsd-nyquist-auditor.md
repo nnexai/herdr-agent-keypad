@@ -1,6 +1,8 @@
 ---
 name: "gsd-nyquist-auditor"
 description: "Fills Nyquist validation gaps by generating tests and verifying coverage for phase requirements"
+model: "openai-codex/gpt-5.6-terra"
+thinking-level: "medium"
 ---
 
 <codex_agent_role>

@@ -1,6 +1,8 @@
 ---
 name: "gsd-debugger"
 description: "Investigates bugs using scientific method, manages debug sessions, handles checkpoints. Spawned by $gsd-debug orchestrator."
+model: "openai-codex/gpt-5.6-sol"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

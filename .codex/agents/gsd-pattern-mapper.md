@@ -1,6 +1,8 @@
 ---
 name: "gsd-pattern-mapper"
 description: "Analyzes codebase for existing patterns and produces PATTERNS.md mapping new files to closest analogs. Read-only codebase analysis spawned by $gsd-plan-phase orchestrator before planning."
+model: "openai-codex/gpt-5.6-luna"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

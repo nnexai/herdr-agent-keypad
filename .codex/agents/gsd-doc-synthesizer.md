@@ -1,6 +1,8 @@
 ---
 name: "gsd-doc-synthesizer"
 description: "Synthesizes classified planning docs into a single consolidated context. Applies precedence rules, detects cross-ref cycles, enforces LOCKED-vs-LOCKED hard-blocks, and writes INGEST-CONFLICTS.md with three buckets (auto-resolved, competing-variants, unresolved-blockers). Spawned by $gsd-ingest-docs."
+model: "openai-codex/gpt-5.6-luna"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

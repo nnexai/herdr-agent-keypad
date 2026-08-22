@@ -1,6 +1,8 @@
 ---
 name: "gsd-project-researcher"
 description: "Researches domain ecosystem before roadmap creation. Produces files in .planning/research/ consumed during roadmap creation. Spawned by $gsd-new-project or $gsd-new-milestone orchestrators."
+model: "openai-codex/gpt-5.6-luna"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

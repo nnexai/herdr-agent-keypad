@@ -1,6 +1,8 @@
 ---
 name: "gsd-roadmapper"
 description: "Creates project roadmaps with phase breakdown, requirement mapping, success criteria derivation, and coverage validation. Spawned by $gsd-new-project orchestrator."
+model: "openai-codex/gpt-5.6-sol"
+thinking-level: "high"
 ---
 
 <codex_agent_role>

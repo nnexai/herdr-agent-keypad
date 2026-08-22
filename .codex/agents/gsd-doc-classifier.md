@@ -1,6 +1,8 @@
 ---
 name: "gsd-doc-classifier"
 description: "Classifies a single planning document as ADR, PRD, SPEC, DOC, or UNKNOWN. Extracts title, scope summary, and cross-references. Spawned in parallel by $gsd-ingest-docs. Writes a JSON classification file and returns a one-line confirmation."
+model: "openai-codex/gpt-5.6-luna"
+thinking-level: "high"
 ---
 
 <codex_agent_role>
