@@ -1,0 +1,1 @@
+{"durations_ms":[143.827012],"failures":[],"input_events":[],"kind":"composite-threshold-calibration","observed_count":1,"oracle_state":"UP","required_count":1,"row_id":"threshold-calibration","run_id":"20260822T032038Z","schema_version":1,"slot":1,"status":"pass","step_id":"key2-short-final"}

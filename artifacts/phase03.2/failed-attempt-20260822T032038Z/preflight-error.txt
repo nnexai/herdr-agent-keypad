@@ -1,0 +1,7 @@
+run_id=20260822T032038Z
+stage=composite-port-enumeration
+failure_class=harness_setup
+error=composite CDC did not enumerate as one unambiguous exact-device candidate
+cause=Linux reused both /dev/ttyACM0 and PID 303a:1001 while TinyUSB reformatted serial 8C:BF:EA:0D:CB:FC as 8CBFEA0DCBFC; the preflight selector compared serial text literally
+correction=normalize the exact USB serial to case-folded alphanumeric bytes and accept the single matching candidate even when path and PID are unchanged
+terminal_decision_eligible=false
