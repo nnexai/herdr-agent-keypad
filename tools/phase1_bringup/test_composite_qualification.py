@@ -17,6 +17,7 @@ from phase1_bringup.composite_qualification import (
     RESULT_KIND,
     ROW_COUNTS,
     SCHEMA_VERSION,
+    deterministic_calibration_matrix,
     STRESS_COUNTS,
     TRAFFIC_KIND,
     freeze_composite_manifest,
@@ -202,6 +203,42 @@ class CompositeManifestAndScheduleTests(unittest.TestCase):
                 {"cdc": 1, "standard_keyboard_hid": 1, "other_hid_usages": 0, "fixed_key": "KEY_SPACE"},
             )
             self.assertEqual(fixture.manifest["edge_assumptions"][0]["status"], "ASSUMED_UNRESOLVED")
+            self.assertEqual(fixture.manifest["row_counts"]["threshold-calibration"], 204)
+            self.assertEqual(
+                fixture.manifest["calibration"],
+                {
+                    "candidate_thresholds_ms": [500, 525, 550, 575, 600],
+                    "selected_shared_threshold_ms": 550,
+                    "keys": [0, 1, 2],
+                    "physical_initial_short_per_key": 3,
+                    "physical_initial_hold_per_key": 3,
+                    "physical_final_short_per_key": 1,
+                    "physical_final_hold_per_key": 1,
+                    "deterministic_short_per_key": 30,
+                    "deterministic_hold_per_key": 30,
+                    "deterministic_candidate_thresholds_ms": [500, 525, 550, 575, 600],
+                    "limitation": "No claim of 30 human short samples with zero crossings or 30 human holds all activating.",
+                },
+            )
+
+    def test_revised_calibration_moves_repetition_to_deterministic_edges(self) -> None:
+        cases = deterministic_calibration_matrix()
+        self.assertEqual(len(cases), 180)
+        self.assertEqual(
+            Counter((case["slot"], case["gesture_class"]) for case in cases),
+            Counter({
+                (slot, gesture_class): 30
+                for slot in (0, 1, 2)
+                for gesture_class in ("short", "hold")
+            }),
+        )
+        for case in cases:
+            crossings = case["candidate_crossings"]
+            if case["gesture_class"] == "short":
+                self.assertFalse(any(crossings.values()))
+            else:
+                self.assertTrue(all(crossings.values()))
+
 
     def test_stress_schedule_is_seeded_finite_and_count_equal(self) -> None:
         first = mixed_stress_schedule(1234)

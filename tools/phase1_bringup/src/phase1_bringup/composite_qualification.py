@@ -55,7 +55,7 @@ ROW_COUNTS = {
     "build-controller": 1,
     "usb-identity": 10,
     "exact-pairing": 1,
-    "threshold-calibration": 360,
+    "threshold-calibration": 204,
     "immediate-focus-short-separation": 90,
     "focus-before-hid-ordering": 180,
     "release-before-ack": 120,
@@ -167,6 +167,31 @@ def mixed_stress_schedule(seed: int) -> tuple[str, ...]:
     return tuple(schedule)
 
 
+def deterministic_calibration_matrix() -> tuple[dict[str, Any], ...]:
+    """Generate the amended 30-per-class/per-key synthetic edge-timing matrix."""
+    cases: list[dict[str, Any]] = []
+    for slot in AGENT_KEYS:
+        for sample in range(30):
+            durations = {
+                "short": 125 + ((slot * 31 + sample * 7) % 250),
+                "hold": 650 + ((slot * 29 + sample * 11) % 250),
+            }
+            for gesture_class, duration_ms in durations.items():
+                cases.append({
+                    "slot": slot,
+                    "gesture_class": gesture_class,
+                    "sample": sample,
+                    "duration_ms": duration_ms,
+                    "candidate_crossings": {
+                        str(candidate): duration_ms >= candidate
+                        for candidate in CALIBRATION_CANDIDATES_MS
+                    },
+                })
+    if len(cases) != 180:
+        raise AssertionError("internal deterministic calibration matrix is incomplete")
+    return tuple(cases)
+
+
 def freeze_composite_manifest(
     output: Path,
     firmware_binary: Path,
@@ -224,10 +249,14 @@ def freeze_composite_manifest(
             "candidate_thresholds_ms": list(CALIBRATION_CANDIDATES_MS),
             "selected_shared_threshold_ms": threshold_ms,
             "keys": list(AGENT_KEYS),
-            "initial_short_per_key": 30,
-            "initial_hold_per_key": 30,
-            "final_short_per_key": 30,
-            "final_hold_per_key": 30,
+            "physical_initial_short_per_key": 3,
+            "physical_initial_hold_per_key": 3,
+            "physical_final_short_per_key": 1,
+            "physical_final_hold_per_key": 1,
+            "deterministic_short_per_key": 30,
+            "deterministic_hold_per_key": 30,
+            "deterministic_candidate_thresholds_ms": list(CALIBRATION_CANDIDATES_MS),
+            "limitation": "No claim of 30 human short samples with zero crossings or 30 human holds all activating.",
         },
         "row_counts": row_counts,
         "rows": [
@@ -312,10 +341,22 @@ def validate_composite_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     calibration = manifest.get("calibration")
     if not isinstance(calibration, Mapping) or calibration.get("candidate_thresholds_ms") != list(CALIBRATION_CANDIDATES_MS) or calibration.get("selected_shared_threshold_ms") not in CALIBRATION_CANDIDATES_MS:
         raise CompositeQualificationError("manifest calibration thresholds are incomplete")
-    if calibration.get("keys") != list(AGENT_KEYS) or any(calibration.get(name) != 30 for name in (
-        "initial_short_per_key", "initial_hold_per_key", "final_short_per_key", "final_hold_per_key"
-    )):
-        raise CompositeQualificationError("manifest calibration gesture counts are incomplete")
+    physical_counts = {
+        "physical_initial_short_per_key": 3,
+        "physical_initial_hold_per_key": 3,
+        "physical_final_short_per_key": 1,
+        "physical_final_hold_per_key": 1,
+        "deterministic_short_per_key": 30,
+        "deterministic_hold_per_key": 30,
+    }
+    if calibration.get("keys") != list(AGENT_KEYS) or any(
+        calibration.get(name) != count for name, count in physical_counts.items()
+    ):
+        raise CompositeQualificationError("manifest revised physical/deterministic calibration counts are incomplete")
+    if calibration.get("deterministic_candidate_thresholds_ms") != list(CALIBRATION_CANDIDATES_MS):
+        raise CompositeQualificationError("manifest deterministic threshold candidates are incomplete")
+    if calibration.get("limitation") != "No claim of 30 human short samples with zero crossings or 30 human holds all activating.":
+        raise CompositeQualificationError("manifest human-sample limitation is missing")
     reset_paths = manifest.get("controlled_reset_paths")
     expected_counts = dict(ROW_COUNTS)
     if not isinstance(reset_paths, list) or not reset_paths:
