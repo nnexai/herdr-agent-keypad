@@ -1,56 +1,37 @@
 {
   "version": "1.0",
-  "timestamp": "2026-08-22T05:07:38.967Z",
+  "timestamp": "2026-08-22T13:44:23.820Z",
   "phase": "03.2",
-  "phase_name": "Focus-Then-Hold USB Keyboard",
+  "phase_name": "focus-then-hold-usb-keyboard",
   "phase_dir": ".planning/phases/03.2-focus-then-hold-usb-keyboard",
-  "plan": 1,
-  "task": 1,
+  "plan": 9,
+  "task": 2,
   "total_tasks": 2,
   "status": "paused",
   "completed_tasks": [
-    {
-      "id": 0,
-      "name": "Plan 00: Composite transport/HID feasibility gate",
-      "status": "done",
-      "commit": "efe8599"
-    }
+    {"id": 1, "name": "Bind every automated contract to final production deployment", "status": "done", "commit": "b20a9c8"},
+    {"id": 2, "name": "Run final exact-device qualification and publish Phase 4 gate", "status": "in_progress", "progress": "Automated preflight and controlled qualification controller complete; fresh corrected physical qualification remains."}
   ],
   "remaining_tasks": [
-    {"id": 1, "name": "Plan 01: Production focus-authorized hold path", "status": "not_started"},
-    {"id": 2, "name": "Plans 02 through 09", "status": "not_started"},
-    {"id": 3, "name": "Phase regression, verification, and completion gates", "status": "not_started"}
+    {"id": 2, "name": "Run fresh controlled physical qualification, validate artifacts, and close Plan 09", "status": "in_progress"},
+    {"id": 3, "name": "Run phase code review, regression gate, verifier, and completion transition", "status": "not_started"}
   ],
   "blockers": [
-    {
-      "description": "This session routes native gsd-executor subagents as sol:high although .planning/config.json and .codex/agents/gsd-executor.toml specify luna:xhigh.",
-      "type": "technical",
-      "workaround": "Restart the harness/session to reload the named-agent registry. Before any Plan 01 edit, verify the displayed executor route is luna:xhigh; stop immediately if it is not."
-    }
+    {"description": "Fresh corrected exact-device physical qualification has not run.", "type": "human_action", "workaround": "Run the single guided command with new run ID 20260822T134207Z-controller-fix."}
   ],
   "async_jobs": [],
-  "human_actions_pending": [],
+  "human_actions_pending": [
+    {"action": "Run the corrected single-command Phase 03.2 qualification and report its final result.", "context": "The original run truthfully failed because the qualifier had no controller during prompts; that failed checkpoint is immutable and must not be reused.", "blocking": true}
+  ],
   "decisions": [
-    {
-      "decision": "Split Plan 00 transport/HID feasibility from Plan 09 production-controller qualification.",
-      "rationale": "The isolated tracer cannot truthfully exercise focus authorization, overlap, stale-session, or production controller stress before Plans 01-08 implement those behaviors.",
-      "phase": "03.2"
-    },
-    {
-      "decision": "Use 24 bounded physical calibration gestures and deterministic automated timing coverage instead of 360 manual gestures.",
-      "rationale": "Preserves truthful physical samples while eliminating an unacceptable repetitive acceptance loop; evidence explicitly does not claim 30 human samples per class/key.",
-      "phase": "03.2"
-    },
-    {
-      "decision": "Manual timing prompts use only SHORT (<0.5 s natural tap) and LONG (>1.5 s clear hold).",
-      "rationale": "Precise manual targets such as 0.2, 0.5, 1.0, and 1.5 seconds are not reliably distinguishable by the user.",
-      "phase": "03.2"
-    }
+    {"decision": "Keep physical threshold sampling at 24 total gestures and automate repeated timing/stress coverage.", "rationale": "The user rejected long manual loops; machine coverage retains full counts.", "phase": "03.2"},
+    {"decision": "The qualifier owns a deterministic controlled snapshot/focus controller and never connects to live Herdr.", "rationale": "Qualification must control every snapshot and focus outcome without mutating the user's real workspace.", "phase": "03.2"},
+    {"decision": "Preserve the original failed presentation checkpoint and use a fresh run ID.", "rationale": "No failed physical observation may be rewritten or upgraded to PASS.", "phase": "03.2"}
   ],
   "uncommitted_files": [
-    ".gsd/dispatch-isolation-sentinel.json (runtime state)",
-    "Pre-existing user-owned Phase 03.1 evidence/debug changes and tracked .pio build outputs remain untouched"
+    "Pre-existing user-owned and generated .pio/build changes remain; do not stage or discard them.",
+    ".gsd/dispatch-isolation-sentinel.json is generated/dirty; preserve it."
   ],
-  "next_action": "Restart the harness/session, run $gsd-resume-work, verify the native gsd-executor displays luna:xhigh before edits, then dispatch Plan 03.2-01 through the named subagent path.",
-  "context_notes": "Plan 00 is complete and committed. Terminal scoped PASS decision hash f3dd250e8119fed74e796964d51bf0a41402f40014ec407e3415c1e7bfa610d1; immutable run 20260822T032038Z-terminal; final Space oracle UP. Production selected-usb was restored, exact application hello passed, the production bridge owns the device, and the temporary /run udev rule was removed. Plan 01 has no edits or commits. Do not use codex exec for orchestration, and do not place that orchestration constraint in executor prompts. A stale failed worktree remains at .claude/worktrees/agent-p03.2-00-1787349662; cleanup-wave is blocked by base_mismatch. Its Task 1 files were recovered and superseded by committed main-branch work; never merge it blindly."
+  "next_action": "Run $gsd-resume-work, then execute the fresh qualification command recorded in the phase handoff and resolved debug session.",
+  "context_notes": "Plans 00-08 are complete. Plan 09 Task 1 is complete. Debug commits 74d6b02 and 75bccc5 fixed the missing qualification controller; focused phase32 tests pass 22/22 and runner tests 6/6. No final Phase 03.2 physical artifacts or Phase 4 gate exist yet."
 }
