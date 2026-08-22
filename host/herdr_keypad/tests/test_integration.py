@@ -26,7 +26,12 @@ from herdr_keypad.herdr import HerdrClient, HerdrError
 from herdr_keypad.projection import InboxProjection
 from herdr_keypad.usb import UsbDeviceSession, UsbSessionError
 from phase1_bringup import protocol
-from phase1_bringup.discovery import Candidate
+from phase1_bringup.discovery import (
+    EXPECTED_CDC_INTERFACE,
+    EXPECTED_SERIAL,
+    Candidate,
+    enumerate_candidates,
+)
 from phase1_bringup.pairing import PairingBinding, PairingStore
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -671,32 +676,117 @@ class PluginLifecycleTests(unittest.TestCase):
         with patch("herdr_keypad.bridge.time.sleep", side_effect=advance_until_published):
             bridge.run()
 
+
         self.assertEqual(usb.connect_attempts, 2)
         self.assertEqual(len(usb.published), 1)
         self.assertTrue(bridge.last_snapshot_ack["accepted"])
 
 
 class ExactUsbSessionTests(unittest.TestCase):
+    def test_composite_discovery_requires_measured_cdc_tuple(self):
+        class Port:
+            def __init__(self, device: str, serial_number: str, interface: str):
+                self.device = device
+                self.vid = 0x303A
+                self.pid = 0x1001
+                self.serial_number = serial_number
+                self.location = f"{device}:1.1"
+                self.manufacturer = "Espressif"
+                self.product = "USB composite CDC + keyboard"
+                self.interface = interface
+
+        candidates = enumerate_candidates(
+            [
+                Port("/dev/ttyACM9", "lookalike", "if01"),
+                Port("/dev/ttyACM0", EXPECTED_SERIAL, "if01"),
+                Port("/dev/ttyACM1", EXPECTED_SERIAL, "if00"),
+            ]
+        )
+        self.assertEqual([candidate.device for candidate in candidates], ["/dev/ttyACM0"])
+        self.assertEqual(candidates[0].interface, EXPECTED_CDC_INTERFACE)
+
+    def test_wrong_composite_descriptor_cannot_reach_application_hello(self):
+        class WrongSerialPort(self.Port):
+            serial_number = "lookalike"
+
+        raw = self.Raw()
+        with tempfile.TemporaryDirectory() as directory:
+            binding_path = Path(directory) / "binding.json"
+            PairingStore(binding_path).save(PairingBinding("paired-device", 1, "phase1-bringup"))
+            session = UsbDeviceSession(
+                binding_path,
+                ports=[WrongSerialPort()],
+                opener=lambda _candidate: raw,
+                timeout=0.1,
+            )
+            with self.assertRaises(UsbSessionError) as context:
+                session.connect()
+            self.assertEqual(context.exception.code, "zero")
+            self.assertFalse(raw.outbound)
+
+    def test_composite_udev_rule_matches_only_measured_cdc_interface(self):
+        rule = (ROOT / "host/udev/99-herdr-keypad.rules").read_text(encoding="ascii")
+        self.assertIn('SUBSYSTEM=="tty"', rule)
+        self.assertIn('ATTRS{idVendor}=="303a"', rule)
+        self.assertIn('ATTRS{idProduct}=="1001"', rule)
+        self.assertIn(f'ENV{{ID_SERIAL_SHORT}}=="{EXPECTED_SERIAL}"', rule)
+        self.assertIn(f'ENV{{ID_USB_INTERFACE_NUM}}=="{EXPECTED_CDC_INTERFACE}"', rule)
+        self.assertNotIn('ENV{ID_USB_INTERFACE_NUM}=="00"', rule)
+        self.assertNotIn('KERNEL=="ttyACM*"', rule)
+        self.assertNotIn('MODE="0666"', rule)
+
+    def test_v2_response_session_mismatch_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            binding_path = Path(directory) / "binding.json"
+            PairingStore(binding_path).save(PairingBinding("paired-device", 1, "phase1-bringup"))
+            raw = self.Raw()
+            session = UsbDeviceSession(binding_path, ports=[self.Port()], opener=lambda _candidate: raw, timeout=0.1)
+            session.connect()
+            raw.inbound.insert(
+                0,
+                protocol.encode_v2_frame(
+                    protocol.new_v2_frame(
+                        "snapshot_ack",
+                        "wrong-boot",
+                        "stale-session",
+                        2,
+                        {
+                            "accepted": True,
+                            "host_epoch": "epoch",
+                            "snapshot_revision": 1,
+                            "source_status": "empty",
+                            "reason": "committed",
+                        },
+                        2,
+                    )
+                ),
+            )
+            with self.assertRaises(UsbSessionError) as context:
+                session.publish_snapshot(
+                    _projection_payload(InboxProjection(host_epoch="epoch").refresh([], source_status="empty"))
+                )
+            self.assertEqual(context.exception.code, "session_mismatch")
+            session.close()
     class Port:
         device = "/dev/fake-keypad"
         vid = 0x303A
         pid = 0x1001
-        serial_number = "usb-serial"
-        location = "1-1"
+        serial_number = EXPECTED_SERIAL
+        location = "1-1:1.1"
         manufacturer = "Espressif"
-        product = "USB JTAG"
-        interface = "if00"
+        product = "USB composite CDC + keyboard"
+        interface = "if01"
     def test_reenumerated_usb_keeps_exact_stored_device_identity(self):
         class Port:
             def __init__(self, device: str):
                 self.device = device
                 self.vid = 0x303A
                 self.pid = 0x1001
-                self.serial_number = "usb-serial"
-                self.location = device
+                self.serial_number = EXPECTED_SERIAL
+                self.location = f"{device}:1.1"
                 self.manufacturer = "Espressif"
-                self.product = "USB JTAG"
-                self.interface = "if00"
+                self.product = "USB composite CDC + keyboard"
+                self.interface = "if01"
 
         with tempfile.TemporaryDirectory() as directory:
             binding_path = Path(directory) / "binding.json"
