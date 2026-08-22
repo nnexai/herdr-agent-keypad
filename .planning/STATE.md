@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: executing
-stopped_at: Completed 03.2-01-PLAN.md
-last_updated: "2026-08-22T06:01:55.931Z"
+stopped_at: Completed 03.2-02-PLAN.md
+last_updated: "2026-08-22T06:54:51.461Z"
 last_activity: 2026-08-22
 last_activity_desc: Phase 03.2 execution resumed (wave continue)
-state_head: 6e07d418b2398b6aee453b57ad7f84e78f9f3838
+state_head: 5a89667398c66ab287b014e927973323d078b074
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 53
-  completed_plans: 45
+  completed_plans: 46
 milestone_name: milestone
 ---
 
@@ -48,7 +48,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — EXECUTING
-Plan: 2 of 10
+Plan: 4 of 10
 Status: Ready to execute
 Last activity: 2026-08-22 — Phase 03.2 execution resumed (wave continue)
 
@@ -111,6 +111,8 @@ Progress: [██████████] 97%
 | Phase 03.1 P07 | 17min | 3 tasks | 386 files |
 | Phase 03.1 P08 | 1h 20m | 2 tasks | 8 files |
 | Phase 03.2 P01 | 25min | 2 tasks | 8 files |
+| Phase 03.2 P02 | 5min | 2 tasks | 5 files |
+| Phase 03.2 P02 | 5min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -194,6 +196,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 03.2]: Plan 03.2-01 uses the immutable Plan 00 measured shared 550 ms threshold from the debounced physical edge.
 - [Phase 03.2]: Plan 03.2-01 reuses AgentProjection applyFocusResult success as the sole local HID authorization and adds no protocol field or host API.
 - [Phase 03.2]: Plan 03.2-01 keeps one fixed Space owner with no transfer and retains same-poll chord lockout until a complete all-up frame.
+- [Phase 03.2]: BoardAdapter remains the sole physical truth provider: one official board_.update() sample supplies press, current-down, and release facts with no competing debounce or raw hardware path.
+- [Phase 03.2]: Press latches preserve the earliest pending physical edge timestamp until consumption, while release masks are scoped to the current sampled update.
+- [Phase 03.2]: Readiness or verified physical-map failure clears lifecycle state and fails closed; BoardAdapter exposes no candidate, ownership, focus, HID, or presentation policy.
+- [Phase 03.2]: The restored frozen composite binary and immutable validator PASS remain Plan 00 prerequisite evidence only, not new product qualification.
 
 ### Pending Todos
 
@@ -233,5 +239,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-22T06:01:55.835Z
-Stopped at: Completed 03.2-01-PLAN.md
+Last session: 2026-08-22T06:54:51.369Z
+Stopped at: Completed 03.2-02-PLAN.md
