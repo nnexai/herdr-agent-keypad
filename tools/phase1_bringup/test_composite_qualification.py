@@ -20,6 +20,7 @@ from phase1_bringup.composite_qualification import (
     FINAL_ROW_COUNTS,
     FINAL_STRESS_COUNTS,
     RESULT_KIND,
+    INPUT_KIND,
     PLAN00_DEFERRED_ROWS,
     ROW_COUNTS,
     SCHEMA_VERSION,
@@ -29,6 +30,7 @@ from phase1_bringup.composite_qualification import (
     TRAFFIC_KIND,
     freeze_composite_manifest,
     record_composite_run,
+    build_final_qualification,
     validate_final_qualification,
     validate_input_trace,
     verify_composite_decision,
@@ -696,9 +698,7 @@ class FinalProductionQualificationTests(unittest.TestCase):
     @classmethod
     def _qualification(cls) -> dict[str, object]:
         deployment = cls._deployment()
-        categories: list[str] = []
-        for category, count in FINAL_STRESS_COUNTS.items():
-            categories.extend([category] * count)
+        categories = list(mixed_stress_schedule(0x03209))
         gestures = []
         for index, category in enumerate(categories):
             down = category in {"authorized_hold", "delayed_ack_threshold_first"}
@@ -709,7 +709,21 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "threshold_ms": 550,
                 "physical_down": True,
                 "physical_claim": False,
-                "observation_source": "automated-controller-schedule",
+                "observation_source": "controlled-fixture-observer",
+                "scheduled": {
+                    "id": f"gesture-{index:03d}",
+                    "ordinal": index,
+                    "category": category,
+                    "slot": index % 3,
+                },
+                "observed": {
+                    "id": f"gesture-{index:03d}",
+                    "ordinal": index,
+                    "category": category,
+                    "slot": index % 3,
+                    "matched": True,
+                    "observed_at_monotonic_ns": index + 1,
+                },
                 "focus": {
                     "action_id": f"action-{index:03d}",
                     "slot": index % 3,
@@ -737,6 +751,15 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "required_count": required,
                 "observed_count": required,
                 "status": "pass",
+                "observations": [
+                    {
+                        "scheduled_id": f"{row_id}-scheduled-{index}",
+                        "observed_id": f"{row_id}-observed-{index}",
+                        "matched": True,
+                        "observed_at_monotonic_ns": index + 1,
+                    }
+                    for index in range(required)
+                ],
             }
             for row_id, required in FINAL_ROW_COUNTS.items()
         ]
@@ -745,6 +768,7 @@ class FinalProductionQualificationTests(unittest.TestCase):
             "kind": "phase03.2-final-qualification",
             "status": "pass",
             "automated_contracts": dict(FINAL_AUTOMATED_CONTRACTS),
+            "automation_runs": [{"command": ["measured-fixture"], "status": "pass"}],
             "deployment_id": deployment["deployment_id"],
             "firmware_sha256": deployment["firmware_sha256"],
             "deployment_lock_sha256": "l" * 64,
@@ -760,7 +784,7 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "schedule_sha256": hashlib.sha256(
                     canonical_bytes(list(mixed_stress_schedule(0x03209)))
                 ).hexdigest(),
-                "observation_source": "automated-controller-schedule",
+                "observation_source": "controlled-fixture-observer",
                 "human_sample_gestures": 0,
                 "scheduled_count": 300,
                 "observed_count": 300,
@@ -769,9 +793,34 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "mismatches": [],
                 "records": gestures,
             },
-            "input_oracle": {"state": "UP", "events_seen": 600, "failures": []},
+            "input_oracle": {
+                "state": "UP",
+                "events_seen": 600,
+                "failures": [],
+                "capture_intervals": [
+                    {
+                        "interval_id": step_id,
+                        "complete": True,
+                        "events": [{"type": "EV_KEY", "value": 0}],
+                    }
+                    for step_id in ("threshold-calibration", "presentation", "lifecycle")
+                ],
+            },
             "firmware_metrics": {
                 "status": "pass",
+                "source": "device-metrics",
+                "observed_records": [
+                    {
+                        "gesture_id": f"gesture-{index:03d}",
+                        "observed_at_monotonic_ns": index + 1,
+                        "space_down_requests": 1,
+                        "space_down_completions": 1,
+                        "space_up_requests": 1,
+                        "space_up_completions": 1,
+                    }
+                    for index, category in enumerate(categories)
+                    if category in {"authorized_hold", "delayed_ack_threshold_first"}
+                ],
                 "space_down_requests": 120,
                 "space_down_completions": 120,
                 "space_up_requests": 120,
@@ -791,6 +840,18 @@ class FinalProductionQualificationTests(unittest.TestCase):
                         "expected": 2000, "sent": 2000, "received": 2000, "acknowledged": 2000,
                     },
                 },
+                "transactions": {
+                    direction: [
+                        {
+                            "id": f"{direction}-{index}",
+                            "direction": direction,
+                            "observed": True,
+                            "observed_at_monotonic_ns": index + 1,
+                        }
+                        for index in range(2000)
+                    ]
+                    for direction in ("host_to_device", "device_to_host")
+                },
                 "strict_counters": {name: 0 for name in (
                     "unexpected_reject", "duplicate", "out_of_order", "malformed",
                     "digest_mismatch", "queue_failure", "short_write",
@@ -799,7 +860,13 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "next_valid_accepted": True,
             },
             "latency": {
-                name: {"samples_ms": [1] * 100, "count": 100, "p95_ms": 1, "max_ms": 1}
+                name: {
+                    "samples_ms": [1] * 100,
+                    "sample_timestamps_monotonic_ns": list(range(1, 101)),
+                    "count": 100,
+                    "p95_ms": 1,
+                    "max_ms": 1,
+                }
                 for name in ("eligible_to_down", "release_to_up")
             },
             "deployment": {
@@ -813,8 +880,87 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "decision_manifest_sha256": deployment["decision_manifest_sha256"],
                 "protocol_version": 1,
             },
+            "observed_device": {
+                "boot_id": deployment["boot_id"],
+                "session_id": deployment["session_id"],
+            },
             "open_defects": [],
         }
+    def test_phase32_builder_rejects_missing_measurements_and_mismatched_live_hello(self) -> None:
+        deployment = self._deployment()
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+        }
+        oracle = {
+            "state": "UP",
+            "events_seen": 2,
+            "failures": [],
+            "capture_intervals": [
+                {"interval_id": "threshold-calibration", "complete": True, "events": [{}]}
+            ],
+        }
+        with self.assertRaisesRegex(CompositeQualificationError, "measured production"):
+            build_final_qualification(
+                deployment,
+                logical,
+                deployment_lock_sha256="l" * 64,
+                input_oracle=oracle,
+                observed_hello={
+                    "hello": {
+                        "boot_id": deployment["boot_id"],
+                        "session_id": deployment["session_id"],
+                    }
+                },
+                automation_runs=[{"status": "pass"}],
+            )
+        with self.assertRaisesRegex(CompositeQualificationError, "boot/session"):
+            build_final_qualification(
+                deployment,
+                logical,
+                deployment_lock_sha256="l" * 64,
+                input_oracle=oracle,
+                observed_hello={"hello": {"boot_id": "wrong", "session_id": "wrong"}},
+                measurements={},
+                automation_runs=[{"status": "pass"}],
+            )
+
+        source = self._qualification()
+        measured = {
+            name: source[name]
+            for name in (
+                "automated_contracts",
+                "threshold_calibration",
+                "rows",
+                "gesture_reconciliation",
+                "firmware_metrics",
+                "cdc",
+                "latency",
+                "open_defects",
+            )
+        }
+        built = build_final_qualification(
+            deployment,
+            logical,
+            deployment_lock_sha256="l" * 64,
+            input_oracle=source["input_oracle"],
+            observed_hello={
+                "hello": {
+                    "boot_id": deployment["boot_id"],
+                    "session_id": deployment["session_id"],
+                }
+            },
+            measurements=measured,
+            automation_runs=source["automation_runs"],
+        )
+        self.assertEqual(built["rows"], source["rows"])
+        self.assertEqual(built["gesture_reconciliation"], source["gesture_reconciliation"])
+        self.assertEqual(
+            built["observed_device"],
+            {"boot_id": deployment["boot_id"], "session_id": deployment["session_id"]},
+        )
     def test_phase32_final_gate_requires_amended_reduced_human_sample_and_deterministic_coverage(self) -> None:
         deployment = self._deployment()
         logical = {
@@ -835,6 +981,19 @@ class FinalProductionQualificationTests(unittest.TestCase):
         altered["threshold_calibration"]["deterministic"]["total_cases"] = 24
         with self.assertRaisesRegex(CompositeQualificationError, "deterministic"):
             validate_final_qualification(altered, deployment, logical)
+
+    def test_phase32_final_gate_rejects_checked_identity_not_derived_from_live_hello(self) -> None:
+        deployment = self._deployment()
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+        }
+        stale = self._qualification()
+        stale["observed_device"]["session_id"] = "preflight-session"
+        with self.assertRaisesRegex(CompositeQualificationError, "observed live"):
+            validate_final_qualification(stale, deployment, logical)
     def test_phase32_final_gate_reconciles_production_matrix_and_lineage(self) -> None:
         deployment = self._deployment()
         logical = {
@@ -907,8 +1066,8 @@ class FinalProductionQualificationTests(unittest.TestCase):
             "deployment_lock_sha256": "l" * 64,
         }
         invalid = self._qualification()
-        invalid["gesture_reconciliation"]["records"][90]["focus"]["outcome"] = "rejected"
-        invalid["gesture_reconciliation"]["records"][90]["focus"]["focused"] = False
+        invalid["gesture_reconciliation"]["records"][1]["focus"]["outcome"] = "rejected"
+        invalid["gesture_reconciliation"]["records"][1]["focus"]["focused"] = False
         with self.assertRaisesRegex(CompositeQualificationError, "gesture"):
             validate_final_qualification(invalid, deployment, logical)
 

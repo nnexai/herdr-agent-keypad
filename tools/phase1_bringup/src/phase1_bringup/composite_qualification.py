@@ -250,6 +250,32 @@ def _validate_final_rows(rows: Any) -> dict[str, Mapping[str, Any]]:
             or row.get("status") != "pass"
         ):
             _final_failure(f"row {row_id} is incomplete or failed")
+        observations = row.get("observations")
+        if not isinstance(observations, list) or len(observations) != required:
+            _final_failure(f"row {row_id} lacks one-to-one measured observations")
+        scheduled_ids: set[str] = set()
+        observed_ids: set[str] = set()
+        for observation in observations:
+            if not isinstance(observation, Mapping):
+                _final_failure(f"row {row_id} contains an invalid measured observation")
+            scheduled_id = observation.get("scheduled_id")
+            observed_id = observation.get("observed_id")
+            observed_at = observation.get("observed_at_monotonic_ns")
+            if (
+                not isinstance(scheduled_id, str)
+                or not scheduled_id
+                or scheduled_id in scheduled_ids
+                or not isinstance(observed_id, str)
+                or not observed_id
+                or observed_id in observed_ids
+                or observation.get("matched") is not True
+                or not isinstance(observed_at, int)
+                or isinstance(observed_at, bool)
+                or observed_at <= 0
+            ):
+                _final_failure(f"row {row_id} measured observations do not reconcile one-to-one")
+            scheduled_ids.add(scheduled_id)
+            observed_ids.add(observed_id)
     return mapped
 
 
@@ -261,6 +287,7 @@ def _validate_final_latency(latency: Any) -> None:
         if not isinstance(sample, Mapping):
             _final_failure(f"{name} latency evidence is missing")
         values = sample.get("samples_ms")
+        timestamps = sample.get("sample_timestamps_monotonic_ns")
         if (
             not isinstance(values, list)
             or len(values) < FINAL_ROW_COUNTS["input-latency"]
@@ -270,8 +297,16 @@ def _validate_final_latency(latency: Any) -> None:
                 or value < 0
                 for value in values
             )
+            or not isinstance(timestamps, list)
+            or len(timestamps) != len(values)
+            or any(
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value <= 0
+                for value in timestamps
+            )
         ):
-            _final_failure(f"{name} latency requires at least 100 non-negative samples")
+            _final_failure(f"{name} latency requires timestamped measured samples")
         p95 = _percentile(values, 95)
         maximum = max(values)
         if (
@@ -290,15 +325,35 @@ def _validate_final_cdc(cdc: Any) -> None:
     if cdc.get("maximum_line_bytes_including_lf") != FINAL_CDC_MAX_LINE_BYTES:
         _final_failure("CDC bound is not the production v2 maximum")
     counts = cdc.get("counts")
-    if not isinstance(counts, Mapping):
-        _final_failure("CDC counters are missing")
+    transactions = cdc.get("transactions")
+    if not isinstance(counts, Mapping) or not isinstance(transactions, Mapping):
+        _final_failure("CDC counters or transactions are missing")
     for direction in ("host_to_device", "device_to_host"):
-
         entry = counts.get(direction)
-        if not isinstance(entry, Mapping):
-            _final_failure(f"CDC {direction} counters are missing")
+        observed = transactions.get(direction)
+        if not isinstance(entry, Mapping) or not isinstance(observed, list):
+            _final_failure(f"CDC {direction} counters or transactions are missing")
         if any(entry.get(name) != 2000 for name in ("expected", "sent", "received", "acknowledged")):
             _final_failure(f"CDC {direction} counters are not exactly equal")
+        if len(observed) != entry.get("received"):
+            _final_failure(f"CDC {direction} transactions do not reconcile to received frames")
+        transaction_ids: set[str] = set()
+        for transaction in observed:
+            if not isinstance(transaction, Mapping):
+                _final_failure(f"CDC {direction} transaction is invalid")
+            transaction_id = transaction.get("id")
+            if (
+                not isinstance(transaction_id, str)
+                or not transaction_id
+                or transaction_id in transaction_ids
+                or transaction.get("direction") != direction
+                or transaction.get("observed") is not True
+                or not isinstance(transaction.get("observed_at_monotonic_ns"), int)
+                or isinstance(transaction.get("observed_at_monotonic_ns"), bool)
+                or transaction.get("observed_at_monotonic_ns") <= 0
+            ):
+                _final_failure(f"CDC {direction} transaction is not an immutable measured observation")
+            transaction_ids.add(transaction_id)
     strict = cdc.get("strict_counters")
     if (
         not isinstance(strict, Mapping)
@@ -308,6 +363,58 @@ def _validate_final_cdc(cdc: Any) -> None:
         _final_failure("CDC strict counters are nonzero or incomplete")
     if cdc.get("overlong_rejected") is not True or cdc.get("next_valid_accepted") is not True:
         _final_failure("CDC overlong recovery is missing")
+
+
+def _validate_final_firmware_metrics(
+    metrics: Any,
+    down_total: int,
+    up_total: int,
+    gesture_records: Any = None,
+) -> None:
+    if not isinstance(metrics, Mapping) or metrics.get("status") != "pass":
+        _final_failure("firmware metrics are missing or failed")
+    expected_gesture_ids = None
+    if isinstance(gesture_records, list):
+        expected_gesture_ids = {
+            record.get("id")
+            for record in gesture_records
+            if isinstance(record, Mapping)
+            and isinstance(record.get("hid_values"), list)
+            and record["hid_values"].count(1) == 1
+        }
+    records = metrics.get("observed_records")
+    if not isinstance(records, list) or len(records) != down_total:
+        _final_failure("firmware metrics lack one record per authorized hold")
+    record_ids: set[str] = set()
+    for record in records:
+        if not isinstance(record, Mapping):
+            _final_failure("firmware metric record is invalid")
+        record_id = record.get("gesture_id")
+        if not isinstance(record_id, str) or not record_id or record_id in record_ids:
+            _final_failure("firmware metric records are not uniquely linked")
+        if (
+            not isinstance(record.get("observed_at_monotonic_ns"), int)
+            or isinstance(record.get("observed_at_monotonic_ns"), bool)
+            or record.get("observed_at_monotonic_ns") <= 0
+            or record.get("space_down_requests") != 1
+            or record.get("space_down_completions") != 1
+            or record.get("space_up_requests") != 1
+            or record.get("space_up_completions") != 1
+        ):
+            _final_failure("firmware metric record does not reconcile to measured HID")
+        record_ids.add(record_id)
+    if expected_gesture_ids is not None and record_ids != expected_gesture_ids:
+        _final_failure("firmware metric records are not linked one-to-one to authorized gestures")
+    if (
+        metrics.get("space_down_requests") != down_total
+        or metrics.get("space_down_completions") != down_total
+        or metrics.get("space_up_requests") != up_total
+        or metrics.get("space_up_completions") != up_total
+        or metrics.get("strict_counters") != {name: 0 for name in FINAL_STRICT_COUNTERS}
+    ):
+        _final_failure("firmware metrics do not reconcile to observed HID")
+
+
 
 def _validate_final_calibration(calibration: Any) -> None:
     if not isinstance(calibration, Mapping):
@@ -332,10 +439,10 @@ def _validate_final_gestures(
         reconciliation.get("seed") != FINAL_STRESS_SEED
         or reconciliation.get("schedule_sha256")
         != _sha256_bytes(_canonical_bytes(list(mixed_stress_schedule(FINAL_STRESS_SEED))))
-        or reconciliation.get("observation_source") != "automated-controller-schedule"
+        or reconciliation.get("observation_source") != "controlled-fixture-observer"
         or reconciliation.get("human_sample_gestures") != 0
     ):
-        _final_failure("gesture schedule is not the full automated production stress")
+        _final_failure("gesture schedule is not immutable measured production evidence")
     scheduled_counts = reconciliation.get("scheduled_counts")
     observed_counts = reconciliation.get("observed_counts")
     if (
@@ -349,23 +456,43 @@ def _validate_final_gestures(
     records = reconciliation.get("records")
     if not isinstance(records, list) or len(records) != FINAL_ROW_COUNTS["mixed-stress"]:
         _final_failure("gesture records do not cover the seeded 300-case schedule")
+    schedule = mixed_stress_schedule(FINAL_STRESS_SEED)
     counts: Counter[str] = Counter()
     record_ids: set[str] = set()
     down_total = 0
     up_total = 0
     down_categories = {"authorized_hold", "delayed_ack_threshold_first"}
-    for record in records:
+    for index, record in enumerate(records):
         if not isinstance(record, Mapping):
             _final_failure("gesture record is not an object")
         record_id = record.get("id")
         category = record.get("category")
         if (
-            not isinstance(record_id, str)
-            or not record_id
+            record_id != f"gesture-{index:03d}"
+            or category != schedule[index]
             or record_id in record_ids
             or category not in FINAL_STRESS_COUNTS
         ):
-            _final_failure("gesture record identity or category is invalid")
+            _final_failure("gesture record is not linked to its scheduled case")
+        scheduled = record.get("scheduled")
+        observed = record.get("observed")
+        if (
+            not isinstance(scheduled, Mapping)
+            or not isinstance(observed, Mapping)
+            or scheduled.get("id") != record_id
+            or observed.get("id") != record_id
+            or scheduled.get("ordinal") != index
+            or observed.get("ordinal") != index
+            or scheduled.get("category") != category
+            or observed.get("category") != category
+            or scheduled.get("slot") != record.get("slot")
+            or observed.get("slot") != record.get("slot")
+            or observed.get("matched") is not True
+            or not isinstance(observed.get("observed_at_monotonic_ns"), int)
+            or isinstance(observed.get("observed_at_monotonic_ns"), bool)
+            or observed.get("observed_at_monotonic_ns") <= 0
+        ):
+            _final_failure("gesture record lacks one-to-one scheduled/observed reconciliation")
         record_ids.add(record_id)
         counts[str(category)] += 1
         slot = record.get("slot")
@@ -376,10 +503,10 @@ def _validate_final_gestures(
             or record.get("threshold_ms") != FINAL_SHARED_THRESHOLD_MS
             or not isinstance(record.get("physical_down"), bool)
             or record.get("physical_claim") is not False
-            or record.get("observation_source") != "automated-controller-schedule"
+            or record.get("observation_source") != "controlled-fixture-observer"
             or record.get("oracle_after") != "UP"
         ):
-            _final_failure("gesture record has an incomplete automated observation")
+            _final_failure("gesture record has an incomplete measured observation")
         focus = record.get("focus")
         if not isinstance(focus, Mapping):
             _final_failure("gesture record lacks exact focus/session evidence")
@@ -462,15 +589,15 @@ def build_final_qualification(
     *,
     deployment_lock_sha256: str,
     input_oracle: Mapping[str, Any],
+    observed_hello: Mapping[str, Any] | None = None,
+    measurements: Mapping[str, Any] | None = None,
     automation_runs: Sequence[Mapping[str, Any]] = (),
-    latency_samples_ms: Mapping[str, Sequence[float]] | None = None,
-    cdc_counts: Mapping[str, Mapping[str, int]] | None = None,
 ) -> dict[str, Any]:
-    """Build the production qualification from measured machine observations.
+    """Serialize a complete qualification from immutable measured evidence.
 
-    The D-17 schedule is deliberately controller-automated.  Its records carry
-    ``physical_claim: false`` so the 24-gesture human threshold sample cannot
-    be mistaken for 300 physical gestures.
+    This function intentionally does not construct a production row, stress
+    record, counter, CDC transaction, or latency sample.  The runner must
+    supply every measured section and the live hello used for the run.
     """
     deployment_id = _require_string(deployment.get("deployment_id"), "deployment_id")
     firmware_sha256 = _require_string(deployment.get("firmware_sha256"), "firmware_sha256")
@@ -483,125 +610,102 @@ def build_final_qualification(
         or logical_evidence.get("deployment_lock_sha256") != lock_sha
     ):
         _final_failure("logical evidence does not match the deployment")
-    schedule = mixed_stress_schedule(FINAL_STRESS_SEED)
-    schedule_sha = _sha256_bytes(_canonical_bytes(list(schedule)))
-    down_categories = {"authorized_hold", "delayed_ack_threshold_first"}
-    records: list[dict[str, Any]] = []
-    for index, category in enumerate(schedule):
-        slot = index % len(AGENT_KEYS)
-        authorized = category in down_categories
-        records.append({
-            "id": f"gesture-{index:03d}",
-            "category": category,
-            "slot": slot,
-            "threshold_ms": FINAL_SHARED_THRESHOLD_MS,
-            "physical_down": authorized,
-            "physical_claim": False,
-            "observation_source": "automated-controller-schedule",
-            "focus": {
-                "action_id": f"action-{index:03d}",
-                "slot": slot,
-                "binding_digest": deployment.get("pair_digest"),
-                "host_epoch": "qualification-automated",
-                "snapshot_revision": index + 1,
-                "usb_session": deployment.get("session_id"),
-                "outcome": "accepted" if authorized else "rejected",
-                "focused": authorized,
-                "authorized": authorized,
-            },
-            "hid_values": [1, 2, 0] if authorized else [],
-            "firmware": {
-                "space_down_requests": 1 if authorized else 0,
-                "space_down_completions": 1 if authorized else 0,
-                "space_up_requests": 1 if authorized else 0,
-                "space_up_completions": 1 if authorized else 0,
-            },
-            "oracle_after": "UP",
-        })
-    latency_samples_ms = latency_samples_ms or {
-        "eligible_to_down": (1.0,) * FINAL_ROW_COUNTS["input-latency"],
-        "release_to_up": (1.0,) * FINAL_ROW_COUNTS["input-latency"],
-    }
-    cdc_counts = cdc_counts or {
-        direction: {
-            name: 2000
-            for name in ("expected", "sent", "received", "acknowledged")
-        }
-        for direction in ("host_to_device", "device_to_host")
-    }
-    rows = [
-        {
-            "id": row_id,
-            "applicable": True,
-            "required_count": required,
-            "observed_count": required,
-            "status": "pass",
-        }
-        for row_id, required in FINAL_ROW_COUNTS.items()
-    ]
-    down_total = sum(category in down_categories for category in schedule)
+    if not isinstance(observed_hello, Mapping):
+        _final_failure("live paired hello is missing")
+    hello = observed_hello.get("hello", observed_hello)
+    if not isinstance(hello, Mapping):
+        _final_failure("live paired hello is malformed")
+    observed_boot = _require_string(hello.get("boot_id"), "observed boot_id")
+    observed_session = _require_string(hello.get("session_id"), "observed session_id")
+    if (
+        observed_boot != deployment.get("boot_id")
+        or observed_session != deployment.get("session_id")
+    ):
+        _final_failure("live paired hello boot/session differs from the deployment lock")
+    if not isinstance(measurements, Mapping):
+        _final_failure("measured production evidence is missing")
+    if measurements.get("automated_contracts") != FINAL_AUTOMATED_CONTRACTS:
+        _final_failure("measured automated contract results are incomplete or failed")
+    if not isinstance(automation_runs, Sequence) or not automation_runs or any(
+        not isinstance(run, Mapping) or run.get("status") != "pass"
+        for run in automation_runs
+    ):
+        _final_failure("automated qualification run evidence is missing or failed")
+    rows = measurements.get("rows")
+    _validate_final_rows(rows)
+    calibration = measurements.get("threshold_calibration")
+    _validate_final_calibration(calibration)
+    reconciliation = measurements.get("gesture_reconciliation")
+    down_total, up_total = _validate_final_gestures(reconciliation, deployment)
+    cdc = measurements.get("cdc")
+    _validate_final_cdc(cdc)
+    latency = measurements.get("latency")
+    _validate_final_latency(latency)
+    firmware_metrics = measurements.get("firmware_metrics")
+    _validate_final_firmware_metrics(
+        firmware_metrics,
+        down_total,
+        up_total,
+        reconciliation.get("records") if isinstance(reconciliation, Mapping) else None,
+    )
+    if not isinstance(input_oracle, Mapping):
+        _final_failure("measured Linux input oracle is missing")
+    intervals = input_oracle.get("capture_intervals")
+    if (
+        not isinstance(intervals, list)
+        or not intervals
+        or any(
+            not isinstance(interval, Mapping)
+            or interval.get("complete") is not True
+            or not isinstance(interval.get("interval_id"), str)
+            or not isinstance(interval.get("events"), list)
+            or not interval.get("events")
+            for interval in intervals
+        )
+    ):
+        _final_failure("measured Linux input capture intervals are incomplete")
+    if (
+        input_oracle.get("state") != "UP"
+        or input_oracle.get("failures") != []
+        or not isinstance(input_oracle.get("events_seen"), int)
+        or isinstance(input_oracle.get("events_seen"), bool)
+        or input_oracle.get("events_seen") <= 0
+    ):
+        _final_failure("measured Linux input oracle is not UP")
+    open_defects = measurements.get("open_defects")
+    if open_defects != []:
+        _final_failure("measured open defect evidence is present")
+    deployment_tuple = {
+        field: deployment.get(field)
+        for field in (
+            "pair_digest", "pairing_record_sha256", "descriptor_tuple_sha256",
+            "boot_id", "session_id", "decision_sha256", "decision_manifest_sha256",
+        )
+    } | {"protocol_version": deployment.get("protocol_version")}
     qualification: dict[str, Any] = {
         "schema_version": FINAL_QUALIFICATION_SCHEMA_VERSION,
         "kind": FINAL_QUALIFICATION_KIND,
         "status": "pass",
-        "automated_contracts": dict(FINAL_AUTOMATED_CONTRACTS),
+        "automated_contracts": dict(measurements["automated_contracts"]),
         "automation_runs": [dict(run) for run in automation_runs],
         "deployment_id": deployment_id,
         "firmware_sha256": firmware_sha256,
         "deployment_lock_sha256": lock_sha,
         "threshold_ms": FINAL_SHARED_THRESHOLD_MS,
-        "threshold_calibration": {
-            "human_sample": dict(FINAL_HUMAN_THRESHOLD_SAMPLE),
-            "deterministic": dict(FINAL_DETERMINISTIC_CALIBRATION),
-        },
-        "rows": rows,
+        "threshold_calibration": dict(calibration),
+        "rows": [dict(row) for row in rows],
         "edge_assumptions": [dict(item) for item in FINAL_EDGE_ASSUMPTIONS],
-        "gesture_reconciliation": {
-            "seed": FINAL_STRESS_SEED,
-            "schedule_sha256": schedule_sha,
-            "observation_source": "automated-controller-schedule",
-            "human_sample_gestures": 0,
-            "scheduled_count": len(schedule),
-            "observed_count": len(schedule),
-            "scheduled_counts": dict(FINAL_STRESS_COUNTS),
-            "observed_counts": dict(FINAL_STRESS_COUNTS),
-            "mismatches": [],
-            "records": records,
-        },
+        "gesture_reconciliation": dict(reconciliation),
         "input_oracle": dict(input_oracle),
-        "firmware_metrics": {
-            "status": "pass",
-            "source": "automated-controller-schedule",
-            "space_down_requests": down_total,
-            "space_down_completions": down_total,
-            "space_up_requests": down_total,
-            "space_up_completions": down_total,
-            "strict_counters": {name: 0 for name in FINAL_STRICT_COUNTERS},
+        "firmware_metrics": dict(firmware_metrics),
+        "cdc": dict(cdc),
+        "latency": {name: dict(sample) for name, sample in latency.items()},
+        "deployment": deployment_tuple,
+        "observed_device": {
+            "boot_id": observed_boot,
+            "session_id": observed_session,
         },
-        "cdc": {
-            "maximum_line_bytes_including_lf": FINAL_CDC_MAX_LINE_BYTES,
-            "counts": {direction: dict(values) for direction, values in cdc_counts.items()},
-            "strict_counters": {name: 0 for name in FINAL_STRICT_COUNTERS},
-            "overlong_rejected": True,
-            "next_valid_accepted": True,
-        },
-        "latency": {
-            name: {
-                "samples_ms": list(values),
-                "count": len(values),
-                "p95_ms": _percentile(list(values), 95),
-                "max_ms": max(values),
-            }
-            for name, values in latency_samples_ms.items()
-        },
-        "deployment": {
-            field: deployment.get(field)
-            for field in (
-                "pair_digest", "pairing_record_sha256", "descriptor_tuple_sha256",
-                "boot_id", "session_id", "decision_sha256", "decision_manifest_sha256",
-            )
-        } | {"protocol_version": deployment.get("protocol_version")},
-        "open_defects": [],
+        "open_defects": list(open_defects),
     }
     return qualification
 
@@ -626,6 +730,12 @@ def validate_final_qualification(
         or qualification.get("status") != "pass"
     ):
         _final_failure("schema/status is not a terminal pass")
+    automation_runs = qualification.get("automation_runs")
+    if not isinstance(automation_runs, list) or not automation_runs or any(
+        not isinstance(run, Mapping) or run.get("status") != "pass"
+        for run in automation_runs
+    ):
+        _final_failure("automated qualification run evidence is missing or failed")
     deployment_id = deployment.get("deployment_id")
     firmware_sha256 = deployment.get("firmware_sha256")
     if (
@@ -664,6 +774,14 @@ def validate_final_qualification(
         or deployment.get("protocol_version") != 1
     ):
         _final_failure("exact deployment protocol differs")
+    observed_device = qualification.get("observed_device")
+    if (
+        not isinstance(observed_device, Mapping)
+        or set(observed_device) != {"boot_id", "session_id"}
+        or observed_device.get("boot_id") != deployment.get("boot_id")
+        or observed_device.get("session_id") != deployment.get("session_id")
+    ):
+        _final_failure("observed live boot/session identity is missing or stale")
     _validate_final_rows(qualification.get("rows"))
     assumptions = qualification.get("edge_assumptions")
     if assumptions != list(FINAL_EDGE_ASSUMPTIONS):
@@ -673,27 +791,35 @@ def validate_final_qualification(
     down_total, up_total = _validate_final_gestures(
         qualification.get("gesture_reconciliation"), deployment
     )
-    metrics = qualification.get("firmware_metrics")
-    if (
-        not isinstance(metrics, Mapping)
-        or metrics.get("status") != "pass"
-        or metrics.get("space_down_requests") != down_total
-        or metrics.get("space_down_completions") != down_total
-        or metrics.get("space_up_requests") != up_total
-        or metrics.get("space_up_completions") != up_total
-        or metrics.get("strict_counters") != {name: 0 for name in FINAL_STRICT_COUNTERS}
-    ):
-        _final_failure("firmware metrics do not reconcile to observed HID")
+    _validate_final_firmware_metrics(
+        qualification.get("firmware_metrics"),
+        down_total,
+        up_total,
+        qualification.get("gesture_reconciliation", {}).get("records")
+        if isinstance(qualification.get("gesture_reconciliation"), Mapping)
+        else None,
+    )
     oracle = qualification.get("input_oracle")
+    intervals = oracle.get("capture_intervals") if isinstance(oracle, Mapping) else None
     if (
         not isinstance(oracle, Mapping)
+        or not isinstance(intervals, list)
+        or not intervals
+        or any(
+            not isinstance(interval, Mapping)
+            or interval.get("complete") is not True
+            or not isinstance(interval.get("interval_id"), str)
+            or not isinstance(interval.get("events"), list)
+            or not interval.get("events")
+            for interval in intervals
+        )
         or oracle.get("state") != "UP"
         or oracle.get("failures") != []
         or not isinstance(oracle.get("events_seen"), int)
         or isinstance(oracle.get("events_seen"), bool)
         or oracle.get("events_seen") <= 0
     ):
-        _final_failure("external Linux input oracle is not UP")
+        _final_failure("external Linux input oracle or capture intervals are incomplete")
     if qualification.get("open_defects") != []:
         _final_failure("open defect evidence is present")
     return dict(qualification)
