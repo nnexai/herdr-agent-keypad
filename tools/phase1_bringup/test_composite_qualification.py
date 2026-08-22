@@ -13,20 +13,23 @@ from unittest.mock import patch
 
 from phase1_bringup.composite_qualification import (
     CompositeQualificationError,
+    FINAL_EDGE_ASSUMPTIONS,
+    FINAL_ROW_COUNTS,
+    FINAL_STRESS_COUNTS,
     INPUT_KIND,
     RESULT_KIND,
     PLAN00_DEFERRED_ROWS,
     ROW_COUNTS,
     SCHEMA_VERSION,
     deterministic_calibration_matrix,
+    mixed_stress_schedule,
     STRESS_COUNTS,
     TRAFFIC_KIND,
     freeze_composite_manifest,
-    mixed_stress_schedule,
     record_composite_run,
+    validate_final_qualification,
     validate_input_trace,
     verify_composite_decision,
-    verify_composite_run,
     write_terminal_decision,
 )
 from phase1_bringup import composite_qualification as composite_module
@@ -649,6 +652,160 @@ class TerminalDecisionTests(unittest.TestCase):
             with self.assertRaisesRegex(CompositeQualificationError, "already exists"):
                 fixture.run("first", status="FAIL", failure_class="product")
             self.assertEqual((first / "SHA256SUMS").read_bytes(), before)
+class FinalProductionQualificationTests(unittest.TestCase):
+    @staticmethod
+    def _deployment() -> dict[str, object]:
+        return {
+            "deployment_id": "final-deployment",
+            "firmware_sha256": "f" * 64,
+            "pair_digest": "p" * 64,
+            "pairing_record_sha256": "p" * 64,
+            "descriptor_tuple_sha256": "d" * 64,
+            "boot_id": "boot-final",
+            "session_id": "session-final",
+            "decision_sha256": "c" * 64,
+            "decision_manifest_sha256": "m" * 64,
+            "protocol_version": 1,
+            "paired_device_id": "device-final",
+        }
+
+    @classmethod
+    def _qualification(cls) -> dict[str, object]:
+        deployment = cls._deployment()
+        categories: list[str] = []
+        for category, count in FINAL_STRESS_COUNTS.items():
+            categories.extend([category] * count)
+        gestures = []
+        for index, category in enumerate(categories):
+            down = category in {"authorized_hold", "delayed_ack_threshold_first"}
+            gestures.append({
+                "id": f"gesture-{index:03d}",
+                "category": category,
+                "slot": index % 3,
+                "threshold_ms": 550,
+                "physical_down": True,
+                "focus": {
+                    "action_id": f"action-{index:03d}",
+                    "binding_digest": deployment["pair_digest"],
+                    "host_epoch": "epoch-final",
+                    "snapshot_revision": index + 1,
+                    "usb_session": deployment["session_id"],
+                    "outcome": "accepted" if down else "rejected",
+                    "focused": down,
+                    "authorized": down,
+                },
+                "hid_values": [1, 2, 0] if down else [],
+                "firmware": {
+                    "space_down_requests": 1 if down else 0,
+                    "space_down_completions": 1 if down else 0,
+                    "space_up_requests": 1 if down else 0,
+                    "space_up_completions": 1 if down else 0,
+                },
+                "oracle_after": "UP",
+            })
+        rows = [
+            {
+                "id": row_id,
+                "applicable": True,
+                "required_count": required,
+                "observed_count": required,
+                "status": "pass",
+            }
+            for row_id, required in FINAL_ROW_COUNTS.items()
+        ]
+        return {
+            "schema_version": 1,
+            "kind": "phase03.2-final-qualification",
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+            "threshold_ms": 550,
+            "rows": rows,
+            "edge_assumptions": [dict(item) for item in FINAL_EDGE_ASSUMPTIONS],
+            "gesture_reconciliation": {
+                "scheduled_count": 300,
+                "observed_count": 300,
+                "scheduled_counts": dict(FINAL_STRESS_COUNTS),
+                "observed_counts": dict(FINAL_STRESS_COUNTS),
+                "mismatches": [],
+                "records": gestures,
+            },
+            "input_oracle": {"state": "UP", "events_seen": 600, "failures": []},
+            "firmware_metrics": {
+                "status": "pass",
+                "space_down_requests": 90,
+                "space_down_completions": 90,
+                "space_up_requests": 90,
+                "space_up_completions": 90,
+                "strict_counters": {name: 0 for name in (
+                    "unexpected_reject", "duplicate", "out_of_order", "malformed",
+                    "digest_mismatch", "queue_failure", "short_write",
+                )},
+            },
+            "cdc": {
+                "maximum_line_bytes_including_lf": 4096,
+                "counts": {
+                    "host_to_device": {
+                        "expected": 2000, "sent": 2000, "received": 2000, "acknowledged": 2000,
+                    },
+                    "device_to_host": {
+                        "expected": 2000, "sent": 2000, "received": 2000, "acknowledged": 2000,
+                    },
+                },
+                "strict_counters": {name: 0 for name in (
+                    "unexpected_reject", "duplicate", "out_of_order", "malformed",
+                    "digest_mismatch", "queue_failure", "short_write",
+                )},
+                "overlong_rejected": True,
+                "next_valid_accepted": True,
+            },
+            "latency": {
+                name: {"samples_ms": [1] * 100, "count": 100, "p95_ms": 1, "max_ms": 1}
+                for name in ("eligible_to_down", "release_to_up")
+            },
+            "deployment": {
+                "pair_digest": deployment["pair_digest"],
+                "pairing_record_sha256": deployment["pairing_record_sha256"],
+                "descriptor_tuple_sha256": deployment["descriptor_tuple_sha256"],
+                "boot_id": deployment["boot_id"],
+                "session_id": deployment["session_id"],
+                "decision_sha256": deployment["decision_sha256"],
+                "decision_manifest_sha256": deployment["decision_manifest_sha256"],
+                "protocol_version": 1,
+            },
+            "open_defects": [],
+        }
+
+    def test_final_gate_reconciles_production_matrix_and_lineage(self) -> None:
+        deployment = self._deployment()
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+        }
+        checked = validate_final_qualification(self._qualification(), deployment, logical)
+        self.assertEqual(checked["status"], "pass")
+        self.assertEqual(checked["gesture_reconciliation"]["observed_count"], 300)
+
+    def test_final_gate_rejects_stale_threshold_or_gesture_observation(self) -> None:
+        deployment = self._deployment()
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+        }
+        stale = self._qualification()
+        stale["threshold_ms"] = 525
+        with self.assertRaisesRegex(CompositeQualificationError, "threshold"):
+            validate_final_qualification(stale, deployment, logical)
+        invalid = self._qualification()
+        invalid["gesture_reconciliation"]["records"][0]["hid_values"] = [1, 0]
+        with self.assertRaisesRegex(CompositeQualificationError, "gesture"):
+            validate_final_qualification(invalid, deployment, logical)
+
 
 
 if __name__ == "__main__":
