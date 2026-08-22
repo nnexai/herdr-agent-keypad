@@ -13,11 +13,14 @@ from phase1_bringup.phase3_smoke import (
     FINAL_EDGE_ASSUMPTIONS,
     HUMAN_ROWS,
     PHASE32_DEVICE_ROW_IDS,
+    PHASE32_MACHINE_ROW_FOR_DEVICE,
     PHASE32_OPERATOR_PROMPTS,
     ROOT,
     _phase31_sidecar,
     _phase32_checkpoint_template,
     _phase32_load_checkpoint,
+    _phase32_stop_observer,
+    _Phase32ObserverCapture,
     _phase32_save_checkpoint,
     _phase32_row_hash,
     PHASE32_FAILURE_EVENTS,
@@ -40,6 +43,7 @@ from phase1_bringup.phase3_smoke import (
     validate_phase32_led_rows,
     build_final_qualification,
     run_guided,
+    finalize_evidence,
     sha256_file,
     write_json,
     write_phase32_final_artifacts,
@@ -1207,6 +1211,8 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
                     "live_herdr_connected": False,
                     "accepted_focus_slots": [0, 1, 2],
                 }
+            def measured_evidence(self) -> dict[str, object]:
+                return {}
 
         deployment = {
             "deployment_id": "phase32-controller",
@@ -1262,8 +1268,18 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
                     "phase1_bringup.composite_qualification._find_guided_keyboard_event",
                     return_value=root / "event0",
                 ),
-                patch("phase1_bringup.phase3_smoke._phase32_start_observer", return_value=(object(), object(), [])),
-                patch("phase1_bringup.phase3_smoke._phase32_stop_observer", return_value=[]),
+                patch(
+                    "phase1_bringup.phase3_smoke._phase32_start_observer",
+                    return_value=(object(), object(), object()),
+                ),
+                patch(
+                    "phase1_bringup.phase3_smoke._phase32_stop_observer",
+                    return_value={
+                        "interval_id": "test",
+                        "complete": True,
+                        "events": [{"type": "EV_KEY", "value": 0}],
+                    },
+                ),
                 patch("phase1_bringup.phase3_smoke.validate_input_trace", return_value={"state": "UP"}),
                 patch("phase1_bringup.phase3_smoke.build_final_qualification", return_value={}),
                 patch(
@@ -1305,6 +1321,13 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
                     "monotonic_ns": 1,
                 }
             ]
+            checkpoint["input_intervals"] = [
+                {
+                    "interval_id": "threshold-calibration",
+                    "complete": True,
+                    "events": [{"type": "EV_KEY", "value": 0}],
+                }
+            ]
             _phase32_save_checkpoint(path, checkpoint)
             resumed = _phase32_load_checkpoint(
                 path,
@@ -1335,6 +1358,30 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
                     "a" * 64,
                 )
 
+    def test_phase32_evdev_observer_fails_closed_on_error_timeout_or_empty_capture(self) -> None:
+        observer = SimpleNamespace(join=lambda timeout: None, is_alive=lambda: False)
+        failed = _Phase32ObserverCapture("presentation", 1)
+        failed.error = OSError("read failed")
+        failed.complete = False
+        with self.assertRaisesRegex(RuntimeError, "failed"):
+            _phase32_stop_observer(SimpleNamespace(set=lambda: None), observer, failed)
+
+        timed_out = _Phase32ObserverCapture("lifecycle", 1)
+        timed_out.complete = True
+        timed_out.events = [{"type": "EV_KEY", "value": 0}]
+        with self.assertRaisesRegex(RuntimeError, "timed out"):
+            _phase32_stop_observer(
+                SimpleNamespace(set=lambda: None),
+                SimpleNamespace(join=lambda timeout: None, is_alive=lambda: True),
+                timed_out,
+            )
+
+        empty = _Phase32ObserverCapture("threshold-calibration", 1)
+        empty.complete = True
+        empty.ended_monotonic_ns = 2
+        with self.assertRaisesRegex(RuntimeError, "no required transition"):
+            _phase32_stop_observer(SimpleNamespace(set=lambda: None), observer, empty)
+
 class Phase32PhysicalGateTests(unittest.TestCase):
     @staticmethod
     def _deployment() -> dict[str, object]:
@@ -1343,10 +1390,27 @@ class Phase32PhysicalGateTests(unittest.TestCase):
             "firmware_sha256": "f" * 64,
             "deployment_lock_sha256": "a" * 64,
         }
+    @classmethod
+    def _qualification(cls) -> dict[str, object]:
+        rows = [
+            {
+                "id": row_id,
+                "applicable": True,
+                "required_count": 1,
+                "observed_count": 1,
+                "status": "pass",
+            }
+            for row_id in sorted(set(PHASE32_MACHINE_ROW_FOR_DEVICE.values()))
+        ]
+        return {"status": "pass", "rows": rows}
 
     @classmethod
     def _evidence(cls) -> dict[str, object]:
         deployment = cls._deployment()
+        qualification = cls._qualification()
+        qualification_rows = {
+            row["id"]: row for row in qualification["rows"]
+        }
         return {
             "schema_version": 1,
             "kind": "phase03.2-device-evidence",
@@ -1361,12 +1425,20 @@ class Phase32PhysicalGateTests(unittest.TestCase):
                 {
                     "id": row_id,
                     "source": "physical-observation",
-                    "machine_invariant": "pass",
+                    "machine_invariant": {
+                        "row_id": machine_id,
+                        "row_sha256": _phase32_row_hash(qualification_rows[machine_id]),
+                    },
                     "result": "pass",
-                    "observation": {"kind": "typed", "result": "pass", "value": "observed"},
+                    "observation": {
+                        "kind": "typed",
+                        "result": "pass",
+                        "value": {"answer": "Y"},
+                    },
                     "physical_claim": True,
                 }
                 for row_id in PHASE32_DEVICE_ROW_IDS
+                for machine_id in (PHASE32_MACHINE_ROW_FOR_DEVICE[row_id],)
             ],
             "oracle_state": "UP",
         }
@@ -1376,7 +1448,7 @@ class Phase32PhysicalGateTests(unittest.TestCase):
         evidence = validate_phase32_device_evidence(
             self._evidence(),
             deployment,
-            {"status": "pass"},
+            self._qualification(),
             deployment_lock_sha256=deployment["deployment_lock_sha256"],
             qualification_sha256="b" * 64,
         )
@@ -1387,7 +1459,17 @@ class Phase32PhysicalGateTests(unittest.TestCase):
             validate_phase32_device_evidence(
                 candidate,
                 deployment,
-                {"status": "pass"},
+                self._qualification(),
+                deployment_lock_sha256=deployment["deployment_lock_sha256"],
+                qualification_sha256="b" * 64,
+            )
+        candidate = self._evidence()
+        candidate["rows"][0]["machine_invariant"]["row_sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "machine invariant"):
+            validate_phase32_device_evidence(
+                candidate,
+                deployment,
+                self._qualification(),
                 deployment_lock_sha256=deployment["deployment_lock_sha256"],
                 qualification_sha256="b" * 64,
             )
@@ -1441,54 +1523,23 @@ class Phase32PhysicalGateTests(unittest.TestCase):
                 {"status": "pass", "defects": []},
                 require_oracle_up=True,
             )
-    def test_phase32_final_writer_reopens_all_hash_linked_artifacts(self) -> None:
+    def test_phase32_final_writer_preserves_failed_staging_without_partial_final_set(self) -> None:
         deployment_path = ROOT / "artifacts/phase03.2/03.2-FINAL-DEPLOYMENT.json"
         logical_path = ROOT / "artifacts/phase03.2/03.2-FRAMEBUFFER-EVIDENCE.json"
-        deployment = json.loads(deployment_path.read_text(encoding="ascii"))
-        logical = json.loads(logical_path.read_text(encoding="ascii"))
-        first_capture = logical["captures"][0]
-        lineage = {
-            "status": "pass",
-            "deployment_id": first_capture["deployment_id"],
-            "firmware_sha256": first_capture["firmware_sha256"],
-            "deployment_lock_sha256": first_capture["deployment_lock_sha256"],
-        }
-        qualification = build_final_qualification(
-            deployment,
-            lineage,
-            deployment_lock_sha256=_phase31_sidecar(
-                deployment_path, "Phase 03.2 deployment"
-            ),
-            input_oracle={"state": "UP", "events_seen": 2, "failures": []},
-        )
-        observations = {
-            row_id: {
-                "answer": "Y",
-                "prompt": "bounded physical observation",
-                "observed_at_unix_ms": 100,
-            }
-            for row_id in PHASE32_DEVICE_ROW_IDS
-        }
         with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
-            result = write_phase32_final_artifacts(
-                Path(directory),
-                deployment_path,
-                logical_path,
-                qualification,
-                observations,
-            )
-            for path_string in result["paths"]:
-                path = Path(path_string)
-                self.assertTrue(path.is_file())
-                self.assertTrue(path.with_suffix(".json.sha256").is_file())
-            self.assertEqual(
-                json.loads(
-                    (Path(directory) / "03.2-PHASE4-GATE.json").read_text(
-                        encoding="ascii"
-                    )
-                )["phase4_ready"],
-                True,
-            )
+            output_root = Path(directory) / "final"
+            with self.assertRaisesRegex(RuntimeError, "staging failed"):
+                write_phase32_final_artifacts(
+                    output_root,
+                    deployment_path,
+                    logical_path,
+                    {},
+                    {},
+                )
+            self.assertFalse(output_root.exists())
+            staging = list(output_root.parent.glob(f".{output_root.name}.qualification-staging-*"))
+            self.assertEqual(len(staging), 1)
+            self.assertTrue(staging[0].is_dir())
     def test_phase32_gate_rejects_wrong_schema_before_hash_join(self) -> None:
         deployment = self._deployment()
         gate = {

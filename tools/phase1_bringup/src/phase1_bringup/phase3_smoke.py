@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 import zlib
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping
 from types import SimpleNamespace
@@ -97,6 +98,26 @@ PHASE32_OPERATOR_PROMPTS = (
 )
 PHASE32_PHASE4_GATE_KIND = "phase03.2-phase4-gate"
 PHASE32_DEVICE_ROW_IDS = tuple(f"D-{index:02d}" for index in range(1, 19))
+PHASE32_MACHINE_ROW_FOR_DEVICE = {
+    "D-01": "threshold-calibration",
+    "D-02": "immediate-focus-short-separation",
+    "D-03": "focus-before-hid-ordering",
+    "D-04": "focus-before-hid-ordering",
+    "D-05": "release-before-ack",
+    "D-06": "active-owner-independence",
+    "D-07": "active-owner-independence",
+    "D-08": "active-owner-independence",
+    "D-09": "physical-release",
+    "D-10": "stale-failure-source-session",
+    "D-11": "stale-failure-source-session",
+    "D-12": "active-owner-independence",
+    "D-13": "release-before-ack",
+    "D-14": "stale-failure-source-session",
+    "D-15": "usb-removal",
+    "D-16": "controlled-reset",
+    "D-17": "mixed-stress",
+    "D-18": "suspend-resume",
+}
 PHASE32_LEVEL_PHASE = {"full": 3, "half": 2, "static": 0}
 LED_GRAMMARS = ("rail-echo", "exception", "field-extension", "meter-lamps")
 MOTION_STATE_SCENES = {
@@ -1476,23 +1497,49 @@ def validate_phase32_device_evidence(
     ):
         raise ValueError("Phase 03.2 physical evidence deployment or assumption lineage is invalid")
     rows = evidence.get("rows")
-    if not isinstance(rows, list) or tuple(row.get("id") for row in rows if isinstance(row, Mapping)) != PHASE32_DEVICE_ROW_IDS:
+    if not isinstance(rows, list) or tuple(
+        row.get("id") for row in rows if isinstance(row, Mapping)
+    ) != PHASE32_DEVICE_ROW_IDS:
         raise ValueError("Phase 03.2 physical evidence rows are incomplete or reordered")
+    qualification_rows = {
+        row.get("id"): row
+        for row in qualification.get("rows", [])
+        if isinstance(row, Mapping)
+    }
+    if qualification.get("status") != "pass" or not qualification_rows:
+        raise ValueError("Phase 03.2 physical evidence lacks a measured qualification matrix")
     for row in rows:
         if (
             not isinstance(row, Mapping)
             or row.get("source") != "physical-observation"
             or row.get("physical_claim") is not True
-            or row.get("machine_invariant") not in {"pass", True}
             or row.get("result") != "pass"
         ):
             raise ValueError("Phase 03.2 physical evidence row is not a typed physical pass")
+        row_id = row.get("id")
+        machine_id = PHASE32_MACHINE_ROW_FOR_DEVICE.get(row_id)
+        machine = row.get("machine_invariant")
+        machine_row = qualification_rows.get(machine_id)
+        if (
+            not isinstance(machine, Mapping)
+            or set(machine) != {"row_id", "row_sha256"}
+            or machine.get("row_id") != machine_id
+            or not isinstance(machine.get("row_sha256"), str)
+            or not isinstance(machine_row, Mapping)
+            or machine_row.get("status") != "pass"
+            or machine_row.get("applicable") is not True
+            or machine_row.get("observed_count") != machine_row.get("required_count")
+            or machine.get("row_sha256") != _phase32_row_hash(machine_row)
+        ):
+            raise ValueError("Phase 03.2 physical row lacks its validated machine invariant")
         observation = row.get("observation")
+        value = observation.get("value") if isinstance(observation, Mapping) else None
         if (
             not isinstance(observation, Mapping)
             or observation.get("kind") != "typed"
             or observation.get("result") != "pass"
-            or "value" not in observation
+            or not isinstance(value, Mapping)
+            or value.get("answer") != "Y"
         ):
             raise ValueError("Phase 03.2 physical evidence observation is not typed")
     if evidence.get("oracle_state") != "UP":
@@ -1741,25 +1788,69 @@ def _phase32_capture_input_until(
         selector.close()
         os.close(fd)
     return events
+@dataclass
+class _Phase32ObserverCapture:
+    interval_id: str
+    started_monotonic_ns: int
+    events: list[dict[str, Any]] = field(default_factory=list)
+    ended_monotonic_ns: int | None = None
+    error: BaseException | None = None
+    complete: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "interval_id": self.interval_id,
+            "started_monotonic_ns": self.started_monotonic_ns,
+            "ended_monotonic_ns": self.ended_monotonic_ns,
+            "events": list(self.events),
+            "error": None if self.error is None else repr(self.error),
+            "complete": self.complete,
+        }
 
 
 def _phase32_physical_rows(
     observations: Mapping[str, Mapping[str, Any]],
+    qualification: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     step_for_row = {
         **{row_id: "threshold-calibration" for row_id in ("D-01", "D-02", "D-03", "D-04", "D-05")},
         **{row_id: "presentation" for row_id in ("D-06", "D-07", "D-08", "D-09", "D-10", "D-11", "D-12", "D-13", "D-14")},
         **{row_id: "lifecycle" for row_id in ("D-15", "D-16", "D-17", "D-18")},
     }
+    qualification_rows = {
+        row.get("id"): row
+        for row in qualification.get("rows", [])
+        if isinstance(row, Mapping)
+    }
+    if qualification.get("status") != "pass" or not qualification_rows:
+        raise ValueError("physical rows require a passing measured qualification matrix")
     rows: list[dict[str, Any]] = []
     for row_id in PHASE32_DEVICE_ROW_IDS:
         observation = observations.get(row_id)
+        machine_id = PHASE32_MACHINE_ROW_FOR_DEVICE[row_id]
+        machine_row = qualification_rows.get(machine_id)
         if observation is None:
             raise ValueError(f"missing typed observation for {row_id}")
+        if (
+            not isinstance(observation, Mapping)
+            or observation.get("answer") != "Y"
+            or not isinstance(observation.get("prompt"), str)
+            or not isinstance(observation.get("observed_at_unix_ms"), int)
+            or isinstance(observation.get("observed_at_unix_ms"), bool)
+            or observation.get("observed_at_unix_ms") <= 0
+            or not isinstance(machine_row, Mapping)
+            or machine_row.get("status") != "pass"
+            or machine_row.get("applicable") is not True
+            or machine_row.get("observed_count") != machine_row.get("required_count")
+        ):
+            raise ValueError(f"physical row {row_id} lacks a passing paired machine invariant")
         rows.append({
             "id": row_id,
             "source": "physical-observation",
-            "machine_invariant": "pass",
+            "machine_invariant": {
+                "row_id": machine_id,
+                "row_sha256": _phase32_row_hash(machine_row),
+            },
             "result": "pass",
             "physical_claim": True,
             "observation": {
@@ -1808,7 +1899,11 @@ def write_phase32_final_artifacts(
     qualification: Mapping[str, Any],
     observations: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
-    """Write and reopen the four hash-linked final artifacts."""
+    """Validate a complete staged set before publishing final artifacts.
+
+    Existing final artifacts remain immutable.  A failed build stays in its
+    unique staging directory and never leaves a partially-written final set.
+    """
     output_root = output_root.resolve()
     deployment_path = deployment_path.resolve()
     logical_evidence_path = logical_evidence_path.resolve()
@@ -1817,75 +1912,107 @@ def write_phase32_final_artifacts(
         json.loads(logical_evidence_path.read_text(encoding="ascii"))
     )
     lock_sha = _phase31_sidecar(deployment_path, "Phase 03.2 deployment")
-    qualification_path = output_root / "03.2-FINAL-QUALIFICATION.json"
-    evidence_path = output_root / "03.2-DEVICE-EVIDENCE.json"
-    ledger_path = output_root / "03.2-DEFECT-LEDGER.json"
-    gate_path = output_root / "03.2-PHASE4-GATE.json"
-    paths = (qualification_path, evidence_path, ledger_path, gate_path)
-    if any(path.exists() for path in paths):
-        raise RuntimeError("Phase 03.2 final artifacts already exist; refusing replacement")
-    output_root.mkdir(parents=True, exist_ok=True)
-    qualification_sha = write_json(qualification_path, qualification, checksum=True)
-    evidence = {
-        "schema_version": 1,
-        "kind": PHASE32_DEVICE_EVIDENCE_KIND,
-        "status": "pass",
-        "deployment_id": deployment["deployment_id"],
-        "firmware_sha256": deployment["firmware_sha256"],
-        "deployment_lock_sha256": lock_sha,
-        "qualification_sha256": qualification_sha,
-        "threshold_ms": qualification["threshold_ms"],
-        "edge_assumptions": list(FINAL_EDGE_ASSUMPTIONS),
-        "rows": _phase32_physical_rows(observations),
-        "oracle_state": qualification["input_oracle"]["state"],
-    }
-    evidence_sha = write_json(evidence_path, evidence, checksum=True)
-    ledger = {
-        "schema_version": 1,
-        "kind": PHASE32_DEFECT_LEDGER_KIND,
-        "status": "pass",
-        "deployment_id": deployment["deployment_id"],
-        "deployment_lock_sha256": lock_sha,
-        "qualification_sha256": qualification_sha,
-        "device_evidence_sha256": evidence_sha,
-        "defects": [],
-        "history": [],
-    }
-    ledger_sha = write_json(ledger_path, ledger, checksum=True)
-    gate = {
-        "schema_version": 1,
-        "kind": PHASE32_PHASE4_GATE_KIND,
-        "status": "pass",
-        "deployment_id": deployment["deployment_id"],
-        "firmware_sha256": deployment["firmware_sha256"],
-        "deployment_lock_sha256": lock_sha,
-        "qualification_sha256": qualification_sha,
-        "device_evidence_sha256": evidence_sha,
-        "defect_ledger_sha256": ledger_sha,
-        "logical_evidence": {
-            "status": logical_evidence["status"],
-            "deployment_id": logical_evidence["deployment_id"],
-            "firmware_sha256": logical_evidence["firmware_sha256"],
-            "deployment_lock_sha256": logical_evidence["deployment_lock_sha256"],
-        },
-        "edge_assumptions": list(FINAL_EDGE_ASSUMPTIONS),
-        "oracle_state": qualification["input_oracle"]["state"],
-        "phase4_ready": True,
-    }
-    gate_sha = write_json(gate_path, gate, checksum=True)
-    validate_phase32_gate_file(
-        gate_path,
-        deployment_path,
-        qualification_path,
-        evidence_path,
-        ledger_path,
+    names = (
+        "03.2-FINAL-QUALIFICATION.json",
+        "03.2-DEVICE-EVIDENCE.json",
+        "03.2-DEFECT-LEDGER.json",
+        "03.2-PHASE4-GATE.json",
     )
+    final_paths = tuple(output_root / name for name in names)
+    if any(
+        path.exists() or path.with_suffix(path.suffix + ".sha256").exists()
+        for path in final_paths
+    ):
+        raise RuntimeError("Phase 03.2 final artifacts already exist; refusing replacement")
+    output_root.parent.mkdir(parents=True, exist_ok=True)
+    staging_root = Path(tempfile.mkdtemp(
+        prefix=f".{output_root.name}.qualification-staging-",
+        dir=output_root.parent,
+    ))
+    published_paths: list[Path] = []
+    staging_paths = tuple(staging_root / name for name in names)
+    try:
+        qualification_sha = write_json(staging_paths[0], qualification, checksum=True)
+        evidence = {
+            "schema_version": 1,
+            "kind": PHASE32_DEVICE_EVIDENCE_KIND,
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": lock_sha,
+            "qualification_sha256": qualification_sha,
+            "threshold_ms": qualification["threshold_ms"],
+            "edge_assumptions": list(FINAL_EDGE_ASSUMPTIONS),
+            "rows": _phase32_physical_rows(observations, qualification),
+            "oracle_state": qualification["input_oracle"]["state"],
+        }
+        evidence_sha = write_json(staging_paths[1], evidence, checksum=True)
+        ledger = {
+            "schema_version": 1,
+            "kind": PHASE32_DEFECT_LEDGER_KIND,
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "deployment_lock_sha256": lock_sha,
+            "qualification_sha256": qualification_sha,
+            "device_evidence_sha256": evidence_sha,
+            "defects": [],
+            "history": [],
+        }
+        ledger_sha = write_json(staging_paths[2], ledger, checksum=True)
+        gate = {
+            "schema_version": 1,
+            "kind": PHASE32_PHASE4_GATE_KIND,
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": lock_sha,
+            "qualification_sha256": qualification_sha,
+            "device_evidence_sha256": evidence_sha,
+            "defect_ledger_sha256": ledger_sha,
+            "logical_evidence": {
+                "status": logical_evidence["status"],
+                "deployment_id": logical_evidence["deployment_id"],
+                "firmware_sha256": logical_evidence["firmware_sha256"],
+                "deployment_lock_sha256": logical_evidence["deployment_lock_sha256"],
+            },
+            "edge_assumptions": list(FINAL_EDGE_ASSUMPTIONS),
+            "oracle_state": qualification["input_oracle"]["state"],
+            "phase4_ready": True,
+        }
+        gate_sha = write_json(staging_paths[3], gate, checksum=True)
+        validate_phase32_gate_file(
+            staging_paths[3],
+            deployment_path,
+            staging_paths[0],
+            staging_paths[1],
+            staging_paths[2],
+        )
+        output_root.mkdir(parents=True, exist_ok=True)
+        publish_paths = tuple(
+            path
+            for path in staging_paths
+            for path in (path, path.with_suffix(path.suffix + ".sha256"))
+        )
+        for source in publish_paths:
+            destination = output_root / source.name
+            os.replace(source, destination)
+            published_paths.append(destination)
+        staging_root.rmdir()
+    except Exception as exc:
+        for destination in reversed(published_paths):
+            try:
+                destination.unlink()
+            except FileNotFoundError:
+                pass
+        raise RuntimeError(
+            f"Phase 03.2 final artifact staging failed; preserved at {staging_root}: {exc}"
+        ) from exc
     return {
         "qualification_sha256": qualification_sha,
         "device_evidence_sha256": evidence_sha,
         "defect_ledger_sha256": ledger_sha,
         "gate_sha256": gate_sha,
-        "paths": [path.as_posix() for path in paths],
+        "paths": [path.as_posix() for path in final_paths],
     }
 
 
@@ -1922,6 +2049,7 @@ def _phase32_checkpoint_template(
         "observations": {},
         "automation_runs": [],
         "input_events": [],
+        "input_intervals": [],
     }
 
 
@@ -1997,6 +2125,20 @@ def _phase32_load_checkpoint(
         not isinstance(event, dict) for event in input_events
     ):
         raise RuntimeError("qualification checkpoint input events are invalid")
+    input_intervals = checkpoint.get("input_intervals")
+    if (
+        not isinstance(input_intervals, list)
+        or len(input_intervals) != len(completed)
+        or any(
+            not isinstance(interval, dict)
+            or interval.get("complete") is not True
+            or not isinstance(interval.get("interval_id"), str)
+            or not isinstance(interval.get("events"), list)
+            or not interval.get("events")
+            for interval in input_intervals
+        )
+    ):
+        raise RuntimeError("qualification checkpoint evdev intervals are incomplete")
     return checkpoint
 
 
@@ -2015,23 +2157,50 @@ def _phase32_checkpoint_rows(step_id: str) -> tuple[str, ...]:
 def _phase32_stop_observer(
     stop: threading.Event | None,
     observer: threading.Thread | None,
-    captured: list[dict[str, Any]] | None,
-) -> list[dict[str, Any]]:
+    captured: _Phase32ObserverCapture | None,
+) -> dict[str, Any]:
     if stop is None or observer is None or captured is None:
-        return []
+        raise RuntimeError("Phase 03.2 evdev observer was not started")
     stop.set()
     observer.join(timeout=5.0)
-    return list(captured)
+    if observer.is_alive():
+        raise RuntimeError(
+            f"Phase 03.2 evdev observer timed out for interval {captured.interval_id}"
+        )
+    if captured.error is not None:
+        raise RuntimeError(
+            f"Phase 03.2 evdev observer failed for interval {captured.interval_id}: "
+            f"{captured.error}"
+        ) from captured.error
+    if not captured.complete or captured.ended_monotonic_ns is None:
+        raise RuntimeError(
+            f"Phase 03.2 evdev observer did not complete interval {captured.interval_id}"
+        )
+    if captured.ended_monotonic_ns < captured.started_monotonic_ns:
+        raise RuntimeError("Phase 03.2 evdev observer interval timestamps are invalid")
+    if not captured.events:
+        raise RuntimeError(
+            f"Phase 03.2 evdev observer captured no required transition for interval "
+            f"{captured.interval_id}"
+        )
+    return captured.as_dict()
 
 
 def _phase32_start_observer(
     event_path: Path,
-) -> tuple[threading.Event, threading.Thread, list[dict[str, Any]]]:
+    interval_id: str,
+) -> tuple[threading.Event, threading.Thread, _Phase32ObserverCapture]:
     stop = threading.Event()
-    captured: list[dict[str, Any]] = []
+    captured = _Phase32ObserverCapture(interval_id, time.monotonic_ns())
 
     def capture() -> None:
-        captured.extend(_phase32_capture_input_until(event_path, stop))
+        try:
+            captured.events.extend(_phase32_capture_input_until(event_path, stop))
+        except BaseException as exc:
+            captured.error = exc
+        finally:
+            captured.ended_monotonic_ns = time.monotonic_ns()
+            captured.complete = captured.error is None
 
     observer = threading.Thread(target=capture, name="phase32-input-observer", daemon=True)
     observer.start()
@@ -2199,6 +2368,9 @@ class _Phase32FixtureController:
             "accepted_focus_slots": sorted(self._accepted_slots),
             "rejected_focus_results": self._rejected_focus_results,
         }
+    def measured_evidence(self) -> dict[str, Any]:
+        """Return only observations the controlled fixture actually measured."""
+        return {}
 
     def close(self) -> None:
         self._stop.set()
@@ -2259,11 +2431,12 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
     vid_pid = f"{int(descriptor['vid']):04x}:{int(descriptor['pid']):04x}"
     observations = dict(checkpoint["observations"])
     events = list(checkpoint["input_events"])
+    input_intervals = list(checkpoint["input_intervals"])
     completed_steps = list(checkpoint["completed_steps"])
     run_suffix = args.run_id[-8:].upper()
     active_stop: threading.Event | None = None
     active_observer: threading.Thread | None = None
-    active_captured: list[dict[str, Any]] | None = None
+    active_captured: _Phase32ObserverCapture | None = None
     controller_evidence: dict[str, Any] = {}
     controller = phase32_live_bridge(args)
     controller.start()
@@ -2285,7 +2458,9 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
                 serial_number,
                 timeout=args.timeout,
             )
-            active_stop, active_observer, active_captured = _phase32_start_observer(event_path)
+            active_stop, active_observer, active_captured = _phase32_start_observer(
+                event_path, step_id
+            )
             print(
                 f"CHECKPOINT run={args.run_id} state={step_id} "
                 f"step={index}/{len(PHASE32_OPERATOR_PROMPTS)}",
@@ -2295,15 +2470,16 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
             try:
                 answer = input(f"Answer Y/N {step_id} {run_suffix}: ").strip().upper()
             except (EOFError, KeyboardInterrupt):
-                events.extend(
-                    _phase32_stop_observer(
-                        active_stop,
-                        active_observer,
-                        active_captured,
-                    )
+                interval = _phase32_stop_observer(
+                    active_stop,
+                    active_observer,
+                    active_captured,
                 )
+                input_intervals.append(interval)
+                events.extend(interval["events"])
                 active_stop = active_observer = active_captured = None
                 checkpoint["input_events"] = events
+                checkpoint["input_intervals"] = input_intervals
                 _phase32_save_checkpoint(checkpoint_path, checkpoint)
                 print(
                     f"PHASE 03.2 CHECKPOINT PRESERVED run={args.run_id} "
@@ -2311,15 +2487,16 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
                     flush=True,
                 )
                 return 75
-            events.extend(
-                _phase32_stop_observer(
-                    active_stop,
-                    active_observer,
-                    active_captured,
-                )
+            interval = _phase32_stop_observer(
+                active_stop,
+                active_observer,
+                active_captured,
             )
+            input_intervals.append(interval)
+            events.extend(interval["events"])
             active_stop = active_observer = active_captured = None
             checkpoint["input_events"] = events
+            checkpoint["input_intervals"] = input_intervals
             controller.assert_running()
             if answer not in {"Y", "N"}:
                 _phase32_save_checkpoint(checkpoint_path, checkpoint)
@@ -2350,23 +2527,24 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
                 _phase32_save_checkpoint(checkpoint_path, checkpoint)
     finally:
         if active_stop is not None:
-            events.extend(
-                _phase32_stop_observer(
-                    active_stop,
-                    active_observer,
-                    active_captured,
-                )
+            interval = _phase32_stop_observer(
+                active_stop,
+                active_observer,
+                active_captured,
             )
+            input_intervals.append(interval)
+            events.extend(interval["events"])
             checkpoint["input_events"] = events
+            checkpoint["input_intervals"] = input_intervals
             _phase32_save_checkpoint(checkpoint_path, checkpoint)
         controller.close()
         controller_evidence = controller.evidence()
 
     if completed_steps != [step_id for step_id, _prompt in PHASE32_OPERATOR_PROMPTS]:
         raise RuntimeError("Phase 03.2 physical qualification did not complete every batch")
-    automation_runs.extend(_phase32_run_automated_preflight())
     checkpoint["automation_runs"] = automation_runs
     checkpoint["input_events"] = events
+    checkpoint["input_intervals"] = input_intervals
     _phase32_save_checkpoint(checkpoint_path, checkpoint)
     input_trace = {
         "schema_version": 1,
@@ -2378,23 +2556,21 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
         "events": events,
         "event_count": len(events),
         "final_state": "UP",
+        "capture_intervals": input_intervals,
     }
     input_oracle = validate_input_trace(input_trace)
+    input_oracle["capture_intervals"] = input_intervals
     qualification = build_final_qualification(
         deployment,
         logical_lineage,
         deployment_lock_sha256=deployment_lock_sha256,
         input_oracle=input_oracle,
+        observed_hello=hello,
+        measurements=controller.measured_evidence(),
         automation_runs=automation_runs,
     )
-    qualification["device_preflight"] = {
-        "hello": hello,
-        "metrics_reset": device_metrics,
-        "keyboard_event_path": str(event_path),
-        "descriptor_vid_pid": vid_pid,
-        "raw_input_event_count": len(events),
-        "qualification_controller": controller_evidence,
-    }
+    # The controlled fixture currently exposes no complete production matrix;
+    # build_final_qualification must therefore fail closed rather than infer it.
     written = write_phase32_final_artifacts(
         args.output_root,
         args.deployment,
