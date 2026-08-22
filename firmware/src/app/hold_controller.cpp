@@ -17,9 +17,11 @@ bool elapsedAtLeast(uint32_t now_us, uint32_t edge_us, uint32_t duration_us) {
 }
 }  // namespace
 
-HoldController::HoldController(FixedSpaceHid& hid, uint32_t threshold_us)
+HoldController::HoldController(FixedSpaceHid& hid, uint32_t threshold_us,
+                               ProofMetrics* metrics)
     : hid_(hid),
-      threshold_us_(threshold_us == 0 ? kMeasuredThresholdUs : threshold_us) {}
+      threshold_us_(threshold_us == 0 ? kMeasuredThresholdUs : threshold_us),
+      metrics_(metrics) {}
 
 uint32_t HoldController::nextGeneration() {
   ++generation_;
@@ -41,13 +43,13 @@ bool HoldController::actionMatches(const char* action_id) const {
 bool HoldController::registerPress(uint8_t slot, const char* action_id,
                                    uint32_t edge_latched_at_us) {
   if (slot >= kSlotCount || action_id == nullptr || action_id[0] == '\0' ||
-      owner_.active || chord_lockout_) {
+      owner_.active || chord_lockout_ || lifecycle_blocked_) {
     return false;
   }
   const size_t length = strlen(action_id);
   if (length >= sizeof(candidate_.action_id)) return false;
 
-  // Replacing a candidate is a local HID decision only.  Earlier presses have
+  // Replacing a candidate is a local HID decision only. Earlier presses have
   // already emitted their independent exact focus intents and remain owned by
   // AgentProjection for result/failure presentation.
   if (candidate_.valid) invalidateCandidate();
@@ -57,6 +59,7 @@ bool HoldController::registerPress(uint8_t slot, const char* action_id,
   memcpy(candidate_.action_id, action_id, length + 1);
   candidate_.edge_latched_at_us = edge_latched_at_us;
   candidate_.generation = nextGeneration();
+  all_keys_up_ = false;
   return true;
 }
 
@@ -70,25 +73,49 @@ void HoldController::observeFocusResult(uint8_t slot, const char* action_id,
   candidate_.admitted = true;
 }
 
-void HoldController::releaseOwner() {
-  if (!owner_.active) return;
-  // Clear local authority even if the endpoint is currently unavailable.  A
-  // later frame/session cannot transfer this physical owner to another key.
-  hid_.releaseAll();
-  owner_ = Owner();
+bool HoldController::attemptEmptyReport() {
+  // Callers clear candidate and owner before entering this method. The result
+  // is the only authority for whether lifecycle rearming may continue.
+  const bool completed = hid_.releaseAll();
+  empty_report_complete_ = completed;
+  return completed;
 }
 
-void HoldController::cancelAll() {
+bool HoldController::onLifecycle(LifecycleEvent /*event*/) {
+  // Clear all local authority before attempting any report. This ordering is
+  // required even when the endpoint has disappeared and SendReport fails.
   invalidateCandidate();
-  releaseOwner();
-  // A cancelled same-poll chord remains fenced until a complete frame proves
-  // every physical agent key is up.  Disconnect/reset cannot rearm a held key.
-  nextGeneration();
+  owner_ = Owner();
+  chord_lockout_ = false;
+  lifecycle_blocked_ = true;
+  empty_report_complete_ = false;
+  all_keys_up_ = false;
+  ++lifecycle_cleared_epoch_;
+  if (lifecycle_cleared_epoch_ == 0) lifecycle_cleared_epoch_ = 1;
+  return attemptEmptyReport();
+}
+
+void HoldController::releaseOwner(uint8_t /*released_mask*/, uint32_t /*now_us*/) {
+  // Clear ownership before trying to send the up report. A failed transfer
+  // must never leave a logical owner that can be inherited by another key.
+  owner_ = Owner();
+  candidate_ = Candidate();
+  lifecycle_blocked_ = true;
+  all_keys_up_ = false;
+  empty_report_complete_ = false;
+  (void)attemptEmptyReport();
+}
+
+void HoldController::finishLifecycleIfReady(uint8_t down_mask) {
+  all_keys_up_ = down_mask == 0;
+  if (lifecycle_blocked_ && empty_report_complete_ && all_keys_up_) {
+    lifecycle_blocked_ = false;
+  }
 }
 
 void HoldController::tryActivate(uint32_t now_us, bool hid_ready) {
   if (!hid_ready || owner_.active || !candidate_.valid || !candidate_.down ||
-      chord_lockout_) {
+      chord_lockout_ || lifecycle_blocked_) {
     return;
   }
   if (!candidate_.threshold_qualified) {
@@ -100,6 +127,7 @@ void HoldController::tryActivate(uint32_t now_us, bool hid_ready) {
   // The candidate is consumed only after a successful fixed Space report.
   if (!hid_.spaceDown()) {
     invalidateCandidate();
+    (void)onLifecycle(LifecycleEvent::HidFailure);
     return;
   }
   owner_.active = true;
@@ -120,7 +148,7 @@ void HoldController::observeFrame(const ProductInputFrame& frame,
   }
 
   // A same-poll chord is determined from the captured frame, before any slot
-  // can become an owner.  It remains locked until the physical set is empty.
+  // can become an owner. It remains locked until the physical set is empty.
   if (bitCount(pressed_mask) >= 2) {
     chord_lockout_ = true;
     invalidateCandidate();
@@ -129,7 +157,7 @@ void HoldController::observeFrame(const ProductInputFrame& frame,
   if (owner_.active &&
       ((released_mask & static_cast<uint8_t>(1U << owner_.slot)) != 0 ||
        (down_mask & static_cast<uint8_t>(1U << owner_.slot)) == 0)) {
-    releaseOwner();
+    releaseOwner(released_mask, now_us);
   }
   if (candidate_.valid &&
       ((released_mask & static_cast<uint8_t>(1U << candidate_.slot)) != 0 ||
@@ -137,13 +165,42 @@ void HoldController::observeFrame(const ProductInputFrame& frame,
     invalidateCandidate();
   }
 
-  if (down_mask == 0) chord_lockout_ = false;
   if (!hid_ready) {
-    cancelAll();
+    // A not-ready endpoint cancels an unowned candidate but does not invent a
+    // lifecycle block. An active owner, however, is fail-closed immediately.
+    if (owner_.active) {
+      (void)onLifecycle(LifecycleEvent::HidFailure);
+    } else {
+      invalidateCandidate();
+    }
+    finishLifecycleIfReady(down_mask);
     return;
   }
 
-  if (candidate_.valid) candidate_.down =
-      (down_mask & static_cast<uint8_t>(1U << candidate_.slot)) != 0;
+  if (lifecycle_blocked_ && !empty_report_complete_) {
+    // Retrying an empty report is safe only after authority has already been
+    // cleared. The all-up frame below still gates rearming.
+    (void)attemptEmptyReport();
+  }
+  finishLifecycleIfReady(down_mask);
+  if (chord_lockout_ && down_mask == 0) chord_lockout_ = false;
+  if (lifecycle_blocked_) return;
+
+  if (candidate_.valid) {
+    candidate_.down =
+        (down_mask & static_cast<uint8_t>(1U << candidate_.slot)) != 0;
+  }
   tryActivate(now_us, hid_ready);
+}
+
+HoldController::PresentationState HoldController::presentation() const {
+  PresentationState state;
+  state.candidate_slot = candidate_.valid ? candidate_.slot : 0xFF;
+  state.threshold_qualified =
+      (candidate_.valid && candidate_.threshold_qualified) || owner_.active;
+  state.owner_slot = owner_.active ? owner_.slot : 0xFF;
+  state.lifecycle_cleared_epoch = lifecycle_cleared_epoch_;
+  state.lifecycle_blocked = lifecycle_blocked_;
+  state.empty_report_complete = empty_report_complete_;
+  return state;
 }

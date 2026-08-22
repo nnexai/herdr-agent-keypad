@@ -48,8 +48,9 @@ LedEngine ledEngine;
 ThemeId presentedTheme = ThemeId::SignalEdge;
 UsbCdcLink usbLink;
 FixedSpaceHid fixedSpaceHid;
-HoldController holdController(fixedSpaceHid);
 ProofMetrics proofMetrics;
+HoldController holdController(fixedSpaceHid, HoldController::kMeasuredThresholdUs,
+                              &proofMetrics);
 phase1::protocol::ProtocolSession protocolSession("", "", phase1::protocol::kQueueCapacity);
 // Result contains the bounded payload buffer; persistent storage avoids
 // exhausting the Arduino loop task stack during frame admission.
@@ -61,6 +62,46 @@ enum class ArmedInput : uint8_t { None = 0, Key, Encoder, EncoderClick };
 ArmedInput armedInput = ArmedInput::None;
 uint8_t expectedKey = 0;
 String activeStep;
+
+bool usb_link_sampled = false;
+bool usb_link_connected = false;
+
+#if defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0
+void onUsbEvent(void*, esp_event_base_t event_base, int32_t event_id, void*) {
+  if (event_base != ARDUINO_USB_EVENTS) return;
+  switch (event_id) {
+    case ARDUINO_USB_STARTED_EVENT:
+      (void)holdController.onLifecycle(HoldController::LifecycleEvent::UsbMount);
+      break;
+    case ARDUINO_USB_STOPPED_EVENT:
+      (void)holdController.onLifecycle(HoldController::LifecycleEvent::UsbStopped);
+      break;
+    case ARDUINO_USB_SUSPEND_EVENT:
+      (void)holdController.onLifecycle(HoldController::LifecycleEvent::UsbSuspend);
+      break;
+    case ARDUINO_USB_RESUME_EVENT:
+      (void)holdController.onLifecycle(HoldController::LifecycleEvent::UsbResume);
+      break;
+    default:
+      break;
+  }
+}
+#endif
+
+void observeUsbLinkLifecycle() {
+  const bool connected = usbLink.connected();
+  if (!usb_link_sampled) {
+    usb_link_sampled = true;
+    usb_link_connected = connected;
+    return;
+  }
+  if (connected == usb_link_connected) return;
+  usb_link_connected = connected;
+  const HoldController::LifecycleEvent event = connected
+      ? HoldController::LifecycleEvent::UsbMount
+      : HoldController::LifecycleEvent::Disconnect;
+  (void)holdController.onLifecycle(event);
+}
 
 String opaqueId() {
   char value[33];
@@ -374,7 +415,7 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
   }
   if (admission.session_transition) {
     txSequence = 0;
-    holdController.cancelAll();
+    (void)holdController.onLifecycle(HoldController::LifecycleEvent::SessionReplacement);
   }
   proofMetrics.observeQueue(protocolSession.pending_count());
 
@@ -526,7 +567,12 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     sendFrame("probe_ack", admission.frame.sequence, reply.as<JsonObjectConst>());
     completeAdmission();
     if (strcmp(stimulus, "REBOOT") == 0) {
-      delay(25);
+      // The accepted composite descriptor advertises a one-millisecond HID
+      // interrupt interval. SendReport already waits for completion; this
+      // measured drain delay lets the host consume the empty report before
+      // the MCU reset tears down the interface.
+      (void)holdController.onLifecycle(HoldController::LifecycleEvent::ControlledReset);
+      delay(1);
       ESP.restart();
     }
     return;
@@ -729,6 +775,9 @@ void dispatchAvailableProductInput(uint32_t now_us) {
 }
 }  // namespace
 void setup() {
+#if defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0
+  USB.onEvent(onUsbEvent);
+#endif
   usbLink.begin(kBaud, sizeof(inputFrame));
 #if defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0
   // Composite mode registers CDC first, then the fixed keyboard descriptor,
@@ -752,17 +801,16 @@ void setup() {
     render(BringupState::Wait, 0);
     agentProjection.renderMenu(board, themeById(menuController.storedTheme()), menuController.state());
   }
-  proofMetrics.sampleRuntime();
 }
 
 void loop() {
   const uint32_t loop_started = micros();
   const uint32_t now = loop_started;
+  // Lifecycle release is the first operation in both cooperative poll paths:
+  // it clears local authority before CDC admission, rendering, or LEDs.
+  observeUsbLinkLifecycle();
   board.update(now);
   dispatchAvailableProductInput(now);
-  if (holdController.active() || holdController.hasCandidate()) {
-    if (!usbLink.connected()) holdController.cancelAll();
-  }
   if (menuController.expire(now)) applyBrightnessIntent();
 
   const bool admission_processed = readFrame();

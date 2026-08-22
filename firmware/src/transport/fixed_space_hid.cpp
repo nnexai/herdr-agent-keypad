@@ -22,6 +22,9 @@ void ensureBegun() {
 
 bool sendFixedReport(uint8_t keycode) {
   ensureBegun();
+  // Do not enqueue a report until the TinyUSB endpoint is mounted. SendReport
+  // remains the completion boundary and returns false for transfer failures.
+  if (!report_transport.ready()) return false;
   hid_keyboard_report_t report = {};
   report.keycode[0] = keycode;
   return report_transport.SendReport(HID_REPORT_ID_KEYBOARD, &report,
