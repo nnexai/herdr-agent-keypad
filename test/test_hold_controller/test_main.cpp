@@ -332,6 +332,90 @@ void test_passive_presentation_tracks_threshold_and_owner_without_backflow() {
   TEST_ASSERT_TRUE(presentation.lifecycle_blocked);
 }
 
+void test_metrics_count_hold_lifecycle_transitions_once() {
+  FixedSpaceHid hid;
+  ProofMetrics metrics;
+  HoldController controller(hid, 550000, &metrics);
+  TEST_ASSERT_TRUE(controller.registerPress(0, "action-a", 1000));
+  controller.observeFrame(input(1, 1, 0, 1000), 1000, true);
+  controller.observeFocusResult(0, "action-a", true, 5000);
+  controller.observeFrame(input(0, 1, 0), 551000, true);
+  controller.observeFrame(input(0, 1, 0), 700000, true);
+  controller.observeFrame(input(0, 0, 1), 700001, true);
+  controller.observeFrame(input(0, 0, 0), 700002, true);
+
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.threshold_crossings);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.eligibility_events);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.space_down_requests);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.space_down_completions);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.space_up_requests);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.space_up_completions);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.release_all_attempts);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.release_all_failures);
+  TEST_ASSERT_EQUAL_UINT32(2, metrics.candidate_transitions);
+  TEST_ASSERT_EQUAL_UINT32(2, metrics.owner_transitions);
+  TEST_ASSERT_EQUAL_UINT32(546000, metrics.focus_result_to_eligibility_max_us);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.eligibility_to_down_max_us);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.physical_release_to_up_max_us);
+  TEST_ASSERT_EQUAL_UINT32(550000, metrics.hold_poll_gap_max_us);
+}
+
+void test_metrics_failed_transfer_and_lifecycle_failures_are_monotonic() {
+  FixedSpaceHid hid;
+  ProofMetrics metrics;
+  HoldController controller(hid, 550000, &metrics);
+  TEST_ASSERT_TRUE(controller.registerPress(0, "action-a", 1000));
+  controller.observeFrame(input(1, 1, 0, 1000), 1000, true);
+  controller.observeFocusResult(0, "action-a", true, 2000);
+  g_hid_ready = false;
+  controller.observeFrame(input(0, 1, 0), 551000, true);
+
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.space_down_requests);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.space_down_completions);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.hid_send_failures);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.release_all_attempts);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.release_all_failures);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.lifecycle_clears);
+
+  metrics.resetCounters();
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.space_down_requests);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.release_all_attempts);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.lifecycle_clears);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.hid_send_failures);
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.release_all_failures);
+}
+
+void test_metrics_counts_not_ready_and_chord_lockout_once() {
+  FixedSpaceHid hid;
+  ProofMetrics metrics;
+  HoldController controller(hid, 550000, &metrics);
+  TEST_ASSERT_TRUE(controller.registerPress(0, "action-a", 1000));
+  TEST_ASSERT_TRUE(controller.registerPress(1, "action-b", 1000));
+  controller.observeFrame(input(3, 3, 0, 1000), 1000, false);
+  controller.observeFrame(input(0, 3, 0), 2000, false);
+  controller.observeFrame(input(0, 0, 3), 3000, false);
+
+  TEST_ASSERT_EQUAL_UINT32(1, metrics.chord_lockouts);
+  TEST_ASSERT_EQUAL_UINT32(3, metrics.hid_not_ready);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.space_down_requests);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.release_all_attempts);
+}
+
+void test_metrics_maxima_remain_wrap_safe() {
+  FixedSpaceHid hid;
+  ProofMetrics metrics;
+  HoldController controller(hid, 550000, &metrics);
+  const uint32_t edge = UINT32_MAX - 100U;
+  TEST_ASSERT_TRUE(controller.registerPress(0, "action-a", edge));
+  controller.observeFrame(input(1, 1, 0, edge), edge, true);
+  controller.observeFocusResult(0, "action-a", true, edge + 100U);
+  controller.observeFrame(input(0, 1, 0), edge + 550000U, true);
+
+  TEST_ASSERT_EQUAL_UINT32(549900, metrics.hold_poll_gap_max_us);
+  TEST_ASSERT_EQUAL_UINT32(549900, metrics.focus_result_to_eligibility_max_us);
+  TEST_ASSERT_EQUAL_UINT32(0, metrics.eligibility_to_down_max_us);
+}
+
 }  // namespace
 void setUp() { reset_hid(); }
 void tearDown() {}
@@ -369,6 +453,10 @@ int main(int, char**) {
   RUN_TEST(test_resume_requires_empty_completion_and_all_keys_up);
   RUN_TEST(test_failed_release_blocks_rearm_until_empty_report_succeeds);
   RUN_TEST(test_passive_presentation_tracks_threshold_and_owner_without_backflow);
+  RUN_TEST(test_metrics_count_hold_lifecycle_transitions_once);
+  RUN_TEST(test_metrics_failed_transfer_and_lifecycle_failures_are_monotonic);
+  RUN_TEST(test_metrics_counts_not_ready_and_chord_lockout_once);
+  RUN_TEST(test_metrics_maxima_remain_wrap_safe);
   RUN_TEST(test_all_ordered_sequential_pairs_keep_one_owner);
   return UNITY_END();
 }
