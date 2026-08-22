@@ -2999,6 +2999,205 @@ void test_rail_and_exception_hold_owner_cancellation_semantics() {
   }
 }
 
+uint16_t firstLedMaskForValue(const LedSegment* segments, size_t count,
+                              uint16_t hue, uint8_t brightness,
+                              uint16_t zone_mask) {
+  for (size_t index = 0; index < count; ++index) {
+    if ((segments[index].mask & zone_mask) != 0 &&
+        segments[index].hue == hue &&
+        segments[index].brightness == brightness) {
+      return segments[index].mask;
+    }
+  }
+  return 0;
+}
+
+void test_field_extension_and_meter_lamps_hold_zones_and_cancellation() {
+  struct GrammarCase {
+    LedGrammar* grammar;
+    uint16_t owner_mask;
+    uint16_t cancellation_hue;
+    uint32_t cancellation_duration_us;
+  };
+  const GrammarCase cases[] = {
+      {&fieldExtensionGrammar(), 0x0007, 60, 105000},
+      {&meterLampsGrammar(), 1U << 1, 300, 75000},
+  };
+
+  for (const GrammarCase& test_case : cases) {
+    RenderState state = ledHoldGrammarState();
+    state.codex.source_state = CodexSourceState::Current;
+    state.codex.primary = 62;
+    state.codex.reached_limit = 0;
+    state.slots[0].hold_candidate = true;
+    state.slots[0].hold_threshold_qualified = true;
+    state.slots[0].feedback_phase = 0;
+    LedSegment segments[kLedGrammarMaxSegments]{};
+    const size_t first_count = test_case.grammar->frame(
+        state, LedEvents(), 1000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, first_count);
+    const uint16_t first_mask =
+        firstLedMaskForValue(segments, first_count, 185, 45,
+                             test_case.owner_mask);
+    TEST_ASSERT_NOT_EQUAL_UINT16(0, first_mask);
+
+    if (test_case.grammar == &fieldExtensionGrammar()) {
+      state.slots[0].feedback_phase = 1;
+      const size_t second_count = test_case.grammar->frame(
+          state, LedEvents(), 1000, segments, kLedGrammarMaxSegments);
+      const uint16_t second_mask =
+          firstLedMaskForValue(segments, second_count, 185, 45,
+                               test_case.owner_mask);
+      TEST_ASSERT_NOT_EQUAL_UINT16(0, second_mask);
+      TEST_ASSERT_NOT_EQUAL_UINT16(first_mask, second_mask);
+      TEST_ASSERT_TRUE((second_mask & test_case.owner_mask) == second_mask);
+    }
+
+    state.slots[0].hold_candidate = false;
+    state.slots[0].hold_threshold_qualified = false;
+    state.slots[0].hold_active_owner = true;
+    state.slots[0].feedback = TileFeedback::Ready;
+    state.slots[1].feedback = TileFeedback::Success;
+    const size_t owner_count = test_case.grammar->frame(
+        state, LedEvents(), 2000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_TRUE(hasLedValue(segments, owner_count, test_case.owner_mask,
+                                 120, 45));
+    TEST_ASSERT_TRUE(hasLedValue(segments, owner_count, 1U << 4, 120,
+                                 test_case.grammar == &fieldExtensionGrammar()
+                                     ? 45
+                                     : 45));
+
+    state.slots[0].hold_active_owner = false;
+    state.slots[0].feedback = TileFeedback::Pending;
+    LedEvents cancellation;
+    cancellation.hold_cancellation.active = true;
+    cancellation.hold_cancellation.slot = 0;
+    cancellation.hold_cancellation.epoch = 19;
+    cancellation.hold_cancellation.started_us = 3000;
+    const size_t cancellation_count = test_case.grammar->frame(
+        state, cancellation, 3000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_TRUE(hasLedValue(segments, cancellation_count,
+                                 test_case.owner_mask,
+                                 test_case.cancellation_hue, 45));
+    const size_t expired_count = test_case.grammar->frame(
+        state, cancellation,
+        3000 + test_case.cancellation_duration_us, segments,
+        kLedGrammarMaxSegments);
+    TEST_ASSERT_FALSE(hasLedValue(segments, expired_count,
+                                  test_case.owner_mask,
+                                  test_case.cancellation_hue, 45));
+    TEST_ASSERT_TRUE(hasLedValue(segments, expired_count,
+                                 test_case.owner_mask, 185, 45));
+  }
+}
+
+void test_all_grammar_hold_precedence_caps_and_deduplication() {
+  struct GrammarCase {
+    LedGrammar* grammar;
+    uint16_t owner_mask;
+    uint16_t cancellation_hue;
+    uint32_t cancellation_duration_us;
+  };
+  const GrammarCase cases[] = {
+      {&railEchoGrammar(), 1U << 1, 45, 120000},
+      {&exceptionChannelGrammar(), 1U << 1, 350, 90000},
+      {&fieldExtensionGrammar(), 0x0007, 60, 105000},
+      {&meterLampsGrammar(), 1U << 1, 300, 75000},
+  };
+
+  for (const GrammarCase& test_case : cases) {
+    RenderState state = ledHoldGrammarState();
+    state.source_status = "current";
+    state.codex.source_state = CodexSourceState::Current;
+    state.codex.primary = 62;
+    state.codex.reached_limit = 0;
+    state.slots[0].feedback = TileFeedback::Ready;
+    state.slots[0].hold_active_owner = true;
+    state.slots[1].feedback = TileFeedback::Success;
+    LedSegment segments[kLedGrammarMaxSegments]{};
+    const size_t owner_count = test_case.grammar->frame(
+        state, LedEvents(), 1000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, owner_count);
+    TEST_ASSERT_TRUE(hasLedValue(segments, owner_count, test_case.owner_mask,
+                                 120, 45));
+
+    LedEngine engine;
+    BoardAdapter board;
+    engine.setGrammar(*test_case.grammar);
+    g_led_calls.clear();
+    engine.render(state, LedEvents(), 1000, board);
+    TEST_ASSERT_TRUE(resolvedOn(engine, 1));
+    const size_t first_writes = g_led_calls.size();
+    engine.render(state, LedEvents(), 1001, board);
+    TEST_ASSERT_EQUAL_UINT32(first_writes, g_led_calls.size());
+
+    LedEvents dim;
+    dim.dim = true;
+    LedEngine dim_engine;
+    dim_engine.setGrammar(*test_case.grammar);
+    dim_engine.render(state, dim, 1000, board);
+    TEST_ASSERT_TRUE(dim_engine.resolved(1).brightness > 0);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT8(LedEngine::kDimBrightnessCap,
+                                    dim_engine.resolved(1).brightness);
+
+    state.slots[0].feedback = TileFeedback::Failed;
+    LedEngine failure_engine;
+    failure_engine.setGrammar(*test_case.grammar);
+    failure_engine.render(state, LedEvents(), 2000, board);
+    TEST_ASSERT_FALSE(hasLedValue(
+        &segments[0], 0, test_case.owner_mask, 120, 45));
+    TEST_ASSERT_FALSE(failure_engine.resolved(1).hue == 120 &&
+                      failure_engine.resolved(1).brightness == 45);
+
+    state.slots[0].feedback = TileFeedback::Ready;
+    state.source_status = "stale";
+    LedEngine source_engine;
+    source_engine.setGrammar(*test_case.grammar);
+    source_engine.render(state, LedEvents(), 3000, board);
+    TEST_ASSERT_FALSE(source_engine.resolved(1).hue == 120 &&
+                      source_engine.resolved(1).brightness == 45);
+
+    state.source_status = "current";
+    state.hold_lifecycle_blocked = true;
+    state.hold_empty_report_complete = false;
+    LedEngine lifecycle_engine;
+    lifecycle_engine.setGrammar(*test_case.grammar);
+    lifecycle_engine.render(state, LedEvents(), 4000, board);
+    TEST_ASSERT_FALSE(lifecycle_engine.resolved(1).hue == 120 &&
+                      lifecycle_engine.resolved(1).brightness == 45);
+
+    state.hold_lifecycle_blocked = false;
+    state.hold_empty_report_complete = true;
+    LedEvents sync;
+    sync.semantic_event = LedSemanticEvent::Sync;
+    g_led_calls.clear();
+    engine.render(state, sync, 5000, board);
+    TEST_ASSERT_EQUAL_UINT32(1, g_led_calls.size());
+    TEST_ASSERT_EQUAL_UINT16(LedEngine::kAllMask, g_led_calls[0].mask);
+    TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
+
+    g_led_calls.clear();
+    LedEvents all_off;
+    all_off.all_off = true;
+    engine.render(state, all_off, 6000, board);
+    TEST_ASSERT_EQUAL_UINT32(1, g_led_calls.size());
+    TEST_ASSERT_EQUAL_UINT16(LedEngine::kAllMask, g_led_calls[0].mask);
+    TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
+
+    state.slots[0].hold_active_owner = false;
+    state.slots[0].feedback = TileFeedback::Pending;
+    LedEvents cancellation;
+    cancellation.hold_cancellation.active = true;
+    cancellation.hold_cancellation.slot = 0;
+    cancellation.hold_cancellation.started_us = 7000;
+    const size_t cancel_count = test_case.grammar->frame(
+        state, cancellation, 7000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, cancel_count);
+    TEST_ASSERT_TRUE(hasLedValue(segments, cancel_count, test_case.owner_mask,
+                                 test_case.cancellation_hue, 45));
+  }
+}
+
 void test_led_grammars_and_policy() {
   RenderState state;
   state.source_status = "current";
@@ -4222,6 +4421,8 @@ int runAllTests() {
   RUN_TEST(test_meter_lamps_uses_exact_primary_quarter_boundaries);
   RUN_TEST(test_codex_failures_use_health_overlays_and_focus_preempts_them);
   RUN_TEST(test_menu_all_off_and_grammar_switch_keep_led_engine_precedence);
+  RUN_TEST(test_field_extension_and_meter_lamps_hold_zones_and_cancellation);
+  RUN_TEST(test_all_grammar_hold_precedence_caps_and_deduplication);
   RUN_TEST(test_blocked_motion_recomposes_blocked_panel_only);
   RUN_TEST(test_product_input_router_orders_simultaneous_frame_without_state);
   RUN_TEST(test_product_router_keeps_direct_keys_live_in_every_menu_mode);
