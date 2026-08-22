@@ -457,7 +457,7 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
         slot < AgentProjection::kSlotCount ? agentProjection.feedback(slot) :
                                                AgentProjection::Feedback::Disabled;
     const bool admitted = agentProjection.applyFocusResult(payload.as<JsonObjectConst>());
-    holdController.observeFocusResult(slot, action_id, admitted);
+    holdController.observeFocusResult(slot, action_id, admitted, micros());
     if (slot < AgentProjection::kSlotCount && agentProjection.feedback(slot) != before) {
       // Failure, uncertainty, and success are semantic outcomes: publish their
       // complete frame immediately instead of waiting for ambient cadence.

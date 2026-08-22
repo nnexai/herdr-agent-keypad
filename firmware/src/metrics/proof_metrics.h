@@ -30,6 +30,26 @@ struct ProofMetrics {
   uint32_t queue_high_water = 0;  // pending protocol frames, never transport bytes
   uint32_t max_display_flush_us = 0;
   uint32_t max_key_poll_gap_us = 0;
+  // Phase 03.2 bounded hold/lifecycle evidence. Safety failures below are
+  // boot-monotonic; all other hold counters/maxima are resettable diagnostics.
+  uint32_t threshold_crossings = 0;
+  uint32_t eligibility_events = 0;
+  uint32_t space_down_requests = 0;
+  uint32_t space_down_completions = 0;
+  uint32_t space_up_requests = 0;
+  uint32_t space_up_completions = 0;
+  uint32_t release_all_attempts = 0;
+  uint32_t candidate_transitions = 0;
+  uint32_t owner_transitions = 0;
+  uint32_t chord_lockouts = 0;
+  uint32_t lifecycle_clears = 0;
+  uint32_t focus_result_to_eligibility_max_us = 0;
+  uint32_t eligibility_to_down_max_us = 0;
+  uint32_t physical_release_to_up_max_us = 0;
+  uint32_t hold_poll_gap_max_us = 0;
+  uint32_t release_all_failures = 0;
+  uint32_t hid_not_ready = 0;
+  uint32_t hid_send_failures = 0;
 
   // Phase 03.1 bounded presentation and input evidence.
   uint32_t loop_wall_max_us = 0;
@@ -56,6 +76,46 @@ struct ProofMetrics {
   void recordOutOfOrder() { ++out_of_order; }
   void recordMalformed() { ++malformed; ++rejected; }
   void recordDigestMismatch() { ++digest_mismatch; ++rejected; }
+  void recordThresholdCrossing() { ++threshold_crossings; }
+  void recordEligibility() { ++eligibility_events; }
+  void recordSpaceDown(bool completed) {
+    ++space_down_requests;
+    if (completed) ++space_down_completions;
+    else ++hid_send_failures;
+  }
+  void recordSpaceUp(bool completed) {
+    ++space_up_requests;
+    if (completed) ++space_up_completions;
+    else ++hid_send_failures;
+  }
+  void recordReleaseAll(bool completed) {
+    ++release_all_attempts;
+    if (!completed) ++release_all_failures;
+  }
+  void recordCandidateTransition() { ++candidate_transitions; }
+  void recordOwnerTransition() { ++owner_transitions; }
+  void recordChordLockout() { ++chord_lockouts; }
+  void recordLifecycleClear() { ++lifecycle_clears; }
+  void recordHidNotReady() { ++hid_not_ready; }
+  void observeFocusResultToEligibility(uint32_t elapsed_us) {
+    if (elapsed_us > focus_result_to_eligibility_max_us) {
+      focus_result_to_eligibility_max_us = elapsed_us;
+    }
+  }
+  void observeEligibilityToDown(uint32_t elapsed_us) {
+    if (elapsed_us > eligibility_to_down_max_us) {
+      eligibility_to_down_max_us = elapsed_us;
+    }
+  }
+  void observePhysicalReleaseToUp(uint32_t elapsed_us) {
+    if (elapsed_us > physical_release_to_up_max_us) {
+      physical_release_to_up_max_us = elapsed_us;
+    }
+  }
+  void observeHoldPollGap(uint32_t elapsed_us) {
+    if (elapsed_us > hold_poll_gap_max_us) hold_poll_gap_max_us = elapsed_us;
+  }
+
 
   void resetCounters() {
     sent = 0;
@@ -66,7 +126,21 @@ struct ProofMetrics {
     out_of_order = 0;
     malformed = 0;
     digest_mismatch = 0;
-    watchdog_reset = 0;
+    threshold_crossings = 0;
+    eligibility_events = 0;
+    space_down_requests = 0;
+    space_down_completions = 0;
+    space_up_requests = 0;
+    space_up_completions = 0;
+    release_all_attempts = 0;
+    candidate_transitions = 0;
+    owner_transitions = 0;
+    chord_lockouts = 0;
+    lifecycle_clears = 0;
+    focus_result_to_eligibility_max_us = 0;
+    eligibility_to_down_max_us = 0;
+    physical_release_to_up_max_us = 0;
+    hold_poll_gap_max_us = 0;
     parser_high_water = 0;
     queue_high_water = 0;
     loop_wall_max_us = 0;

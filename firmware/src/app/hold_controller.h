@@ -46,7 +46,8 @@ class HoldController final {
 
   // The result has already passed AgentProjection's exact correlation check.
   // A failed exact result monotonically cancels the matching candidate.
-  void observeFocusResult(uint8_t slot, const char* action_id, bool admitted);
+  void observeFocusResult(uint8_t slot, const char* action_id, bool admitted,
+                          uint32_t result_at_us = 0);
 
   // Consume one complete hardware frame. The caller supplies the HID/link
   // readiness observed for this cooperative-loop turn.
@@ -77,8 +78,12 @@ class HoldController final {
     char action_id[kActionIdBytes] = {};
     uint32_t edge_latched_at_us = 0;
     uint32_t generation = 0;
-    bool down = false;
     bool threshold_qualified = false;
+    uint32_t threshold_crossed_at_us = 0;
+    uint32_t admitted_at_us = 0;
+    uint32_t eligible_at_us = 0;
+    bool eligible = false;
+    bool down = false;
     bool admitted = false;
   };
 
@@ -93,12 +98,18 @@ class HoldController final {
   ProofMetrics* metrics_;
   uint32_t generation_ = 0;
   uint32_t lifecycle_cleared_epoch_ = 0;
+  uint32_t last_poll_at_us_ = 0;
+  bool poll_sampled_ = false;
   bool chord_lockout_ = false;
   bool lifecycle_blocked_ = false;
   bool empty_report_complete_ = true;
   bool all_keys_up_ = true;
   Candidate candidate_;
   Owner owner_;
+
+  void markEligible(uint32_t now_us);
+  void observeThreshold(uint32_t now_us);
+  void recordPollGap(uint32_t now_us);
 
   uint32_t nextGeneration();
   void invalidateCandidate();

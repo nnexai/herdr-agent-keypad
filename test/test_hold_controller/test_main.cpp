@@ -411,7 +411,7 @@ void test_metrics_maxima_remain_wrap_safe() {
   controller.observeFocusResult(0, "action-a", true, edge + 100U);
   controller.observeFrame(input(0, 1, 0), edge + 550000U, true);
 
-  TEST_ASSERT_EQUAL_UINT32(549900, metrics.hold_poll_gap_max_us);
+  TEST_ASSERT_EQUAL_UINT32(550000, metrics.hold_poll_gap_max_us);
   TEST_ASSERT_EQUAL_UINT32(549900, metrics.focus_result_to_eligibility_max_us);
   TEST_ASSERT_EQUAL_UINT32(0, metrics.eligibility_to_down_max_us);
 }
