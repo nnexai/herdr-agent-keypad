@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: executing
-stopped_at: Completed 03.2-06-PLAN.md
-last_updated: "2026-08-22T09:24:22.866Z"
+stopped_at: Completed 03.2-07-PLAN.md
+last_updated: "2026-08-22T10:35:00.844Z"
 last_activity: 2026-08-22
 last_activity_desc: Phase 03.2 execution resumed (wave continue)
-state_head: 3b1bc6a430abde169f8ce984f53f3900c4029cef
+state_head: ec4c082e192dfad5886cc47b09f12f50646288a1
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 53
-  completed_plans: 50
+  completed_plans: 51
 milestone_name: milestone
 ---
 
@@ -48,7 +48,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — EXECUTING
-Plan: 8 of 10
+Plan: 9 of 10
 Status: Ready to execute
 Last activity: 2026-08-22 — Phase 03.2 execution resumed (wave continue)
 
@@ -117,6 +117,7 @@ Progress: [██████████] 97%
 | Phase 03.2 P03 | 35min | 2 tasks | 6 files |
 | Phase 03.2 P05 | 20min | 2 tasks | 6 files |
 | Phase 03.2 P06 | 35min | 2 tasks | 11 files |
+| Phase 03.2 P07 | 30min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -216,6 +217,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 03.2]: Solid mic presentation is admitted only for active physical-owner truth; candidate mic remains outlined or restrained pulsing and shared source/failure/sync/lifecycle gates suppress both otherwise.
 - [Phase 03.2]: Six bounded hold capture scenes use tokens j/k/q/v/x/z and production RenderState fixtures; capture never mutates active theme, bindings, NVS, controller, or HID authority.
 - [Phase 03.2]: Framebuffer capture remains logical-only RGB565/PNG evidence with dimensions, deployment identity, and hashes; physical clarity, LED, brightness, mapping, and optics claims remain deferred.
+- [Phase 03.2]: Four LED grammars keep candidate and active-owner cues on mapped physical zones; active ownership never transfers across focus changes.
+- [Phase 03.2]: Slot-tagged hold segments let LedEngine fence source, failure, health, SYNC, lifecycle, all-off, and dim states without hue-based classification.
+- [Phase 03.2]: Cancellation remains one bounded LED-only event with fixed grammar-specific durations and ordinary pending feedback after expiry.
 
 ### Pending Todos
 
@@ -255,5 +259,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-22T09:24:11.165Z
-Stopped at: Completed 03.2-06-PLAN.md
+Last session: 2026-08-22T10:35:00.745Z
+Stopped at: Completed 03.2-07-PLAN.md

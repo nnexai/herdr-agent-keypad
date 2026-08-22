@@ -321,7 +321,7 @@ Plans:
 
 **Planning gate:** Phase planning must schedule the composite CDC + HID feasibility run and exact-device decision record before any production transport, firmware, or host migration plan. It must also test whether the existing correlated `focus_result` is sufficient authorization so the hold path does not add protocol messages without need. Alternative backends remain out of scope unless this gate records a composite failure and the direction is explicitly reconsidered.
 
-**Plans:** 7/10 plans executed
+**Plans:** 8/10 plans executed
 
 Plans:
 **Wave 1**
@@ -351,7 +351,7 @@ Plans:
 
 **Wave 7** *(requires Plan 06)*
 
-- [ ] 03.2-07-PLAN.md — Implement pending, active-owner, and cancellation semantics in all four LED grammars
+- [x] 03.2-07-PLAN.md — Implement pending, active-owner, and cancellation semantics in all four LED grammars
 
 **Wave 8** *(requires controller, identity, display, and LED plans)*
 
@@ -395,7 +395,7 @@ Plans:
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
-| 03.2 Focus-Then-Hold USB Keyboard | 7/10 | In Progress|  |
+| 03.2 Focus-Then-Hold USB Keyboard | 8/10 | In Progress|  |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 
 ## Backlog
