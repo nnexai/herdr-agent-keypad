@@ -262,6 +262,76 @@ void test_disconnect_keeps_chord_lockout_until_all_keys_up() {
   TEST_ASSERT_TRUE(controller.registerPress(2, "action-c", 5000));
 }
 
+void test_lifecycle_clears_candidate_before_empty_report() {
+  FixedSpaceHid hid;
+  HoldController controller(hid, 550000);
+  TEST_ASSERT_TRUE(controller.registerPress(0, "action-a", 1000));
+  const HoldController::PresentationState before = controller.presentation();
+  TEST_ASSERT_EQUAL_UINT8(0, before.candidate_slot);
+  controller.onLifecycle(HoldController::LifecycleEvent::SessionReplacement);
+  const HoldController::PresentationState after = controller.presentation();
+  TEST_ASSERT_FALSE(controller.hasCandidate());
+  TEST_ASSERT_FALSE(controller.active());
+  TEST_ASSERT_EQUAL_UINT8(0xFF, after.candidate_slot);
+  TEST_ASSERT_EQUAL_UINT8(0xFF, after.owner_slot);
+  TEST_ASSERT_EQUAL_UINT32(1, after.lifecycle_cleared_epoch);
+  TEST_ASSERT_TRUE(after.lifecycle_blocked);
+  TEST_ASSERT_EQUAL_INT(1, g_release_all);
+}
+
+void test_resume_requires_empty_completion_and_all_keys_up() {
+  FixedSpaceHid hid;
+  HoldController controller(hid, 550000);
+  TEST_ASSERT_TRUE(controller.registerPress(0, "action-a", 1000));
+  controller.observeFrame(input(1, 1, 0, 1000), 1000, true);
+  controller.observeFocusResult(0, "action-a", true);
+  controller.observeFrame(input(0, 1, 0), 551000, true);
+  TEST_ASSERT_TRUE(controller.active());
+  controller.onLifecycle(HoldController::LifecycleEvent::UsbResume);
+  TEST_ASSERT_FALSE(controller.active());
+  controller.observeFrame(input(0, 1, 0), 552000, true);
+  TEST_ASSERT_FALSE(controller.registerPress(1, "action-b", 553000));
+  controller.observeFrame(input(0, 0, 1), 554000, true);
+  TEST_ASSERT_TRUE(controller.registerPress(1, "action-b", 555000));
+}
+
+void test_failed_release_blocks_rearm_until_empty_report_succeeds() {
+  FixedSpaceHid hid;
+  HoldController controller(hid, 550000);
+  TEST_ASSERT_TRUE(controller.registerPress(0, "action-a", 1000));
+  controller.observeFrame(input(1, 1, 0, 1000), 1000, true);
+  controller.observeFocusResult(0, "action-a", true);
+  controller.observeFrame(input(0, 1, 0), 551000, true);
+  TEST_ASSERT_TRUE(controller.active());
+  g_hid_ready = false;
+  controller.onLifecycle(HoldController::LifecycleEvent::UsbStopped);
+  TEST_ASSERT_FALSE(controller.active());
+  controller.observeFrame(input(0, 0, 1), 552000, false);
+  TEST_ASSERT_FALSE(controller.registerPress(1, "action-b", 553000));
+  g_hid_ready = true;
+  controller.observeFrame(input(0, 0, 0), 554000, true);
+  TEST_ASSERT_TRUE(controller.registerPress(1, "action-b", 555000));
+}
+
+void test_passive_presentation_tracks_threshold_and_owner_without_backflow() {
+  FixedSpaceHid hid;
+  HoldController controller(hid, 550000);
+  TEST_ASSERT_TRUE(controller.registerPress(2, "action-c", 1000));
+  controller.observeFrame(input(4, 4, 0, 1000), 1000, true);
+  controller.observeFocusResult(2, "action-c", true);
+  controller.observeFrame(input(0, 4, 0), 551000, true);
+  HoldController::PresentationState presentation = controller.presentation();
+  TEST_ASSERT_EQUAL_UINT8(2, presentation.owner_slot);
+  TEST_ASSERT_EQUAL_UINT8(0xFF, presentation.candidate_slot);
+  TEST_ASSERT_TRUE(presentation.threshold_qualified);
+  const uint32_t epoch = presentation.lifecycle_cleared_epoch;
+  controller.onLifecycle(HoldController::LifecycleEvent::Disconnect);
+  presentation = controller.presentation();
+  TEST_ASSERT_EQUAL_UINT32(epoch + 1, presentation.lifecycle_cleared_epoch);
+  TEST_ASSERT_EQUAL_UINT8(0xFF, presentation.owner_slot);
+  TEST_ASSERT_TRUE(presentation.lifecycle_blocked);
+}
+
 }  // namespace
 void setUp() { reset_hid(); }
 void tearDown() {}
@@ -295,6 +365,10 @@ int main(int, char**) {
   RUN_TEST(test_wrap_safe_threshold_equality);
   RUN_TEST(test_unavailable_hid_cancels_candidate_and_owner);
   RUN_TEST(test_disconnect_keeps_chord_lockout_until_all_keys_up);
+  RUN_TEST(test_lifecycle_clears_candidate_before_empty_report);
+  RUN_TEST(test_resume_requires_empty_completion_and_all_keys_up);
+  RUN_TEST(test_failed_release_blocks_rearm_until_empty_report_succeeds);
+  RUN_TEST(test_passive_presentation_tracks_threshold_and_owner_without_backflow);
   RUN_TEST(test_all_ordered_sequential_pairs_keep_one_owner);
   return UNITY_END();
 }
