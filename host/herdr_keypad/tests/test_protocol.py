@@ -15,7 +15,10 @@ class V2ProtocolTests(unittest.TestCase):
     def test_v1_inputs_remain_hash_bound(self) -> None:
         schema = ROOT / "protocol/schema/v1.json"
         fixture = ROOT / "protocol/fixtures/v1-golden.json"
-        self.assertEqual(hashlib.sha256(schema.read_bytes()).hexdigest(), "f538512c517dab6588a64ea24a06c8464e46d605fd48fa669e68358a9bfbdcd8")
+        # Phase 03.1 CR-01 is the current canonical v1 metrics contract.
+        # Keep this hash bound to the committed schema; no unreviewed protocol
+        # extension may silently replace the typed metrics acknowledgement.
+        self.assertEqual(hashlib.sha256(schema.read_bytes()).hexdigest(), "6598800d044ec981798c81748c648f5420eba0cceff94031e23e2de22c2e95c3")
         self.assertEqual(hashlib.sha256(fixture.read_bytes()).hexdigest(), "9633d4a2fa47267bb39cece549c92ac2fe6949ceef1570bb2cd05b1920967c52")
 
     def test_v2_golden_vectors_have_host_results(self) -> None:

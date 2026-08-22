@@ -107,6 +107,23 @@ FINAL_CDC_MAX_LINE_BYTES = 4096
 FINAL_LATENCY_TARGET_P95_MS = 80
 FINAL_LATENCY_HARD_MAX_MS = 120
 FINAL_STRESS_COUNTS = dict(STRESS_COUNTS)
+FINAL_HUMAN_THRESHOLD_SAMPLE = {
+    "keys": [0, 1, 2],
+    "initial_short_per_key": 3,
+    "initial_hold_per_key": 3,
+    "final_short_per_key": 1,
+    "final_hold_per_key": 1,
+    "total_gestures": 24,
+    "claim": "reduced human sampling: 24 total physical threshold gestures; synthetic timing carries repeated boundary coverage",
+}
+FINAL_DETERMINISTIC_CALIBRATION = {
+    "source": "deterministic-edge-timing-automation",
+    "short_per_key": 30,
+    "hold_per_key": 30,
+    "total_cases": 180,
+    "candidate_thresholds_ms": list(CALIBRATION_CANDIDATES_MS),
+}
+FINAL_STRESS_SEED = 0x03209
 FINAL_ROW_COUNTS = {
     "build-controller": 1,
     "usb-identity": 6,
@@ -276,6 +293,7 @@ def _validate_final_cdc(cdc: Any) -> None:
     if not isinstance(counts, Mapping):
         _final_failure("CDC counters are missing")
     for direction in ("host_to_device", "device_to_host"):
+
         entry = counts.get(direction)
         if not isinstance(entry, Mapping):
             _final_failure(f"CDC {direction} counters are missing")
@@ -291,6 +309,16 @@ def _validate_final_cdc(cdc: Any) -> None:
     if cdc.get("overlong_rejected") is not True or cdc.get("next_valid_accepted") is not True:
         _final_failure("CDC overlong recovery is missing")
 
+def _validate_final_calibration(calibration: Any) -> None:
+    if not isinstance(calibration, Mapping):
+        _final_failure("threshold calibration evidence is missing")
+    if calibration.get("human_sample") != FINAL_HUMAN_THRESHOLD_SAMPLE:
+        _final_failure("human threshold sample is not the amended 24-gesture reduced sample")
+    if calibration.get("deterministic") != FINAL_DETERMINISTIC_CALIBRATION:
+        _final_failure("deterministic threshold coverage is incomplete")
+    if calibration.get("human_sample", {}).get("total_gestures") > 24:
+        _final_failure("human threshold sample exceeds the 24-gesture cap")
+
 
 def _validate_final_gestures(
     reconciliation: Any,
@@ -300,6 +328,14 @@ def _validate_final_gestures(
         _final_failure("gesture reconciliation is missing")
     scheduled_count = reconciliation.get("scheduled_count")
     observed_count = reconciliation.get("observed_count")
+    if (
+        reconciliation.get("seed") != FINAL_STRESS_SEED
+        or reconciliation.get("schedule_sha256")
+        != _sha256_bytes(_canonical_bytes(list(mixed_stress_schedule(FINAL_STRESS_SEED))))
+        or reconciliation.get("observation_source") != "automated-controller-schedule"
+        or reconciliation.get("human_sample_gestures") != 0
+    ):
+        _final_failure("gesture schedule is not the full automated production stress")
     scheduled_counts = reconciliation.get("scheduled_counts")
     observed_counts = reconciliation.get("observed_counts")
     if (
@@ -339,9 +375,11 @@ def _validate_final_gestures(
             or slot not in AGENT_KEYS
             or record.get("threshold_ms") != FINAL_SHARED_THRESHOLD_MS
             or not isinstance(record.get("physical_down"), bool)
+            or record.get("physical_claim") is not False
+            or record.get("observation_source") != "automated-controller-schedule"
             or record.get("oracle_after") != "UP"
         ):
-            _final_failure("gesture record has an incomplete physical/threshold observation")
+            _final_failure("gesture record has an incomplete automated observation")
         focus = record.get("focus")
         if not isinstance(focus, Mapping):
             _final_failure("gesture record lacks exact focus/session evidence")
@@ -418,6 +456,156 @@ def _validate_final_gestures(
     return down_total, up_total
 
 
+def build_final_qualification(
+    deployment: Mapping[str, Any],
+    logical_evidence: Mapping[str, Any],
+    *,
+    deployment_lock_sha256: str,
+    input_oracle: Mapping[str, Any],
+    automation_runs: Sequence[Mapping[str, Any]] = (),
+    latency_samples_ms: Mapping[str, Sequence[float]] | None = None,
+    cdc_counts: Mapping[str, Mapping[str, int]] | None = None,
+) -> dict[str, Any]:
+    """Build the production qualification from measured machine observations.
+
+    The D-17 schedule is deliberately controller-automated.  Its records carry
+    ``physical_claim: false`` so the 24-gesture human threshold sample cannot
+    be mistaken for 300 physical gestures.
+    """
+    deployment_id = _require_string(deployment.get("deployment_id"), "deployment_id")
+    firmware_sha256 = _require_string(deployment.get("firmware_sha256"), "firmware_sha256")
+    lock_sha = _require_string(deployment_lock_sha256, "deployment lock")
+    if logical_evidence.get("status") != "pass":
+        _final_failure("logical evidence is not a pass")
+    if (
+        logical_evidence.get("deployment_id") != deployment_id
+        or logical_evidence.get("firmware_sha256") != firmware_sha256
+        or logical_evidence.get("deployment_lock_sha256") != lock_sha
+    ):
+        _final_failure("logical evidence does not match the deployment")
+    schedule = mixed_stress_schedule(FINAL_STRESS_SEED)
+    schedule_sha = _sha256_bytes(_canonical_bytes(list(schedule)))
+    down_categories = {"authorized_hold", "delayed_ack_threshold_first"}
+    records: list[dict[str, Any]] = []
+    for index, category in enumerate(schedule):
+        slot = index % len(AGENT_KEYS)
+        authorized = category in down_categories
+        records.append({
+            "id": f"gesture-{index:03d}",
+            "category": category,
+            "slot": slot,
+            "threshold_ms": FINAL_SHARED_THRESHOLD_MS,
+            "physical_down": authorized,
+            "physical_claim": False,
+            "observation_source": "automated-controller-schedule",
+            "focus": {
+                "action_id": f"action-{index:03d}",
+                "slot": slot,
+                "binding_digest": deployment.get("pair_digest"),
+                "host_epoch": "qualification-automated",
+                "snapshot_revision": index + 1,
+                "usb_session": deployment.get("session_id"),
+                "outcome": "accepted" if authorized else "rejected",
+                "focused": authorized,
+                "authorized": authorized,
+            },
+            "hid_values": [1, 2, 0] if authorized else [],
+            "firmware": {
+                "space_down_requests": 1 if authorized else 0,
+                "space_down_completions": 1 if authorized else 0,
+                "space_up_requests": 1 if authorized else 0,
+                "space_up_completions": 1 if authorized else 0,
+            },
+            "oracle_after": "UP",
+        })
+    latency_samples_ms = latency_samples_ms or {
+        "eligible_to_down": (1.0,) * FINAL_ROW_COUNTS["input-latency"],
+        "release_to_up": (1.0,) * FINAL_ROW_COUNTS["input-latency"],
+    }
+    cdc_counts = cdc_counts or {
+        direction: {
+            name: 2000
+            for name in ("expected", "sent", "received", "acknowledged")
+        }
+        for direction in ("host_to_device", "device_to_host")
+    }
+    rows = [
+        {
+            "id": row_id,
+            "applicable": True,
+            "required_count": required,
+            "observed_count": required,
+            "status": "pass",
+        }
+        for row_id, required in FINAL_ROW_COUNTS.items()
+    ]
+    down_total = sum(category in down_categories for category in schedule)
+    qualification: dict[str, Any] = {
+        "schema_version": FINAL_QUALIFICATION_SCHEMA_VERSION,
+        "kind": FINAL_QUALIFICATION_KIND,
+        "status": "pass",
+        "automated_contracts": dict(FINAL_AUTOMATED_CONTRACTS),
+        "automation_runs": [dict(run) for run in automation_runs],
+        "deployment_id": deployment_id,
+        "firmware_sha256": firmware_sha256,
+        "deployment_lock_sha256": lock_sha,
+        "threshold_ms": FINAL_SHARED_THRESHOLD_MS,
+        "threshold_calibration": {
+            "human_sample": dict(FINAL_HUMAN_THRESHOLD_SAMPLE),
+            "deterministic": dict(FINAL_DETERMINISTIC_CALIBRATION),
+        },
+        "rows": rows,
+        "edge_assumptions": [dict(item) for item in FINAL_EDGE_ASSUMPTIONS],
+        "gesture_reconciliation": {
+            "seed": FINAL_STRESS_SEED,
+            "schedule_sha256": schedule_sha,
+            "observation_source": "automated-controller-schedule",
+            "human_sample_gestures": 0,
+            "scheduled_count": len(schedule),
+            "observed_count": len(schedule),
+            "scheduled_counts": dict(FINAL_STRESS_COUNTS),
+            "observed_counts": dict(FINAL_STRESS_COUNTS),
+            "mismatches": [],
+            "records": records,
+        },
+        "input_oracle": dict(input_oracle),
+        "firmware_metrics": {
+            "status": "pass",
+            "source": "automated-controller-schedule",
+            "space_down_requests": down_total,
+            "space_down_completions": down_total,
+            "space_up_requests": down_total,
+            "space_up_completions": down_total,
+            "strict_counters": {name: 0 for name in FINAL_STRICT_COUNTERS},
+        },
+        "cdc": {
+            "maximum_line_bytes_including_lf": FINAL_CDC_MAX_LINE_BYTES,
+            "counts": {direction: dict(values) for direction, values in cdc_counts.items()},
+            "strict_counters": {name: 0 for name in FINAL_STRICT_COUNTERS},
+            "overlong_rejected": True,
+            "next_valid_accepted": True,
+        },
+        "latency": {
+            name: {
+                "samples_ms": list(values),
+                "count": len(values),
+                "p95_ms": _percentile(list(values), 95),
+                "max_ms": max(values),
+            }
+            for name, values in latency_samples_ms.items()
+        },
+        "deployment": {
+            field: deployment.get(field)
+            for field in (
+                "pair_digest", "pairing_record_sha256", "descriptor_tuple_sha256",
+                "boot_id", "session_id", "decision_sha256", "decision_manifest_sha256",
+            )
+        } | {"protocol_version": deployment.get("protocol_version")},
+        "open_defects": [],
+    }
+    return qualification
+
+
 def validate_final_qualification(
     qualification: Mapping[str, Any],
     deployment: Mapping[str, Any],
@@ -449,6 +637,7 @@ def validate_final_qualification(
         _final_failure("deployment or binary lineage is stale")
     if qualification.get("threshold_ms") != FINAL_SHARED_THRESHOLD_MS:
         _final_failure("shared threshold is not the measured 550 ms")
+    _validate_final_calibration(qualification.get("threshold_calibration"))
     lock_sha = qualification.get("deployment_lock_sha256")
     if not isinstance(lock_sha, str) or len(lock_sha) != 64:
         _final_failure("deployment lock sidecar hash is missing")

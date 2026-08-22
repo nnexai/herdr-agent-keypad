@@ -13,9 +13,9 @@ from phase1_bringup.phase3_smoke import (
     FINAL_EDGE_ASSUMPTIONS,
     HUMAN_ROWS,
     PHASE32_DEVICE_ROW_IDS,
+    PHASE32_OPERATOR_PROMPTS,
     ROOT,
     _phase31_sidecar,
-    finalize_evidence,
     _phase32_row_hash,
     PHASE32_FAILURE_EVENTS,
     PHASE32_HOLD_SCENES,
@@ -33,11 +33,13 @@ from phase1_bringup.phase3_smoke import (
     validate_phase32_defect_ledger,
     validate_phase32_gate,
     validate_phase32_led_rows,
+    build_final_qualification,
     run_guided,
     sha256_file,
     validate_phase31_current_deployment_identity,
     validate_phase31_reset_epoch,
     write_json,
+    write_phase32_final_artifacts,
 )
 from phase1_bringup.protocol import classify_line, new_frame
 
@@ -917,6 +919,16 @@ class Phase32LogicalEvidenceTests(unittest.TestCase):
             PHASE32_SOURCE_EVENTS,
             ("source-stale", "source-offline", "source-unavailable"),
         )
+class Phase32QualificationRunnerTests(unittest.TestCase):
+    def test_phase32_human_prompt_is_capped_and_stress_is_not_manual(self) -> None:
+        self.assertEqual(len(PHASE32_OPERATOR_PROMPTS), 3)
+        threshold_prompt = PHASE32_OPERATOR_PROMPTS[0][1]
+        self.assertIn("24 gestures total", threshold_prompt)
+        self.assertNotIn("180", threshold_prompt)
+        self.assertNotIn("300", threshold_prompt)
+        self.assertIn("all four themes", PHASE32_OPERATOR_PROMPTS[1][1])
+        self.assertIn("unplug/replug", PHASE32_OPERATOR_PROMPTS[2][1])
+
 class Phase32PhysicalGateTests(unittest.TestCase):
     @staticmethod
     def _deployment() -> dict[str, object]:
@@ -1017,10 +1029,59 @@ class Phase32PhysicalGateTests(unittest.TestCase):
             validate_phase32_gate(
                 gate,
                 deployment,
+
                 {"status": "pass"},
                 self._evidence(),
                 {"status": "pass", "defects": []},
                 require_oracle_up=True,
+            )
+    def test_phase32_final_writer_reopens_all_hash_linked_artifacts(self) -> None:
+        deployment_path = ROOT / "artifacts/phase03.2/03.2-FINAL-DEPLOYMENT.json"
+        logical_path = ROOT / "artifacts/phase03.2/03.2-FRAMEBUFFER-EVIDENCE.json"
+        deployment = json.loads(deployment_path.read_text(encoding="ascii"))
+        logical = json.loads(logical_path.read_text(encoding="ascii"))
+        first_capture = logical["captures"][0]
+        lineage = {
+            "status": "pass",
+            "deployment_id": first_capture["deployment_id"],
+            "firmware_sha256": first_capture["firmware_sha256"],
+            "deployment_lock_sha256": first_capture["deployment_lock_sha256"],
+        }
+        qualification = build_final_qualification(
+            deployment,
+            lineage,
+            deployment_lock_sha256=_phase31_sidecar(
+                deployment_path, "Phase 03.2 deployment"
+            ),
+            input_oracle={"state": "UP", "events_seen": 2, "failures": []},
+        )
+        observations = {
+            row_id: {
+                "answer": "Y",
+                "prompt": "bounded physical observation",
+                "observed_at_unix_ms": 100,
+            }
+            for row_id in PHASE32_DEVICE_ROW_IDS
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            result = write_phase32_final_artifacts(
+                Path(directory),
+                deployment_path,
+                logical_path,
+                qualification,
+                observations,
+            )
+            for path_string in result["paths"]:
+                path = Path(path_string)
+                self.assertTrue(path.is_file())
+                self.assertTrue(path.with_suffix(".json.sha256").is_file())
+            self.assertEqual(
+                json.loads(
+                    (Path(directory) / "03.2-PHASE4-GATE.json").read_text(
+                        encoding="ascii"
+                    )
+                )["phase4_ready"],
+                True,
             )
     def test_phase32_gate_rejects_wrong_schema_before_hash_join(self) -> None:
         deployment = self._deployment()

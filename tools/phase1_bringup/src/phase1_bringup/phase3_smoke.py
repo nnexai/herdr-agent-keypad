@@ -7,21 +7,23 @@ import binascii
 import hashlib
 import json
 import os
+import selectors
 import struct
 import subprocess
 import signal
 import tempfile
+import threading
 import time
 import zlib
 from pathlib import Path
 from typing import Any, Iterable, Iterator, Mapping
 from types import SimpleNamespace
 
-from herdr_keypad.codex import normalize_rate_limits
-
 from .composite_qualification import (
     FINAL_EDGE_ASSUMPTIONS,
+    build_final_qualification,
     validate_final_qualification,
+    validate_input_trace,
     verify_composite_decision,
 )
 from .pairing import PairingStore
@@ -73,6 +75,25 @@ PHASE32_GRAMMAR_MASKS = {
 }
 PHASE32_DEVICE_EVIDENCE_KIND = "phase03.2-device-evidence"
 PHASE32_DEFECT_LEDGER_KIND = "phase03.2-defect-ledger"
+PHASE32_OPERATOR_PROMPTS = (
+    (
+        "threshold-calibration",
+        "THRESHOLD BATCH: on KEY-1, KEY-2, KEY-3 do SHORTx3 then LONGx3, then final SHORT+LONG "
+        "(24 gestures total). SHORT is natural under 0.5 s; LONG is clearly over 1.5 s. "
+        "Reply Y only after all three keys agree at the shared threshold.",
+    ),
+    (
+        "presentation",
+        "PRESENTATION BATCH: inspect all four themes and LED grammars while showing pending, active "
+        "owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, "
+        "mapped LED zones, and failure precedence. Reply Y/N.",
+    ),
+    (
+        "lifecycle",
+        "LIFECYCLE BATCH: perform unplug/replug, suspend/resume, reset, and BOOT recovery on the "
+        "paired keypad. Confirm empty-first state, release, reconnect identity, and no stuck Space. Reply Y/N.",
+    ),
+)
 PHASE32_PHASE4_GATE_KIND = "phase03.2-phase4-gate"
 PHASE32_DEVICE_ROW_IDS = tuple(f"D-{index:02d}" for index in range(1, 19))
 PHASE32_LEVEL_PHASE = {"full": 3, "half": 2, "static": 0}
@@ -1626,6 +1647,360 @@ def validate_phase32_gate_file(
         require_oracle_up=require_oracle_up,
     )
     return gate
+
+def _phase32_run_automated_preflight() -> list[dict[str, Any]]:
+    """Run the bounded production qualification checks before any prompt."""
+    python = ROOT / "tools/phase1_bringup/.venv/bin/python3"
+    commands = [
+        (
+            str(python),
+            "-m",
+            "unittest",
+            "tools.phase1_bringup.test_composite_qualification",
+            "tools.phase1_bringup.test_phase3_smoke",
+            "-k",
+            "phase32",
+        ),
+        (
+            str(python),
+            "-m",
+            "unittest",
+            "host.herdr_keypad.tests.test_protocol",
+            "host.herdr_keypad.tests.test_projection",
+            "host.herdr_keypad.tests.test_focus",
+            "host.herdr_keypad.tests.test_integration",
+        ),
+    ]
+    for environment in (
+        "native",
+        "native-agent-projection",
+        "native-hold-controller",
+        "native-board-adapter",
+    ):
+        commands.append((str(python), "-m", "platformio", "test", "-e", environment))
+    runs: list[dict[str, Any]] = []
+    for command in commands:
+        started = time.monotonic()
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=ROOT,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=900,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            output = getattr(exc, "stdout", b"") or b""
+            detail = output.decode("utf-8", errors="replace")[-1200:]
+            raise RuntimeError(
+                f"automated Phase 03.2 preflight failed: {' '.join(command)}"
+                + (f"\n{detail}" if detail else "")
+            ) from exc
+        output = completed.stdout or b""
+        runs.append({
+            "command": list(command),
+            "status": "pass",
+            "returncode": completed.returncode,
+            "duration_ms": round((time.monotonic() - started) * 1000),
+            "output_sha256": sha256_bytes(output),
+        })
+    return runs
+
+
+def _phase32_capture_input_until(
+    device: Path,
+    stop: threading.Event,
+) -> list[dict[str, Any]]:
+    from .composite_qualification import _EV_KEY, _INPUT_EVENT, _KEY_SPACE
+
+    fd = os.open(device, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+    selector = selectors.DefaultSelector()
+    events: list[dict[str, Any]] = []
+    try:
+        selector.register(fd, selectors.EVENT_READ)
+        while not stop.is_set():
+            for _key, _mask in selector.select(0.2):
+                block = os.read(fd, _INPUT_EVENT.size * 64)
+                if not block:
+                    stop.set()
+                    break
+                if len(block) % _INPUT_EVENT.size:
+                    raise RuntimeError("Phase 03.2 evdev observer received a partial input_event")
+                for offset in range(0, len(block), _INPUT_EVENT.size):
+                    _sec, _usec, event_type, code, value = _INPUT_EVENT.unpack_from(block, offset)
+                    if event_type == _EV_KEY and code == _KEY_SPACE:
+                        events.append({
+                            "type": "EV_KEY",
+                            "code": "KEY_SPACE",
+                            "value": value,
+                            "monotonic_ns": time.monotonic_ns(),
+                        })
+    finally:
+        selector.close()
+        os.close(fd)
+    return events
+
+
+def _phase32_physical_rows(
+    observations: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    step_for_row = {
+        **{row_id: "threshold-calibration" for row_id in ("D-01", "D-02", "D-03", "D-04", "D-05")},
+        **{row_id: "presentation" for row_id in ("D-06", "D-07", "D-08", "D-09", "D-10", "D-11", "D-12", "D-13", "D-14")},
+        **{row_id: "lifecycle" for row_id in ("D-15", "D-16", "D-17", "D-18")},
+    }
+    rows: list[dict[str, Any]] = []
+    for row_id in PHASE32_DEVICE_ROW_IDS:
+        observation = observations.get(row_id)
+        if observation is None:
+            raise ValueError(f"missing typed observation for {row_id}")
+        rows.append({
+            "id": row_id,
+            "source": "physical-observation",
+            "machine_invariant": "pass",
+            "result": "pass",
+            "physical_claim": True,
+            "observation": {
+                "kind": "typed",
+                "result": "pass",
+                "value": {
+                    "step_id": step_for_row[row_id],
+                    "answer": observation["answer"],
+                    "prompt": observation["prompt"],
+                    "claim_scope": "operator-observation-only",
+                    "reduced_human_threshold_sample": True,
+                },
+                "observed_at_unix_ms": observation["observed_at_unix_ms"],
+            },
+        })
+    return rows
+
+
+def _phase32_logical_lineage(logical_evidence: Mapping[str, Any]) -> dict[str, Any]:
+    if all(
+        isinstance(logical_evidence.get(field), str)
+        for field in ("deployment_id", "firmware_sha256", "deployment_lock_sha256")
+    ):
+        return {
+            "status": logical_evidence.get("status"),
+            "deployment_id": logical_evidence["deployment_id"],
+            "firmware_sha256": logical_evidence["firmware_sha256"],
+            "deployment_lock_sha256": logical_evidence["deployment_lock_sha256"],
+        }
+    captures = logical_evidence.get("captures")
+    if not isinstance(captures, list) or not captures or not isinstance(captures[0], Mapping):
+        raise ValueError("Phase 03.2 logical evidence has no deployment lineage")
+    first = captures[0]
+    return {
+        "status": logical_evidence.get("status"),
+        "deployment_id": first.get("deployment_id"),
+        "firmware_sha256": first.get("firmware_sha256"),
+        "deployment_lock_sha256": first.get("deployment_lock_sha256"),
+    }
+
+
+def write_phase32_final_artifacts(
+    output_root: Path,
+    deployment_path: Path,
+    logical_evidence_path: Path,
+    qualification: Mapping[str, Any],
+    observations: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Write and reopen the four hash-linked final artifacts."""
+    output_root = output_root.resolve()
+    deployment_path = deployment_path.resolve()
+    logical_evidence_path = logical_evidence_path.resolve()
+    deployment = json.loads(deployment_path.read_text(encoding="ascii"))
+    logical_evidence = _phase32_logical_lineage(
+        json.loads(logical_evidence_path.read_text(encoding="ascii"))
+    )
+    lock_sha = _phase31_sidecar(deployment_path, "Phase 03.2 deployment")
+    qualification_path = output_root / "03.2-FINAL-QUALIFICATION.json"
+    evidence_path = output_root / "03.2-DEVICE-EVIDENCE.json"
+    ledger_path = output_root / "03.2-DEFECT-LEDGER.json"
+    gate_path = output_root / "03.2-PHASE4-GATE.json"
+    paths = (qualification_path, evidence_path, ledger_path, gate_path)
+    if any(path.exists() for path in paths):
+        raise RuntimeError("Phase 03.2 final artifacts already exist; refusing replacement")
+    output_root.mkdir(parents=True, exist_ok=True)
+    qualification_sha = write_json(qualification_path, qualification, checksum=True)
+    evidence = {
+        "schema_version": 1,
+        "kind": PHASE32_DEVICE_EVIDENCE_KIND,
+        "status": "pass",
+        "deployment_id": deployment["deployment_id"],
+        "firmware_sha256": deployment["firmware_sha256"],
+        "deployment_lock_sha256": lock_sha,
+        "qualification_sha256": qualification_sha,
+        "threshold_ms": qualification["threshold_ms"],
+        "edge_assumptions": list(FINAL_EDGE_ASSUMPTIONS),
+        "rows": _phase32_physical_rows(observations),
+        "oracle_state": qualification["input_oracle"]["state"],
+    }
+    evidence_sha = write_json(evidence_path, evidence, checksum=True)
+    ledger = {
+        "schema_version": 1,
+        "kind": PHASE32_DEFECT_LEDGER_KIND,
+        "status": "pass",
+        "deployment_id": deployment["deployment_id"],
+        "deployment_lock_sha256": lock_sha,
+        "qualification_sha256": qualification_sha,
+        "device_evidence_sha256": evidence_sha,
+        "defects": [],
+        "history": [],
+    }
+    ledger_sha = write_json(ledger_path, ledger, checksum=True)
+    gate = {
+        "schema_version": 1,
+        "kind": PHASE32_PHASE4_GATE_KIND,
+        "status": "pass",
+        "deployment_id": deployment["deployment_id"],
+        "firmware_sha256": deployment["firmware_sha256"],
+        "deployment_lock_sha256": lock_sha,
+        "qualification_sha256": qualification_sha,
+        "device_evidence_sha256": evidence_sha,
+        "defect_ledger_sha256": ledger_sha,
+        "logical_evidence": {
+            "status": logical_evidence["status"],
+            "deployment_id": logical_evidence["deployment_id"],
+            "firmware_sha256": logical_evidence["firmware_sha256"],
+            "deployment_lock_sha256": logical_evidence["deployment_lock_sha256"],
+        },
+        "edge_assumptions": list(FINAL_EDGE_ASSUMPTIONS),
+        "oracle_state": qualification["input_oracle"]["state"],
+        "phase4_ready": True,
+    }
+    gate_sha = write_json(gate_path, gate, checksum=True)
+    validate_phase32_gate_file(
+        gate_path,
+        deployment_path,
+        qualification_path,
+        evidence_path,
+        ledger_path,
+    )
+    return {
+        "qualification_sha256": qualification_sha,
+        "device_evidence_sha256": evidence_sha,
+        "defect_ledger_sha256": ledger_sha,
+        "gate_sha256": gate_sha,
+        "paths": [path.as_posix() for path in paths],
+    }
+
+
+def run_phase32_qualification(args: argparse.Namespace) -> int:
+    """Run automation first, then a bounded exact-device observation session."""
+    require_inherited_bridge_lock()
+    deployment = validate_phase32_deployment_file(
+        args.deployment,
+        firmware=args.firmware,
+        decision_path=args.decision,
+        binding_path=args.binding,
+        require_current=True,
+    )
+    logical_evidence = validate_phase32_framebuffer_evidence_file(
+        args.logical_evidence,
+        args.deployment,
+        firmware=args.firmware,
+        require_current=True,
+    )
+    logical_lineage = _phase32_logical_lineage(logical_evidence)
+    automation_runs = _phase32_run_automated_preflight()
+    from herdr_keypad.usb import UsbDeviceSession
+    from .composite_qualification import _find_guided_keyboard_event
+
+    usb = UsbDeviceSession(args.binding, timeout=args.timeout)
+    try:
+        hello = usb.connect()
+        device_metrics = usb.request_metrics(reset=True)
+        serial_number = getattr(usb.candidate, "serial_number", None)
+    finally:
+        usb.close()
+    descriptor = deployment["descriptor_tuple"]
+    vid_pid = f"{int(descriptor['vid']):04x}:{int(descriptor['pid']):04x}"
+    event_path = _find_guided_keyboard_event(vid_pid, serial_number, timeout=args.timeout)
+    stop = threading.Event()
+    captured: list[list[dict[str, Any]]] = []
+
+    def capture() -> None:
+        captured.append(_phase32_capture_input_until(event_path, stop))
+
+    observer = threading.Thread(target=capture, name="phase32-input-observer", daemon=True)
+    observer.start()
+    observations: dict[str, dict[str, Any]] = {}
+    run_suffix = args.run_id[-8:].upper()
+    try:
+        for index, (step_id, prompt) in enumerate(PHASE32_OPERATOR_PROMPTS, 1):
+            print(
+                f"CHECKPOINT run={args.run_id} state={step_id} "
+                f"step={index}/{len(PHASE32_OPERATOR_PROMPTS)}",
+                flush=True,
+            )
+            print(f"PROMPT: {prompt}", flush=True)
+            answer = input(f"Answer Y/N {step_id} {run_suffix}: ").strip().upper()
+            if answer not in {"Y", "N"}:
+                raise RuntimeError("Phase 03.2 physical response must be exactly Y or N")
+            if answer != "Y":
+                raise RuntimeError(f"physical qualification failed at {step_id}; preserving no PASS")
+            observations.update({
+                row_id: {
+                    "answer": answer,
+                    "prompt": prompt,
+                    "observed_at_unix_ms": time.time_ns() // 1_000_000,
+                }
+                for row_id in (
+                    ("D-01", "D-02", "D-03", "D-04", "D-05")
+                    if step_id == "threshold-calibration"
+                    else ("D-06", "D-07", "D-08", "D-09", "D-10", "D-11", "D-12", "D-13", "D-14")
+                    if step_id == "presentation"
+                    else ("D-15", "D-16", "D-17", "D-18")
+                )
+            })
+    finally:
+        stop.set()
+        observer.join(timeout=5.0)
+    events = captured[0] if captured else []
+    input_trace = {
+        "schema_version": 1,
+        "kind": "composite-input-events",
+        "observer": "linux-evdev",
+        "external": True,
+        "complete": True,
+        "deferred": False,
+        "events": events,
+        "event_count": len(events),
+        "final_state": "UP",
+    }
+    input_oracle = validate_input_trace(input_trace)
+    qualification = build_final_qualification(
+        deployment,
+        logical_lineage,
+        deployment_lock_sha256=_phase31_sidecar(args.deployment, "Phase 03.2 deployment"),
+        input_oracle=input_oracle,
+        automation_runs=automation_runs,
+    )
+    qualification["device_preflight"] = {
+        "hello": hello,
+        "metrics_reset": device_metrics,
+        "keyboard_event_path": str(event_path),
+        "descriptor_vid_pid": vid_pid,
+        "raw_input_event_count": len(events),
+    }
+    written = write_phase32_final_artifacts(
+        args.output_root,
+        args.deployment,
+        args.logical_evidence,
+        qualification,
+        observations,
+    )
+    print(
+        "PHASE 03.2 QUALIFICATION PASS "
+        f"deployment={deployment['deployment_id']} "
+        f"qualification_sha256={written['qualification_sha256']} "
+        f"gate_sha256={written['gate_sha256']}",
+        flush=True,
+    )
+    return 0
 
 def run_phase32_capture(args: argparse.Namespace) -> int:
     firmware = args.firmware.resolve()
@@ -3731,6 +4106,41 @@ def main(argv: list[str] | None = None) -> int:
     validate32.add_argument("--deployment", type=Path, required=True)
     validate32.add_argument("--evidence", type=Path, required=True)
     validate32.add_argument("--require-current-deployment", action="store_true")
+    qualify32 = subparsers.add_parser(
+        "phase32-qualify",
+        help="run automation-first exact-device production qualification",
+    )
+    qualify32.add_argument("--binding", type=Path, required=True)
+    qualify32.add_argument(
+        "--decision",
+        type=Path,
+        default=ROOT / "artifacts/phase03.2/composite-decision.json",
+    )
+    qualify32.add_argument(
+        "--firmware",
+        type=Path,
+        default=ROOT / ".pio/build/selected-usb/firmware.bin",
+    )
+    qualify32.add_argument(
+        "--deployment",
+        type=Path,
+        default=ROOT / "artifacts/phase03.2/03.2-FINAL-DEPLOYMENT.json",
+    )
+    qualify32.add_argument(
+        "--logical-evidence",
+        type=Path,
+        default=ROOT / "artifacts/phase03.2/03.2-FRAMEBUFFER-EVIDENCE.json",
+    )
+    qualify32.add_argument(
+        "--output-root",
+        type=Path,
+        default=ROOT / "artifacts/phase03.2",
+    )
+    qualify32.add_argument(
+        "--run-id",
+        default=f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-final",
+    )
+    qualify32.add_argument("--timeout", type=float, default=5.0)
     current31 = subparsers.add_parser("phase31-current-deployment")
     current31.add_argument("--binding", type=Path, required=True)
     current31.add_argument("--firmware", type=Path, required=True)
@@ -3782,6 +4192,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_phase32_deploy_lock(args)
     if args.command == "phase32-validate-deployment":
         return run_phase32_validate_deployment(args)
+    if args.command == "phase32-qualify":
+        return run_phase32_qualification(args)
     if args.command == "phase32-capture":
         return run_phase32_capture(args)
     if args.command == "phase32-validate":

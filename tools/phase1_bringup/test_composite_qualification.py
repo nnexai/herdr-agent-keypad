@@ -14,10 +14,11 @@ from unittest.mock import patch
 from phase1_bringup.composite_qualification import (
     CompositeQualificationError,
     FINAL_AUTOMATED_CONTRACTS,
+    FINAL_DETERMINISTIC_CALIBRATION,
     FINAL_EDGE_ASSUMPTIONS,
+    FINAL_HUMAN_THRESHOLD_SAMPLE,
     FINAL_ROW_COUNTS,
     FINAL_STRESS_COUNTS,
-    INPUT_KIND,
     RESULT_KIND,
     PLAN00_DEFERRED_ROWS,
     ROW_COUNTS,
@@ -686,6 +687,8 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "slot": index % 3,
                 "threshold_ms": 550,
                 "physical_down": True,
+                "physical_claim": False,
+                "observation_source": "automated-controller-schedule",
                 "focus": {
                     "action_id": f"action-{index:03d}",
                     "slot": index % 3,
@@ -724,10 +727,20 @@ class FinalProductionQualificationTests(unittest.TestCase):
             "deployment_id": deployment["deployment_id"],
             "firmware_sha256": deployment["firmware_sha256"],
             "deployment_lock_sha256": "l" * 64,
+            "threshold_calibration": {
+                "human_sample": dict(FINAL_HUMAN_THRESHOLD_SAMPLE),
+                "deterministic": dict(FINAL_DETERMINISTIC_CALIBRATION),
+            },
             "threshold_ms": 550,
             "rows": rows,
             "edge_assumptions": [dict(item) for item in FINAL_EDGE_ASSUMPTIONS],
             "gesture_reconciliation": {
+                "seed": 0x03209,
+                "schedule_sha256": hashlib.sha256(
+                    canonical_bytes(list(mixed_stress_schedule(0x03209)))
+                ).hexdigest(),
+                "observation_source": "automated-controller-schedule",
+                "human_sample_gestures": 0,
                 "scheduled_count": 300,
                 "observed_count": 300,
                 "scheduled_counts": dict(FINAL_STRESS_COUNTS),
@@ -775,11 +788,32 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "boot_id": deployment["boot_id"],
                 "session_id": deployment["session_id"],
                 "decision_sha256": deployment["decision_sha256"],
+
                 "decision_manifest_sha256": deployment["decision_manifest_sha256"],
                 "protocol_version": 1,
             },
             "open_defects": [],
         }
+    def test_phase32_final_gate_requires_amended_reduced_human_sample_and_deterministic_coverage(self) -> None:
+        deployment = self._deployment()
+        logical = {
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": "l" * 64,
+        }
+        missing = self._qualification()
+        del missing["threshold_calibration"]
+        with self.assertRaisesRegex(CompositeQualificationError, "calibration"):
+            validate_final_qualification(missing, deployment, logical)
+        oversized = self._qualification()
+        oversized["threshold_calibration"]["human_sample"]["total_gestures"] = 180
+        with self.assertRaisesRegex(CompositeQualificationError, "24-gesture"):
+            validate_final_qualification(oversized, deployment, logical)
+        altered = self._qualification()
+        altered["threshold_calibration"]["deterministic"]["total_cases"] = 24
+        with self.assertRaisesRegex(CompositeQualificationError, "deterministic"):
+            validate_final_qualification(altered, deployment, logical)
     def test_phase32_final_gate_reconciles_production_matrix_and_lineage(self) -> None:
         deployment = self._deployment()
         logical = {
