@@ -58,7 +58,9 @@ void BoardAdapter::update(uint32_t now_us) {
     if (gap > pending_max_poll_gap_us_) pending_max_poll_gap_us_ = gap;
   }
   last_poll_at_us_ = now_us;
-  // This is the single poll path for STM32 keys, ButtonSense, and encoder.
+  // Release truth belongs to this captured sample only. Press edges and their
+  // timestamps remain pending until explicitly consumed.
+  released_latch_ = 0;
   board_.update();
   for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
     uint8_t library_index = 0;
