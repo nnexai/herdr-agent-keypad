@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: executing
-stopped_at: Completed 03.2-03-PLAN.md
-last_updated: "2026-08-22T08:07:48.352Z"
+stopped_at: Completed 03.2-05-PLAN.md
+last_updated: "2026-08-22T08:40:51.774Z"
 last_activity: 2026-08-22
 last_activity_desc: Phase 03.2 execution resumed (wave continue)
-state_head: f29d4c727c30f787aeb715f465662a30ce804d27
+state_head: 8a3e557ad591f2bc4bea82cd6b941ab89554701b
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 53
-  completed_plans: 48
+  completed_plans: 49
 milestone_name: milestone
 ---
 
@@ -48,7 +48,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — EXECUTING
-Plan: 6 of 10
+Plan: 7 of 10
 Status: Ready to execute
 Last activity: 2026-08-22 — Phase 03.2 execution resumed (wave continue)
 
@@ -115,6 +115,7 @@ Progress: [██████████] 97%
 | Phase 03.2 P02 | 5min | 2 tasks | 5 files |
 | Phase 03.2 P04 | 18min | 2 tasks | 5 files |
 | Phase 03.2 P03 | 35min | 2 tasks | 6 files |
+| Phase 03.2 P05 | 20min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -206,6 +207,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 03.2]: Plan 03.2-04 keeps the v2 wire at exactly agent_snapshot, snapshot_ack, focus_intent, and focus_result; fixed Space hold authority remains local after exact admitted focus_result.
 - [Phase 03.2]: HoldController clears authority before every lifecycle release attempt and requires empty completion plus all-keys-up before rearm.
 - [Phase 03.2]: Hold safety failures remain boot-monotonic while bounded diagnostic counters and timing maxima reset explicitly.
+- [Phase 03.2]: RenderState carries only value-only hold facts; action IDs, bindings, sessions, keycodes, timers, and mutation paths remain outside the normalized view.
+- [Phase 03.2]: A threshold-qualified candidate remains visible after the ordinary bounded Success cue expires, while named failure feedback never admits candidate or owner presentation.
+- [Phase 03.2]: Source fences, projection sync, lifecycle blocks, and incomplete empty reports suppress passive hold facts before a complete output frame; only HoldController can clear physical authority.
+- [Phase 03.2]: The active-owner cue remains tied to the physical owner slot through another-slot focus and generation replacement when that slot remains occupied.
 
 ### Pending Todos
 
@@ -245,5 +250,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-22T08:07:48.241Z
-Stopped at: Completed 03.2-03-PLAN.md
+Last session: 2026-08-22T08:40:51.666Z
+Stopped at: Completed 03.2-05-PLAN.md
