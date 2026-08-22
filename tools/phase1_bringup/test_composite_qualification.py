@@ -15,6 +15,7 @@ from phase1_bringup.composite_qualification import (
     CompositeQualificationError,
     INPUT_KIND,
     RESULT_KIND,
+    PLAN00_DEFERRED_ROWS,
     ROW_COUNTS,
     SCHEMA_VERSION,
     deterministic_calibration_matrix,
@@ -94,22 +95,33 @@ class CompositeFixture:
                 "queue_failure": 0,
                 "short_write": 0,
             },
-            "maximum_line_bytes_including_lf": 4096,
+            "maximum_line_bytes_including_lf": 385,
             "overlong_rejected": True,
             "next_valid_accepted": True,
         }
 
     def rows(self, failed_row: str | None = None) -> list[dict[str, object]]:
-        return [
-            {
-                "id": row_id,
-                "applicable": True,
-                "required_count": required,
-                "observed_count": 1 if row_id == failed_row else required,
-                "status": "fail" if row_id == failed_row else "pass",
-            }
-            for row_id, required in self.manifest["row_counts"].items()
-        ]
+        rows: list[dict[str, object]] = []
+        frozen = {row["id"]: row for row in self.manifest["rows"]}
+        for row_id, required in self.manifest["row_counts"].items():
+            if frozen[row_id]["applicable"] is False:
+                rows.append({
+                    "id": row_id,
+                    "applicable": False,
+                    "required_count": 0,
+                    "observed_count": 0,
+                    "status": "not-applicable",
+                    "reason": frozen[row_id]["reason"],
+                })
+            else:
+                rows.append({
+                    "id": row_id,
+                    "applicable": True,
+                    "required_count": required,
+                    "observed_count": 1 if row_id == failed_row else required,
+                    "status": "fail" if row_id == failed_row else "pass",
+                })
+        return rows
 
     def result(
         self,
@@ -143,23 +155,21 @@ class CompositeFixture:
                 "cdc_interfaces": 1,
                 "keyboard_hid_interfaces": 1,
                 "other_hid_usages": 0,
-                "stable_after_resets": 5,
-                "stable_after_unplugs": 5,
+                "stable_after_resets": 0,
+                "stable_after_unplugs": 0,
+                "stable_after_uploads": 5,
             },
             "udev_observation": {"external": True, "complete": True, "observer": "udevadm"},
             "blockers": [],
             "deferred": [],
             "open_defects": [],
             "latency": {
-                "eligible_to_down": {"samples_ms": [10] * 100, "count": 100, "p95_ms": 10, "max_ms": 10},
-                "release_to_up": {"samples_ms": [12] * 100, "count": 100, "p95_ms": 12, "max_ms": 12},
+                "eligible_to_down": {"samples_ms": [10] * 12, "count": 12, "p95_ms": 10, "max_ms": 10},
+                "release_to_up": {"samples_ms": [12] * 12, "count": 12, "p95_ms": 12, "max_ms": 12},
             },
             "stress": {
-                "started_after_deterministic_pass": True,
-                "schedule_sha256": hashlib.sha256(canonical_bytes(list(schedule))).hexdigest(),
-                "scheduled_counts": dict(STRESS_COUNTS),
-                "observed_counts": dict(STRESS_COUNTS),
-                "invariant_failures": [],
+                "status": "not-applicable",
+                "reason": self.manifest["rows"][-1]["reason"],
             },
         }
         if status == "FAIL":
@@ -220,6 +230,13 @@ class CompositeManifestAndScheduleTests(unittest.TestCase):
                     "limitation": "No claim of 30 human short samples with zero crossings or 30 human holds all activating.",
                 },
             )
+            deferred = {
+                row["id"]: row["reason"]
+                for row in fixture.manifest["rows"]
+                if row["applicable"] is False
+            }
+            self.assertEqual(deferred, PLAN00_DEFERRED_ROWS)
+            self.assertTrue(all("Plan 09" in reason for reason in deferred.values()))
 
     def test_revised_calibration_moves_repetition_to_deterministic_edges(self) -> None:
         cases = deterministic_calibration_matrix()

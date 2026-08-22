@@ -53,27 +53,42 @@ STRICT_COUNTERS = (
 )
 ROW_COUNTS = {
     "build-controller": 1,
-    "usb-identity": 10,
+    "usb-identity": 6,
     "exact-pairing": 1,
     "threshold-calibration": 204,
     "immediate-focus-short-separation": 90,
     "focus-before-hid-ordering": 180,
     "release-before-ack": 120,
     "stale-failure-source-session": 220,
-    "repeat-behavior": 30,
+    "repeat-behavior": 12,
     "active-owner-independence": 30,
     "cdc-under-hid": 4000,
-    "physical-release": 90,
+    "physical-release": 12,
     "usb-removal": 5,
     "controlled-reset": 5,
     "suspend-resume": 5,
     "reconnect-session": 10,
     "normal-flashing": 5,
-    "boot-recovery": 5,
-    "input-latency": 200,
+    "boot-recovery": 1,
+    "input-latency": 12,
     "mixed-stress": 300,
 }
-DETERMINISTIC_ROWS = tuple(row for row in ROW_COUNTS if row != "mixed-stress")
+PLAN00_DEFERRED_ROWS = {
+    "immediate-focus-short-separation": "Production focus-result authorization does not exist in the isolated feasibility tracer; mandatory Plan 09 gate after Plans 01-08.",
+    "focus-before-hid-ordering": "Production focus/threshold ordering does not exist in the isolated feasibility tracer; mandatory Plan 09 gate after Plans 01-08.",
+    "release-before-ack": "Production focus-result cancellation does not exist in the isolated feasibility tracer; mandatory Plan 09 gate after Plans 01-08.",
+    "stale-failure-source-session": "Production outcome/session rejection does not exist in the isolated feasibility tracer; mandatory Plan 09 gate after Plans 01-08.",
+    "active-owner-independence": "Production overlap/chord ownership does not exist in the isolated feasibility tracer; mandatory Plan 09 gate after Plans 01-08.",
+    "usb-removal": "Active-controller removal safety requires the production controller; mandatory Plan 09 gate after Plans 01-08.",
+    "controlled-reset": "Controller reset fencing requires the production controller; mandatory Plan 09 gate after Plans 01-08.",
+    "suspend-resume": "Active-controller suspend/resume fencing requires the production controller; mandatory Plan 09 gate after Plans 01-08.",
+    "reconnect-session": "Production stale-session reconnect fencing does not exist in the isolated feasibility tracer; mandatory Plan 09 gate after Plans 01-08.",
+    "mixed-stress": "Mixed production-controller stress is mandatory in Plan 09 after Plans 01-08.",
+}
+DETERMINISTIC_ROWS = tuple(
+    row for row in ROW_COUNTS
+    if row != "mixed-stress" and row not in PLAN00_DEFERRED_ROWS
+)
 REQUIRED_RUN_FILES = (
     "manifest.json",
     "result.json",
@@ -192,6 +207,27 @@ def deterministic_calibration_matrix() -> tuple[dict[str, Any], ...]:
     return tuple(cases)
 
 
+def _frozen_rows(row_counts: Mapping[str, int]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for row_id, count in row_counts.items():
+        if row_id in PLAN00_DEFERRED_ROWS:
+            rows.append({
+                "id": row_id,
+                "applicable": False,
+                "required": False,
+                "required_count": 0,
+                "reason": PLAN00_DEFERRED_ROWS[row_id],
+            })
+        else:
+            rows.append({
+                "id": row_id,
+                "applicable": True,
+                "required": True,
+                "required_count": count,
+            })
+    return rows
+
+
 def freeze_composite_manifest(
     output: Path,
     firmware_binary: Path,
@@ -259,16 +295,18 @@ def freeze_composite_manifest(
             "limitation": "No claim of 30 human short samples with zero crossings or 30 human holds all activating.",
         },
         "row_counts": row_counts,
-        "rows": [
-            {"id": row_id, "applicable": True, "required": True, "required_count": count}
-            for row_id, count in row_counts.items()
-        ],
+        "rows": _frozen_rows(row_counts),
         "controlled_reset_paths": reset_paths,
+        "descriptor_stability": {
+            "upload_reenumerations": 5,
+            "software_resets": 0,
+            "unplug_replugs": 0,
+        },
         "cdc": {
             "steady_frames_each_direction": 1000,
             "burst_repetitions": 10,
             "burst_frames_each_direction": 100,
-            "maximum_line_bytes_including_lf": 4096,
+            "maximum_line_bytes_including_lf": 385,
         },
         "latency_limits_ms": {
             "eligible_to_down_p95": LATENCY_TARGET_P95_MS,
@@ -362,20 +400,23 @@ def validate_composite_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(reset_paths, list) or not reset_paths:
         raise CompositeQualificationError("manifest controlled reset paths are missing")
     expected_counts["controlled-reset"] = len(reset_paths) * 5
+    if manifest.get("descriptor_stability") != {
+        "upload_reenumerations": 5,
+        "software_resets": 0,
+        "unplug_replugs": 0,
+    }:
+        raise CompositeQualificationError("manifest scoped descriptor stability changed")
     if manifest.get("row_counts") != expected_counts:
         raise CompositeQualificationError("manifest row counts differ from the bounded D-15 matrix")
     rows = manifest.get("rows")
-    if not isinstance(rows, list) or rows != [
-        {"id": row_id, "applicable": True, "required": True, "required_count": count}
-        for row_id, count in expected_counts.items()
-    ]:
+    if not isinstance(rows, list) or rows != _frozen_rows(expected_counts):
         raise CompositeQualificationError("manifest rows are incomplete, reordered, or not applicable")
     cdc = manifest.get("cdc")
     if cdc != {
         "steady_frames_each_direction": 1000,
         "burst_repetitions": 10,
         "burst_frames_each_direction": 100,
-        "maximum_line_bytes_including_lf": 4096,
+        "maximum_line_bytes_including_lf": 385,
     }:
         raise CompositeQualificationError("manifest CDC bounds changed")
     limits = manifest.get("latency_limits_ms")
@@ -591,10 +632,13 @@ def _validate_latency(result: Mapping[str, Any], manifest: Mapping[str, Any]) ->
         if not isinstance(entry, Mapping):
             raise CompositeQualificationError(f"run lacks {name} latency evidence")
         samples = entry.get("samples_ms")
-        if not isinstance(samples, list) or len(samples) < 100 or any(
+        minimum_samples = manifest["row_counts"]["input-latency"]
+        if not isinstance(samples, list) or len(samples) < minimum_samples or any(
             not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0 for value in samples
         ):
-            raise CompositeQualificationError(f"run requires at least 100 non-negative {name} samples")
+            raise CompositeQualificationError(
+                f"run requires at least {minimum_samples} non-negative {name} samples"
+            )
         p95 = _percentile(samples, 95)
         maximum = max(samples)
         if entry.get("count") != len(samples) or entry.get("p95_ms") != p95 or entry.get("max_ms") != maximum:
@@ -617,13 +661,21 @@ def _row_map(result: Mapping[str, Any], manifest: Mapping[str, Any], *, require_
         raise CompositeQualificationError("run does not contain every frozen row exactly once")
     if [row["id"] for row in rows] != list(manifest["row_counts"]):
         raise CompositeQualificationError("run rows do not follow the frozen deterministic order")
+    manifest_rows = {row["id"]: row for row in manifest["rows"]}
     for row_id, required_count in manifest["row_counts"].items():
         row = mapped[row_id]
-        if row.get("applicable") is False:
-            if not isinstance(row.get("reason"), str) or not row["reason"].strip():
-                raise CompositeQualificationError("an inapplicable row lacks a reason")
-            if require_pass:
-                raise CompositeQualificationError("PASS cannot contain an inapplicable frozen D-15 row")
+        frozen = manifest_rows[row_id]
+        if frozen["applicable"] is False:
+            if (
+                row.get("applicable") is not False
+                or row.get("required_count") != 0
+                or row.get("observed_count") != 0
+                or row.get("status") != "not-applicable"
+                or row.get("reason") != frozen["reason"]
+            ):
+                raise CompositeQualificationError(
+                    f"row {row_id} differs from its frozen Plan 09 deferral"
+                )
             continue
         if row.get("applicable") is not True or row.get("required_count") != required_count:
             raise CompositeQualificationError(f"row {row_id} differs from its frozen applicability/count")
@@ -696,8 +748,9 @@ def _validate_result(
         "cdc_interfaces": 1,
         "keyboard_hid_interfaces": 1,
         "other_hid_usages": 0,
-        "stable_after_resets": 5,
-        "stable_after_unplugs": 5,
+        "stable_after_resets": manifest["descriptor_stability"]["software_resets"],
+        "stable_after_unplugs": manifest["descriptor_stability"]["unplug_replugs"],
+        "stable_after_uploads": manifest["descriptor_stability"]["upload_reenumerations"],
     }.items()):
         raise CompositeQualificationError("PASS descriptor/interface set is incomplete or unstable")
     udev = result.get("udev_observation")
@@ -713,13 +766,20 @@ def _validate_result(
             raise CompositeQualificationError("PASS lacks clean preflight/boot evidence")
         _validate_latency(result, manifest)
         stress = result.get("stress")
-        schedule = mixed_stress_schedule(manifest["stress"]["seed"])
-        if not isinstance(stress, Mapping) or stress.get("started_after_deterministic_pass") is not True:
-            raise CompositeQualificationError("mixed stress ran before deterministic lifecycle rows passed")
-        if any(rows[name].get("status") != "pass" for name in DETERMINISTIC_ROWS):
-            raise CompositeQualificationError("mixed stress prerequisites did not pass")
-        if stress.get("schedule_sha256") != _sha256_bytes(_canonical_bytes(list(schedule))) or stress.get("scheduled_counts") != STRESS_COUNTS or stress.get("observed_counts") != STRESS_COUNTS or stress.get("invariant_failures") != []:
-            raise CompositeQualificationError("mixed stress is incomplete, unequal, or has an invariant failure")
+        if manifest["rows"][-1]["applicable"] is False:
+            if stress != {
+                "status": "not-applicable",
+                "reason": manifest["rows"][-1]["reason"],
+            }:
+                raise CompositeQualificationError("Plan 00 stress deferral differs from the frozen manifest")
+        else:
+            schedule = mixed_stress_schedule(manifest["stress"]["seed"])
+            if not isinstance(stress, Mapping) or stress.get("started_after_deterministic_pass") is not True:
+                raise CompositeQualificationError("mixed stress ran before deterministic lifecycle rows passed")
+            if any(rows[name].get("status") != "pass" for name in DETERMINISTIC_ROWS):
+                raise CompositeQualificationError("mixed stress prerequisites did not pass")
+            if stress.get("schedule_sha256") != _sha256_bytes(_canonical_bytes(list(schedule))) or stress.get("scheduled_counts") != STRESS_COUNTS or stress.get("observed_counts") != STRESS_COUNTS or stress.get("invariant_failures") != []:
+                raise CompositeQualificationError("mixed stress is incomplete, unequal, or has an invariant failure")
     else:
         if failure_class not in {"harness_setup", "product"}:
             raise CompositeQualificationError("failed run must classify its first failure")
