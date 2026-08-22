@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: executing
-stopped_at: Completed 03.2-00-PLAN.md
-last_updated: "2026-08-22T04:58:19.347Z"
-last_activity: 2026-08-21
-last_activity_desc: Phase 03.2 execution started
-state_head: efe859937047209a1283b69aa6e9f72c12520a96
+stopped_at: "Blocked before 03.2-01: gsd-executor routed sol instead of luna:xhigh"
+last_updated: "2026-08-22T05:30:31Z"
+last_activity: 2026-08-22
+last_activity_desc: "Completed quick task 260822-abq: aligned OMP agent routing with Codex definitions"
+state_head: a9ae12af03b03495bd03ed7283154921573d39dd
 progress:
   total_phases: 8
   completed_phases: 5
@@ -24,7 +24,7 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
-status: Ready to execute
+status: Executing Phase 03.2
 stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
@@ -48,9 +48,9 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — EXECUTING
-Plan: 2 of 10
-Status: Ready to execute
-Last activity: 2026-08-21 — Phase 03.2 execution started
+Plan: 1 of 10
+Status: Executing Phase 03.2
+Last activity: 2026-08-22 — Phase 03.2 execution started
 
 Progress: [██████████] 97%
 
@@ -201,6 +201,7 @@ None yet.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
 - [Phase 02.1]: Bounded live-sync smoke evidence and exact-device physical checkpoint passed; no long qualification rerun.
+- Phase 03.2 blocked before Plan 01: fresh-session native gsd-executor probe ExecutorRouteProbe2 resolved openai-codex/gpt-5.6-sol instead of configured gpt-5.6-luna xhigh; no Plan 01 edits.
 
 ### Roadmap Evolution
 
@@ -223,10 +224,11 @@ None yet.
 |------|------|--------|
 | Archive two design-study HTML pages in `.planning/research/` | 2026-08-17 | complete |
 | [260820-sp6 — Fix bridge automatic recovery after USB CDC communication reset](./quick/260820-sp6-fix-bridge-automatic-recovery-after-usb-/) | 2026-08-20 | complete — `db5c880` |
+| [260822-abq — Align OMP agent routing with Codex definitions](./quick/260822-abq-align-omp-agents-markdown-definitions-wi/) | 2026-08-22 | complete — `1d09810` |
 
 ## Session Continuity
 
-**Resume file:** None
+**Resume file:** .planning/phases/03.2-focus-then-hold-usb-keyboard/.continue-here.md
 
-Last session: 2026-08-22T04:58:19.254Z
-Stopped at: Completed 03.2-00-PLAN.md
+Last session: 2026-08-22T05:20:49.423Z
+Stopped at: Blocked before 03.2-01: gsd-executor routed sol instead of luna:xhigh
