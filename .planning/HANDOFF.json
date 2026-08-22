@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-08-22T05:07:38.967Z",
+  "phase": "03.2",
+  "phase_name": "Focus-Then-Hold USB Keyboard",
+  "phase_dir": ".planning/phases/03.2-focus-then-hold-usb-keyboard",
+  "plan": 1,
+  "task": 1,
+  "total_tasks": 2,
+  "status": "paused",
+  "completed_tasks": [
+    {
+      "id": 0,
+      "name": "Plan 00: Composite transport/HID feasibility gate",
+      "status": "done",
+      "commit": "efe8599"
+    }
+  ],
+  "remaining_tasks": [
+    {"id": 1, "name": "Plan 01: Production focus-authorized hold path", "status": "not_started"},
+    {"id": 2, "name": "Plans 02 through 09", "status": "not_started"},
+    {"id": 3, "name": "Phase regression, verification, and completion gates", "status": "not_started"}
+  ],
+  "blockers": [
+    {
+      "description": "This session routes native gsd-executor subagents as sol:high although .planning/config.json and .codex/agents/gsd-executor.toml specify luna:xhigh.",
+      "type": "technical",
+      "workaround": "Restart the harness/session to reload the named-agent registry. Before any Plan 01 edit, verify the displayed executor route is luna:xhigh; stop immediately if it is not."
+    }
+  ],
+  "async_jobs": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {
+      "decision": "Split Plan 00 transport/HID feasibility from Plan 09 production-controller qualification.",
+      "rationale": "The isolated tracer cannot truthfully exercise focus authorization, overlap, stale-session, or production controller stress before Plans 01-08 implement those behaviors.",
+      "phase": "03.2"
+    },
+    {
+      "decision": "Use 24 bounded physical calibration gestures and deterministic automated timing coverage instead of 360 manual gestures.",
+      "rationale": "Preserves truthful physical samples while eliminating an unacceptable repetitive acceptance loop; evidence explicitly does not claim 30 human samples per class/key.",
+      "phase": "03.2"
+    },
+    {
+      "decision": "Manual timing prompts use only SHORT (<0.5 s natural tap) and LONG (>1.5 s clear hold).",
+      "rationale": "Precise manual targets such as 0.2, 0.5, 1.0, and 1.5 seconds are not reliably distinguishable by the user.",
+      "phase": "03.2"
+    }
+  ],
+  "uncommitted_files": [
+    ".gsd/dispatch-isolation-sentinel.json (runtime state)",
+    "Pre-existing user-owned Phase 03.1 evidence/debug changes and tracked .pio build outputs remain untouched"
+  ],
+  "next_action": "Restart the harness/session, run $gsd-resume-work, verify the native gsd-executor displays luna:xhigh before edits, then dispatch Plan 03.2-01 through the named subagent path.",
+  "context_notes": "Plan 00 is complete and committed. Terminal scoped PASS decision hash f3dd250e8119fed74e796964d51bf0a41402f40014ec407e3415c1e7bfa610d1; immutable run 20260822T032038Z-terminal; final Space oracle UP. Production selected-usb was restored, exact application hello passed, the production bridge owns the device, and the temporary /run udev rule was removed. Plan 01 has no edits or commits. Do not use codex exec for orchestration, and do not place that orchestration constraint in executor prompts. A stale failed worktree remains at .claude/worktrees/agent-p03.2-00-1787349662; cleanup-wave is blocked by base_mismatch. Its Task 1 files were recovered and superseded by committed main-branch work; never merge it blindly."
+}
