@@ -16,6 +16,9 @@ from phase1_bringup.phase3_smoke import (
     PHASE32_OPERATOR_PROMPTS,
     ROOT,
     _phase31_sidecar,
+    _phase32_checkpoint_template,
+    _phase32_load_checkpoint,
+    _phase32_save_checkpoint,
     _phase32_row_hash,
     PHASE32_FAILURE_EVENTS,
     PHASE32_HOLD_SCENES,
@@ -26,6 +29,8 @@ from phase1_bringup.phase3_smoke import (
     phase32_led_rows,
     phase32_source_digest,
     phase32_deployment_id_for,
+    validate_phase31_current_deployment_identity,
+    validate_phase31_reset_epoch,
     validate_phase32_composite_lineage,
     validate_phase32_deployment,
     validate_phase32_deployment_file,
@@ -36,8 +41,6 @@ from phase1_bringup.phase3_smoke import (
     build_final_qualification,
     run_guided,
     sha256_file,
-    validate_phase31_current_deployment_identity,
-    validate_phase31_reset_epoch,
     write_json,
     write_phase32_final_artifacts,
 )
@@ -928,6 +931,61 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
         self.assertNotIn("300", threshold_prompt)
         self.assertIn("all four themes", PHASE32_OPERATOR_PROMPTS[1][1])
         self.assertIn("unplug/replug", PHASE32_OPERATOR_PROMPTS[2][1])
+
+    def test_phase32_checkpoint_round_trip_preserves_only_completed_batches(self) -> None:
+        deployment = {
+            "deployment_id": "phase32-checkpoint",
+            "firmware_sha256": "f" * 64,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "qualification-checkpoint.json"
+            checkpoint = _phase32_checkpoint_template("run-checkpoint", deployment, "a" * 64)
+            checkpoint["completed_steps"] = ["threshold-calibration"]
+            checkpoint["observations"] = {
+                row_id: {
+                    "answer": "Y",
+                    "prompt": "operator observed",
+                    "observed_at_unix_ms": 123,
+                }
+                for row_id in ("D-01", "D-02", "D-03", "D-04", "D-05")
+            }
+            checkpoint["input_events"] = [
+                {
+                    "type": "EV_KEY",
+                    "code": "KEY_SPACE",
+                    "value": 0,
+                    "monotonic_ns": 1,
+                }
+            ]
+            _phase32_save_checkpoint(path, checkpoint)
+            resumed = _phase32_load_checkpoint(
+                path,
+                "run-checkpoint",
+                deployment,
+                "a" * 64,
+            )
+
+        self.assertEqual(resumed["completed_steps"], ["threshold-calibration"])
+        self.assertEqual(resumed["observations"]["D-01"]["answer"], "Y")
+        self.assertEqual(resumed["input_events"][0]["value"], 0)
+
+    def test_phase32_checkpoint_rejects_completed_batch_without_observations(self) -> None:
+        deployment = {
+            "deployment_id": "phase32-checkpoint",
+            "firmware_sha256": "f" * 64,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "qualification-checkpoint.json"
+            checkpoint = _phase32_checkpoint_template("run-checkpoint", deployment, "a" * 64)
+            checkpoint["completed_steps"] = ["threshold-calibration"]
+            _phase32_save_checkpoint(path, checkpoint)
+            with self.assertRaisesRegex(RuntimeError, "physical observations"):
+                _phase32_load_checkpoint(
+                    path,
+                    "run-checkpoint",
+                    deployment,
+                    "a" * 64,
+                )
 
 class Phase32PhysicalGateTests(unittest.TestCase):
     @staticmethod

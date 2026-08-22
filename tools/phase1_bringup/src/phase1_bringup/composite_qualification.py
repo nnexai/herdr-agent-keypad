@@ -1797,10 +1797,18 @@ def _udev_properties(device: Path) -> dict[str, str]:
     return properties
 
 
+def _normalize_usb_serial(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = "".join(character for character in value if character.isalnum()).upper()
+    return normalized or None
+
+
 def _find_guided_keyboard_event(
     vid_pid: str, usb_serial: str | None, timeout: float = 20.0
 ) -> Path:
     vid, pid = vid_pid.split(":", 1)
+    expected_serial = _normalize_usb_serial(usb_serial)
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         matches: list[Path] = []
@@ -1809,13 +1817,15 @@ def _find_guided_keyboard_event(
                 properties = _udev_properties(event)
             except CompositeQualificationError:
                 continue
+            observed_serial = _normalize_usb_serial(properties.get("ID_SERIAL_SHORT"))
             if (
                 properties.get("ID_INPUT_KEYBOARD") == "1"
                 and properties.get("ID_VENDOR_ID", "").lower() == vid
                 and properties.get("ID_MODEL_ID", "").lower() == pid
                 and (
-                    not usb_serial
-                    or properties.get("ID_SERIAL_SHORT") in {usb_serial, None}
+                    expected_serial is None
+                    or observed_serial is None
+                    or observed_serial == expected_serial
                 )
             ):
                 matches.append(event)

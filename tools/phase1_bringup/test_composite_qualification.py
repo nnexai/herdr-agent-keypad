@@ -505,6 +505,27 @@ class GuidedCompositePreflightTests(unittest.TestCase):
         self.assertEqual(open_device.call_count, 2)
         close_device.assert_called_once_with(7)
 
+    def test_keyboard_observer_matches_pyserial_colon_delimited_serial(self) -> None:
+        event = Path("/dev/input/event13")
+        properties = {
+            "ID_INPUT_KEYBOARD": "1",
+            "ID_VENDOR_ID": "303a",
+            "ID_MODEL_ID": "1001",
+            "ID_SERIAL_SHORT": "8CBFEA0DCBFC",
+        }
+        with (
+            patch.object(Path, "glob", return_value=[event]),
+            patch.object(composite_module, "_udev_properties", return_value=properties),
+            patch.object(composite_module.os, "open", return_value=7),
+            patch.object(composite_module.os, "close") as close_device,
+        ):
+            selected = composite_module._find_guided_keyboard_event(
+                "303a:1001", "8C:BF:EA:0D:CB:FC", timeout=1.0
+            )
+
+        self.assertEqual(selected, event)
+        close_device.assert_called_once_with(7)
+
 
     def test_cli_reports_only_the_current_exact_pairing_action(self) -> None:
         from phase1_bringup.__main__ import main

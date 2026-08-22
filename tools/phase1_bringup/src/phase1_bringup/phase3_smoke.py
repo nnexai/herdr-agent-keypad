@@ -1888,8 +1888,157 @@ def write_phase32_final_artifacts(
     }
 
 
+PHASE32_CHECKPOINT_KIND = "phase03.2-qualification-checkpoint"
+PHASE32_CHECKPOINT_SCHEMA_VERSION = 1
+
+
+def _phase32_checkpoint_path(args: argparse.Namespace) -> Path:
+    explicit = getattr(args, "checkpoint", None)
+    if explicit is not None:
+        return Path(explicit).expanduser().resolve()
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
+    return (
+        Path(runtime)
+        / "herdr-keypad"
+        / f"phase32-{args.run_id}.checkpoint.json"
+    )
+
+
+def _phase32_checkpoint_template(
+    run_id: str,
+    deployment: Mapping[str, Any],
+    deployment_lock_sha256: str,
+) -> dict[str, Any]:
+    return {
+        "schema_version": PHASE32_CHECKPOINT_SCHEMA_VERSION,
+        "kind": PHASE32_CHECKPOINT_KIND,
+        "status": "in_progress",
+        "run_id": run_id,
+        "deployment_id": deployment["deployment_id"],
+        "firmware_sha256": deployment["firmware_sha256"],
+        "deployment_lock_sha256": deployment_lock_sha256,
+        "completed_steps": [],
+        "observations": {},
+        "automation_runs": [],
+        "input_events": [],
+    }
+
+
+def _phase32_load_checkpoint(
+    path: Path,
+    run_id: str,
+    deployment: Mapping[str, Any],
+    deployment_lock_sha256: str,
+) -> dict[str, Any]:
+    if not path.exists():
+        return _phase32_checkpoint_template(run_id, deployment, deployment_lock_sha256)
+    try:
+        checkpoint = json.loads(path.read_text(encoding="ascii"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"qualification checkpoint is unreadable: {path}") from exc
+    if not isinstance(checkpoint, dict):
+        raise RuntimeError("qualification checkpoint must be a JSON object")
+    if (
+        checkpoint.get("schema_version") != PHASE32_CHECKPOINT_SCHEMA_VERSION
+        or checkpoint.get("kind") != PHASE32_CHECKPOINT_KIND
+        or checkpoint.get("run_id") != run_id
+    ):
+        raise RuntimeError("qualification checkpoint identity is invalid")
+    if checkpoint.get("status") == "failed":
+        raise RuntimeError(
+            "qualification checkpoint preserves a failed physical observation; use a new run-id"
+        )
+    if checkpoint.get("status") != "in_progress":
+        raise RuntimeError("qualification checkpoint is not resumable")
+    if any(
+        checkpoint.get(field) != expected
+        for field, expected in (
+            ("deployment_id", deployment["deployment_id"]),
+            ("firmware_sha256", deployment["firmware_sha256"]),
+            ("deployment_lock_sha256", deployment_lock_sha256),
+        )
+    ):
+        raise RuntimeError("qualification checkpoint deployment lineage changed")
+    completed = checkpoint.get("completed_steps")
+    expected_steps = [step_id for step_id, _prompt in PHASE32_OPERATOR_PROMPTS]
+    if (
+        not isinstance(completed, list)
+        or completed != expected_steps[: len(completed)]
+        or any(not isinstance(step, str) for step in completed)
+    ):
+        raise RuntimeError("qualification checkpoint steps are not a completed prefix")
+    observations = checkpoint.get("observations")
+    if not isinstance(observations, dict):
+        raise RuntimeError("qualification checkpoint observations are invalid")
+    expected_rows = {
+        row_id
+        for step_id, rows in (
+            ("threshold-calibration", ("D-01", "D-02", "D-03", "D-04", "D-05")),
+            ("presentation", ("D-06", "D-07", "D-08", "D-09", "D-10", "D-11", "D-12", "D-13", "D-14")),
+            ("lifecycle", ("D-15", "D-16", "D-17", "D-18")),
+        )
+        if step_id in completed
+        for row_id in rows
+    }
+    if set(observations) != expected_rows or any(
+        not isinstance(observation, dict) or observation.get("answer") != "Y"
+        for observation in observations.values()
+    ):
+        raise RuntimeError("qualification checkpoint physical observations are incomplete")
+    automation_runs = checkpoint.get("automation_runs")
+    if not isinstance(automation_runs, list) or any(
+        not isinstance(run, dict) or run.get("status") != "pass"
+        for run in automation_runs
+    ):
+        raise RuntimeError("qualification checkpoint automated runs are invalid")
+    input_events = checkpoint.get("input_events")
+    if not isinstance(input_events, list) or any(
+        not isinstance(event, dict) for event in input_events
+    ):
+        raise RuntimeError("qualification checkpoint input events are invalid")
+    return checkpoint
+
+
+def _phase32_save_checkpoint(path: Path, checkpoint: Mapping[str, Any]) -> None:
+    write_json(path, dict(checkpoint))
+
+
+def _phase32_checkpoint_rows(step_id: str) -> tuple[str, ...]:
+    return {
+        "threshold-calibration": ("D-01", "D-02", "D-03", "D-04", "D-05"),
+        "presentation": ("D-06", "D-07", "D-08", "D-09", "D-10", "D-11", "D-12", "D-13", "D-14"),
+        "lifecycle": ("D-15", "D-16", "D-17", "D-18"),
+    }[step_id]
+
+
+def _phase32_stop_observer(
+    stop: threading.Event | None,
+    observer: threading.Thread | None,
+    captured: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    if stop is None or observer is None or captured is None:
+        return []
+    stop.set()
+    observer.join(timeout=5.0)
+    return list(captured)
+
+
+def _phase32_start_observer(
+    event_path: Path,
+) -> tuple[threading.Event, threading.Thread, list[dict[str, Any]]]:
+    stop = threading.Event()
+    captured: list[dict[str, Any]] = []
+
+    def capture() -> None:
+        captured.extend(_phase32_capture_input_until(event_path, stop))
+
+    observer = threading.Thread(target=capture, name="phase32-input-observer", daemon=True)
+    observer.start()
+    return stop, observer, captured
+
+
 def run_phase32_qualification(args: argparse.Namespace) -> int:
-    """Run automation first, then a bounded exact-device observation session."""
+    """Run a resumable automation-first exact-device observation session."""
     require_inherited_bridge_lock()
     deployment = validate_phase32_deployment_file(
         args.deployment,
@@ -1905,7 +2054,24 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
         require_current=True,
     )
     logical_lineage = _phase32_logical_lineage(logical_evidence)
-    automation_runs = _phase32_run_automated_preflight()
+    deployment_lock_sha256 = _phase31_sidecar(args.deployment, "Phase 03.2 deployment")
+    checkpoint_path = _phase32_checkpoint_path(args)
+    checkpoint = _phase32_load_checkpoint(
+        checkpoint_path,
+        args.run_id,
+        deployment,
+        deployment_lock_sha256,
+    )
+    automation_runs = list(checkpoint["automation_runs"])
+    if not automation_runs:
+        automation_runs.extend(_phase32_run_automated_preflight())
+        checkpoint["automation_runs"] = automation_runs
+        _phase32_save_checkpoint(checkpoint_path, checkpoint)
+    if checkpoint["completed_steps"]:
+        automation_runs.extend(_phase32_run_automated_preflight())
+        checkpoint["automation_runs"] = automation_runs
+        _phase32_save_checkpoint(checkpoint_path, checkpoint)
+
     from herdr_keypad.usb import UsbDeviceSession
     from .composite_qualification import _find_guided_keyboard_event
 
@@ -1919,47 +2085,101 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
     descriptor = deployment["descriptor_tuple"]
     vid_pid = f"{int(descriptor['vid']):04x}:{int(descriptor['pid']):04x}"
     event_path = _find_guided_keyboard_event(vid_pid, serial_number, timeout=args.timeout)
-    stop = threading.Event()
-    captured: list[list[dict[str, Any]]] = []
-
-    def capture() -> None:
-        captured.append(_phase32_capture_input_until(event_path, stop))
-
-    observer = threading.Thread(target=capture, name="phase32-input-observer", daemon=True)
-    observer.start()
-    observations: dict[str, dict[str, Any]] = {}
+    observations = dict(checkpoint["observations"])
+    events = list(checkpoint["input_events"])
+    completed_steps = list(checkpoint["completed_steps"])
     run_suffix = args.run_id[-8:].upper()
+    active_stop: threading.Event | None = None
+    active_observer: threading.Thread | None = None
+    active_captured: list[dict[str, Any]] | None = None
     try:
         for index, (step_id, prompt) in enumerate(PHASE32_OPERATOR_PROMPTS, 1):
+            if step_id in completed_steps:
+                continue
+            event_path = _find_guided_keyboard_event(
+                vid_pid,
+                serial_number,
+                timeout=args.timeout,
+            )
+            active_stop, active_observer, active_captured = _phase32_start_observer(event_path)
             print(
                 f"CHECKPOINT run={args.run_id} state={step_id} "
                 f"step={index}/{len(PHASE32_OPERATOR_PROMPTS)}",
                 flush=True,
             )
             print(f"PROMPT: {prompt}", flush=True)
-            answer = input(f"Answer Y/N {step_id} {run_suffix}: ").strip().upper()
+            try:
+                answer = input(f"Answer Y/N {step_id} {run_suffix}: ").strip().upper()
+            except (EOFError, KeyboardInterrupt):
+                events.extend(
+                    _phase32_stop_observer(
+                        active_stop,
+                        active_observer,
+                        active_captured,
+                    )
+                )
+                active_stop = active_observer = active_captured = None
+                checkpoint["input_events"] = events
+                _phase32_save_checkpoint(checkpoint_path, checkpoint)
+                print(
+                    f"PHASE 03.2 CHECKPOINT PRESERVED run={args.run_id} "
+                    f"state={step_id} resume=same-command",
+                    flush=True,
+                )
+                return 75
+            events.extend(
+                _phase32_stop_observer(
+                    active_stop,
+                    active_observer,
+                    active_captured,
+                )
+            )
+            active_stop = active_observer = active_captured = None
+            checkpoint["input_events"] = events
             if answer not in {"Y", "N"}:
+                _phase32_save_checkpoint(checkpoint_path, checkpoint)
                 raise RuntimeError("Phase 03.2 physical response must be exactly Y or N")
             if answer != "Y":
+                checkpoint["status"] = "failed"
+                checkpoint["failure_step"] = step_id
+                checkpoint["failure_answer"] = answer
+                _phase32_save_checkpoint(checkpoint_path, checkpoint)
                 raise RuntimeError(f"physical qualification failed at {step_id}; preserving no PASS")
+            observation = {
+                "answer": answer,
+                "prompt": prompt,
+                "observed_at_unix_ms": time.time_ns() // 1_000_000,
+            }
             observations.update({
-                row_id: {
-                    "answer": answer,
-                    "prompt": prompt,
-                    "observed_at_unix_ms": time.time_ns() // 1_000_000,
-                }
-                for row_id in (
-                    ("D-01", "D-02", "D-03", "D-04", "D-05")
-                    if step_id == "threshold-calibration"
-                    else ("D-06", "D-07", "D-08", "D-09", "D-10", "D-11", "D-12", "D-13", "D-14")
-                    if step_id == "presentation"
-                    else ("D-15", "D-16", "D-17", "D-18")
-                )
+                row_id: dict(observation)
+                for row_id in _phase32_checkpoint_rows(step_id)
             })
+            completed_steps.append(step_id)
+            checkpoint["completed_steps"] = completed_steps
+            checkpoint["observations"] = observations
+            _phase32_save_checkpoint(checkpoint_path, checkpoint)
+            if index < len(PHASE32_OPERATOR_PROMPTS):
+                automation_runs.extend(_phase32_run_automated_preflight())
+                checkpoint["automation_runs"] = automation_runs
+                _phase32_save_checkpoint(checkpoint_path, checkpoint)
     finally:
-        stop.set()
-        observer.join(timeout=5.0)
-    events = captured[0] if captured else []
+        if active_stop is not None:
+            events.extend(
+                _phase32_stop_observer(
+                    active_stop,
+                    active_observer,
+                    active_captured,
+                )
+            )
+            checkpoint["input_events"] = events
+            _phase32_save_checkpoint(checkpoint_path, checkpoint)
+
+    if completed_steps != [step_id for step_id, _prompt in PHASE32_OPERATOR_PROMPTS]:
+        raise RuntimeError("Phase 03.2 physical qualification did not complete every batch")
+    automation_runs.extend(_phase32_run_automated_preflight())
+    checkpoint["automation_runs"] = automation_runs
+    checkpoint["input_events"] = events
+    _phase32_save_checkpoint(checkpoint_path, checkpoint)
     input_trace = {
         "schema_version": 1,
         "kind": "composite-input-events",
@@ -1975,7 +2195,7 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
     qualification = build_final_qualification(
         deployment,
         logical_lineage,
-        deployment_lock_sha256=_phase31_sidecar(args.deployment, "Phase 03.2 deployment"),
+        deployment_lock_sha256=deployment_lock_sha256,
         input_oracle=input_oracle,
         automation_runs=automation_runs,
     )
@@ -1993,11 +2213,18 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
         qualification,
         observations,
     )
+    checkpoint["status"] = "complete"
+    _phase32_save_checkpoint(checkpoint_path, checkpoint)
+    try:
+        checkpoint_path.unlink()
+    except FileNotFoundError:
+        pass
     print(
         "PHASE 03.2 QUALIFICATION PASS "
         f"deployment={deployment['deployment_id']} "
         f"qualification_sha256={written['qualification_sha256']} "
-        f"gate_sha256={written['gate_sha256']}",
+        f"gate_sha256={written['gate_sha256']} "
+        "checkpoint=cleared",
         flush=True,
     )
     return 0
@@ -4141,6 +4368,11 @@ def main(argv: list[str] | None = None) -> int:
         default=f"{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-final",
     )
     qualify32.add_argument("--timeout", type=float, default=5.0)
+    qualify32.add_argument(
+        "--checkpoint",
+        type=Path,
+        help="optional resumable machine/checkpoint state path",
+    )
     current31 = subparsers.add_parser("phase31-current-deployment")
     current31.add_argument("--binding", type=Path, required=True)
     current31.add_argument("--firmware", type=Path, required=True)
