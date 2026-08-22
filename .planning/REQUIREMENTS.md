@@ -29,10 +29,10 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Focus-Then-Hold Input
 
-- [ ] **HOLD-01**: A short press on an occupied agent key retains the existing immediate exact-focus behavior and never emits a Space keyboard event.
-- [ ] **HOLD-02**: A deliberate hold emits USB HID Space-down only after Herdr has acknowledged exact focus for the same action, opaque binding, host epoch, snapshot revision, and USB session, and only while that physical key remains held.
-- [ ] **HOLD-03**: Release before focus acknowledgment cancels the pending hold; stale identity, late result, focus failure, unavailable source, or disconnected host never emits Space.
-- [ ] **HOLD-04**: Once Space-down is active, it behaves like a physical system keyboard across later focus changes and ends on physical release or USB-device removal; controlled reset and suspend paths release all keys.
+- [x] **HOLD-01**: A short press on an occupied agent key retains the existing immediate exact-focus behavior and never emits a Space keyboard event.
+- [x] **HOLD-02**: A deliberate hold emits USB HID Space-down only after Herdr has acknowledged exact focus for the same action, opaque binding, host epoch, snapshot revision, and USB session, and only while that physical key remains held.
+- [x] **HOLD-03**: Release before focus acknowledgment cancels the pending hold; stale identity, late result, focus failure, unavailable source, or disconnected host never emits Space.
+- [x] **HOLD-04**: Once Space-down is active, it behaves like a physical system keyboard across later focus changes and ends on physical release or USB-device removal; controlled reset and suspend paths release all keys.
 - [ ] **HOLD-05**: The exact keypad passes fresh composite CDC + HID qualification for USB identity, pairing, bounded NDJSON transport, reconnect, suspend/resume, flashing, boot recovery, input latency, and stuck-key behavior before recovery acceptance begins.
 
 ### Codex Usage
@@ -49,7 +49,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **SYNC-03**: Agent-inbox freshness, Codex freshness, and device-link health are tracked and rendered independently.
 - [ ] **SYNC-04**: A keypress made while disconnected or against an uncertain result is never queued, replayed, or optimistically retried after reconnection.
 - [x] **SAFE-01**: Herdr and Codex credentials remain on the host; firmware receives only bounded normalized display data, opaque identities, freshness metadata, and focus results.
-- [ ] **SAFE-02**: The device can request only typed focus for its currently displayed binding and, after an acknowledged exact focus action, emit only the fixed USB HID Space hold defined by HOLD-01 through HOLD-04; it cannot invoke arbitrary Herdr methods, host commands, configurable keys, macros, text, or provider APIs.
+- [x] **SAFE-02**: The device can request only typed focus for its currently displayed binding and, after an acknowledged exact focus action, emit only the fixed USB HID Space hold defined by HOLD-01 through HOLD-04; it cannot invoke arbitrary Herdr methods, host commands, configurable keys, macros, text, or provider APIs.
 
 ### Rotary Menu
 
@@ -112,10 +112,10 @@ Every v1 requirement maps to exactly one roadmap phase.
 | FOCS-02 | Phase 2 | Complete |
 | FOCS-03 | Phase 2 | Complete |
 | FOCS-04 | Phase 2 | Complete |
-| HOLD-01 | Phase 03.2 | Pending |
-| HOLD-02 | Phase 03.2 | Pending |
-| HOLD-03 | Phase 03.2 | Pending |
-| HOLD-04 | Phase 03.2 | Pending |
+| HOLD-01 | Phase 03.2 | Complete |
+| HOLD-02 | Phase 03.2 | Complete |
+| HOLD-03 | Phase 03.2 | Complete |
+| HOLD-04 | Phase 03.2 | Complete |
 | HOLD-05 | Phase 03.2 | Pending |
 | CODEX-01 | Phase 3 | Complete |
 | CODEX-02 | Phase 3 | Complete |
@@ -126,7 +126,7 @@ Every v1 requirement maps to exactly one roadmap phase.
 | SYNC-03 | Phase 3 | Complete |
 | SYNC-04 | Phase 4 | Pending |
 | SAFE-01 | Phase 3 | Complete |
-| SAFE-02 | Phase 03.2 | Pending |
+| SAFE-02 | Phase 03.2 | Complete |
 | MENU-01 | Phase 3 | Complete |
 | MENU-02 | Phase 3 | Complete |
 | MENU-03 | Phase 3 | Complete |

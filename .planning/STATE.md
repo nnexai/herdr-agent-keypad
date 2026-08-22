@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: executing
-stopped_at: "Ready to execute 03.2-01 after OMP agent route repair"
-last_updated: "2026-08-22T05:31:09Z"
+stopped_at: Completed 03.2-01-PLAN.md
+last_updated: "2026-08-22T06:01:55.931Z"
 last_activity: 2026-08-22
-last_activity_desc: "Completed quick task 260822-abq: aligned OMP agent routing with Codex definitions"
-state_head: a9ae12af03b03495bd03ed7283154921573d39dd
+last_activity_desc: Phase 03.2 execution resumed (wave continue)
+state_head: 6e07d418b2398b6aee453b57ad7f84e78f9f3838
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 53
-  completed_plans: 44
+  completed_plans: 45
 milestone_name: milestone
 ---
 
@@ -24,7 +24,7 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
-status: Executing Phase 03.2
+status: Ready to execute
 stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
@@ -48,9 +48,9 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 03.2
-Last activity: 2026-08-22 — Phase 03.2 execution started
+Plan: 2 of 10
+Status: Ready to execute
+Last activity: 2026-08-22 — Phase 03.2 execution resumed (wave continue)
 
 Progress: [██████████] 97%
 
@@ -110,6 +110,7 @@ Progress: [██████████] 97%
 | Phase 03.1 P06 | 12min | 2 tasks | 7 files |
 | Phase 03.1 P07 | 17min | 3 tasks | 386 files |
 | Phase 03.1 P08 | 1h 20m | 2 tasks | 8 files |
+| Phase 03.2 P01 | 25min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -190,6 +191,9 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase ?]: Keep framebuffer and LED rows machine-only; physical LED, optical, smoothness, brightness, feel, and latency claims remain deferred to Plan 08.
 - [Phase ?]: Accepted exact paired-keypad deployment 875577d8ec63c0917d4244ab9ecf5d8163601a16a2e2a800516d728140612d6e with logical manifest 624a23b01e65092049021278220907768603f83b06df26b6f8476142bc2e1094 and 25/25 physical rows pass.
 - [Phase ?]: Preserved failed physical attempts immutably; current defect ledger has zero defects and zero open dispositions.
+- [Phase 03.2]: Plan 03.2-01 uses the immutable Plan 00 measured shared 550 ms threshold from the debounced physical edge.
+- [Phase 03.2]: Plan 03.2-01 reuses AgentProjection applyFocusResult success as the sole local HID authorization and adds no protocol field or host API.
+- [Phase 03.2]: Plan 03.2-01 keeps one fixed Space owner with no transfer and retains same-poll chord lockout until a complete all-up frame.
 
 ### Pending Todos
 
@@ -227,7 +231,7 @@ None yet.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/03.2-focus-then-hold-usb-keyboard/.continue-here.md
+**Resume file:** None
 
-Last session: 2026-08-22T05:31:09Z
-Stopped at: Ready to execute 03.2-01 after OMP agent route repair
+Last session: 2026-08-22T06:01:55.835Z
+Stopped at: Completed 03.2-01-PLAN.md
