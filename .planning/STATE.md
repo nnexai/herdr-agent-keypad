@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: executing
-stopped_at: Completed 03.2-07-PLAN.md
-last_updated: "2026-08-22T10:35:00.844Z"
+stopped_at: Completed 03.2-08-PLAN.md
+last_updated: "2026-08-22T11:23:48.774Z"
 last_activity: 2026-08-22
 last_activity_desc: Phase 03.2 execution resumed (wave continue)
-state_head: ec4c082e192dfad5886cc47b09f12f50646288a1
+state_head: ed0e69e7fc6d47f5894dbad5bc7f594d5f02eb69
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 53
-  completed_plans: 51
+  completed_plans: 52
 milestone_name: milestone
 ---
 
@@ -48,7 +48,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — EXECUTING
-Plan: 9 of 10
+Plan: 10 of 10
 Status: Ready to execute
 Last activity: 2026-08-22 — Phase 03.2 execution resumed (wave continue)
 
@@ -118,6 +118,7 @@ Progress: [██████████] 97%
 | Phase 03.2 P05 | 20min | 2 tasks | 6 files |
 | Phase 03.2 P06 | 35min | 2 tasks | 11 files |
 | Phase 03.2 P07 | 30min | 2 tasks | 7 files |
+| Phase 03.2 P08 | 35 | 2 tasks | 156 files |
 
 ## Accumulated Context
 
@@ -220,6 +221,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 03.2]: Four LED grammars keep candidate and active-owner cues on mapped physical zones; active ownership never transfers across focus changes.
 - [Phase 03.2]: Slot-tagged hold segments let LedEngine fence source, failure, health, SYNC, lifecycle, all-off, and dim states without hue-based classification.
 - [Phase 03.2]: Cancellation remains one bounded LED-only event with fixed grammar-specific durations and ordinary pending feedback after expiry.
+- [Phase 03.2]: Plan 08 locks logical hold evidence to the current selected-usb deployment and exact fresh boot/session lineage.
+- [Phase 03.2]: Plan 08 keeps framebuffer and LED evidence machine-only; physical brightness, clarity, mapping, feel, latency, and optics remain deferred to Plan 09.
 
 ### Pending Todos
 
@@ -259,5 +262,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-22T10:35:00.745Z
-Stopped at: Completed 03.2-07-PLAN.md
+Last session: 2026-08-22T11:23:48.668Z
+Stopped at: Completed 03.2-08-PLAN.md
