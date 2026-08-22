@@ -4,6 +4,13 @@
 
 #include "../../firmware/src/board/board_adapter.h"
 
+namespace board_stub {
+bool next_down[5] = {};
+bool next_pressed[5] = {};
+bool next_released[5] = {};
+uint32_t update_count = 0;
+}  // namespace board_stub
+
 namespace {
 
 PhysicalMap verified_map() {

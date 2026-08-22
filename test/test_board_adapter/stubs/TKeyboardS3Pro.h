@@ -50,10 +50,10 @@ class ButtonSense {
 
 namespace board_stub {
 
-static bool next_down[5] = {};
-static bool next_pressed[5] = {};
-static bool next_released[5] = {};
-static uint32_t update_count = 0;
+extern bool next_down[5];
+extern bool next_pressed[5];
+extern bool next_released[5];
+extern uint32_t update_count;
 
 inline void reset() {
   for (uint8_t index = 0; index < 5; ++index) {

@@ -1,8 +1,6 @@
 #include "board_adapter.h"
 
-bool BoardAdapter::begin(const PhysicalMap& physical_map) {
-  physical_map_ = &physical_map;
-  ready_ = false;
+void BoardAdapter::clearInputLatches() {
   pressed_latch_ = 0;
   down_latch_ = 0;
   released_latch_ = 0;
@@ -14,6 +12,12 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
   input_latched_at_us_ = 0;
   last_poll_at_us_ = 0;
   pending_max_poll_gap_us_ = 0;
+}
+
+bool BoardAdapter::begin(const PhysicalMap& physical_map) {
+  physical_map_ = &physical_map;
+  ready_ = false;
+  clearInputLatches();
   if (!physical_map_->complete()) return false;
   BoardConfig config;
   config.enableDisplay = true;
@@ -24,26 +28,31 @@ bool BoardAdapter::begin(const PhysicalMap& physical_map) {
 
 void BoardAdapter::refreshInputLatchTimestamp() {
   uint32_t first = 0;
+  bool have_first = false;
   for (uint8_t logical = 0; logical < PhysicalMap::kKeyCount; ++logical) {
-    if ((pressed_latch_ & static_cast<uint8_t>(1U << logical)) == 0 ||
-        key_latched_at_us_[logical] == 0) {
-      continue;
-    }
-    if (first == 0 ||
-        static_cast<int32_t>(key_latched_at_us_[logical] - first) < 0) {
-      first = key_latched_at_us_[logical];
+    if ((pressed_latch_ & static_cast<uint8_t>(1U << logical)) == 0) continue;
+    const uint32_t candidate = key_latched_at_us_[logical];
+    if (!have_first ||
+        static_cast<int32_t>(candidate - first) < 0) {
+      first = candidate;
+      have_first = true;
     }
   }
-  if (encoder_delta_latch_ != 0 && encoder_latched_at_us_ != 0 &&
-      (first == 0 ||
+  if (encoder_delta_latch_ != 0 &&
+      (!have_first ||
        static_cast<int32_t>(encoder_latched_at_us_ - first) < 0)) {
     first = encoder_latched_at_us_;
+    have_first = true;
   }
-  input_latched_at_us_ = first;
+  input_latched_at_us_ = have_first ? first : 0;
 }
 
 void BoardAdapter::update(uint32_t now_us) {
-  if (!ready_) return;
+  if (!ready_ || physical_map_ == nullptr || !physical_map_->complete()) {
+    ready_ = false;
+    clearInputLatches();
+    return;
+  }
   if (last_poll_at_us_ != 0) {
     const uint32_t gap = now_us - last_poll_at_us_;
     if (gap > pending_max_poll_gap_us_) pending_max_poll_gap_us_ = gap;

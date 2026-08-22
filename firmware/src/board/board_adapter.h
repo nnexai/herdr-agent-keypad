@@ -26,6 +26,18 @@ class BoardAdapter {
   long encoderDelta();
   long consumeEncoderDelta(uint32_t* latched_at_us = nullptr);
   bool ready() const { return ready_; }
+  // These masks are the fixed three-agent-key physical frame.  They are
+  // snapshots from the last successful update() and never poll the board.
+  static constexpr uint8_t kAgentKeyMask = 0x07U;
+  uint8_t agentPressedMask() const {
+    return ready_ ? static_cast<uint8_t>(pressed_latch_ & kAgentKeyMask) : 0;
+  }
+  uint8_t agentDownMask() const {
+    return ready_ ? static_cast<uint8_t>(down_latch_ & kAgentKeyMask) : 0;
+  }
+  uint8_t agentReleasedMask() const {
+    return ready_ ? static_cast<uint8_t>(released_latch_ & kAgentKeyMask) : 0;
+  }
 
   Display* displayAt(uint8_t index);
   uint8_t screenCount() const;
@@ -58,4 +70,5 @@ class BoardAdapter {
   uint32_t pending_max_poll_gap_us_ = 0;
 
   void refreshInputLatchTimestamp();
+  void clearInputLatches();
 };
