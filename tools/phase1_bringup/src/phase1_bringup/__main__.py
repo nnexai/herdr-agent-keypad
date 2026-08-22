@@ -1374,8 +1374,160 @@ def main(argv: list[str] | None = None) -> int:
     tour.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
     tour.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
     tour.add_argument("--resume", help="resume a tour ID printed at the utility-restart checkpoint")
+    composite_freeze = subparsers.add_parser(
+        "composite-freeze-manifest",
+        help="freeze the exact Phase 03.2 composite matrix before traffic",
+    )
+    composite_freeze.add_argument("--output", type=Path, required=True)
+    composite_freeze.add_argument("--firmware", type=Path, required=True)
+    composite_freeze.add_argument("--pairing-record", type=Path, required=True)
+    composite_freeze.add_argument("--descriptor-expectation", type=Path, required=True)
+    composite_freeze.add_argument("--environment", default="composite-feasibility")
+    composite_freeze.add_argument("--boot-id", required=True)
+    composite_freeze.add_argument("--session-id", required=True)
+    composite_freeze.add_argument("--seed", type=int, required=True)
+    composite_freeze.add_argument(
+        "--threshold-ms",
+        type=int,
+        choices=(500, 525, 550, 575, 600),
+        required=True,
+    )
+    composite_freeze.add_argument(
+        "--tool-version",
+        action="append",
+        required=True,
+        metavar="NAME=VERSION",
+    )
+    composite_freeze.add_argument(
+        "--controlled-reset-path",
+        action="append",
+        default=[],
+        metavar="NAME",
+    )
+    composite_run = subparsers.add_parser(
+        "composite-run",
+        help="record one bounded composite run bundle as immutable evidence",
+    )
+    composite_run.add_argument("--manifest", type=Path, required=True)
+    composite_run.add_argument("--bundle", type=Path, required=True)
+    composite_run.add_argument("--evidence-root", type=Path, required=True)
+    composite_run.add_argument("--run-id", required=True)
+    composite_verify_run = subparsers.add_parser(
+        "composite-verify-run",
+        help="reopen one immutable composite run without hardware",
+    )
+    composite_verify_run.add_argument("--run", type=Path, required=True)
+    composite_verify_run.add_argument("--manifest", type=Path, required=True)
+    composite_decide = subparsers.add_parser(
+        "composite-decide",
+        help="write the one immutable terminal composite PASS or REJECT",
+    )
+    composite_decide.add_argument("--decision", type=Path, required=True)
+    composite_decide.add_argument("--manifest", type=Path, required=True)
+    composite_decide.add_argument("--status", choices=("PASS", "REJECT"), required=True)
+    composite_decide.add_argument("--run", type=Path)
+    composite_decide.add_argument("--first-failure-run", type=Path)
+    composite_decide.add_argument("--retest-run", type=Path)
+    composite_decide.add_argument(
+        "--correction",
+        type=Path,
+        help="JSON object naming the one targeted correction for REJECT",
+    )
+    composite_verify_decision = subparsers.add_parser(
+        "composite-verify-decision",
+        help="reopen a terminal composite decision and every linked hash",
+    )
+    composite_verify_decision.add_argument("--decision", type=Path, required=True)
+    composite_verify_decision.add_argument("--require-terminal", action="store_true")
+    composite_verify_decision.add_argument(
+        "--require-immutable-lineage",
+        action="store_true",
+    )
     args = parser.parse_args(argv)
     try:
+        if args.command == "composite-freeze-manifest":
+            from .composite_qualification import freeze_composite_manifest
+
+            tool_versions: dict[str, str] = {}
+            for item in args.tool_version:
+                name, separator, version = item.partition("=")
+                if not separator or not name or not version or name in tool_versions:
+                    raise ValueError("--tool-version must be a unique non-empty NAME=VERSION")
+                tool_versions[name] = version
+            manifest = freeze_composite_manifest(
+                args.output,
+                args.firmware,
+                args.pairing_record,
+                args.descriptor_expectation,
+                environment=args.environment,
+                boot_id=args.boot_id,
+                session_id=args.session_id,
+                seed=args.seed,
+                threshold_ms=args.threshold_ms,
+                tool_versions=tool_versions,
+                controlled_reset_paths=args.controlled_reset_path
+                or ("tracer-controlled-reset",),
+            )
+            print(
+                f"Composite manifest: {args.output} "
+                f"({manifest['manifest_sha256']})"
+            )
+            return 0
+        if args.command == "composite-run":
+            from .composite_qualification import run_composite_qualification
+
+            run = run_composite_qualification(
+                args.manifest,
+                args.bundle,
+                args.evidence_root,
+                args.run_id,
+            )
+            print(f"Composite run: {run}")
+            return 0
+        if args.command == "composite-verify-run":
+            from .composite_qualification import verify_composite_run
+
+            checked = verify_composite_run(args.run, manifest_path=args.manifest)
+            print(
+                f"Composite run verified: {checked['result']['run_id']} "
+                f"({checked['hashes']['SHA256SUMS']})"
+            )
+            return 0
+        if args.command == "composite-decide":
+            from .composite_qualification import write_terminal_decision
+
+            correction = (
+                json.loads(args.correction.read_text(encoding="utf-8"))
+                if args.correction
+                else None
+            )
+            decision = write_terminal_decision(
+                args.decision,
+                args.manifest,
+                status=args.status,
+                run_directory=args.run,
+                first_failure_directory=args.first_failure_run,
+                retest_directory=args.retest_run,
+                correction=correction,
+            )
+            print(
+                f"Composite decision: {decision['status']} "
+                f"({decision['decision_sha256']})"
+            )
+            return 0
+        if args.command == "composite-verify-decision":
+            from .composite_qualification import verify_composite_decision
+
+            decision = verify_composite_decision(
+                args.decision,
+                require_terminal=args.require_terminal,
+                require_immutable_lineage=args.require_immutable_lineage,
+            )
+            print(
+                f"Composite decision verified: {decision['status']} "
+                f"({decision['decision_sha256']})"
+            )
+            return 0
         if args.command == "recover-tour":
             return run_recovery_tour(args.schema, args.evidence_root, args.binding, args.resume)
         if args.command == "self-check":

@@ -1,0 +1,976 @@
+"""Fail-closed Phase 03.2 composite CDC plus fixed-Space qualification.
+
+The module deliberately has no configurable key or host-injection boundary.  Linux
+input, udev, and descriptor observation stay private; callers can only freeze the
+matrix, record one bounded run, and verify immutable evidence or a terminal
+PASS/REJECT decision.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import random
+import selectors
+import struct
+import subprocess
+import tempfile
+import time
+from collections import Counter
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Mapping, Sequence
+
+from .evidence import atomic_write_pair
+
+SCHEMA_VERSION = 1
+MANIFEST_KIND = "composite-qualification-manifest"
+RESULT_KIND = "composite-qualification-result"
+TRAFFIC_KIND = "composite-traffic"
+INPUT_KIND = "composite-input-events"
+DECISION_KIND = "composite-decision"
+CALIBRATION_CANDIDATES_MS = (500, 525, 550, 575, 600)
+AGENT_KEYS = (0, 1, 2)
+LATENCY_TARGET_P95_MS = 80
+LATENCY_HARD_MAX_MS = 120
+MAX_INPUT_EVENTS = 100_000
+STRESS_COUNTS = {
+    "short": 90,
+    "authorized_hold": 90,
+    "delayed_ack_threshold_first": 30,
+    "early_release": 30,
+    "overlap": 30,
+    "stale_failure_session_lifecycle": 30,
+}
+STRICT_COUNTERS = (
+    "unexpected_reject",
+    "duplicate",
+    "out_of_order",
+    "malformed",
+    "digest_mismatch",
+    "queue_failure",
+    "short_write",
+)
+ROW_COUNTS = {
+    "build-controller": 1,
+    "usb-identity": 10,
+    "exact-pairing": 1,
+    "threshold-calibration": 360,
+    "immediate-focus-short-separation": 90,
+    "focus-before-hid-ordering": 180,
+    "release-before-ack": 120,
+    "stale-failure-source-session": 220,
+    "repeat-behavior": 30,
+    "active-owner-independence": 30,
+    "cdc-under-hid": 4000,
+    "physical-release": 90,
+    "usb-removal": 5,
+    "controlled-reset": 5,
+    "suspend-resume": 5,
+    "reconnect-session": 10,
+    "normal-flashing": 5,
+    "boot-recovery": 5,
+    "input-latency": 200,
+    "mixed-stress": 300,
+}
+DETERMINISTIC_ROWS = tuple(row for row in ROW_COUNTS if row != "mixed-stress")
+REQUIRED_RUN_FILES = (
+    "manifest.json",
+    "result.json",
+    "traffic.json",
+    "input-events.json",
+    "usb-descriptors.txt",
+    "SHA256SUMS",
+)
+_INPUT_EVENT = struct.Struct("llHHI")
+_EV_KEY = 0x01
+_KEY_SPACE = 57
+
+
+class CompositeQualificationError(ValueError):
+    """A frozen-matrix, observation, or immutable-lineage violation."""
+
+
+def _canonical_bytes(value: Any) -> bytes:
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("ascii")
+
+
+def _sha256_bytes(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(131072), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _addressed_hash(value: Mapping[str, Any], field: str) -> str:
+    content = dict(value)
+    content.pop(field, None)
+    return _sha256_bytes(_canonical_bytes(content))
+
+
+def _load_object(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CompositeQualificationError(f"{label} is not valid JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise CompositeQualificationError(f"{label} must be a JSON object")
+    return value
+
+
+def _require_string(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise CompositeQualificationError(f"{label} must be a non-empty string")
+    return value
+
+
+def _safe_file(path: Path, root: Path, label: str) -> Path:
+    root = Path(root).resolve()
+    candidate = Path(path)
+    unresolved = candidate if candidate.is_absolute() else root / candidate
+    lexical = Path(os.path.abspath(unresolved))
+    if lexical == root or root not in lexical.parents:
+        raise CompositeQualificationError(f"{label} escapes its evidence root")
+    cursor = lexical
+    while cursor != root:
+        if cursor.is_symlink():
+            raise CompositeQualificationError(f"{label} has a symlink ancestor")
+        cursor = cursor.parent
+    resolved = lexical.resolve()
+    if resolved == root or root not in resolved.parents:
+        raise CompositeQualificationError(f"{label} escapes its evidence root")
+    if not resolved.is_file():
+        raise CompositeQualificationError(f"{label} is not a regular file")
+    return resolved
+
+
+def _validate_source_file(path: Path, label: str) -> dict[str, str]:
+    path = Path(path).resolve()
+    if not path.is_file() or path.is_symlink():
+        raise CompositeQualificationError(f"{label} must be an existing non-symlink file")
+    return {"path": path.as_posix(), "sha256": _sha256_file(path)}
+
+
+def mixed_stress_schedule(seed: int) -> tuple[str, ...]:
+    """Return the finite, count-equal D-17 schedule for one recorded seed."""
+    if not isinstance(seed, int) or isinstance(seed, bool) or seed < 0 or seed > 0xFFFFFFFF:
+        raise CompositeQualificationError("stress seed must be an unsigned 32-bit integer")
+    schedule = [name for name, count in STRESS_COUNTS.items() for _ in range(count)]
+    random.Random(seed).shuffle(schedule)
+    if len(schedule) != 300 or Counter(schedule) != Counter(STRESS_COUNTS):
+        raise AssertionError("internal mixed-stress schedule is not count-equal")
+    return tuple(schedule)
+
+
+def freeze_composite_manifest(
+    output: Path,
+    firmware_binary: Path,
+    pairing_record: Path,
+    descriptor_expectation: Path,
+    *,
+    environment: str,
+    boot_id: str,
+    session_id: str,
+    seed: int,
+    threshold_ms: int,
+    tool_versions: Mapping[str, str],
+    controlled_reset_paths: Sequence[str] = ("tracer-controlled-reset",),
+) -> dict[str, Any]:
+    """Create the pre-traffic matrix once, or reopen the identical immutable file."""
+    output = Path(output)
+    if output.exists():
+        return verify_composite_manifest(output)
+    if environment != "composite-feasibility":
+        raise CompositeQualificationError("only the isolated composite-feasibility environment may be frozen")
+    if threshold_ms not in CALIBRATION_CANDIDATES_MS:
+        raise CompositeQualificationError("shared threshold must be one frozen 500-600 ms calibration candidate")
+    if not isinstance(tool_versions, Mapping) or not tool_versions or any(
+        not isinstance(name, str) or not name or not isinstance(version, str) or not version
+        for name, version in tool_versions.items()
+    ):
+        raise CompositeQualificationError("tool_versions must identify every observer/tool with non-empty strings")
+    reset_paths = list(controlled_reset_paths)
+    if not reset_paths or len(set(reset_paths)) != len(reset_paths) or any(not isinstance(item, str) or not item for item in reset_paths):
+        raise CompositeQualificationError("controlled reset paths must be a non-empty unique string list")
+    row_counts = dict(ROW_COUNTS)
+    row_counts["controlled-reset"] = 5 * len(reset_paths)
+    schedule = mixed_stress_schedule(seed)
+    pairing_source = _validate_source_file(pairing_record, "pairing record")
+    pairing_source["pair_digest"] = pairing_source["sha256"]
+    manifest: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": MANIFEST_KIND,
+        "environment": environment,
+        "firmware_binary": _validate_source_file(firmware_binary, "firmware binary"),
+        "pairing_record": pairing_source,
+        "descriptor_expectation": _validate_source_file(descriptor_expectation, "descriptor expectation"),
+        "exact_deployment": {
+            "boot_id": _require_string(boot_id, "boot_id"),
+            "session_id": _require_string(session_id, "session_id"),
+        },
+        "interfaces": {
+            "cdc": 1,
+            "standard_keyboard_hid": 1,
+            "other_hid_usages": 0,
+            "fixed_key": "KEY_SPACE",
+        },
+        "tool_versions": dict(sorted(tool_versions.items())),
+        "calibration": {
+            "candidate_thresholds_ms": list(CALIBRATION_CANDIDATES_MS),
+            "selected_shared_threshold_ms": threshold_ms,
+            "keys": list(AGENT_KEYS),
+            "initial_short_per_key": 30,
+            "initial_hold_per_key": 30,
+            "final_short_per_key": 30,
+            "final_hold_per_key": 30,
+        },
+        "row_counts": row_counts,
+        "rows": [
+            {"id": row_id, "applicable": True, "required": True, "required_count": count}
+            for row_id, count in row_counts.items()
+        ],
+        "controlled_reset_paths": reset_paths,
+        "cdc": {
+            "steady_frames_each_direction": 1000,
+            "burst_repetitions": 10,
+            "burst_frames_each_direction": 100,
+            "maximum_line_bytes_including_lf": 4096,
+        },
+        "latency_limits_ms": {
+            "eligible_to_down_p95": LATENCY_TARGET_P95_MS,
+            "eligible_to_down_hard_max": LATENCY_HARD_MAX_MS,
+            "release_to_up_p95": LATENCY_TARGET_P95_MS,
+            "release_to_up_hard_max": LATENCY_HARD_MAX_MS,
+        },
+        "stress": {
+            "seed": seed,
+            "counts": dict(STRESS_COUNTS),
+            "total": len(schedule),
+            "schedule_sha256": _sha256_bytes(_canonical_bytes(list(schedule))),
+            "requires_deterministic_pass": list(DETERMINISTIC_ROWS),
+        },
+        "first_failure_policy": {
+            "classes": ["harness_setup", "product"],
+            "maximum_product_corrections": 1,
+            "clean_boot_and_fresh_session_required": True,
+            "matching_invariant_required_for_reject": True,
+        },
+        "evidence_requirements": {
+            "external_descriptor_observer": True,
+            "external_udev_observer": True,
+            "external_linux_evdev_observer": True,
+            "input_values": [0, 1, 2],
+            "final_oracle_state": "UP",
+            "immutable_run_files": list(REQUIRED_RUN_FILES),
+        },
+        "edge_assumptions": [{
+            "id": "EA-07",
+            "classification": "unclassified",
+            "status": "ASSUMED_UNRESOLVED",
+            "backstop": "frozen row matrix, applicability reasons, and exact-device terminal decision",
+        }],
+    }
+    manifest["manifest_sha256"] = _addressed_hash(manifest, "manifest_sha256")
+    content = _canonical_bytes(manifest)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with output.open("xb") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except FileExistsError:
+        return verify_composite_manifest(output)
+    return verify_composite_manifest(output)
+
+
+def validate_composite_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
+    if manifest.get("schema_version") != SCHEMA_VERSION or manifest.get("kind") != MANIFEST_KIND:
+        raise CompositeQualificationError("composite manifest schema/kind mismatch")
+    if manifest.get("manifest_sha256") != _addressed_hash(manifest, "manifest_sha256"):
+        raise CompositeQualificationError("composite manifest addressed hash mismatch")
+    if manifest.get("environment") != "composite-feasibility":
+        raise CompositeQualificationError("manifest does not name the isolated feasibility environment")
+    for label in ("firmware_binary", "pairing_record", "descriptor_expectation"):
+        entry = manifest.get(label)
+        if not isinstance(entry, Mapping) or len(entry.get("sha256", "")) != 64 or not isinstance(entry.get("path"), str):
+            raise CompositeQualificationError(f"manifest {label} lineage is incomplete")
+    pairing_entry = manifest["pairing_record"]
+    if pairing_entry.get("pair_digest") != pairing_entry.get("sha256"):
+        raise CompositeQualificationError("manifest exact-pair digest is missing or inconsistent")
+    if manifest.get("interfaces") != {
+        "cdc": 1,
+        "standard_keyboard_hid": 1,
+        "other_hid_usages": 0,
+        "fixed_key": "KEY_SPACE",
+    }:
+        raise CompositeQualificationError("manifest interface set is not exactly CDC plus fixed Space keyboard HID")
+    calibration = manifest.get("calibration")
+    if not isinstance(calibration, Mapping) or calibration.get("candidate_thresholds_ms") != list(CALIBRATION_CANDIDATES_MS) or calibration.get("selected_shared_threshold_ms") not in CALIBRATION_CANDIDATES_MS:
+        raise CompositeQualificationError("manifest calibration thresholds are incomplete")
+    if calibration.get("keys") != list(AGENT_KEYS) or any(calibration.get(name) != 30 for name in (
+        "initial_short_per_key", "initial_hold_per_key", "final_short_per_key", "final_hold_per_key"
+    )):
+        raise CompositeQualificationError("manifest calibration gesture counts are incomplete")
+    reset_paths = manifest.get("controlled_reset_paths")
+    expected_counts = dict(ROW_COUNTS)
+    if not isinstance(reset_paths, list) or not reset_paths:
+        raise CompositeQualificationError("manifest controlled reset paths are missing")
+    expected_counts["controlled-reset"] = len(reset_paths) * 5
+    if manifest.get("row_counts") != expected_counts:
+        raise CompositeQualificationError("manifest row counts differ from the bounded D-15 matrix")
+    rows = manifest.get("rows")
+    if not isinstance(rows, list) or rows != [
+        {"id": row_id, "applicable": True, "required": True, "required_count": count}
+        for row_id, count in expected_counts.items()
+    ]:
+        raise CompositeQualificationError("manifest rows are incomplete, reordered, or not applicable")
+    cdc = manifest.get("cdc")
+    if cdc != {
+        "steady_frames_each_direction": 1000,
+        "burst_repetitions": 10,
+        "burst_frames_each_direction": 100,
+        "maximum_line_bytes_including_lf": 4096,
+    }:
+        raise CompositeQualificationError("manifest CDC bounds changed")
+    limits = manifest.get("latency_limits_ms")
+    if limits != {
+        "eligible_to_down_p95": 80,
+        "eligible_to_down_hard_max": 120,
+        "release_to_up_p95": 80,
+        "release_to_up_hard_max": 120,
+    }:
+        raise CompositeQualificationError("manifest latency bounds changed")
+    stress = manifest.get("stress")
+    if not isinstance(stress, Mapping):
+        raise CompositeQualificationError("manifest stress profile is missing")
+    schedule = mixed_stress_schedule(stress.get("seed"))
+    if stress.get("counts") != STRESS_COUNTS or stress.get("total") != 300 or stress.get("requires_deterministic_pass") != list(DETERMINISTIC_ROWS) or stress.get("schedule_sha256") != _sha256_bytes(_canonical_bytes(list(schedule))):
+        raise CompositeQualificationError("manifest stress schedule is not finite, seeded, and count-equal")
+    policy = manifest.get("first_failure_policy")
+    if policy != {
+        "classes": ["harness_setup", "product"],
+        "maximum_product_corrections": 1,
+        "clean_boot_and_fresh_session_required": True,
+        "matching_invariant_required_for_reject": True,
+    }:
+        raise CompositeQualificationError("manifest first-failure policy changed")
+    edge = manifest.get("edge_assumptions")
+    if not isinstance(edge, list) or not any(item.get("id") == "EA-07" and item.get("status") == "ASSUMED_UNRESOLVED" for item in edge if isinstance(item, Mapping)):
+        raise CompositeQualificationError("EA-07 must remain flagged in the frozen evidence")
+    return dict(manifest)
+
+
+def verify_composite_manifest(path: Path) -> dict[str, Any]:
+    manifest = validate_composite_manifest(_load_object(Path(path), "composite manifest"))
+    for label in ("firmware_binary", "pairing_record", "descriptor_expectation"):
+        entry = manifest[label]
+        source = Path(entry["path"])
+        if not source.is_file() or source.is_symlink() or _sha256_file(source) != entry["sha256"]:
+            raise CompositeQualificationError(f"manifest {label} source hash no longer matches")
+    return manifest
+
+
+@dataclass
+class _InputOracle:
+    state: str = "UP"
+    failures: list[str] = field(default_factory=list)
+    events_seen: int = 0
+    last_monotonic_ns: int = -1
+
+    def accept(self, event: Mapping[str, Any]) -> None:
+        if self.events_seen >= MAX_INPUT_EVENTS:
+            raise CompositeQualificationError("input trace exceeds its bounded event count")
+        timestamp = event.get("monotonic_ns")
+        if not isinstance(timestamp, int) or isinstance(timestamp, bool) or timestamp < self.last_monotonic_ns:
+            self.failures.append("input timestamps are missing or non-monotonic")
+            return
+        self.last_monotonic_ns = timestamp
+        self.events_seen += 1
+        event_type = event.get("type")
+        if event_type == "EV_KEY":
+            if event.get("code") != "KEY_SPACE" or event.get("value") not in (0, 1, 2):
+                self.failures.append("observer recorded a non-Space or invalid key event")
+                return
+            value = event["value"]
+            if value == 1:
+                if self.state != "UP":
+                    self.failures.append("duplicate Space down while oracle was DOWN")
+                else:
+                    self.state = "DOWN"
+            elif value == 0:
+                if self.state != "DOWN":
+                    self.failures.append("Space up without a matching down")
+                else:
+                    self.state = "UP"
+            elif self.state != "DOWN":
+                self.failures.append("host repeat value 2 occurred while oracle was UP")
+            return
+        if event_type == "DEVICE_REMOVED":
+            if event.get("verified") is not True:
+                self.failures.append("device removal was not externally verified")
+            else:
+                self.state = "UP"
+            return
+        if event_type in {"FRESH_ENUMERATION", "REMOUNT"}:
+            if event.get("empty") is not True:
+                self.failures.append("fresh input enumeration did not prove an empty state")
+            else:
+                self.state = "UP"
+            return
+        if event_type == "SUSPEND":
+            if event.get("empty") is not True:
+                self.failures.append("suspend did not externally observe release-all")
+            else:
+                self.state = "UP"
+            return
+        if event_type == "RESUME":
+            if self.state != "UP" or event.get("empty") is not True:
+                self.failures.append("input state was active or non-empty after resume")
+            return
+        self.failures.append("input trace contains an unknown event type")
+
+    def finish(self) -> dict[str, Any]:
+        if self.state != "UP":
+            self.failures.append("input trace ended DOWN without a Space up or verified teardown")
+        return {"state": self.state, "events_seen": self.events_seen, "failures": list(self.failures)}
+
+
+def validate_input_trace(trace: Mapping[str, Any]) -> dict[str, Any]:
+    """Recompute the external Linux UP/DOWN oracle; never trust a claimed summary."""
+    if trace.get("schema_version") != SCHEMA_VERSION or trace.get("kind") != INPUT_KIND:
+        raise CompositeQualificationError("input trace schema/kind mismatch")
+    if trace.get("observer") != "linux-evdev" or trace.get("external") is not True or trace.get("complete") is not True or trace.get("deferred") is not False:
+        raise CompositeQualificationError("input trace is not complete external evdev evidence")
+    events = trace.get("events")
+    if not isinstance(events, list) or not events:
+        raise CompositeQualificationError("input trace has no external events")
+    oracle = _InputOracle()
+    for event in events:
+        if not isinstance(event, Mapping):
+            raise CompositeQualificationError("input trace event is not an object")
+        oracle.accept(event)
+        if oracle.failures:
+            raise CompositeQualificationError(oracle.failures[0])
+    summary = oracle.finish()
+    if summary["failures"] or summary["state"] != "UP":
+        raise CompositeQualificationError(summary["failures"][0] if summary["failures"] else "input oracle did not end UP")
+    if trace.get("final_state") != summary["state"] or trace.get("event_count") != summary["events_seen"]:
+        raise CompositeQualificationError("input trace claimed oracle summary is not recomputable")
+    return summary
+
+
+class _LinuxInputObserver:
+    """Bounded raw evdev reader for one already measured input device."""
+
+    def __init__(self, device: Path, *, max_events: int = MAX_INPUT_EVENTS):
+        self._device = Path(device)
+        self._max_events = min(max_events, MAX_INPUT_EVENTS)
+
+    def capture(self, seconds: float) -> dict[str, Any]:
+        if seconds <= 0 or seconds > 3600:
+            raise CompositeQualificationError("input observation duration must be within (0, 3600] seconds")
+        fd = os.open(self._device, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        selector = selectors.DefaultSelector()
+        events: list[dict[str, Any]] = []
+        deadline = time.monotonic() + seconds
+        try:
+            selector.register(fd, selectors.EVENT_READ)
+            while time.monotonic() < deadline and len(events) < self._max_events:
+                for _key, _mask in selector.select(min(0.25, max(0.0, deadline - time.monotonic()))):
+                    block = os.read(fd, _INPUT_EVENT.size * 64)
+                    if not block:
+                        events.append({"type": "DEVICE_REMOVED", "verified": True, "monotonic_ns": time.monotonic_ns()})
+                        deadline = 0
+                        break
+                    if len(block) % _INPUT_EVENT.size:
+                        raise CompositeQualificationError("evdev observer received a partial input_event")
+                    for offset in range(0, len(block), _INPUT_EVENT.size):
+                        _sec, _usec, event_type, code, value = _INPUT_EVENT.unpack_from(block, offset)
+                        if event_type == _EV_KEY and code == _KEY_SPACE:
+                            events.append({"type": "EV_KEY", "code": "KEY_SPACE", "value": value, "monotonic_ns": time.monotonic_ns()})
+            if len(events) >= self._max_events:
+                raise CompositeQualificationError("evdev observer reached its bounded event limit")
+        finally:
+            selector.close()
+            os.close(fd)
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "kind": INPUT_KIND,
+            "observer": "linux-evdev",
+            "external": True,
+            "complete": True,
+            "deferred": False,
+            "events": events,
+            "event_count": len(events),
+            "final_state": "UP",
+        }
+
+
+class _UsbObserver:
+    """Bounded external descriptor and udev observer; no discovery authority."""
+
+    @staticmethod
+    def command(argv: Sequence[str], timeout: float = 10.0) -> bytes:
+        try:
+            completed = subprocess.run(tuple(argv), check=True, capture_output=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise CompositeQualificationError(f"external observer failed: {' '.join(argv)}: {exc}") from exc
+        if not completed.stdout:
+            raise CompositeQualificationError(f"external observer returned no evidence: {' '.join(argv)}")
+        return completed.stdout
+
+    def descriptors(self, vid_pid: str) -> bytes:
+        return self.command(("lsusb", "-v", "-d", vid_pid))
+
+    def udev(self, sys_path: Path) -> dict[str, Any]:
+        output = self.command(("udevadm", "info", "--query=property", "--path", str(sys_path)))
+        return {"external": True, "complete": True, "observer": "udevadm", "sha256": _sha256_bytes(output)}
+
+
+def _percentile(values: list[float], percentage: int) -> float:
+    ordered = sorted(values)
+    return ordered[max(0, (len(ordered) * percentage + 99) // 100 - 1)]
+
+
+def _validate_latency(result: Mapping[str, Any], manifest: Mapping[str, Any]) -> None:
+    latency = result.get("latency")
+    if not isinstance(latency, Mapping):
+        raise CompositeQualificationError("run lacks latency evidence")
+    limits = manifest["latency_limits_ms"]
+    for name, p95_key, max_key in (
+        ("eligible_to_down", "eligible_to_down_p95", "eligible_to_down_hard_max"),
+        ("release_to_up", "release_to_up_p95", "release_to_up_hard_max"),
+    ):
+        entry = latency.get(name)
+        if not isinstance(entry, Mapping):
+            raise CompositeQualificationError(f"run lacks {name} latency evidence")
+        samples = entry.get("samples_ms")
+        if not isinstance(samples, list) or len(samples) < 100 or any(
+            not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0 for value in samples
+        ):
+            raise CompositeQualificationError(f"run requires at least 100 non-negative {name} samples")
+        p95 = _percentile(samples, 95)
+        maximum = max(samples)
+        if entry.get("count") != len(samples) or entry.get("p95_ms") != p95 or entry.get("max_ms") != maximum:
+            raise CompositeQualificationError(f"run {name} latency summary is not recomputable")
+        if p95 > limits[p95_key] or maximum > limits[max_key]:
+            raise CompositeQualificationError(f"run exceeds the frozen {name} latency limit")
+
+
+def _row_map(result: Mapping[str, Any], manifest: Mapping[str, Any], *, require_pass: bool) -> dict[str, Mapping[str, Any]]:
+    rows = result.get("rows")
+    if not isinstance(rows, list):
+        raise CompositeQualificationError("run rows must be a list")
+    mapped: dict[str, Mapping[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("id"), str) or row["id"] in mapped:
+            raise CompositeQualificationError("run has an invalid or duplicate row")
+        mapped[row["id"]] = row
+    expected = set(manifest["row_counts"])
+    if set(mapped) != expected:
+        raise CompositeQualificationError("run does not contain every frozen row exactly once")
+    if [row["id"] for row in rows] != list(manifest["row_counts"]):
+        raise CompositeQualificationError("run rows do not follow the frozen deterministic order")
+    for row_id, required_count in manifest["row_counts"].items():
+        row = mapped[row_id]
+        if row.get("applicable") is False:
+            if not isinstance(row.get("reason"), str) or not row["reason"].strip():
+                raise CompositeQualificationError("an inapplicable row lacks a reason")
+            if require_pass:
+                raise CompositeQualificationError("PASS cannot contain an inapplicable frozen D-15 row")
+            continue
+        if row.get("applicable") is not True or row.get("required_count") != required_count:
+            raise CompositeQualificationError(f"row {row_id} differs from its frozen applicability/count")
+        if not isinstance(row.get("observed_count"), int) or isinstance(row.get("observed_count"), bool) or row["observed_count"] < 0:
+            raise CompositeQualificationError(f"row {row_id} has an invalid observed count")
+        if require_pass and (row.get("status") != "pass" or row["observed_count"] != required_count):
+            raise CompositeQualificationError(f"PASS row {row_id} is missing, failed, or count-incomplete")
+    return mapped
+
+
+def _validate_traffic(traffic: Mapping[str, Any], manifest: Mapping[str, Any], run_id: str, *, require_pass: bool) -> None:
+    if traffic.get("schema_version") != SCHEMA_VERSION or traffic.get("kind") != TRAFFIC_KIND or traffic.get("run_id") != run_id:
+        raise CompositeQualificationError("traffic evidence schema/kind/run mismatch")
+    counts = traffic.get("counts")
+    expected = 1000 + 10 * 100
+    if not isinstance(counts, Mapping):
+        raise CompositeQualificationError("traffic evidence lacks counters")
+    for direction in ("host_to_device", "device_to_host"):
+        entry = counts.get(direction)
+        if not isinstance(entry, Mapping):
+            raise CompositeQualificationError(f"traffic evidence lacks {direction} counters")
+        if require_pass and any(entry.get(name) != expected for name in ("expected", "sent", "received", "acknowledged")):
+            raise CompositeQualificationError(f"PASS lacks exact CDC equality for {direction}")
+    strict = traffic.get("strict_counters")
+    if not isinstance(strict, Mapping) or set(strict) != set(STRICT_COUNTERS) or any(not isinstance(value, int) or value < 0 for value in strict.values()):
+        raise CompositeQualificationError("traffic strict counters are incomplete")
+    if require_pass and any(strict.values()):
+        raise CompositeQualificationError("PASS has a nonzero strict CDC counter")
+    if traffic.get("maximum_line_bytes_including_lf") != manifest["cdc"]["maximum_line_bytes_including_lf"]:
+        raise CompositeQualificationError("traffic evidence changed the bounded CDC line limit")
+    if require_pass and (traffic.get("overlong_rejected") is not True or traffic.get("next_valid_accepted") is not True):
+        raise CompositeQualificationError("PASS lacks fail-closed overlong-line recovery evidence")
+
+
+def _validate_result(
+    result: Mapping[str, Any], manifest: Mapping[str, Any], traffic: Mapping[str, Any],
+    input_trace: Mapping[str, Any], descriptor_bytes: bytes,
+) -> None:
+    if result.get("schema_version") != SCHEMA_VERSION or result.get("kind") != RESULT_KIND:
+        raise CompositeQualificationError("run result schema/kind mismatch")
+    run_id = _require_string(result.get("run_id"), "run_id")
+    if result.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise CompositeQualificationError("run result does not link the frozen manifest")
+    status = result.get("status")
+    if status not in {"PASS", "FAIL"}:
+        raise CompositeQualificationError("run status must be PASS or FAIL")
+    require_pass = status == "PASS"
+    rows = _row_map(result, manifest, require_pass=require_pass)
+    _validate_traffic(traffic, manifest, run_id, require_pass=require_pass)
+    if input_trace.get("run_id") != run_id:
+        raise CompositeQualificationError("input trace run_id mismatch")
+    if require_pass or input_trace.get("complete") is True:
+        oracle = validate_input_trace(input_trace)
+        if result.get("input_oracle") != oracle:
+            raise CompositeQualificationError("result input oracle summary is not recomputable")
+    else:
+        if input_trace.get("schema_version") != SCHEMA_VERSION or input_trace.get("kind") != INPUT_KIND:
+            raise CompositeQualificationError("failed input trace schema/kind mismatch")
+        events = input_trace.get("events")
+        if not isinstance(events, list) or len(events) > MAX_INPUT_EVENTS:
+            raise CompositeQualificationError("failed input trace is not a bounded event list")
+    descriptor = result.get("descriptor_observation")
+    if not isinstance(descriptor, Mapping):
+        raise CompositeQualificationError("run lacks typed descriptor observation")
+    if descriptor.get("sha256") != _sha256_bytes(descriptor_bytes):
+        raise CompositeQualificationError("descriptor observation hash mismatch")
+    if require_pass and (descriptor.get("external") is not True or descriptor.get("complete") is not True):
+        raise CompositeQualificationError("PASS lacks complete external descriptor observation")
+    if require_pass and any(descriptor.get(name) != expected for name, expected in {
+        "cdc_interfaces": 1,
+        "keyboard_hid_interfaces": 1,
+        "other_hid_usages": 0,
+        "stable_after_resets": 5,
+        "stable_after_unplugs": 5,
+    }.items()):
+        raise CompositeQualificationError("PASS descriptor/interface set is incomplete or unstable")
+    udev = result.get("udev_observation")
+    if not isinstance(udev, Mapping):
+        raise CompositeQualificationError("run lacks typed udev observation")
+    if require_pass and (udev.get("external") is not True or udev.get("complete") is not True):
+        raise CompositeQualificationError("PASS lacks complete external udev evidence")
+    if require_pass and any(result.get(name) for name in ("blockers", "deferred", "open_defects")):
+        raise CompositeQualificationError("PASS has a blocker, deferred fact, or open defect")
+    failure_class = result.get("failure_class")
+    if require_pass:
+        if failure_class is not None or result.get("preflight_status") != "pass" or result.get("clean_boot") is not True:
+            raise CompositeQualificationError("PASS lacks clean preflight/boot evidence")
+        _validate_latency(result, manifest)
+        stress = result.get("stress")
+        schedule = mixed_stress_schedule(manifest["stress"]["seed"])
+        if not isinstance(stress, Mapping) or stress.get("started_after_deterministic_pass") is not True:
+            raise CompositeQualificationError("mixed stress ran before deterministic lifecycle rows passed")
+        if any(rows[name].get("status") != "pass" for name in DETERMINISTIC_ROWS):
+            raise CompositeQualificationError("mixed stress prerequisites did not pass")
+        if stress.get("schedule_sha256") != _sha256_bytes(_canonical_bytes(list(schedule))) or stress.get("scheduled_counts") != STRESS_COUNTS or stress.get("observed_counts") != STRESS_COUNTS or stress.get("invariant_failures") != []:
+            raise CompositeQualificationError("mixed stress is incomplete, unequal, or has an invariant failure")
+    else:
+        if failure_class not in {"harness_setup", "product"}:
+            raise CompositeQualificationError("failed run must classify its first failure")
+        failure = result.get("first_failure")
+        if not isinstance(failure, Mapping) or failure.get("row_id") not in rows or not isinstance(failure.get("invariant"), str) or not failure["invariant"]:
+            raise CompositeQualificationError("failed run does not preserve its first failing invariant")
+        if failure_class == "product" and result.get("preflight_status") != "pass":
+            raise CompositeQualificationError("product failure is forbidden when preflight did not pass")
+
+
+def _parse_sums(path: Path) -> dict[str, str]:
+    expected: dict[str, str] = {}
+    for line in path.read_text(encoding="ascii").splitlines():
+        parts = line.split(maxsplit=1)
+        if len(parts) != 2 or len(parts[0]) != 64:
+            raise CompositeQualificationError("invalid SHA256SUMS entry")
+        name = Path(parts[1])
+        if name.is_absolute() or ".." in name.parts or name.name == "SHA256SUMS" or name.as_posix() in expected:
+            raise CompositeQualificationError("SHA256SUMS contains an unsafe or duplicate path")
+        expected[name.as_posix()] = parts[0]
+    return expected
+
+
+def verify_composite_run(directory: Path, *, manifest_path: Path | None = None) -> dict[str, Any]:
+    directory = Path(directory).resolve()
+    if not directory.is_dir() or directory.is_symlink():
+        raise CompositeQualificationError("composite run must be a non-symlink directory")
+    actual = {path.relative_to(directory).as_posix() for path in directory.rglob("*") if path.is_file()}
+    if actual != set(REQUIRED_RUN_FILES):
+        raise CompositeQualificationError("immutable run file set is missing, extra, or nested")
+    sums = _parse_sums(directory / "SHA256SUMS")
+    hashed_files = set(REQUIRED_RUN_FILES) - {"SHA256SUMS"}
+    if set(sums) != hashed_files:
+        raise CompositeQualificationError("SHA256SUMS does not cover the exact immutable run file set")
+    for name, digest in sums.items():
+        if _sha256_file(directory / name) != digest:
+            raise CompositeQualificationError(f"immutable run hash mismatch for {name}")
+    manifest = validate_composite_manifest(_load_object(directory / "manifest.json", "run manifest"))
+    if manifest_path is not None:
+        frozen = verify_composite_manifest(manifest_path)
+        if manifest != frozen or _sha256_file(directory / "manifest.json") != _sha256_file(manifest_path):
+            raise CompositeQualificationError("run manifest is not the exact frozen manifest")
+    result = _load_object(directory / "result.json", "run result")
+    traffic = _load_object(directory / "traffic.json", "run traffic")
+    input_trace = _load_object(directory / "input-events.json", "run input trace")
+    descriptor_bytes = (directory / "usb-descriptors.txt").read_bytes()
+    if not descriptor_bytes:
+        raise CompositeQualificationError("run descriptor capture is empty")
+    _validate_result(result, manifest, traffic, input_trace, descriptor_bytes)
+    if result["run_id"] != directory.name or traffic.get("run_id") != directory.name:
+        raise CompositeQualificationError("immutable run directory does not match its run_id")
+    return {
+        "directory": directory,
+        "manifest": manifest,
+        "result": result,
+        "traffic": traffic,
+        "input_trace": input_trace,
+        "hashes": {**sums, "SHA256SUMS": _sha256_file(directory / "SHA256SUMS")},
+    }
+
+
+def record_composite_run(
+    manifest_path: Path,
+    evidence_root: Path,
+    run_id: str,
+    result: Mapping[str, Any],
+    traffic: Mapping[str, Any],
+    input_trace: Mapping[str, Any],
+    usb_descriptors: bytes,
+) -> Path:
+    """Write one exact immutable run; a failed write is preserved for diagnosis."""
+    if not isinstance(run_id, str) or not run_id or any(token in run_id for token in ("/", "\\")) or run_id in {".", ".."}:
+        raise CompositeQualificationError("run_id must be one non-empty path component")
+    manifest = verify_composite_manifest(manifest_path)
+    root = Path(evidence_root).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / run_id
+    if target.exists():
+        raise CompositeQualificationError(f"immutable run already exists: {target}")
+    temporary = Path(tempfile.mkdtemp(prefix=f".{run_id}.", dir=root))
+    try:
+        files = {
+            "manifest.json": _canonical_bytes(manifest),
+            "result.json": _canonical_bytes(dict(result)),
+            "traffic.json": _canonical_bytes(dict(traffic)),
+            "input-events.json": _canonical_bytes(dict(input_trace)),
+            "usb-descriptors.txt": bytes(usb_descriptors),
+        }
+        for name, content in files.items():
+            (temporary / name).write_bytes(content)
+        checksums = "".join(f"{_sha256_file(temporary / name)}  {name}\n" for name in sorted(files)).encode("ascii")
+        (temporary / "SHA256SUMS").write_bytes(checksums)
+        temporary.rename(target)
+        verified = verify_composite_run(target, manifest_path=manifest_path)
+        if verified["result"].get("run_id") != run_id:
+            raise CompositeQualificationError("recorded run_id mismatch")
+        return target
+    except Exception as exc:
+        if temporary.exists():
+            failed = root / f"failed-attempt-{run_id}-{time.time_ns()}"
+            temporary.rename(failed)
+            raise CompositeQualificationError(f"evidence write preserved as {failed}: {exc}") from exc
+        if target.exists():
+            failed = root / f"failed-attempt-{run_id}-{time.time_ns()}"
+            target.rename(failed)
+            raise CompositeQualificationError(f"evidence write preserved as {failed}: {exc}") from exc
+        raise
+
+
+def _run_link(run: Mapping[str, Any], root: Path) -> dict[str, Any]:
+    directory = Path(run["directory"])
+    hashes = run["hashes"]
+    return {
+        "path": directory.relative_to(root).as_posix(),
+        "result_sha256": hashes["result.json"],
+        "traffic_sha256": hashes["traffic.json"],
+        "input_events_sha256": hashes["input-events.json"],
+        "usb_descriptors_sha256": hashes["usb-descriptors.txt"],
+        "checksums_sha256": hashes["SHA256SUMS"],
+        "boot_id": run["result"].get("boot_id"),
+        "session_id": run["result"].get("session_id"),
+    }
+
+
+def write_terminal_decision(
+    output: Path,
+    manifest_path: Path,
+    *,
+    status: str,
+    run_directory: Path | None = None,
+    first_failure_directory: Path | None = None,
+    retest_directory: Path | None = None,
+    correction: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Create one immutable PASS or D-16 reproducible-product REJECT decision."""
+    output = Path(output).resolve()
+    sidecar = output.with_suffix(output.suffix + ".sha256")
+    if output.exists() or sidecar.exists():
+        raise CompositeQualificationError("terminal composite decision already exists and cannot be replaced")
+    root = output.parent
+    manifest_path = _safe_file(manifest_path, root, "decision manifest")
+    manifest = verify_composite_manifest(manifest_path)
+    decision: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": DECISION_KIND,
+        "status": status,
+        "terminal": True,
+        "manifest_path": manifest_path.relative_to(root).as_posix(),
+        "manifest_sha256": manifest["manifest_sha256"],
+        "deployment": {
+            "firmware_binary_sha256": manifest["firmware_binary"]["sha256"],
+            "pairing_record_sha256": manifest["pairing_record"]["sha256"],
+            "pair_digest": manifest["pairing_record"]["pair_digest"],
+            "descriptor_expectation_sha256": manifest["descriptor_expectation"]["sha256"],
+        },
+    }
+    if status == "PASS":
+        if run_directory is None or any(value is not None for value in (first_failure_directory, retest_directory, correction)):
+            raise CompositeQualificationError("PASS requires exactly one clean run and no correction lineage")
+        run = verify_composite_run(_safe_file(Path(run_directory) / "result.json", root, "PASS run").parent, manifest_path=manifest_path)
+        if run["result"]["status"] != "PASS":
+            raise CompositeQualificationError("terminal PASS does not link a passing run")
+        decision["run"] = _run_link(run, root)
+    elif status == "REJECT":
+        if first_failure_directory is None or retest_directory is None or correction is None or run_directory is not None:
+            raise CompositeQualificationError("REJECT requires first failure, one correction, and clean retest")
+        first = verify_composite_run(_safe_file(Path(first_failure_directory) / "result.json", root, "first failure run").parent, manifest_path=manifest_path)
+        retest = verify_composite_run(_safe_file(Path(retest_directory) / "result.json", root, "retest run").parent, manifest_path=manifest_path)
+        first_result = first["result"]
+        retest_result = retest["result"]
+        if first_result.get("status") != "FAIL" or retest_result.get("status") != "FAIL" or first_result.get("failure_class") != "product" or retest_result.get("failure_class") != "product":
+            raise CompositeQualificationError("REJECT requires two preserved product failures")
+        first_failure = first_result.get("first_failure", {})
+        repeated_failure = retest_result.get("first_failure", {})
+        if first_failure.get("invariant") != repeated_failure.get("invariant") or first_failure.get("row_id") != repeated_failure.get("row_id"):
+            raise CompositeQualificationError("REJECT retest did not reproduce the same product invariant")
+        if retest_result.get("clean_boot") is not True or first_result.get("boot_id") == retest_result.get("boot_id") or first_result.get("session_id") == retest_result.get("session_id"):
+            raise CompositeQualificationError("REJECT retest lacks a clean boot and fresh session")
+        if not isinstance(correction, Mapping) or correction.get("count") != 1 or not isinstance(correction.get("target"), str) or not correction["target"] or not isinstance(correction.get("description"), str) or not correction["description"]:
+            raise CompositeQualificationError("REJECT correction lineage must name exactly one targeted correction")
+        rerun_rows = retest_result.get("rerun_rows")
+        if not isinstance(rerun_rows, list) or set(rerun_rows) != set(manifest["row_counts"]):
+            raise CompositeQualificationError("REJECT retest did not rerun the complete affected gate")
+        decision["first_failure"] = _run_link(first, root)
+        decision["correction"] = dict(correction)
+        decision["retest"] = _run_link(retest, root)
+        decision["reproduced_invariant"] = {
+            "row_id": first_failure["row_id"],
+            "invariant": first_failure["invariant"],
+        }
+    else:
+        raise CompositeQualificationError("terminal decision status must be PASS or REJECT")
+    decision["decision_sha256"] = _addressed_hash(decision, "decision_sha256")
+    content = _canonical_bytes(decision)
+    digest = hashlib.sha256(content).hexdigest().encode("ascii") + b"\n"
+    atomic_write_pair(output, content, digest)
+    return verify_composite_decision(output, require_terminal=True, require_immutable_lineage=True)
+
+
+def _verify_run_link(link: Any, root: Path, manifest_path: Path, label: str) -> dict[str, Any]:
+    if not isinstance(link, Mapping):
+        raise CompositeQualificationError(f"decision lacks {label} run linkage")
+    run_result = _safe_file(Path(link.get("path", "")) / "result.json", root, label)
+    run = verify_composite_run(run_result.parent, manifest_path=manifest_path)
+    expected = _run_link(run, root)
+    if dict(link) != expected:
+        raise CompositeQualificationError(f"decision {label} run hash/identity lineage mismatch")
+    return run
+
+
+def verify_composite_decision(
+    path: Path, *, require_terminal: bool = False, require_immutable_lineage: bool = False,
+) -> dict[str, Any]:
+    """Reopen a terminal decision and every linked byte without hardware access."""
+    path = Path(path).resolve()
+    decision = _load_object(path, "composite decision")
+    if decision.get("schema_version") != SCHEMA_VERSION or decision.get("kind") != DECISION_KIND:
+        raise CompositeQualificationError("composite decision schema/kind mismatch")
+    if decision.get("decision_sha256") != _addressed_hash(decision, "decision_sha256"):
+        raise CompositeQualificationError("composite decision addressed hash mismatch")
+    if require_terminal and decision.get("terminal") is not True:
+        raise CompositeQualificationError("composite decision is not terminal")
+    if decision.get("status") not in {"PASS", "REJECT"} or decision.get("terminal") is not True:
+        raise CompositeQualificationError("decision must be one terminal PASS or REJECT")
+    root = path.parent
+    manifest_path = _safe_file(Path(decision.get("manifest_path", "")), root, "decision manifest")
+    manifest = verify_composite_manifest(manifest_path)
+    if decision.get("manifest_sha256") != manifest["manifest_sha256"]:
+        raise CompositeQualificationError("decision manifest hash lineage mismatch")
+    if decision.get("deployment") != {
+        "firmware_binary_sha256": manifest["firmware_binary"]["sha256"],
+        "pairing_record_sha256": manifest["pairing_record"]["sha256"],
+        "pair_digest": manifest["pairing_record"]["pair_digest"],
+        "descriptor_expectation_sha256": manifest["descriptor_expectation"]["sha256"],
+    }:
+        raise CompositeQualificationError("decision exact deployment lineage mismatch")
+    if decision["status"] == "PASS":
+        if any(name in decision for name in ("first_failure", "correction", "retest", "reproduced_invariant")):
+            raise CompositeQualificationError("PASS contains forbidden failure/correction lineage")
+        run = _verify_run_link(decision.get("run"), root, manifest_path, "PASS")
+        if run["result"]["status"] != "PASS":
+            raise CompositeQualificationError("decision PASS links a non-passing run")
+    else:
+        if "run" in decision:
+            raise CompositeQualificationError("REJECT contains a PASS run field")
+        first = _verify_run_link(decision.get("first_failure"), root, manifest_path, "first failure")
+        retest = _verify_run_link(decision.get("retest"), root, manifest_path, "retest")
+        correction = decision.get("correction")
+        repeated = decision.get("reproduced_invariant")
+        first_failure = first["result"].get("first_failure", {})
+        retest_failure = retest["result"].get("first_failure", {})
+        if first["result"].get("failure_class") != "product" or retest["result"].get("failure_class") != "product":
+            raise CompositeQualificationError("harness/setup failure cannot reject composite")
+        same_failure = (
+            first_failure.get("row_id") == retest_failure.get("row_id")
+            and first_failure.get("invariant") == retest_failure.get("invariant")
+        )
+        if not same_failure or repeated != {
+            "row_id": first_failure.get("row_id"), "invariant": first_failure.get("invariant")
+        }:
+            raise CompositeQualificationError("REJECT does not reproduce one matching product invariant")
+        if not isinstance(correction, Mapping) or correction.get("count") != 1:
+            raise CompositeQualificationError("REJECT does not preserve exactly one correction")
+        if retest["result"].get("clean_boot") is not True or first["result"].get("boot_id") == retest["result"].get("boot_id") or first["result"].get("session_id") == retest["result"].get("session_id"):
+            raise CompositeQualificationError("REJECT does not link a clean fresh-session retest")
+        if set(retest["result"].get("rerun_rows", ())) != set(manifest["row_counts"]):
+            raise CompositeQualificationError("REJECT retest did not cover the affected gate")
+    if require_immutable_lineage:
+        sidecar = path.with_suffix(path.suffix + ".sha256")
+        try:
+            fields = sidecar.read_text(encoding="ascii").split()
+        except (OSError, UnicodeError) as exc:
+            raise CompositeQualificationError(f"decision checksum sidecar is unavailable: {exc}") from exc
+        if len(fields) != 1 or fields[0] != _sha256_file(path):
+            raise CompositeQualificationError("decision checksum sidecar mismatch")
+    return decision
+
+
+def run_composite_qualification(
+    manifest_path: Path, bundle_path: Path, evidence_root: Path, run_id: str
+) -> Path:
+    """Record one bounded matrix run produced by the private external observers."""
+    bundle = _load_object(bundle_path, "composite run bundle")
+    if bundle.get("schema_version") != SCHEMA_VERSION or bundle.get("kind") != "composite-run-bundle":
+        raise CompositeQualificationError("composite run bundle schema/kind mismatch")
+    descriptor_path = _safe_file(Path(bundle.get("usb_descriptors_path", "")), Path(bundle_path).resolve().parent, "bundle descriptors")
+    return record_composite_run(
+        manifest_path,
+        evidence_root,
+        run_id,
+        bundle.get("result", {}),
+        bundle.get("traffic", {}),
+        bundle.get("input_trace", {}),
+        descriptor_path.read_bytes(),
+    )

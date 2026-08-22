@@ -1,0 +1,402 @@
+from __future__ import annotations
+
+import io
+import hashlib
+import json
+import tempfile
+import unittest
+from collections import Counter
+from pathlib import Path
+from contextlib import redirect_stdout
+
+from phase1_bringup.composite_qualification import (
+    CompositeQualificationError,
+    INPUT_KIND,
+    RESULT_KIND,
+    ROW_COUNTS,
+    SCHEMA_VERSION,
+    STRESS_COUNTS,
+    TRAFFIC_KIND,
+    freeze_composite_manifest,
+    mixed_stress_schedule,
+    record_composite_run,
+    validate_input_trace,
+    verify_composite_decision,
+    verify_composite_run,
+    write_terminal_decision,
+)
+
+
+def canonical_bytes(value: object) -> bytes:
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n").encode("ascii")
+
+
+class CompositeFixture:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.firmware = root / "composite.bin"
+        self.pairing = root / "pairing.json"
+        self.descriptor_expectation = root / "descriptor-expectation.txt"
+        self.descriptor_capture = b"exact composite descriptor capture\n"
+        self.firmware.write_bytes(b"fixed Space composite firmware")
+        self.pairing.write_text('{"device_id":"exact-keypad"}\n', encoding="ascii")
+        self.descriptor_expectation.write_text("one CDC plus one standard keyboard HID\n", encoding="ascii")
+        self.manifest_path = root / "composite-manifest.json"
+        self.manifest = freeze_composite_manifest(
+            self.manifest_path,
+            self.firmware,
+            self.pairing,
+            self.descriptor_expectation,
+            environment="composite-feasibility",
+            boot_id="frozen-boot",
+            session_id="frozen-session",
+            seed=0x03200,
+            threshold_ms=550,
+            tool_versions={"lsusb": "usbutils-018", "udevadm": "systemd-259", "evdev": "linux-7.1"},
+        )
+
+    def trace(self, run_id: str) -> dict[str, object]:
+        events = [
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 10},
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 2, "monotonic_ns": 11},
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 0, "monotonic_ns": 12},
+        ]
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "kind": INPUT_KIND,
+            "run_id": run_id,
+            "observer": "linux-evdev",
+            "external": True,
+            "complete": True,
+            "deferred": False,
+            "events": events,
+            "event_count": len(events),
+            "final_state": "UP",
+        }
+
+    def traffic(self, run_id: str) -> dict[str, object]:
+        direction = {"expected": 2000, "sent": 2000, "received": 2000, "acknowledged": 2000}
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "kind": TRAFFIC_KIND,
+            "run_id": run_id,
+            "counts": {"host_to_device": dict(direction), "device_to_host": dict(direction)},
+            "strict_counters": {
+                "unexpected_reject": 0,
+                "duplicate": 0,
+                "out_of_order": 0,
+                "malformed": 0,
+                "digest_mismatch": 0,
+                "queue_failure": 0,
+                "short_write": 0,
+            },
+            "maximum_line_bytes_including_lf": 4096,
+            "overlong_rejected": True,
+            "next_valid_accepted": True,
+        }
+
+    def rows(self, failed_row: str | None = None) -> list[dict[str, object]]:
+        return [
+            {
+                "id": row_id,
+                "applicable": True,
+                "required_count": required,
+                "observed_count": 1 if row_id == failed_row else required,
+                "status": "fail" if row_id == failed_row else "pass",
+            }
+            for row_id, required in self.manifest["row_counts"].items()
+        ]
+
+    def result(
+        self,
+        run_id: str,
+        *,
+        status: str = "PASS",
+        failure_class: str | None = None,
+        failure_row: str = "usb-removal",
+        invariant: str = "Space remained DOWN after verified USB removal",
+        boot_id: str = "run-boot",
+        session_id: str = "run-session",
+    ) -> dict[str, object]:
+        schedule = mixed_stress_schedule(self.manifest["stress"]["seed"])
+        result: dict[str, object] = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": RESULT_KIND,
+            "run_id": run_id,
+            "manifest_sha256": self.manifest["manifest_sha256"],
+            "status": status,
+            "failure_class": failure_class,
+            "preflight_status": "pass",
+            "clean_boot": True,
+            "boot_id": boot_id,
+            "session_id": session_id,
+            "rows": self.rows(failure_row if status == "FAIL" else None),
+            "input_oracle": {"state": "UP", "events_seen": 3, "failures": []},
+            "descriptor_observation": {
+                "external": True,
+                "complete": True,
+                "sha256": hashlib.sha256(self.descriptor_capture).hexdigest(),
+                "cdc_interfaces": 1,
+                "keyboard_hid_interfaces": 1,
+                "other_hid_usages": 0,
+                "stable_after_resets": 5,
+                "stable_after_unplugs": 5,
+            },
+            "udev_observation": {"external": True, "complete": True, "observer": "udevadm"},
+            "blockers": [],
+            "deferred": [],
+            "open_defects": [],
+            "latency": {
+                "eligible_to_down": {"samples_ms": [10] * 100, "count": 100, "p95_ms": 10, "max_ms": 10},
+                "release_to_up": {"samples_ms": [12] * 100, "count": 100, "p95_ms": 12, "max_ms": 12},
+            },
+            "stress": {
+                "started_after_deterministic_pass": True,
+                "schedule_sha256": hashlib.sha256(canonical_bytes(list(schedule))).hexdigest(),
+                "scheduled_counts": dict(STRESS_COUNTS),
+                "observed_counts": dict(STRESS_COUNTS),
+                "invariant_failures": [],
+            },
+        }
+        if status == "FAIL":
+            result["first_failure"] = {"row_id": failure_row, "invariant": invariant}
+            result["rerun_rows"] = list(self.manifest["row_counts"])
+        return result
+
+    def run(
+        self,
+        run_id: str,
+        *,
+        status: str = "PASS",
+        failure_class: str | None = None,
+        boot_id: str = "run-boot",
+        session_id: str = "run-session",
+    ) -> Path:
+        return record_composite_run(
+            self.manifest_path,
+            self.root,
+            run_id,
+            self.result(
+                run_id,
+                status=status,
+                failure_class=failure_class,
+                boot_id=boot_id,
+                session_id=session_id,
+            ),
+            self.traffic(run_id),
+            self.trace(run_id),
+            self.descriptor_capture,
+        )
+
+
+class CompositeManifestAndScheduleTests(unittest.TestCase):
+    def test_manifest_freezes_exact_matrix_space_boundary_and_ea07(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = CompositeFixture(Path(directory))
+            self.assertEqual(set(fixture.manifest["row_counts"]), set(ROW_COUNTS))
+            self.assertEqual(
+                fixture.manifest["interfaces"],
+                {"cdc": 1, "standard_keyboard_hid": 1, "other_hid_usages": 0, "fixed_key": "KEY_SPACE"},
+            )
+            self.assertEqual(fixture.manifest["edge_assumptions"][0]["status"], "ASSUMED_UNRESOLVED")
+
+    def test_stress_schedule_is_seeded_finite_and_count_equal(self) -> None:
+        first = mixed_stress_schedule(1234)
+        self.assertEqual(first, mixed_stress_schedule(1234))
+        self.assertNotEqual(first, mixed_stress_schedule(1235))
+        self.assertEqual(len(first), 300)
+        self.assertEqual(Counter(first), Counter(STRESS_COUNTS))
+
+
+class LinuxInputOracleTests(unittest.TestCase):
+    def trace(self, events: list[dict[str, object]]) -> dict[str, object]:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "kind": INPUT_KIND,
+            "observer": "linux-evdev",
+            "external": True,
+            "complete": True,
+            "deferred": False,
+            "events": events,
+            "event_count": len(events),
+            "final_state": "UP",
+        }
+
+    def test_repeat_value_two_does_not_transition_state(self) -> None:
+        summary = validate_input_trace(self.trace([
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 1},
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 2, "monotonic_ns": 2},
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 2, "monotonic_ns": 3},
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 0, "monotonic_ns": 4},
+        ]))
+        self.assertEqual(summary["state"], "UP")
+
+    def test_verified_removal_clears_down_and_fresh_remount_is_empty(self) -> None:
+        trace = self.trace([
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 1},
+            {"type": "DEVICE_REMOVED", "verified": True, "monotonic_ns": 2},
+            {"type": "REMOUNT", "empty": True, "monotonic_ns": 3},
+        ])
+        self.assertEqual(validate_input_trace(trace)["state"], "UP")
+
+    def test_unverified_removal_resume_active_missing_up_and_duplicate_down_fail(self) -> None:
+        cases = (
+            ("not externally verified", [
+                {"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 1},
+                {"type": "DEVICE_REMOVED", "verified": False, "monotonic_ns": 2},
+            ]),
+            ("active or non-empty after resume", [
+                {"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 1},
+                {"type": "RESUME", "empty": True, "monotonic_ns": 2},
+            ]),
+            ("ended DOWN", [
+                {"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 1},
+            ]),
+            ("duplicate Space down", [
+                {"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 1},
+                {"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 2},
+            ]),
+        )
+        for error, events in cases:
+            with self.subTest(error=error), self.assertRaisesRegex(CompositeQualificationError, error):
+                validate_input_trace(self.trace(events))
+
+
+class FailClosedRunTests(unittest.TestCase):
+    def test_complete_pass_reopens_with_every_immutable_hash(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = CompositeFixture(Path(directory))
+            checked = verify_composite_run(fixture.run("pass-run"), manifest_path=fixture.manifest_path)
+            self.assertEqual(checked["result"]["status"], "PASS")
+            self.assertEqual(set(checked["hashes"]), {
+                "manifest.json", "result.json", "traffic.json", "input-events.json", "usb-descriptors.txt", "SHA256SUMS"
+            })
+
+    def test_missing_row_nonzero_counter_descriptor_down_or_deferred_cannot_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = CompositeFixture(Path(directory))
+            cases: list[tuple[str, dict[str, object], dict[str, object], dict[str, object]]] = []
+            missing = fixture.result("missing")
+            missing["rows"] = missing["rows"][:-1]
+            cases.append(("missing", missing, fixture.traffic("missing"), fixture.trace("missing")))
+            counter = fixture.traffic("counter")
+            counter["strict_counters"]["duplicate"] = 1
+            cases.append(("counter", fixture.result("counter"), counter, fixture.trace("counter")))
+            descriptor = fixture.result("descriptor")
+            descriptor["descriptor_observation"]["keyboard_hid_interfaces"] = 0
+            cases.append(("descriptor", descriptor, fixture.traffic("descriptor"), fixture.trace("descriptor")))
+            down = fixture.result("down")
+            down_trace = fixture.trace("down")
+            down_trace["events"] = [{"type": "EV_KEY", "code": "KEY_SPACE", "value": 1, "monotonic_ns": 1}]
+            down_trace["event_count"] = 1
+            down_trace["final_state"] = "DOWN"
+            down["input_oracle"] = {"state": "DOWN", "events_seen": 1, "failures": []}
+            cases.append(("down", down, fixture.traffic("down"), down_trace))
+            deferred = fixture.result("deferred")
+            deferred["deferred"] = ["stuck-key evidence awaits manual review"]
+            cases.append(("deferred", deferred, fixture.traffic("deferred"), fixture.trace("deferred")))
+            for name, result, traffic, trace in cases:
+                with self.subTest(name=name), self.assertRaises(CompositeQualificationError):
+                    record_composite_run(
+                        fixture.manifest_path,
+                        fixture.root,
+                        name,
+                        result,
+                        traffic,
+                        trace,
+                        fixture.descriptor_capture,
+                    )
+
+
+class TerminalDecisionTests(unittest.TestCase):
+    def test_pass_binds_manifest_run_binary_descriptor_pair_trace_and_checksum(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = CompositeFixture(Path(directory))
+            run = fixture.run("pass-run")
+            decision_path = fixture.root / "composite-decision.json"
+            decision = write_terminal_decision(decision_path, fixture.manifest_path, status="PASS", run_directory=run)
+            self.assertEqual(decision["status"], "PASS")
+            self.assertEqual(decision["run"]["input_events_sha256"], hashlib.sha256((run / "input-events.json").read_bytes()).hexdigest())
+            checked = verify_composite_decision(decision_path, require_terminal=True, require_immutable_lineage=True)
+            self.assertEqual(checked["decision_sha256"], decision["decision_sha256"])
+
+    def test_cli_verifies_decision_without_opening_hardware(self) -> None:
+        from phase1_bringup.__main__ import main
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = CompositeFixture(Path(directory))
+            decision_path = fixture.root / "composite-decision.json"
+            write_terminal_decision(
+                decision_path,
+                fixture.manifest_path,
+                status="PASS",
+                run_directory=fixture.run("pass-run"),
+            )
+            output = io.StringIO()
+            with redirect_stdout(output):
+                status = main([
+                    "composite-verify-decision",
+                    "--decision",
+                    str(decision_path),
+                    "--require-terminal",
+                    "--require-immutable-lineage",
+                ])
+            self.assertEqual(status, 0)
+            self.assertIn("Composite decision verified: PASS", output.getvalue())
+
+    def test_decision_rejects_path_escape_and_hash_tampering(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as outside_directory:
+            fixture = CompositeFixture(Path(directory))
+            decision_path = fixture.root / "composite-decision.json"
+            write_terminal_decision(decision_path, fixture.manifest_path, status="PASS", run_directory=fixture.run("pass-run"))
+            decision = json.loads(decision_path.read_text(encoding="ascii"))
+            decision["run"]["path"] = str(Path(outside_directory))
+            unhashed = {key: value for key, value in decision.items() if key != "decision_sha256"}
+            decision["decision_sha256"] = hashlib.sha256(canonical_bytes(unhashed)).hexdigest()
+            decision_path.write_bytes(canonical_bytes(decision))
+            with self.assertRaisesRegex(CompositeQualificationError, "escapes"):
+                verify_composite_decision(decision_path)
+
+    def test_harness_failure_cannot_produce_reject(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = CompositeFixture(Path(directory))
+            first = fixture.run("first", status="FAIL", failure_class="harness_setup", boot_id="boot-a", session_id="session-a")
+            retest = fixture.run("retest", status="FAIL", failure_class="product", boot_id="boot-b", session_id="session-b")
+            with self.assertRaisesRegex(CompositeQualificationError, "product failures"):
+                write_terminal_decision(
+                    fixture.root / "composite-decision.json",
+                    fixture.manifest_path,
+                    status="REJECT",
+                    first_failure_directory=first,
+                    retest_directory=retest,
+                    correction={"count": 1, "target": "USB lifecycle release", "description": "one bounded correction"},
+                )
+
+    def test_reject_requires_one_correction_clean_fresh_retest_and_matching_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = CompositeFixture(Path(directory))
+            first = fixture.run("first", status="FAIL", failure_class="product", boot_id="boot-a", session_id="session-a")
+            retest = fixture.run("retest", status="FAIL", failure_class="product", boot_id="boot-b", session_id="session-b")
+            decision = write_terminal_decision(
+                fixture.root / "composite-decision.json",
+                fixture.manifest_path,
+                status="REJECT",
+                first_failure_directory=first,
+                retest_directory=retest,
+                correction={"count": 1, "target": "USB lifecycle release", "description": "send and drain the fixed empty report"},
+            )
+            self.assertEqual(decision["status"], "REJECT")
+            self.assertEqual(decision["reproduced_invariant"]["row_id"], "usb-removal")
+
+    def test_first_failure_artifact_is_never_overwritten(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fixture = CompositeFixture(Path(directory))
+            first = fixture.run("first", status="FAIL", failure_class="product")
+            before = (first / "SHA256SUMS").read_bytes()
+            with self.assertRaisesRegex(CompositeQualificationError, "already exists"):
+                fixture.run("first", status="FAIL", failure_class="product")
+            self.assertEqual((first / "SHA256SUMS").read_bytes(), before)
+
+
+if __name__ == "__main__":
+    unittest.main()
