@@ -38,6 +38,10 @@ TILE_SCENES = (
     "rejected", "vanished", "uncertain", "failed",
 )
 SLOT_SCENES = ("slots-0", "slots-1", "slots-2", "slots-3")
+HOLD_SCENES = (
+    "hold-pending", "space-active-owner", "cancellation-return",
+    "owner-after-other-focus", "failure-preemption", "lifecycle-clear",
+)
 LED_GRAMMARS = ("rail-echo", "exception", "field-extension", "meter-lamps")
 MOTION_STATE_SCENES = {
     "BLOCKED": "blocked", "UNSEEN": "unseen", "WORKING": "working",
@@ -1298,6 +1302,8 @@ def validate_phase31_framebuffer_manifest(
             raise ValueError("framebuffer Codex matrix is incomplete")
         if set(matrix.get("menu", {}).get(theme, [])) != set(MENU_SCENES):
             raise ValueError("framebuffer menu matrix is incomplete")
+        if set(matrix.get("hold_scenes", {}).get(theme, [])) != set(HOLD_SCENES):
+            raise ValueError("framebuffer hold scene matrix is incomplete")
     inventory = manifest.get("motion_inventory", {})
     inventory_path = resolve_repo_path(inventory["path"])
     if sha256_file(inventory_path) != inventory["sha256"]:
@@ -1981,6 +1987,7 @@ def run_phase31_capture(args: argparse.Namespace) -> int:
         "slot_layouts": {theme: [] for theme in THEMES},
         "codex": {theme: [] for theme in THEMES},
         "menu": {theme: [] for theme in THEMES},
+        "hold_scenes": {theme: [] for theme in THEMES},
     }
     for theme in THEMES:
         for scene in TILE_SCENES:
@@ -1995,6 +2002,9 @@ def run_phase31_capture(args: argparse.Namespace) -> int:
         for scene in MENU_SCENES:
             capture("menu", 3, theme, scene, "static")
             matrix["menu"][theme].append(scene)
+        for scene in HOLD_SCENES:
+            capture("tiles", 0, theme, scene, "static")
+            matrix["hold_scenes"][theme].append(scene)
         for level, phase in (("full", 0), ("full", 1), ("half", 0), ("static", 0)):
             capture("motion", 0, theme, "working", level, phase)
 

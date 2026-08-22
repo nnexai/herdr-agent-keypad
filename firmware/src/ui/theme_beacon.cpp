@@ -247,6 +247,13 @@ class BeaconTheme final : public ThemeRenderer {
         sprite.setTextColor(content, kBackground);
         sprite.drawString(base.word, centeredX(base.word), 73);
       }
+      if (holdMicPermitted(state, tile, fence)) {
+        if (tile.hold_active_owner) {
+          drawHoldMic(sprite, 64, 52, kAccent, true, phase);
+        } else if (tile.hold_candidate && tile.hold_threshold_qualified) {
+          drawHoldMic(sprite, 64, 52, kAccent, false, phase);
+        }
+      }
 
       sprite.fillRect(0, 96, 128, 32, kBackground);
       sprite.setTextColor(fence != nullptr ? kSettled : kMetadata, kBackground);

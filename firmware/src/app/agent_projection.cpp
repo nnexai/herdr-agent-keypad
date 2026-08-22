@@ -164,6 +164,37 @@ RenderState captureFixture(CaptureScene scene) {
       state.slots[slot].feedback = TileFeedback::Disabled;
     }
   }
+  switch (scene) {
+    case CaptureScene::HoldPending:
+      state.slots[0].hold_candidate = true;
+      state.slots[0].hold_threshold_qualified = true;
+      state.slots[0].feedback = TileFeedback::Pending;
+      break;
+    case CaptureScene::SpaceActiveOwner:
+      state.slots[0].hold_active_owner = true;
+      state.slots[0].feedback = TileFeedback::Success;
+      break;
+    case CaptureScene::CancellationReturn:
+      state.slots[0].feedback = TileFeedback::Pending;
+      break;
+    case CaptureScene::OwnerAfterOtherFocus:
+      state.slots[0].hold_active_owner = true;
+      state.slots[0].feedback = TileFeedback::Ready;
+      state.slots[1].feedback = TileFeedback::Success;
+      break;
+    case CaptureScene::FailurePreemption:
+      state.slots[0].hold_active_owner = true;
+      state.slots[0].feedback = TileFeedback::Failed;
+      break;
+    case CaptureScene::LifecycleClear:
+      state.slots[0].hold_active_owner = true;
+      state.slots[0].feedback = TileFeedback::Success;
+      state.hold_lifecycle_blocked = true;
+      state.hold_empty_report_complete = false;
+      break;
+    default:
+      break;
+  }
   return state;
 }
 

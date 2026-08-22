@@ -55,6 +55,12 @@ enum class CaptureScene : uint8_t {
   SlotsOne,
   SlotsTwo,
   SlotsThree,
+  HoldPending,
+  SpaceActiveOwner,
+  CancellationReturn,
+  OwnerAfterOtherFocus,
+  FailurePreemption,
+  LifecycleClear,
 };
 using CaptureLevel = AnimationScheduler::Level;
 static constexpr uint8_t kCapturePhaseCount = 8;

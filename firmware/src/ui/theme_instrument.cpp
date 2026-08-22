@@ -240,6 +240,13 @@ class InstrumentTheme final : public ThemeRenderer {
                     state.blocked_pulse_high);
       drawInnerGlyph(sprite, tile.state, content);
     }
+      if (holdMicPermitted(state, tile, fence)) {
+        if (tile.hold_active_owner) {
+          drawHoldMic(sprite, kCx, kCy, kAccent, true, phase);
+        } else if (tile.hold_candidate && tile.hold_threshold_qualified) {
+          drawHoldMic(sprite, kCx, kCy, kAccent, false, phase);
+        }
+      }
 
     // State line remains the underlying state during the physical impulse;
     // feedback words begin only on the following complete frame.

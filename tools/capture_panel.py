@@ -64,6 +64,12 @@ SCENES = {
     "slots-1": "1",
     "slots-2": "2",
     "slots-3": "3",
+    "hold-pending": "j",
+    "space-active-owner": "k",
+    "cancellation-return": "q",
+    "owner-after-other-focus": "v",
+    "failure-preemption": "x",
+    "lifecycle-clear": "z",
 }
 LEVELS = {"full": "F", "half": "H", "static": "S"}
 

@@ -355,6 +355,12 @@ bool parseCaptureRequest(const char* stimulus, uint8_t& panel, ThemeRenderer*& r
     case 'h': scene = CaptureScene::HostOffline; break;
     case 'l': scene = CaptureScene::CodexLimit; break;
     case 'g': scene = CaptureScene::CodexLong; break;
+    case 'j': scene = CaptureScene::HoldPending; break;
+    case 'k': scene = CaptureScene::SpaceActiveOwner; break;
+    case 'q': scene = CaptureScene::CancellationReturn; break;
+    case 'v': scene = CaptureScene::OwnerAfterOtherFocus; break;
+    case 'x': scene = CaptureScene::FailurePreemption; break;
+    case 'z': scene = CaptureScene::LifecycleClear; break;
     case '0':
       scene = panel == 3 ? CaptureScene::MenuRoot0 : CaptureScene::SlotsZero;
       break;
