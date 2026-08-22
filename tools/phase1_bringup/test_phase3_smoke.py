@@ -1022,6 +1022,21 @@ class Phase32PhysicalGateTests(unittest.TestCase):
                 {"status": "pass", "defects": []},
                 require_oracle_up=True,
             )
+    def test_phase32_gate_rejects_wrong_schema_before_hash_join(self) -> None:
+        deployment = self._deployment()
+        gate = {
+            "schema_version": 2,
+            "kind": "phase03.2-phase4-gate",
+            "status": "pass",
+        }
+        with self.assertRaisesRegex(ValueError, "schema"):
+            validate_phase32_gate(
+                gate,
+                deployment,
+                {"status": "pass"},
+                self._evidence(),
+                {"status": "pass", "defects": []},
+            )
 
 if __name__ == "__main__":
     unittest.main()
