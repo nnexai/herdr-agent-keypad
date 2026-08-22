@@ -797,6 +797,233 @@ void test_passive_owner_survives_focus_and_snapshot_generation_changes() {
   TEST_ASSERT_FALSE(after_generation.slots[1].hold_active_owner);
   TEST_ASSERT_TRUE(hold.active());
 }
+namespace {
+
+void commitHoldSnapshot(AgentProjection& projection, BoardAdapter& board,
+                        const char* source_status = "current") {
+  JsonDocument document = snapshot_document(1, "working", source_status);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+}
+
+void armQualifiedCandidate(AgentProjection& projection, HoldController& hold,
+                           const char* action_id = "hold-action") {
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(
+      projection.captureFocusIntent(0, action_id, intent.to<JsonObject>()));
+  TEST_ASSERT_TRUE(hold.registerPress(0, action_id, 1000));
+  hold.observeFrame(holdFrame(1, 1, 0, 1000), 1000, true);
+  hold.observeFrame(holdFrame(0, 1, 0), 551000, true);
+}
+
+void armActiveOwner(AgentProjection& projection, HoldController& hold,
+                    const char* action_id = "hold-action") {
+  armQualifiedCandidate(projection, hold, action_id);
+  hold.observeFocusResult(0, action_id, true, 551001);
+  hold.observeFrame(holdFrame(0, 1, 0), 551001, true);
+  TEST_ASSERT_TRUE(hold.active());
+}
+
+void assertHoldFactsCleared(const RenderState& state) {
+  TEST_ASSERT_FALSE(state.slots[0].hold_candidate);
+  TEST_ASSERT_FALSE(state.slots[0].hold_threshold_qualified);
+  TEST_ASSERT_FALSE(state.slots[0].hold_active_owner);
+}
+
+}  // namespace
+
+void test_hold_cancellation_returns_to_ordinary_focus_feedback() {
+  AgentProjection projection;
+  BoardAdapter board;
+  commitHoldSnapshot(projection, board);
+  FixedSpaceHid hid;
+  HoldController hold(hid, 550000);
+  projection.setHoldController(hold);
+  armQualifiedCandidate(projection, hold);
+
+  hold.observeFrame(holdFrame(0, 0, 1), 551001, true);
+  const RenderState state = projection.renderState(551001);
+  assertHoldFactsCleared(state);
+  TEST_ASSERT_EQUAL(static_cast<int>(TileFeedback::Pending),
+                    static_cast<int>(state.slots[0].feedback));
+  TEST_ASSERT_FALSE(hold.hasCandidate());
+}
+
+void test_hold_prethreshold_release_never_exposes_cancellation_state() {
+  AgentProjection projection;
+  BoardAdapter board;
+  commitHoldSnapshot(projection, board);
+  FixedSpaceHid hid;
+  HoldController hold(hid, 550000);
+  projection.setHoldController(hold);
+
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(
+      projection.captureFocusIntent(0, "short-action", intent.to<JsonObject>()));
+  TEST_ASSERT_TRUE(hold.registerPress(0, "short-action", 1000));
+  hold.observeFrame(holdFrame(1, 1, 0, 1000), 1000, true);
+  hold.observeFrame(holdFrame(0, 0, 1), 200000, true);
+
+  const RenderState state = projection.renderState(200000);
+  assertHoldFactsCleared(state);
+  TEST_ASSERT_EQUAL(static_cast<int>(TileFeedback::Pending),
+                    static_cast<int>(state.slots[0].feedback));
+}
+
+void test_hold_success_expiry_keeps_qualified_candidate_visible() {
+  AgentProjection projection;
+  BoardAdapter board;
+  commitHoldSnapshot(projection, board);
+  FixedSpaceHid hid;
+  HoldController hold(hid, 550000);
+  projection.setHoldController(hold);
+  armQualifiedCandidate(projection, hold);
+
+  JsonDocument result = focus_result_document("hold-action", "accepted");
+  result["snapshot_revision"] = 1;
+  TEST_ASSERT_TRUE(projection.applyFocusResult(result.as<JsonObjectConst>()));
+  hold.observeFocusResult(0, "hold-action", true, 551001);
+
+  projection.tick(board, micros() + AgentProjection::kSuccessHoldUs + 1);
+  const RenderState state = projection.renderState(micros());
+  TEST_ASSERT_TRUE(state.slots[0].hold_candidate);
+  TEST_ASSERT_TRUE(state.slots[0].hold_threshold_qualified);
+  TEST_ASSERT_FALSE(state.slots[0].hold_active_owner);
+}
+
+void test_named_focus_failures_preempt_hold_facts() {
+  const char* outcomes[] = {
+      "rejected", "stale_target", "vanished", "herdr_offline",
+      "uncertain", "timeout", "failed",
+  };
+  for (const char* outcome : outcomes) {
+    AgentProjection projection;
+    BoardAdapter board;
+    commitHoldSnapshot(projection, board);
+    FixedSpaceHid hid;
+    HoldController hold(hid, 550000);
+    projection.setHoldController(hold);
+    armQualifiedCandidate(projection, hold);
+
+    JsonDocument result = focus_result_document("hold-action", outcome);
+    result["snapshot_revision"] = 1;
+    TEST_ASSERT_FALSE(projection.applyFocusResult(result.as<JsonObjectConst>()));
+    hold.observeFocusResult(0, "hold-action", false, 551001);
+
+    const RenderState state = projection.renderState(551001);
+    assertHoldFactsCleared(state);
+    TileFeedback expected = TileFeedback::Rejected;
+    if (strcmp(outcome, "stale_target") == 0) expected = TileFeedback::Stale;
+    else if (strcmp(outcome, "vanished") == 0) expected = TileFeedback::Vanished;
+    else if (strcmp(outcome, "herdr_offline") == 0) expected = TileFeedback::Offline;
+    else if (strcmp(outcome, "uncertain") == 0 ||
+             strcmp(outcome, "timeout") == 0) {
+      expected = TileFeedback::Uncertain;
+    } else if (strcmp(outcome, "failed") == 0) {
+      expected = TileFeedback::Failed;
+    }
+    TEST_ASSERT_EQUAL(static_cast<int>(expected),
+                      static_cast<int>(state.slots[0].feedback));
+  }
+}
+
+void test_source_fence_preempts_candidate_and_active_owner() {
+  {
+    AgentProjection projection;
+    BoardAdapter board;
+    commitHoldSnapshot(projection, board);
+    FixedSpaceHid hid;
+    HoldController hold(hid, 550000);
+    projection.setHoldController(hold);
+    armQualifiedCandidate(projection, hold);
+
+    JsonDocument stale = snapshot_document(2, "working", "stale");
+    TEST_ASSERT_TRUE(projection.stageSnapshot(stale.as<JsonObjectConst>()));
+    TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+    assertHoldFactsCleared(projection.renderState(551001));
+  }
+
+  {
+    AgentProjection projection;
+    BoardAdapter board;
+    commitHoldSnapshot(projection, board);
+    FixedSpaceHid hid;
+    HoldController hold(hid, 550000);
+    projection.setHoldController(hold);
+    armActiveOwner(projection, hold);
+
+    JsonDocument stale = snapshot_document(2, "working", "offline");
+    TEST_ASSERT_TRUE(projection.stageSnapshot(stale.as<JsonObjectConst>()));
+    TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+    assertHoldFactsCleared(projection.renderState(551001));
+    TEST_ASSERT_TRUE(hold.active());
+  }
+}
+
+void test_lifecycle_events_preempt_hold_presentation() {
+  const HoldController::LifecycleEvent events[] = {
+      HoldController::LifecycleEvent::Disconnect,
+      HoldController::LifecycleEvent::SessionReplacement,
+      HoldController::LifecycleEvent::ControlledReset,
+      HoldController::LifecycleEvent::UsbStopped,
+      HoldController::LifecycleEvent::UsbSuspend,
+      HoldController::LifecycleEvent::UsbResume,
+  };
+  for (const HoldController::LifecycleEvent event : events) {
+    AgentProjection projection;
+    BoardAdapter board;
+    commitHoldSnapshot(projection, board);
+    FixedSpaceHid hid;
+    HoldController hold(hid, 550000);
+    projection.setHoldController(hold);
+    armActiveOwner(projection, hold);
+
+    TEST_ASSERT_TRUE(hold.onLifecycle(event));
+    const RenderState state = projection.renderState(551002);
+    assertHoldFactsCleared(state);
+    TEST_ASSERT_TRUE(state.hold_lifecycle_blocked);
+    TEST_ASSERT_TRUE(state.hold_empty_report_complete);
+    TEST_ASSERT_FALSE(hold.active());
+  }
+}
+
+void test_failed_down_and_failed_up_clear_before_report_failure() {
+  {
+    AgentProjection projection;
+    BoardAdapter board;
+    commitHoldSnapshot(projection, board);
+    FixedSpaceHid hid;
+    HoldController hold(hid, 550000);
+    projection.setHoldController(hold);
+    armQualifiedCandidate(projection, hold);
+    g_projection_hid_ready = false;
+    hold.observeFrame(holdFrame(0, 1, 0), 551001, false);
+
+    const RenderState state = projection.renderState(551001);
+    assertHoldFactsCleared(state);
+    TEST_ASSERT_FALSE(state.hold_lifecycle_blocked);
+    TEST_ASSERT_TRUE(state.hold_empty_report_complete);
+  }
+
+  g_projection_hid_ready = true;
+  {
+    AgentProjection projection;
+    BoardAdapter board;
+    commitHoldSnapshot(projection, board);
+    FixedSpaceHid hid;
+    HoldController hold(hid, 550000);
+    projection.setHoldController(hold);
+    armActiveOwner(projection, hold);
+    g_projection_hid_ready = false;
+    hold.observeFrame(holdFrame(0, 0, 1), 551002, false);
+
+    const RenderState state = projection.renderState(551002);
+    assertHoldFactsCleared(state);
+    TEST_ASSERT_TRUE(state.hold_lifecycle_blocked);
+    TEST_ASSERT_FALSE(state.hold_empty_report_complete);
+  }
+}
+
 
 void test_multiple_agent_keys_capture_without_waiting() {
   AgentProjection projection;
@@ -3488,6 +3715,13 @@ int runAllTests() {
   RUN_TEST(test_pending_press_is_superseded_by_new_press);
   RUN_TEST(test_render_state_exposes_passive_hold_candidate_and_owner);
   RUN_TEST(test_passive_owner_survives_focus_and_snapshot_generation_changes);
+  RUN_TEST(test_hold_cancellation_returns_to_ordinary_focus_feedback);
+  RUN_TEST(test_hold_prethreshold_release_never_exposes_cancellation_state);
+  RUN_TEST(test_hold_success_expiry_keeps_qualified_candidate_visible);
+  RUN_TEST(test_named_focus_failures_preempt_hold_facts);
+  RUN_TEST(test_source_fence_preempts_candidate_and_active_owner);
+  RUN_TEST(test_lifecycle_events_preempt_hold_presentation);
+  RUN_TEST(test_failed_down_and_failed_up_clear_before_report_failure);
   RUN_TEST(test_multiple_agent_keys_capture_without_waiting);
   RUN_TEST(test_settings_fresh_and_legacy_load_without_boot_write);
   RUN_TEST(test_settings_v2_roundtrip_and_bounded_brightness);
