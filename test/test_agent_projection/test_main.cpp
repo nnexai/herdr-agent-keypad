@@ -1364,7 +1364,126 @@ void test_ledger_hold_mic_geometry_and_precedence() {
   TEST_ASSERT_FALSE(hasLedgerMicBody(true));
 }
 
-// --- Plan 02: three more themes -------------------------------------------
+bool hasBeaconMicBody(bool solid) {
+  return logContainsAny(solid ? "fillRect:60:44:8:12"
+                              : "drawRect:60:44:8:12");
+}
+
+bool hasInstrumentMicBody(bool solid) {
+  return logContainsAny(solid ? "fillRect:60:46:8:12"
+                              : "drawRect:60:46:8:12");
+}
+
+void assertHoldMicPrecedence(ThemeRenderer& theme, bool beacon_geometry) {
+  RenderState state = holdMicFixture();
+  composeHoldTile(theme, state);
+  TEST_ASSERT_TRUE(beacon_geometry ? hasBeaconMicBody(false)
+                                   : hasInstrumentMicBody(false));
+  TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(true)
+                                    : hasInstrumentMicBody(true));
+
+  state.slots[0].hold_candidate = false;
+  state.slots[0].hold_threshold_qualified = false;
+  state.slots[0].hold_active_owner = true;
+  state.slots[0].feedback = TileFeedback::Success;
+  composeHoldTile(theme, state);
+  TEST_ASSERT_TRUE(beacon_geometry ? hasBeaconMicBody(true)
+                                   : hasInstrumentMicBody(true));
+  TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(false)
+                                    : hasInstrumentMicBody(false));
+
+  const TileFeedback failures[] = {
+      TileFeedback::Rejected, TileFeedback::Stale, TileFeedback::Vanished,
+      TileFeedback::Offline, TileFeedback::Uncertain, TileFeedback::Failed,
+  };
+  for (const TileFeedback failure : failures) {
+    state = holdMicFixture();
+    state.slots[0].feedback = failure;
+    state.slots[0].hold_active_owner = true;
+    composeHoldTile(theme, state);
+    TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(false)
+                                      : hasInstrumentMicBody(false));
+    TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(true)
+                                      : hasInstrumentMicBody(true));
+  }
+
+  const char* fences[] = {"stale", "offline", "unavailable"};
+  for (const char* fence : fences) {
+    state = holdMicFixture();
+    state.source_status = fence;
+    state.slots[0].hold_active_owner = true;
+    composeHoldTile(theme, state);
+    TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(false)
+                                      : hasInstrumentMicBody(false));
+    TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(true)
+                                      : hasInstrumentMicBody(true));
+  }
+
+  state = holdMicFixture();
+  state.syncing = true;
+  state.slots[0].hold_active_owner = true;
+  composeHoldTile(theme, state);
+  TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(false)
+                                    : hasInstrumentMicBody(false));
+  TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(true)
+                                    : hasInstrumentMicBody(true));
+
+  state = holdMicFixture();
+  state.hold_lifecycle_blocked = true;
+  state.slots[0].hold_active_owner = true;
+  composeHoldTile(theme, state);
+  TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(false)
+                                    : hasInstrumentMicBody(false));
+  TEST_ASSERT_FALSE(beacon_geometry ? hasBeaconMicBody(true)
+                                    : hasInstrumentMicBody(true));
+}
+
+void test_beacon_and_instrument_hold_mic_geometry_and_precedence() {
+  assertHoldMicPrecedence(beaconTheme(), true);
+  assertHoldMicPrecedence(instrumentTheme(), false);
+}
+
+void test_hold_capture_scenes_use_production_renderers_without_mutation() {
+  AgentProjection projection;
+  ThemeRenderer* themes[] = {
+      &signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
+  ThemeRenderer& original_theme = projection.theme();
+  const CaptureScene scenes[] = {
+      CaptureScene::HoldPending, CaptureScene::SpaceActiveOwner,
+      CaptureScene::CancellationReturn, CaptureScene::OwnerAfterOtherFocus,
+      CaptureScene::FailurePreemption, CaptureScene::LifecycleClear,
+  };
+  for (ThemeRenderer* theme : themes) {
+    for (const CaptureScene scene : scenes) {
+      resetLog();
+      TEST_ASSERT_TRUE(projection.capturePanel(
+          0, theme, scene, AnimationScheduler::Level::Static, 0));
+      TEST_ASSERT_EQUAL_PTR(&original_theme, &projection.theme());
+      TEST_ASSERT_NOT_NULL(projection.capturePixels());
+      assertPanelTextBounded();
+      if (scene == CaptureScene::HoldPending ||
+          scene == CaptureScene::SpaceActiveOwner ||
+          scene == CaptureScene::OwnerAfterOtherFocus) {
+        if (theme == &beaconTheme()) {
+          TEST_ASSERT_TRUE(hasBeaconMicBody(
+              scene == CaptureScene::SpaceActiveOwner ||
+              scene == CaptureScene::OwnerAfterOtherFocus));
+        } else if (theme == &instrumentTheme()) {
+          TEST_ASSERT_TRUE(hasInstrumentMicBody(
+              scene == CaptureScene::SpaceActiveOwner ||
+              scene == CaptureScene::OwnerAfterOtherFocus));
+        }
+      } else {
+        TEST_ASSERT_FALSE(theme == &beaconTheme() && hasBeaconMicBody(false));
+        TEST_ASSERT_FALSE(theme == &beaconTheme() && hasBeaconMicBody(true));
+        TEST_ASSERT_FALSE(theme == &instrumentTheme() && hasInstrumentMicBody(false));
+        TEST_ASSERT_FALSE(theme == &instrumentTheme() && hasInstrumentMicBody(true));
+      }
+    }
+  }
+  TEST_ASSERT_FALSE(projection.hasBinding(0));
+}
+
 void test_ledger_full_vocabulary() { assertThemeVocabulary(ledgerTheme()); }
 void test_beacon_full_vocabulary() { assertThemeVocabulary(beaconTheme()); }
 void test_instrument_full_vocabulary() { assertThemeVocabulary(instrumentTheme()); }
@@ -3869,6 +3988,8 @@ int runAllTests() {
   RUN_TEST(test_passive_owner_survives_focus_and_snapshot_generation_changes);
   RUN_TEST(test_signal_edge_and_ledger_hold_mic_precedence);
   RUN_TEST(test_ledger_hold_mic_geometry_and_precedence);
+  RUN_TEST(test_beacon_and_instrument_hold_mic_geometry_and_precedence);
+  RUN_TEST(test_hold_capture_scenes_use_production_renderers_without_mutation);
   RUN_TEST(test_hold_cancellation_returns_to_ordinary_focus_feedback);
   RUN_TEST(test_hold_prethreshold_release_never_exposes_cancellation_state);
   RUN_TEST(test_hold_success_expiry_keeps_qualified_candidate_visible);
