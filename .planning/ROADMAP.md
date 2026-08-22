@@ -246,7 +246,6 @@ Plans:
 
 **UI hint:** yes
 
-
 ### Phase 03.1: High-Fidelity Animation and Interaction Polish (INSERTED)
 
 **Goal:** The keypad feels responsive and polished rather than stop-motion: animation, transitions, and interaction feedback are smooth, stable, and intentional across the four display themes and LED grammars, while semantic states remain immediately legible and direct agent focus remains unchanged.
@@ -322,35 +321,44 @@ Plans:
 
 **Planning gate:** Phase planning must schedule the composite CDC + HID feasibility run and exact-device decision record before any production transport, firmware, or host migration plan. It must also test whether the existing correlated `focus_result` is sufficient authorization so the hold path does not add protocol messages without need. Alternative backends remain out of scope unless this gate records a composite failure and the direction is explicitly reconsidered.
 
-**Plans:** 10 plans
+**Plans:** 1/10 plans executed
 
 Plans:
 **Wave 1**
-- [ ] 03.2-00-PLAN.md — Run the isolated exact-device composite CDC plus fixed-Space feasibility gate and freeze the terminal decision
+
+- [x] 03.2-00-PLAN.md — Run the isolated exact-device composite CDC plus fixed-Space feasibility gate and freeze the terminal decision
 
 **Wave 2** *(requires a checksum-valid 03.2-00 PASS)*
+
 - [ ] 03.2-01-PLAN.md — Migrate production and deliver the immediate-focus, authorized-hold tracer with all overlap rules
 
 **Wave 3** *(requires Wave 2; plans have no file overlap)*
+
 - [ ] 03.2-02-PLAN.md — Freeze one-poll BoardAdapter press, down, release, and same-poll chord truth
 - [ ] 03.2-04-PLAN.md — Migrate exact composite discovery/udev identity and prove the four-frame protocol remains closed
 
 **Wave 4** *(requires Plan 02)*
+
 - [ ] 03.2-03-PLAN.md — Centralize controller/HID lifecycle release and bounded safety metrics
 
 **Wave 5** *(requires Plan 03's completed lifecycle contract)*
+
 - [ ] 03.2-05-PLAN.md — Normalize passive candidate, active-owner, failure, and lifecycle-cleared presentation
 
 **Wave 6** *(requires Plan 05)*
+
 - [ ] 03.2-06-PLAN.md — Render truthful mic states in all four themes and extend the closed capture vocabulary
 
 **Wave 7** *(requires Plan 06)*
+
 - [ ] 03.2-07-PLAN.md — Implement pending, active-owner, and cancellation semantics in all four LED grammars
 
 **Wave 8** *(requires controller, identity, display, and LED plans)*
+
 - [ ] 03.2-08-PLAN.md — Lock the final deployment and complete deployment-linked logical evidence
 
 **Wave 9** *(requires every production and evidence plan)*
+
 - [ ] 03.2-09-PLAN.md — Requalify the final exact device and publish the strict Phase 4 release gate
 
 **UI hint:** yes
@@ -387,7 +395,7 @@ Plans:
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
-| 03.2 Focus-Then-Hold USB Keyboard | 0/10 | Not started | - |
+| 03.2 Focus-Then-Hold USB Keyboard | 1/10 | In Progress|  |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 
 ## Backlog
