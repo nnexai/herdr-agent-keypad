@@ -81,7 +81,8 @@ void HoldController::releaseOwner() {
 void HoldController::cancelAll() {
   invalidateCandidate();
   releaseOwner();
-  chord_lockout_ = false;
+  // A cancelled same-poll chord remains fenced until a complete frame proves
+  // every physical agent key is up.  Disconnect/reset cannot rearm a held key.
   nextGeneration();
 }
 
