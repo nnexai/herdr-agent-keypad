@@ -16,6 +16,39 @@
 #include "../../firmware/src/app/product_input_router.h"
 #include "../../firmware/src/ui/led_grammar.h"
 #include "../../firmware/src/metrics/proof_metrics.h"
+#include "../../firmware/src/app/hold_controller.h"
+
+namespace {
+ProductInputFrame holdFrame(uint8_t pressed, uint8_t down, uint8_t released,
+                            uint32_t edge = 1000) {
+  ProductInputFrame frame;
+  for (uint8_t slot = 0; slot < ProductInputFrame::kAgentSlotCount; ++slot) {
+    frame.agent_pressed[slot] = (pressed & (1U << slot)) != 0;
+    frame.agent_down[slot] = (down & (1U << slot)) != 0;
+    frame.agent_released[slot] = (released & (1U << slot)) != 0;
+    frame.agent_latched_at_us[slot] =
+        frame.agent_pressed[slot] ? edge : 0;
+  }
+  return frame;
+}
+
+int g_projection_space_down = 0;
+int g_projection_release_all = 0;
+bool g_projection_hid_ready = true;
+}  // namespace
+
+bool FixedSpaceHid::spaceDown() {
+  if (!g_projection_hid_ready) return false;
+  ++g_projection_space_down;
+  return true;
+}
+
+bool FixedSpaceHid::releaseAll() {
+  ++g_projection_release_all;
+  return g_projection_hid_ready;
+}
+
+bool FixedSpaceHid::ready() { return g_projection_hid_ready; }
 
 namespace {
 Display displays[4];
@@ -649,12 +682,117 @@ void test_pending_press_is_superseded_by_new_press() {
   JsonDocument old_result = focus_result_document("first-action", "accepted");
   old_result["snapshot_revision"] = 1;
   TEST_ASSERT_FALSE(projection.applyFocusResult(old_result.as<JsonObjectConst>()));
+
   TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Pending), static_cast<int>(projection.feedback(0)));
 
   JsonDocument new_result = focus_result_document("second-action", "accepted");
   new_result["snapshot_revision"] = 1;
   TEST_ASSERT_TRUE(projection.applyFocusResult(new_result.as<JsonObjectConst>()));
   TEST_ASSERT_EQUAL(static_cast<int>(AgentProjection::Feedback::Success), static_cast<int>(projection.feedback(0)));
+}
+// --- Plan 03.2: passive hold presentation -------------------------------
+
+void test_render_state_exposes_passive_hold_candidate_and_owner() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+
+  FixedSpaceHid hid;
+  HoldController hold(hid, 550000);
+  projection.setHoldController(hold);
+
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(
+      projection.captureFocusIntent(0, "hold-action", intent.to<JsonObject>()));
+  TEST_ASSERT_TRUE(hold.registerPress(0, "hold-action", 1000));
+  hold.observeFrame(holdFrame(1, 1, 0, 1000), 1000, true);
+  hold.observeFrame(holdFrame(0, 1, 0), 551000, true);
+
+  const RenderState waiting = projection.renderState(551000);
+  TEST_ASSERT_TRUE(waiting.slots[0].hold_candidate);
+  TEST_ASSERT_TRUE(waiting.slots[0].hold_threshold_qualified);
+  TEST_ASSERT_FALSE(waiting.slots[0].hold_active_owner);
+  TEST_ASSERT_EQUAL_INT(0, g_projection_space_down);
+
+  JsonDocument result = focus_result_document("hold-action", "accepted");
+  result["snapshot_revision"] = 1;
+  TEST_ASSERT_TRUE(projection.applyFocusResult(result.as<JsonObjectConst>()));
+  hold.observeFocusResult(0, "hold-action", true, 551001);
+  hold.observeFrame(holdFrame(0, 1, 0), 551001, true);
+
+  const RenderState active = projection.renderState(551001);
+  TEST_ASSERT_FALSE(active.slots[0].hold_candidate);
+  TEST_ASSERT_FALSE(active.slots[0].hold_threshold_qualified);
+  TEST_ASSERT_TRUE(active.slots[0].hold_active_owner);
+  TEST_ASSERT_EQUAL_INT(1, g_projection_space_down);
+}
+
+void test_passive_owner_survives_focus_and_snapshot_generation_changes() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument document = snapshot_document(1);
+  JsonArray agents = document["agents"].as<JsonArray>();
+  JsonObject slot1 = agents[1].as<JsonObject>();
+  slot1["entry_id"] = "entry-1";
+  slot1["title"] = "Agent two";
+  slot1["discriminator"] = "repo";
+  slot1["state"] = "idle";
+  slot1["pane_id"] = "pane-1";
+  slot1["terminal_id"] = "term-1";
+  slot1["source_revision"] = 2;
+  TEST_ASSERT_TRUE(projection.stageSnapshot(document.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+
+  FixedSpaceHid hid;
+  HoldController hold(hid, 550000);
+  projection.setHoldController(hold);
+  JsonDocument intent;
+  TEST_ASSERT_TRUE(
+      projection.captureFocusIntent(0, "owner-action", intent.to<JsonObject>()));
+  TEST_ASSERT_TRUE(hold.registerPress(0, "owner-action", 1000));
+  hold.observeFrame(holdFrame(1, 1, 0, 1000), 1000, true);
+  hold.observeFocusResult(0, "owner-action", true, 1000);
+  hold.observeFrame(holdFrame(0, 1, 0), 551000, true);
+  TEST_ASSERT_TRUE(hold.active());
+
+  JsonDocument other_intent;
+  TEST_ASSERT_TRUE(projection.captureFocusIntent(
+      1, "other-action", other_intent.to<JsonObject>()));
+  const RenderState during_other_focus = projection.renderState(551001);
+  TEST_ASSERT_TRUE(during_other_focus.slots[0].hold_active_owner);
+  TEST_ASSERT_EQUAL(static_cast<int>(TileFeedback::Pending),
+                    static_cast<int>(during_other_focus.slots[1].feedback));
+
+  JsonDocument other_result = focus_result_document("other-action", "accepted");
+  other_result["entry_id"] = "entry-1";
+  other_result["pane_id"] = "pane-1";
+  other_result["terminal_id"] = "term-1";
+  other_result["slot"] = 1;
+  other_result["source_revision"] = 2;
+  other_result["snapshot_revision"] = 1;
+  TEST_ASSERT_TRUE(
+      projection.applyFocusResult(other_result.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.renderState(551002).slots[0].hold_active_owner);
+
+  JsonDocument replacement = snapshot_document(2);
+  JsonArray replacement_agents = replacement["agents"].as<JsonArray>();
+  JsonObject replacement_slot1 = replacement_agents[1].as<JsonObject>();
+  replacement_slot1["entry_id"] = "entry-1";
+  replacement_slot1["title"] = "Agent two";
+  replacement_slot1["discriminator"] = "repo";
+  replacement_slot1["state"] = "idle";
+  replacement_slot1["pane_id"] = "pane-1";
+  replacement_slot1["terminal_id"] = "term-1";
+  replacement_slot1["source_revision"] = 2;
+  TEST_ASSERT_TRUE(
+      projection.stageSnapshot(replacement.as<JsonObjectConst>()));
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const RenderState after_generation = projection.renderState(551003);
+  TEST_ASSERT_TRUE(after_generation.slots[0].hold_active_owner);
+  TEST_ASSERT_FALSE(after_generation.slots[1].hold_active_owner);
+  TEST_ASSERT_TRUE(hold.active());
 }
 
 void test_multiple_agent_keys_capture_without_waiting() {
