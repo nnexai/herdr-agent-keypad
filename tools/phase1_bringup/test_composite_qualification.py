@@ -339,10 +339,10 @@ class GuidedCompositePreflightTests(unittest.TestCase):
 
             before = [SimpleNamespace(device="/dev/ttyACM0", serial_number="exact-serial", vid=0x303A, pid=0x1001)]
             after = [SimpleNamespace(
-                device="/dev/ttyACM1",
-                serial_number="exact-serial",
+                device="/dev/ttyACM0",
+                serial_number="exactserial",
                 vid=0x303A,
-                pid=0x4001,
+                pid=0x1001,
                 manufacturer="Espressif",
                 product="Composite tracer",
             )]
@@ -403,8 +403,8 @@ class GuidedCompositePreflightTests(unittest.TestCase):
             )
             self.assertEqual(receipt["run_id"], "run-exact-001")
             self.assertEqual(receipt["current_row"], "exact-pairing")
-            self.assertEqual(receipt["cdc_path"], "/dev/ttyACM1")
-            self.assertEqual(receipt["usb"]["vid_pid"], "303a:4001")
+            self.assertEqual(receipt["cdc_path"], "/dev/ttyACM0")
+            self.assertEqual(receipt["usb"]["vid_pid"], "303a:1001")
             self.assertEqual(receipt["status"]["space_active"], False)
             self.assertEqual(
                 json.loads(
@@ -418,6 +418,33 @@ class GuidedCompositePreflightTests(unittest.TestCase):
                 (root / "artifacts/phase03.2/run-exact-001-usb-descriptors.txt").read_bytes(),
                 b"exact descriptors\n",
             )
+
+    def test_keyboard_observer_retries_transient_uaccess_delay(self) -> None:
+        event = Path("/dev/input/event13")
+        properties = {
+            "ID_INPUT_KEYBOARD": "1",
+            "ID_VENDOR_ID": "303a",
+            "ID_MODEL_ID": "1001",
+            "ID_SERIAL_SHORT": "exactserial",
+        }
+        with (
+            patch.object(Path, "glob", return_value=[event]),
+            patch.object(composite_module, "_udev_properties", return_value=properties),
+            patch.object(
+                composite_module.os,
+                "open",
+                side_effect=[PermissionError(13, "permission denied"), 7],
+            ) as open_device,
+            patch.object(composite_module.os, "close") as close_device,
+        ):
+            selected = composite_module._find_guided_keyboard_event(
+                "303a:1001", "exactserial", timeout=1.0
+            )
+
+        self.assertEqual(selected, event)
+        self.assertEqual(open_device.call_count, 2)
+        close_device.assert_called_once_with(7)
+
 
     def test_cli_reports_only_the_current_exact_pairing_action(self) -> None:
         from phase1_bringup.__main__ import main

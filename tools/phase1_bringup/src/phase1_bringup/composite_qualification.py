@@ -1038,6 +1038,12 @@ def _wait_for_composite_port(previous: Any, timeout: float = 30.0) -> Any:
     deadline = time.monotonic() + timeout
     previous_serial = getattr(previous, "serial_number", None)
     previous_path = getattr(previous, "device", None)
+    previous_pid = getattr(previous, "pid", None)
+    normalized_previous_serial = (
+        "".join(character for character in previous_serial.casefold() if character.isalnum())
+        if isinstance(previous_serial, str)
+        else None
+    )
     while time.monotonic() < deadline:
         candidates = [
             port
@@ -1049,7 +1055,14 @@ def _wait_for_composite_port(previous: Any, timeout: float = 30.0) -> Any:
         exact_serial = [
             port
             for port in candidates
-            if previous_serial and getattr(port, "serial_number", None) == previous_serial
+            if normalized_previous_serial
+            and isinstance(getattr(port, "serial_number", None), str)
+            and "".join(
+                character
+                for character in port.serial_number.casefold()
+                if character.isalnum()
+            )
+            == normalized_previous_serial
         ]
         if len(exact_serial) == 1:
             return exact_serial[0]
@@ -1057,7 +1070,10 @@ def _wait_for_composite_port(previous: Any, timeout: float = 30.0) -> Any:
             port
             for port in candidates
             if getattr(port, "vid", None) == 0x303A
-            and getattr(port, "device", None) != previous_path
+            and (
+                getattr(port, "device", None) != previous_path
+                or getattr(port, "pid", None) != previous_pid
+            )
         ]
         if len(changed_espressif) == 1:
             return changed_espressif[0]
@@ -1108,6 +1124,10 @@ def _find_guided_keyboard_event(
         if len(matches) == 1:
             try:
                 fd = os.open(matches[0], os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+            except PermissionError:
+                # logind applies the uaccess ACL after the input node appears.
+                # Keep the bounded discovery window alive across that transient.
+                pass
             except OSError as exc:
                 raise CompositeQualificationError(
                     f"Linux evdev observer cannot read {matches[0]}: {exc}"
