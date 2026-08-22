@@ -1533,6 +1533,8 @@ def validate_phase32_gate(
     require_oracle_up: bool = True,
 ) -> dict[str, Any]:
     """Join the production qualification and physical evidence fail-closed."""
+    if not isinstance(gate, Mapping) or gate.get("schema_version") != 1:
+        raise ValueError("Phase 03.2 gate schema is not closed")
     if gate.get("kind") != PHASE32_PHASE4_GATE_KIND or gate.get("status") != "pass":
         raise ValueError("Phase 03.2 gate is not a passing release gate")
     deployment_id = deployment.get("deployment_id")

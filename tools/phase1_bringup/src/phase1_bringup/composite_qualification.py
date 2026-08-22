@@ -298,33 +298,45 @@ def _validate_final_gestures(
 ) -> tuple[int, int]:
     if not isinstance(reconciliation, Mapping):
         _final_failure("gesture reconciliation is missing")
+    scheduled_count = reconciliation.get("scheduled_count")
+    observed_count = reconciliation.get("observed_count")
+    scheduled_counts = reconciliation.get("scheduled_counts")
+    observed_counts = reconciliation.get("observed_counts")
     if (
-        reconciliation.get("scheduled_count") != FINAL_ROW_COUNTS["mixed-stress"]
-        or reconciliation.get("observed_count") != FINAL_ROW_COUNTS["mixed-stress"]
+        scheduled_count != FINAL_ROW_COUNTS["mixed-stress"]
+        or observed_count != FINAL_ROW_COUNTS["mixed-stress"]
         or reconciliation.get("mismatches") != []
-        or reconciliation.get("scheduled_counts") != FINAL_STRESS_COUNTS
-        or reconciliation.get("observed_counts") != FINAL_STRESS_COUNTS
+        or scheduled_counts != FINAL_STRESS_COUNTS
+        or observed_counts != FINAL_STRESS_COUNTS
     ):
         _final_failure("gesture scheduled/observed counts are unequal")
     records = reconciliation.get("records")
     if not isinstance(records, list) or len(records) != FINAL_ROW_COUNTS["mixed-stress"]:
         _final_failure("gesture records do not cover the seeded 300-case schedule")
-    expected_categories = list(FINAL_STRESS_COUNTS)
     counts: Counter[str] = Counter()
+    record_ids: set[str] = set()
     down_total = 0
     up_total = 0
+    down_categories = {"authorized_hold", "delayed_ack_threshold_first"}
     for record in records:
         if not isinstance(record, Mapping):
             _final_failure("gesture record is not an object")
+        record_id = record.get("id")
         category = record.get("category")
-        if category not in FINAL_STRESS_COUNTS:
-            _final_failure("gesture record has an unknown category")
-        counts[str(category)] += 1
         if (
-            not isinstance(record.get("id"), str)
-            or not isinstance(record.get("slot"), int)
-            or isinstance(record.get("slot"), bool)
-            or record["slot"] not in AGENT_KEYS
+            not isinstance(record_id, str)
+            or not record_id
+            or record_id in record_ids
+            or category not in FINAL_STRESS_COUNTS
+        ):
+            _final_failure("gesture record identity or category is invalid")
+        record_ids.add(record_id)
+        counts[str(category)] += 1
+        slot = record.get("slot")
+        if (
+            not isinstance(slot, int)
+            or isinstance(slot, bool)
+            or slot not in AGENT_KEYS
             or record.get("threshold_ms") != FINAL_SHARED_THRESHOLD_MS
             or not isinstance(record.get("physical_down"), bool)
             or record.get("oracle_after") != "UP"
@@ -333,49 +345,74 @@ def _validate_final_gestures(
         focus = record.get("focus")
         if not isinstance(focus, Mapping):
             _final_failure("gesture record lacks exact focus/session evidence")
+        snapshot_revision = focus.get("snapshot_revision")
         if (
             not isinstance(focus.get("action_id"), str)
+            or not focus.get("action_id")
+            or focus.get("slot") != slot
             or focus.get("binding_digest") != deployment.get("pair_digest")
             or focus.get("host_epoch") in (None, "")
-            or not isinstance(focus.get("snapshot_revision"), int)
-            or focus.get("snapshot_revision") <= 0
+            or not isinstance(snapshot_revision, int)
+            or isinstance(snapshot_revision, bool)
+            or snapshot_revision <= 0
             or focus.get("usb_session", focus.get("session_id")) != deployment.get("session_id")
             or not isinstance(focus.get("outcome"), str)
             or not isinstance(focus.get("focused"), bool)
             or not isinstance(focus.get("authorized"), bool)
         ):
             _final_failure("gesture record focus/session correlation is incomplete")
+        expected_authorized = (
+            focus.get("outcome") == "accepted" and focus.get("focused") is True
+        )
+        if focus.get("authorized") is not expected_authorized:
+            _final_failure("gesture record authorization does not match exact focus success")
         values = record.get("hid_values")
-        if not isinstance(values, list) or any(value not in (0, 1, 2) for value in values):
+        if (
+            not isinstance(values, list)
+            or any(
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value not in (0, 1, 2)
+                for value in values
+            )
+        ):
             _final_failure("gesture record HID values are invalid")
-        if values.count(1) > 1 or values.count(0) > 1 or (values.count(1) and not values.count(0)):
-            _final_failure("gesture record HID down/up sequence is invalid")
-        if values.count(1):
-            if values.index(1) > values.index(0) or focus.get("authorized") is not True:
-                _final_failure("gesture record admitted HID before exact focus authorization")
+        has_down = values.count(1) == 1
+        has_up = values.count(0) == 1
+        if values and (not has_down or not has_up):
+            _final_failure("gesture record HID values lack one persistent down/up pair")
+        if has_down:
+            down_index = values.index(1)
+            up_index = values.index(0)
+            if down_index >= up_index or any(
+                value != 2 for value in values[down_index + 1:up_index]
+            ):
+                _final_failure("gesture record HID values are not an ordered hold")
+        expected_down = str(category) in down_categories
+        if has_down is not expected_down or focus.get("authorized") is not has_down:
+            _final_failure("gesture record HID does not match exact focus authorization")
+        if has_down:
             down_total += 1
-            up_total += values.count(0)
-        elif focus.get("authorized") is True and category in {"short", "early_release", "stale_failure_session_lifecycle"}:
-            _final_failure("gesture record claims authorization without HID or cancellation evidence")
+            up_total += 1
         firmware = record.get("firmware")
         if not isinstance(firmware, Mapping):
             _final_failure("gesture record firmware metrics are missing")
         if any(
-            firmware.get(name) != (1 if values.count(1) else 0)
+            firmware.get(name) != (1 if has_down else 0)
             for name in ("space_down_requests", "space_down_completions")
         ) or any(
-            firmware.get(name) != (1 if values.count(0) else 0)
+            firmware.get(name) != (1 if has_down else 0)
             for name in ("space_up_requests", "space_up_completions")
         ):
             _final_failure("gesture record firmware counters do not reconcile to HID values")
-    expected_down = (
+    expected_down_total = (
         FINAL_STRESS_COUNTS["authorized_hold"]
         + FINAL_STRESS_COUNTS["delayed_ack_threshold_first"]
     )
     if (
         counts != Counter(FINAL_STRESS_COUNTS)
-        or down_total != expected_down
-        or up_total != expected_down
+        or down_total != expected_down_total
+        or up_total != expected_down_total
     ):
         _final_failure("gesture category or HID totals do not reconcile")
     return down_total, up_total
@@ -415,7 +452,9 @@ def validate_final_qualification(
     lock_sha = qualification.get("deployment_lock_sha256")
     if not isinstance(lock_sha, str) or len(lock_sha) != 64:
         _final_failure("deployment lock sidecar hash is missing")
-    if logical_evidence is not None and (
+    if not isinstance(logical_evidence, Mapping):
+        _final_failure("logical evidence is missing")
+    if (
         logical_evidence.get("status") != "pass"
         or logical_evidence.get("deployment_id") != deployment_id
         or logical_evidence.get("firmware_sha256") != firmware_sha256
@@ -462,6 +501,7 @@ def validate_final_qualification(
         or oracle.get("state") != "UP"
         or oracle.get("failures") != []
         or not isinstance(oracle.get("events_seen"), int)
+        or isinstance(oracle.get("events_seen"), bool)
         or oracle.get("events_seen") <= 0
     ):
         _final_failure("external Linux input oracle is not UP")
