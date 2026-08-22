@@ -15,6 +15,7 @@ from phase1_bringup.phase3_smoke import (
     _phase31_sidecar,
     finalize_evidence,
     phase32_descriptor_tuple,
+    phase32_descriptor_tuple_sha256,
     phase32_source_digest,
     phase32_deployment_id_for,
     validate_phase32_composite_lineage,
@@ -696,8 +697,6 @@ class Phase31BudgetLockTests(unittest.TestCase):
                     phase31_lock_from_baseline(candidate)
 
 
-if __name__ == "__main__":
-    unittest.main()
 class Phase32DeploymentLockTests(unittest.TestCase):
     def _fixture(self, root: Path) -> tuple[dict[str, object], dict[str, object], dict[str, object], Path]:
         decision = json.loads(
@@ -745,15 +744,8 @@ class Phase32DeploymentLockTests(unittest.TestCase):
             "composite_firmware_sha256": decision["deployment"]["firmware_binary_sha256"],
             "descriptor_expectation_sha256": decision["deployment"]["descriptor_expectation_sha256"],
             "descriptor_tuple": descriptor,
-            "descriptor_tuple_sha256": phase32_source_digest([]) if False else "",
+            "descriptor_tuple_sha256": phase32_descriptor_tuple_sha256(descriptor),
         }
-        deployment["descriptor_tuple_sha256"] = phase32_source_digest([]) if False else (
-            __import__("hashlib").sha256(
-                json.dumps(
-                    descriptor, sort_keys=True, separators=(",", ":")
-                ).encode("ascii")
-            ).hexdigest()
-        )
         deployment["deployment_id"] = phase32_deployment_id_for(deployment)
         return deployment, decision, manifest, firmware
 
@@ -826,3 +818,5 @@ class Phase32DeploymentLockTests(unittest.TestCase):
                     decision_path=ROOT / "artifacts/phase03.2/composite-decision.json",
                     binding_path=Path.home() / ".config/herdr/keypad-binding.json",
                 )
+if __name__ == "__main__":
+    unittest.main()

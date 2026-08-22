@@ -14,11 +14,12 @@ import tempfile
 import time
 import zlib
 from pathlib import Path
-from typing import Any, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping
 from types import SimpleNamespace
 
 from herdr_keypad.codex import normalize_rate_limits
 
+from .composite_qualification import verify_composite_decision
 from .pairing import PairingStore
 from .serial_link import reconnect_exact, require_inherited_bridge_lock
 
@@ -726,6 +727,368 @@ def pair_identity_digest(device_id: str, protocol: int, firmware: str) -> str:
         "firmware": firmware,
         "protocol": protocol,
     }))
+
+PHASE32_DESCRIPTOR = {
+    "vid": 0x303A,
+    "pid": 0x1001,
+    "serial": "8CBFEA0DCBFC",
+    "hid_interface": 0,
+    "cdc_control_interface": 1,
+    "cdc_data_interface": 2,
+    "standard_keyboard_hid": 1,
+    "cdc_functions": 1,
+}
+
+
+def phase32_descriptor_tuple() -> dict[str, Any]:
+    return dict(PHASE32_DESCRIPTOR)
+
+
+def phase32_descriptor_tuple_sha256(descriptor: Mapping[str, Any]) -> str:
+    return sha256_bytes(canonical_bytes(descriptor))
+
+
+def phase32_production_source_paths() -> list[Path]:
+    sources = [ROOT / "platformio.ini"]
+    sources.extend(sorted((ROOT / "firmware/src").rglob("*.cpp")))
+    sources.extend(sorted((ROOT / "firmware/src").rglob("*.h")))
+    return sources
+
+
+def phase32_source_digest(paths: Iterable[Path]) -> str:
+    entries: list[dict[str, str]] = []
+    for path in sorted((Path(item).resolve() for item in paths), key=relative):
+        if not path.is_file():
+            raise ValueError(f"source file is missing: {relative(path)}")
+        entries.append({"path": relative(path), "sha256": sha256_file(path)})
+    return sha256_bytes(canonical_bytes(entries))
+
+
+def validate_phase32_composite_lineage(
+    decision_path: Path, binding_path: Path
+) -> dict[str, Any]:
+    decision_path = decision_path.resolve()
+    binding_path = binding_path.resolve()
+    _phase31_sidecar(decision_path, "composite decision")
+    decision = verify_composite_decision(
+        decision_path, require_terminal=True, require_immutable_lineage=True
+    )
+    if decision.get("status") != "PASS" or decision.get("terminal") is not True:
+        raise ValueError("composite decision is not terminal PASS")
+    manifest_path = (decision_path.parent / decision["manifest_path"]).resolve()
+    manifest = json.loads(manifest_path.read_text(encoding="ascii"))
+    descriptor_ref = manifest.get("descriptor_expectation", {})
+    descriptor_path = Path(descriptor_ref.get("path", "")).expanduser()
+    if not descriptor_path.is_absolute():
+        descriptor_path = ROOT / descriptor_path
+    descriptor_path = descriptor_path.resolve()
+    try:
+        descriptor_path.relative_to(ROOT)
+    except ValueError as exc:
+        raise ValueError("composite descriptor path escapes repository") from exc
+    if sha256_file(descriptor_path) != descriptor_ref.get("sha256"):
+        raise ValueError("composite descriptor evidence checksum mismatch")
+    binding = PairingStore(binding_path).load()
+    if binding is None:
+        raise ValueError("exact pairing binding is missing")
+    pair_digest = sha256_file(binding_path)
+    expected = decision.get("deployment", {})
+    if (
+        pair_digest != expected.get("pair_digest")
+        or pair_digest != expected.get("pairing_record_sha256")
+        or binding.protocol != 1
+    ):
+        raise ValueError("composite pair lineage mismatch")
+    return {
+        "decision": decision,
+        "manifest": manifest,
+        "descriptor": phase32_descriptor_tuple(),
+        "binding": binding,
+        "pair_digest": pair_digest,
+        "descriptor_path": relative(descriptor_path),
+    }
+
+
+def phase32_deployment_id_for(deployment: Mapping[str, Any]) -> str:
+    identity = {
+        key: deployment.get(key)
+        for key in (
+            "boot_id",
+            "session_id",
+            "paired_device_id",
+            "pair_digest",
+            "firmware_sha256",
+            "source_sha256",
+            "descriptor_tuple_sha256",
+            "decision_sha256",
+            "decision_manifest_sha256",
+            "hello_firmware",
+            "protocol_version",
+        )
+    }
+    if any(
+        not valid_publication_identity(value)
+        for key, value in identity.items()
+        if key != "protocol_version"
+    ):
+        raise ValueError("Phase 03.2 deployment identity tuple is incomplete")
+    if identity["protocol_version"] != 1:
+        raise ValueError("Phase 03.2 deployment identity protocol is invalid")
+    return sha256_bytes(canonical_bytes(identity))
+
+
+def validate_phase32_deployment(
+    deployment: Mapping[str, Any],
+    firmware: Path,
+    decision: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+    binding: Any,
+    *,
+    previous: Mapping[str, Any] | None = None,
+    require_current: bool = False,
+) -> None:
+    required = (
+        "schema_version", "kind", "phase", "platformio_environment",
+        "binary_path", "binary_sha256", "firmware_sha256", "source_files",
+        "source_sha256", "upload_result", "paired_device_id", "pair_digest",
+        "pair_identity_digest", "pairing_record_sha256", "hello_firmware",
+        "protocol_version", "fresh_boot_id", "fresh_session_id", "boot_id",
+        "session_id", "observed_at_unix_ms", "decision_sha256",
+        "decision_manifest_sha256", "composite_firmware_sha256",
+        "descriptor_expectation_sha256", "descriptor_tuple",
+        "descriptor_tuple_sha256", "deployment_id",
+    )
+    if any(key not in deployment for key in required):
+        raise ValueError("Phase 03.2 deployment fields are incomplete")
+    if (
+        deployment["schema_version"] != 1
+        or deployment["kind"] != "phase03.2-final-deployment"
+        or deployment["phase"] != "03.2"
+    ):
+        raise ValueError("Phase 03.2 deployment schema is not closed")
+    if (
+        deployment["platformio_environment"] != "selected-usb"
+        or deployment["upload_result"] != "pass"
+    ):
+        raise ValueError("Phase 03.2 deployment is not a successful selected-usb upload")
+    if deployment["binary_sha256"] != deployment["firmware_sha256"]:
+        raise ValueError("Phase 03.2 firmware hash aliases differ")
+    if (
+        deployment["fresh_boot_id"] != deployment["boot_id"]
+        or deployment["fresh_session_id"] != deployment["session_id"]
+    ):
+        raise ValueError("Phase 03.2 boot/session aliases differ")
+    if not firmware.is_file() or sha256_file(firmware) != deployment["firmware_sha256"]:
+        raise ValueError("Phase 03.2 firmware binary hash mismatch")
+    source_files = deployment["source_files"]
+    if not isinstance(source_files, list) or not source_files:
+        raise ValueError("Phase 03.2 source hash manifest is missing")
+    paths: list[Path] = []
+    for item in source_files:
+        if (
+            not isinstance(item, Mapping)
+            or not isinstance(item.get("path"), str)
+            or not isinstance(item.get("sha256"), str)
+        ):
+            raise ValueError("Phase 03.2 source hash manifest is invalid")
+        path = resolve_repo_path(item["path"])
+        if sha256_file(path) != item["sha256"]:
+            raise ValueError("Phase 03.2 source hash mismatch")
+        paths.append(path)
+    if phase32_source_digest(paths) != deployment["source_sha256"]:
+        raise ValueError("Phase 03.2 source digest mismatch")
+    descriptor = phase32_descriptor_tuple()
+    if deployment["descriptor_tuple"] != descriptor:
+        raise ValueError("Phase 03.2 descriptor tuple mismatch")
+    if phase32_descriptor_tuple_sha256(descriptor) != deployment["descriptor_tuple_sha256"]:
+        raise ValueError("Phase 03.2 descriptor tuple hash mismatch")
+    if decision.get("status") != "PASS" or decision.get("terminal") is not True:
+        raise ValueError("Phase 03.2 deployment requires terminal composite PASS")
+    decision_deployment = decision.get("deployment", {})
+    if (
+        deployment["decision_sha256"] != decision.get("decision_sha256")
+        or deployment["decision_manifest_sha256"] != decision.get("manifest_sha256")
+        or deployment["composite_firmware_sha256"]
+        != decision_deployment.get("firmware_binary_sha256")
+        or deployment["descriptor_expectation_sha256"]
+        != decision_deployment.get("descriptor_expectation_sha256")
+    ):
+        raise ValueError("Phase 03.2 decision lineage mismatch")
+    if manifest.get("manifest_sha256") != decision.get("manifest_sha256"):
+        raise ValueError("Phase 03.2 manifest lineage mismatch")
+    if deployment["paired_device_id"] != binding.device_id:
+        raise ValueError("Phase 03.2 pair identity mismatch")
+    pair_digest = sha256_file(Path.home() / ".config/herdr/keypad-binding.json")
+    if (
+        deployment["pair_digest"] != pair_digest
+        or deployment["pair_identity_digest"] != pair_digest
+        or deployment["pairing_record_sha256"] != pair_digest
+        or pair_digest != decision_deployment.get("pair_digest")
+    ):
+        raise ValueError("Phase 03.2 pair digest or pairing record mismatch")
+    if binding.protocol != deployment["protocol_version"]:
+        raise ValueError("Phase 03.2 protocol identity mismatch")
+    if binding.firmware != deployment["hello_firmware"]:
+        raise ValueError("Phase 03.2 firmware identity mismatch")
+    if previous is not None:
+        if previous.get("boot_id") == deployment["boot_id"]:
+            raise ValueError("Phase 03.2 deployment did not produce a fresh boot")
+        if previous.get("session_id") == deployment["session_id"]:
+            raise ValueError("Phase 03.2 deployment did not produce a fresh session")
+    if require_current and firmware.resolve() != (ROOT / ".pio/build/selected-usb/firmware.bin").resolve():
+        raise ValueError("Phase 03.2 deployment does not reference current selected-usb binary")
+    if deployment["deployment_id"] != phase32_deployment_id_for(deployment):
+        raise ValueError("Phase 03.2 canonical deployment identity mismatch")
+
+
+def validate_phase32_deployment_file(
+    path: Path,
+    *,
+    firmware: Path | None = None,
+    decision_path: Path | None = None,
+    binding_path: Path | None = None,
+    require_current: bool = False,
+) -> dict[str, Any]:
+    path = path.resolve()
+    _phase31_sidecar(path, "Phase 03.2 deployment")
+    deployment = json.loads(path.read_text(encoding="ascii"))
+    decision_path = decision_path or ROOT / "artifacts/phase03.2/composite-decision.json"
+    binding_path = binding_path or Path.home() / ".config/herdr/keypad-binding.json"
+    lineage = validate_phase32_composite_lineage(decision_path, binding_path)
+    binary = (firmware or resolve_repo_path(deployment["binary_path"])).resolve()
+    validate_phase32_deployment(
+        deployment,
+        binary,
+        lineage["decision"],
+        lineage["manifest"],
+        lineage["binding"],
+        require_current=require_current,
+    )
+    return deployment
+
+
+def phase32_fresh_deployment(
+    binding_path: Path,
+    firmware: Path,
+    lineage: Mapping[str, Any],
+    timeout: float,
+    *,
+    previous: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    binding = lineage["binding"]
+    selected, link, session, _transitions = reconnect_exact(
+        binding, ports=None, opener=_phase31_serial_opener, timeout=timeout
+    )
+    try:
+        hello = dict(session.device)
+        if (
+            hello.get("device_id") != binding.device_id
+            or hello.get("firmware") != binding.firmware
+            or hello.get("protocol") != binding.protocol
+        ):
+            raise RuntimeError("fresh hello identity differs from exact pairing")
+        boot_id = hello.get("device_boot_id")
+        session_id = session.session_id
+        if not valid_publication_identity(boot_id) or not valid_publication_identity(session_id):
+            raise RuntimeError("fresh hello did not supply boot/session identity")
+        if not firmware.is_file():
+            raise RuntimeError("selected-usb firmware binary is missing")
+        source_paths = phase32_production_source_paths()
+        source_files = [
+            {"path": relative(source), "sha256": sha256_file(source)}
+            for source in source_paths
+        ]
+        descriptor = phase32_descriptor_tuple()
+        pair_digest = lineage["pair_digest"]
+        record: dict[str, Any] = {
+            "schema_version": 1,
+            "kind": "phase03.2-final-deployment",
+            "phase": "03.2",
+            "platformio_environment": "selected-usb",
+            "binary_path": relative(firmware),
+            "binary_sha256": sha256_file(firmware),
+            "firmware_sha256": sha256_file(firmware),
+            "source_files": source_files,
+            "source_sha256": phase32_source_digest(source_paths),
+            "upload_result": "pass",
+            "paired_device_id": binding.device_id,
+            "pair_digest": pair_digest,
+            "pair_identity_digest": pair_digest,
+            "pairing_record_sha256": pair_digest,
+            "hello_firmware": binding.firmware,
+            "protocol_version": binding.protocol,
+            "fresh_boot_id": boot_id,
+            "fresh_session_id": session_id,
+            "boot_id": boot_id,
+            "session_id": session_id,
+            "usb_serial": selected.serial_number or "unavailable",
+            "observed_at_unix_ms": time.time_ns() // 1_000_000,
+            "decision_sha256": lineage["decision"]["decision_sha256"],
+            "decision_manifest_sha256": lineage["decision"]["manifest_sha256"],
+            "composite_firmware_sha256": lineage["decision"]["deployment"]["firmware_binary_sha256"],
+            "descriptor_expectation_sha256": lineage["decision"]["deployment"]["descriptor_expectation_sha256"],
+            "descriptor_tuple": descriptor,
+            "descriptor_tuple_sha256": phase32_descriptor_tuple_sha256(descriptor),
+        }
+        record["deployment_id"] = phase32_deployment_id_for(record)
+        validate_phase32_deployment(
+            record, firmware, lineage["decision"], lineage["manifest"], binding,
+            previous=previous,
+        )
+        return record
+    finally:
+        link.close()
+
+
+def run_phase32_deploy_lock(args: argparse.Namespace) -> int:
+    firmware = args.firmware.resolve()
+    output = args.output.resolve()
+    expected = (ROOT / ".pio/build/selected-usb/firmware.bin").resolve()
+    if firmware != expected:
+        raise RuntimeError("Phase 03.2 deployment lock requires selected-usb firmware.bin")
+    lineage = validate_phase32_composite_lineage(
+        args.decision.resolve(), args.binding.resolve()
+    )
+    previous = None
+    if output.is_file():
+        try:
+            previous = json.loads(output.read_text(encoding="ascii"))
+        except (OSError, json.JSONDecodeError):
+            previous = None
+    try:
+        deployment = phase32_fresh_deployment(
+            args.binding.resolve(), firmware, lineage, args.timeout, previous=previous
+        )
+        validate_phase32_deployment(
+            deployment, firmware, lineage["decision"], lineage["manifest"],
+            lineage["binding"], require_current=True, previous=previous,
+        )
+        write_json(output, deployment, checksum=True)
+        validate_phase32_deployment_file(
+            output, firmware=firmware, decision_path=args.decision,
+            binding_path=args.binding, require_current=True,
+        )
+    except Exception:
+        for stale in (output, output.with_suffix(output.suffix + ".sha256")):
+            try:
+                stale.unlink()
+            except FileNotFoundError:
+                pass
+        raise
+    print(f"wrote Phase 03.2 deployment lock for {deployment['deployment_id']}")
+    return 0
+
+
+def run_phase32_validate_deployment(args: argparse.Namespace) -> int:
+    validate_phase32_deployment_file(
+        args.deployment,
+        firmware=args.firmware,
+        decision_path=args.decision,
+        binding_path=args.binding,
+        require_current=args.require_current_deployment,
+    )
+    print(f"validated Phase 03.2 deployment lock {args.deployment.resolve()}")
+    return 0
 
 
 def deployment_id_for(deployment: Mapping[str, Any]) -> str:
@@ -2695,6 +3058,18 @@ def main(argv: list[str] | None = None) -> int:
     deploy_validate.add_argument("--firmware", type=Path, required=True)
     deploy_validate.add_argument("--deployment", type=Path, required=True)
     deploy_validate.add_argument("--require-current-deployment", action="store_true")
+    deploy32 = subparsers.add_parser("phase32-deploy-lock")
+    deploy32.add_argument("--binding", type=Path, required=True)
+    deploy32.add_argument("--decision", type=Path, required=True)
+    deploy32.add_argument("--firmware", type=Path, required=True)
+    deploy32.add_argument("--output", type=Path, required=True)
+    deploy32.add_argument("--timeout", type=float, default=5.0)
+    deploy32_validate = subparsers.add_parser("phase32-validate-deployment")
+    deploy32_validate.add_argument("--binding", type=Path, required=True)
+    deploy32_validate.add_argument("--decision", type=Path, required=True)
+    deploy32_validate.add_argument("--firmware", type=Path, required=True)
+    deploy32_validate.add_argument("--deployment", type=Path, required=True)
+    deploy32_validate.add_argument("--require-current-deployment", action="store_true")
     current31 = subparsers.add_parser("phase31-current-deployment")
     current31.add_argument("--binding", type=Path, required=True)
     current31.add_argument("--firmware", type=Path, required=True)
@@ -2742,6 +3117,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_phase31_profile(args)
     if args.command == "phase31-lock":
         return run_phase31_lock(args)
+    if args.command == "phase32-deploy-lock":
+        return run_phase32_deploy_lock(args)
+    if args.command == "phase32-validate-deployment":
+        return run_phase32_validate_deployment(args)
     if args.command == "phase31-deploy-lock":
         return run_phase31_deploy_lock(args)
     if args.command == "phase31-validate-deployment":
