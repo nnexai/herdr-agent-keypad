@@ -32,6 +32,21 @@ enum class LedSemanticEvent : uint8_t {
   Sync,
   State,
 };
+constexpr uint8_t kLedInvalidSlot = 0xFF;
+
+// D-13 is one transient observation, not a RenderState or ownership fact.
+// The producer supplies the physical slot and event-clock origin; grammars
+// apply their own fixed, bounded visual duration without allocating a timer.
+struct LedHoldCancellation {
+  bool active = false;
+  uint8_t slot = kLedInvalidSlot;
+  uint32_t epoch = 0;
+  uint32_t started_us = 0;
+};
+
+constexpr uint32_t kRailEchoHoldCancellationDurationUs = 120000UL;
+constexpr uint32_t kExceptionChannelHoldCancellationDurationUs = 90000UL;
+
 
 // Transient controls and the bounded semantic presentation clock shared by
 // the display and LED paths.  The epoch identifies the semantic start; the
@@ -45,6 +60,7 @@ struct LedEvents {
   uint32_t semantic_epoch = 0;
   uint32_t semantic_start_us = 0;
   uint8_t semantic_phase = 0;
+  LedHoldCancellation hold_cancellation;
 };
 
 // Keep the feedback-to-clock mapping in one place.  Stale and Offline are
@@ -220,6 +236,44 @@ inline LedCodexCue ledCodexCue(const RenderState& state) {
   if (codex.primary < 0 || codex.primary > 100) return {};
   if (codex.primary >= 75) return {true, false, 35, 100, 18};
   return {true, false, 180, 100, 12};
+}
+
+inline bool ledHoldFeedbackFailure(TileFeedback feedback) {
+  switch (feedback) {
+    case TileFeedback::Rejected:
+    case TileFeedback::Stale:
+    case TileFeedback::Vanished:
+    case TileFeedback::Offline:
+    case TileFeedback::Uncertain:
+    case TileFeedback::Failed:
+      return true;
+    default:
+      return false;
+  }
+}
+
+inline bool ledHoldPresentationAllowed(const RenderState& state,
+                                       uint8_t slot) {
+  if (slot >= RenderState::kSlotCount || ledPresentationUnhealthy(state) ||
+      state.syncing || state.hold_lifecycle_blocked ||
+      !state.hold_empty_report_complete) {
+    return false;
+  }
+  const RenderState::Slot& tile = state.slots[slot];
+  return tile.occupied && !ledHoldFeedbackFailure(tile.feedback);
+}
+
+inline bool ledHoldCancellationActive(const RenderState& state,
+                                      const LedEvents& events, uint8_t slot,
+                                      uint32_t now_us,
+                                      uint32_t duration_us) {
+  const LedHoldCancellation& cancellation = events.hold_cancellation;
+  if (!cancellation.active || cancellation.slot != slot ||
+      duration_us == 0 || !ledHoldPresentationAllowed(state, slot)) {
+    return false;
+  }
+  return static_cast<uint32_t>(now_us - cancellation.started_us) <
+         duration_us;
 }
 
 class LedGrammar {

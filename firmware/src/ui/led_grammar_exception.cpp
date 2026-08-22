@@ -4,6 +4,9 @@ namespace {
 constexpr uint16_t kKeyMasks[3] = {(1U << 1), (1U << 4), (1U << 7)};
 constexpr uint16_t kAboveKey = (1U << 0) | (1U << 3) | (1U << 6) | (1U << 9);
 constexpr uint16_t kL13 = 1U << 13;
+constexpr uint16_t kHoldCandidateHue = 185;
+constexpr uint16_t kHoldOwnerHue = 120;
+constexpr uint16_t kHoldCancellationHue = 350;
 
 bool active(TileFeedback feedback) {
   return feedback != TileFeedback::Disabled && feedback != TileFeedback::Ready;
@@ -14,6 +17,30 @@ void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
   if (mask == 0 || count >= cap || brightness == 0) return;
   out[count++] = {mask, hue, saturation, brightness};
 }
+
+bool addHoldCue(const RenderState& state, const LedEvents& events,
+                uint8_t slot, uint32_t now_us, LedSegment* out,
+                size_t& count, size_t capacity) {
+  const RenderState::Slot& tile = state.slots[slot];
+  const uint16_t mask = kKeyMasks[slot];
+  if (!ledHoldPresentationAllowed(state, slot)) return false;
+  if (tile.hold_active_owner) {
+    add(out, count, capacity, mask, kHoldOwnerHue, 100, 30);
+    return true;
+  }
+  if (ledHoldCancellationActive(
+          state, events, slot, now_us,
+          kExceptionChannelHoldCancellationDurationUs)) {
+    add(out, count, capacity, mask, kHoldCancellationHue, 100, 30);
+    return true;
+  }
+  if (tile.hold_candidate && tile.hold_threshold_qualified) {
+    add(out, count, capacity, mask, kHoldCandidateHue, 100, 30);
+    return true;
+  }
+  return false;
+}
+
 
 bool feedbackHigh(const RenderState::Slot& tile, const LedEvents& events,
                   uint32_t now_us) {
@@ -47,6 +74,9 @@ class ExceptionChannel final : public LedGrammar {
     }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
       const RenderState::Slot& tile = state.slots[slot];
+      if (addHoldCue(state, events, slot, now_us, out, count, capacity)) {
+        continue;
+      }
       if (active(tile.feedback)) {
         const bool blink = feedbackHigh(tile, events, now_us);
         const uint16_t hue = tile.feedback == TileFeedback::Pending ? 185 :

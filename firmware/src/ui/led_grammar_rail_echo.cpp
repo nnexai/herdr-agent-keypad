@@ -4,6 +4,9 @@ namespace {
 constexpr uint16_t kBacklights = (1U << 1) | (1U << 4) | (1U << 7) | (1U << 10) | (1U << 13);
 constexpr uint16_t kKeyMasks[3] = {(1U << 1), (1U << 4), (1U << 7)};
 constexpr uint16_t kL13 = 1U << 13;
+constexpr uint16_t kHoldCandidateHue = 185;
+constexpr uint16_t kHoldOwnerHue = 120;
+constexpr uint16_t kHoldCancellationHue = 45;
 
 struct Hsv { uint16_t hue; uint8_t saturation; uint8_t brightness; };
 
@@ -50,6 +53,33 @@ void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
   out[count++] = {mask, value.hue, value.saturation, value.brightness};
 }
 
+bool addHoldCue(const RenderState& state, const LedEvents& events,
+                uint8_t slot, uint32_t now_us, LedSegment* out,
+                size_t& count, size_t capacity) {
+  const RenderState::Slot& tile = state.slots[slot];
+  const uint16_t mask = kKeyMasks[slot];
+  if (!ledHoldPresentationAllowed(state, slot)) return false;
+  if (tile.hold_active_owner) {
+    add(out, count, capacity, mask,
+        {kHoldOwnerHue, 100, 45});
+    return true;
+  }
+  if (ledHoldCancellationActive(
+          state, events, slot, now_us,
+          kRailEchoHoldCancellationDurationUs)) {
+    add(out, count, capacity, mask,
+        {kHoldCancellationHue, 100, 45});
+    return true;
+  }
+  if (tile.hold_candidate && tile.hold_threshold_qualified) {
+    add(out, count, capacity, mask,
+        {kHoldCandidateHue, 100, 45});
+    return true;
+  }
+  return false;
+}
+
+
 class RailEcho final : public LedGrammar {
  public:
   size_t frame(const RenderState& state, const LedEvents& events,
@@ -61,6 +91,9 @@ class RailEcho final : public LedGrammar {
     } else {
       for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
         const RenderState::Slot& tile = state.slots[slot];
+        if (addHoldCue(state, events, slot, now_us, out, count, capacity)) {
+          continue;
+        }
         if (active(tile.feedback)) continue;
         add(out, count, capacity, kKeyMasks[slot],
             stateHsv(tile.state, state.blocked_pulse_high));
@@ -73,7 +106,14 @@ class RailEcho final : public LedGrammar {
     }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
       const RenderState::Slot& tile = state.slots[slot];
-      if (active(tile.feedback)) {
+      const bool hold_overlay =
+          ledHoldPresentationAllowed(state, slot) &&
+          (tile.hold_active_owner ||
+           (tile.hold_candidate && tile.hold_threshold_qualified) ||
+           ledHoldCancellationActive(
+               state, events, slot, now_us,
+               kRailEchoHoldCancellationDurationUs));
+      if (active(tile.feedback) && !hold_overlay) {
         add(out, count, capacity, kKeyMasks[slot],
             feedbackHsv(tile, events, now_us));
       }
