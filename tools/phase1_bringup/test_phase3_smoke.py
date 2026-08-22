@@ -14,13 +14,19 @@ from phase1_bringup.phase3_smoke import (
     ROOT,
     _phase31_sidecar,
     finalize_evidence,
+    PHASE32_FAILURE_EVENTS,
+    PHASE32_HOLD_SCENES,
+    PHASE32_LED_EVENTS,
+    PHASE32_SOURCE_EVENTS,
     phase32_descriptor_tuple,
     phase32_descriptor_tuple_sha256,
+    phase32_led_rows,
     phase32_source_digest,
     phase32_deployment_id_for,
     validate_phase32_composite_lineage,
     validate_phase32_deployment,
     validate_phase32_deployment_file,
+    validate_phase32_led_rows,
     run_guided,
     sha256_file,
     validate_phase31_current_deployment_identity,
@@ -818,5 +824,91 @@ class Phase32DeploymentLockTests(unittest.TestCase):
                     decision_path=ROOT / "artifacts/phase03.2/composite-decision.json",
                     binding_path=Path.home() / ".config/herdr/keypad-binding.json",
                 )
+
+class Phase32LogicalEvidenceTests(unittest.TestCase):
+    deployment_id = "phase32-deployment"
+    firmware_sha256 = "f" * 64
+    deployment_lock_sha256 = "d" * 64
+
+    def test_phase32_led_rows_cover_all_grammars_and_closed_semantics(self):
+        rows = phase32_led_rows(
+            self.deployment_id,
+            self.firmware_sha256,
+            self.deployment_lock_sha256,
+        )
+        self.assertEqual(
+            len(rows),
+            4 * len(PHASE32_LED_EVENTS),
+        )
+        self.assertEqual(
+            {row["grammar"] for row in rows},
+            {"rail-echo", "exception", "field-extension", "meter-lamps"},
+        )
+        self.assertEqual(
+            {row["event"] for row in rows},
+            set(PHASE32_LED_EVENTS),
+        )
+        validate_phase32_led_rows(
+            rows,
+            self.deployment_id,
+            self.firmware_sha256,
+            self.deployment_lock_sha256,
+        )
+        for row in rows:
+            self.assertEqual(len(row["content_sha256"]), 64)
+            self.assertFalse(row["physical_claim"])
+
+    def test_phase32_led_rows_reject_stale_owner_and_physical_claims(self):
+        rows = phase32_led_rows(
+            self.deployment_id,
+            self.firmware_sha256,
+            self.deployment_lock_sha256,
+        )
+        mutations = (
+            ("owner-after-other-focus", {"owner_slot": None}, "owner"),
+            ("rejected", {"active_owner": True}, "failure"),
+            ("source-offline", {"active_owner": True}, "source"),
+            ("lifecycle-clear", {"active_owner": True}, "lifecycle"),
+            ("pending", {"deployment_id": "stale"}, "deployment"),
+            ("active-owner", {"physical_claim": True}, "physical"),
+        )
+        for event, changes, message in mutations:
+            with self.subTest(event=event):
+                candidate = [dict(row) for row in rows]
+                target = next(row for row in candidate if row["event"] == event)
+                target.update(changes)
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_phase32_led_rows(
+                        candidate,
+                        self.deployment_id,
+                        self.firmware_sha256,
+                        self.deployment_lock_sha256,
+                    )
+        missing = rows[:-1]
+        with self.assertRaisesRegex(ValueError, "matrix"):
+            validate_phase32_led_rows(
+                missing,
+                self.deployment_id,
+                self.firmware_sha256,
+                self.deployment_lock_sha256,
+            )
+
+    def test_phase32_scene_constants_keep_all_theme_levels_and_failure_fences(self):
+        self.assertEqual(
+            PHASE32_HOLD_SCENES,
+            (
+                "hold-pending",
+                "space-active-owner",
+                "cancellation-return",
+                "owner-after-other-focus",
+                "failure-preemption",
+                "lifecycle-clear",
+            ),
+        )
+        self.assertIn("timeout", PHASE32_FAILURE_EVENTS)
+        self.assertEqual(
+            PHASE32_SOURCE_EVENTS,
+            ("source-stale", "source-offline", "source-unavailable"),
+        )
 if __name__ == "__main__":
     unittest.main()
