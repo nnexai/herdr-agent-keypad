@@ -10,7 +10,9 @@ from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
 from phase1_bringup.phase3_smoke import (
+    FINAL_EDGE_ASSUMPTIONS,
     HUMAN_ROWS,
+    PHASE32_DEVICE_ROW_IDS,
     ROOT,
     _phase31_sidecar,
     finalize_evidence,
@@ -27,6 +29,9 @@ from phase1_bringup.phase3_smoke import (
     validate_phase32_composite_lineage,
     validate_phase32_deployment,
     validate_phase32_deployment_file,
+    validate_phase32_device_evidence,
+    validate_phase32_defect_ledger,
+    validate_phase32_gate,
     validate_phase32_led_rows,
     run_guided,
     sha256_file,
@@ -912,5 +917,111 @@ class Phase32LogicalEvidenceTests(unittest.TestCase):
             PHASE32_SOURCE_EVENTS,
             ("source-stale", "source-offline", "source-unavailable"),
         )
+class Phase32PhysicalGateTests(unittest.TestCase):
+    @staticmethod
+    def _deployment() -> dict[str, object]:
+        return {
+            "deployment_id": "phase32-final",
+            "firmware_sha256": "f" * 64,
+            "deployment_lock_sha256": "a" * 64,
+        }
+
+    @classmethod
+    def _evidence(cls) -> dict[str, object]:
+        deployment = cls._deployment()
+        return {
+            "schema_version": 1,
+            "kind": "phase03.2-device-evidence",
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": deployment["deployment_lock_sha256"],
+            "qualification_sha256": "b" * 64,
+            "threshold_ms": 550,
+            "edge_assumptions": [dict(item) for item in FINAL_EDGE_ASSUMPTIONS],
+            "rows": [
+                {
+                    "id": row_id,
+                    "source": "physical-observation",
+                    "machine_invariant": "pass",
+                    "result": "pass",
+                    "observation": {"kind": "typed", "result": "pass", "value": "observed"},
+                    "physical_claim": True,
+                }
+                for row_id in PHASE32_DEVICE_ROW_IDS
+            ],
+            "oracle_state": "UP",
+        }
+
+    def test_phase32_device_evidence_is_typed_and_deployment_bound(self) -> None:
+        deployment = self._deployment()
+        evidence = validate_phase32_device_evidence(
+            self._evidence(),
+            deployment,
+            {"status": "pass"},
+            deployment_lock_sha256=deployment["deployment_lock_sha256"],
+            qualification_sha256="b" * 64,
+        )
+        self.assertEqual(evidence["status"], "pass")
+        candidate = self._evidence()
+        candidate["rows"][0]["source"] = "machine"
+        with self.assertRaisesRegex(ValueError, "physical"):
+            validate_phase32_device_evidence(
+                candidate,
+                deployment,
+                {"status": "pass"},
+                deployment_lock_sha256=deployment["deployment_lock_sha256"],
+                qualification_sha256="b" * 64,
+            )
+
+    def test_phase32_defect_ledger_and_gate_reject_open_oracle(self) -> None:
+        deployment = self._deployment()
+        ledger = {
+            "schema_version": 1,
+            "kind": "phase03.2-defect-ledger",
+            "status": "pass",
+            "deployment_id": deployment["deployment_id"],
+            "deployment_lock_sha256": deployment["deployment_lock_sha256"],
+            "qualification_sha256": "b" * 64,
+            "device_evidence_sha256": "e" * 64,
+            "defects": [],
+            "history": [],
+        }
+        self.assertEqual(
+            validate_phase32_defect_ledger(
+                ledger,
+                deployment,
+                deployment_lock_sha256=deployment["deployment_lock_sha256"],
+                qualification_sha256="b" * 64,
+                device_evidence_sha256="e" * 64,
+            )["defects"],
+            [],
+        )
+        ledger["defects"] = [{"id": "D-FAIL", "status": "open"}]
+        with self.assertRaisesRegex(ValueError, "defect"):
+            validate_phase32_defect_ledger(
+                ledger,
+                deployment,
+                deployment_lock_sha256=deployment["deployment_lock_sha256"],
+                qualification_sha256="b" * 64,
+                device_evidence_sha256="e" * 64,
+            )
+        gate = {
+            "schema_version": 1,
+            "kind": "phase03.2-phase4-gate",
+            "status": "fail",
+            "deployment_id": deployment["deployment_id"],
+            "oracle_state": "DOWN",
+        }
+        with self.assertRaisesRegex(ValueError, "gate"):
+            validate_phase32_gate(
+                gate,
+                deployment,
+                {"status": "pass"},
+                self._evidence(),
+                {"status": "pass", "defects": []},
+                require_oracle_up=True,
+            )
+
 if __name__ == "__main__":
     unittest.main()

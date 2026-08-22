@@ -19,7 +19,11 @@ from types import SimpleNamespace
 
 from herdr_keypad.codex import normalize_rate_limits
 
-from .composite_qualification import verify_composite_decision
+from .composite_qualification import (
+    FINAL_EDGE_ASSUMPTIONS,
+    validate_final_qualification,
+    verify_composite_decision,
+)
 from .pairing import PairingStore
 from .serial_link import reconnect_exact, require_inherited_bridge_lock
 
@@ -67,6 +71,10 @@ PHASE32_GRAMMAR_MASKS = {
     ),
     "meter-lamps": (1 << 1, 1 << 4, 1 << 7),
 }
+PHASE32_DEVICE_EVIDENCE_KIND = "phase03.2-device-evidence"
+PHASE32_DEFECT_LEDGER_KIND = "phase03.2-defect-ledger"
+PHASE32_PHASE4_GATE_KIND = "phase03.2-phase4-gate"
+PHASE32_DEVICE_ROW_IDS = tuple(f"D-{index:02d}" for index in range(1, 19))
 PHASE32_LEVEL_PHASE = {"full": 3, "half": 2, "static": 0}
 LED_GRAMMARS = ("rail-echo", "exception", "field-extension", "meter-lamps")
 MOTION_STATE_SCENES = {
@@ -1396,6 +1404,226 @@ def validate_phase32_framebuffer_evidence_file(
     )
     return evidence
 
+
+def _phase32_hash(value: Any, label: str) -> str:
+    if not isinstance(value, str) or len(value) != 64 or any(
+        character not in "0123456789abcdef" for character in value
+    ):
+        raise ValueError(f"Phase 03.2 {label} hash is invalid")
+    return value
+
+
+def validate_phase32_device_evidence(
+    evidence: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+    qualification: Mapping[str, Any],
+    *,
+    deployment_lock_sha256: str,
+    qualification_sha256: str,
+    require_complete: bool = True,
+) -> dict[str, Any]:
+    """Validate typed physical observations without upgrading machine facts.
+
+    A physical row is accepted only when its own typed operator observation is
+    present.  ``machine_invariant`` is an additional prerequisite, never a
+    substitute for that observation.
+    """
+    required = {
+        "schema_version", "kind", "status", "deployment_id", "firmware_sha256",
+        "deployment_lock_sha256", "qualification_sha256", "threshold_ms",
+        "edge_assumptions", "rows", "oracle_state",
+    }
+    if set(evidence) != required or evidence.get("schema_version") != 1:
+        raise ValueError("Phase 03.2 physical evidence schema is not closed")
+    if evidence.get("kind") != PHASE32_DEVICE_EVIDENCE_KIND:
+        raise ValueError("Phase 03.2 physical evidence kind is invalid")
+    expected_status = "pass" if require_complete else evidence.get("status")
+    if evidence.get("status") != expected_status:
+        raise ValueError("Phase 03.2 physical evidence is incomplete")
+    deployment_id = deployment.get("deployment_id")
+    firmware_sha256 = deployment.get("firmware_sha256")
+    lock_sha = _phase32_hash(deployment_lock_sha256, "deployment lock")
+    qualification_sha = _phase32_hash(qualification_sha256, "qualification")
+    if (
+        evidence.get("deployment_id") != deployment_id
+        or evidence.get("firmware_sha256") != firmware_sha256
+        or evidence.get("deployment_lock_sha256") != lock_sha
+        or evidence.get("qualification_sha256") != qualification_sha
+        or evidence.get("threshold_ms") != 550
+        or evidence.get("edge_assumptions") != list(FINAL_EDGE_ASSUMPTIONS)
+    ):
+        raise ValueError("Phase 03.2 physical evidence deployment or assumption lineage is invalid")
+    rows = evidence.get("rows")
+    if not isinstance(rows, list) or tuple(row.get("id") for row in rows if isinstance(row, Mapping)) != PHASE32_DEVICE_ROW_IDS:
+        raise ValueError("Phase 03.2 physical evidence rows are incomplete or reordered")
+    for row in rows:
+        if (
+            not isinstance(row, Mapping)
+            or row.get("source") != "physical-observation"
+            or row.get("physical_claim") is not True
+            or row.get("machine_invariant") not in {"pass", True}
+            or row.get("result") != "pass"
+        ):
+            raise ValueError("Phase 03.2 physical evidence row is not a typed physical pass")
+        observation = row.get("observation")
+        if (
+            not isinstance(observation, Mapping)
+            or observation.get("kind") != "typed"
+            or observation.get("result") != "pass"
+            or "value" not in observation
+        ):
+            raise ValueError("Phase 03.2 physical evidence observation is not typed")
+    if evidence.get("oracle_state") != "UP":
+        raise ValueError("Phase 03.2 physical evidence oracle is not UP")
+    if qualification.get("status") != "pass":
+        raise ValueError("Phase 03.2 physical evidence lacks a passing qualification")
+    return dict(evidence)
+
+
+def validate_phase32_defect_ledger(
+    ledger: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+    *,
+    deployment_lock_sha256: str,
+    qualification_sha256: str,
+    device_evidence_sha256: str,
+    require_no_open: bool = True,
+) -> dict[str, Any]:
+    required = {
+        "schema_version", "kind", "status", "deployment_id",
+        "deployment_lock_sha256", "qualification_sha256",
+        "device_evidence_sha256", "defects", "history",
+    }
+    if set(ledger) != required or ledger.get("schema_version") != 1:
+        raise ValueError("Phase 03.2 defect ledger schema is not closed")
+    if ledger.get("kind") != PHASE32_DEFECT_LEDGER_KIND:
+        raise ValueError("Phase 03.2 defect ledger kind is invalid")
+    if (
+        ledger.get("deployment_id") != deployment.get("deployment_id")
+        or ledger.get("deployment_lock_sha256") != _phase32_hash(deployment_lock_sha256, "deployment lock")
+        or ledger.get("qualification_sha256") != _phase32_hash(qualification_sha256, "qualification")
+        or ledger.get("device_evidence_sha256") != _phase32_hash(device_evidence_sha256, "device evidence")
+    ):
+        raise ValueError("Phase 03.2 defect ledger lineage is invalid")
+    defects = ledger.get("defects")
+    history = ledger.get("history")
+    if not isinstance(defects, list) or not isinstance(history, list):
+        raise ValueError("Phase 03.2 defect ledger entries are not lists")
+    if require_no_open and (ledger.get("status") != "pass" or defects):
+        raise ValueError("Phase 03.2 defect ledger contains an open defect")
+    for entry in history:
+        if not isinstance(entry, Mapping):
+            raise ValueError("Phase 03.2 defect history entry is not an object")
+        if require_no_open and entry.get("status") == "open":
+            raise ValueError("Phase 03.2 defect history contains an open defect")
+    return dict(ledger)
+
+
+def validate_phase32_gate(
+    gate: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+    qualification: Mapping[str, Any],
+    device_evidence: Mapping[str, Any],
+    defect_ledger: Mapping[str, Any],
+    *,
+    require_current_deployment: bool = True,
+    require_complete_qualification: bool = True,
+    require_current_device_evidence: bool = True,
+    require_no_open_defects: bool = True,
+    require_oracle_up: bool = True,
+) -> dict[str, Any]:
+    """Join the production qualification and physical evidence fail-closed."""
+    if gate.get("kind") != PHASE32_PHASE4_GATE_KIND or gate.get("status") != "pass":
+        raise ValueError("Phase 03.2 gate is not a passing release gate")
+    deployment_id = deployment.get("deployment_id")
+    firmware_sha256 = deployment.get("firmware_sha256")
+    if (
+        gate.get("deployment_id") != deployment_id
+        or gate.get("firmware_sha256") != firmware_sha256
+    ):
+        raise ValueError("Phase 03.2 gate deployment lineage is stale")
+    lock_sha = _phase32_hash(gate.get("deployment_lock_sha256"), "deployment lock")
+    qualification_sha = _phase32_hash(gate.get("qualification_sha256"), "qualification")
+    evidence_sha = _phase32_hash(gate.get("device_evidence_sha256"), "device evidence")
+    ledger_sha = _phase32_hash(gate.get("defect_ledger_sha256"), "defect ledger")
+    if require_current_deployment and deployment.get("deployment_id") != gate.get("deployment_id"):
+        raise ValueError("Phase 03.2 gate does not reference the current deployment")
+    validate_final_qualification(qualification, deployment, gate.get("logical_evidence"))
+    if require_complete_qualification and qualification.get("status") != "pass":
+        raise ValueError("Phase 03.2 gate qualification is incomplete")
+    validate_phase32_device_evidence(
+        device_evidence,
+        deployment,
+        qualification,
+        deployment_lock_sha256=lock_sha,
+        qualification_sha256=qualification_sha,
+        require_complete=require_current_device_evidence,
+    )
+    validate_phase32_defect_ledger(
+        defect_ledger,
+        deployment,
+        deployment_lock_sha256=lock_sha,
+        qualification_sha256=qualification_sha,
+        device_evidence_sha256=evidence_sha,
+        require_no_open=require_no_open_defects,
+    )
+    if require_oracle_up and (
+        gate.get("oracle_state") != "UP"
+        or qualification.get("input_oracle", {}).get("state") != "UP"
+        or device_evidence.get("oracle_state") != "UP"
+    ):
+        raise ValueError("Phase 03.2 gate oracle is not UP")
+    if gate.get("edge_assumptions") != list(FINAL_EDGE_ASSUMPTIONS):
+        raise ValueError("Phase 03.2 gate edge assumptions are incomplete")
+    if gate.get("device_evidence_sha256") != evidence_sha or gate.get("defect_ledger_sha256") != ledger_sha:
+        raise ValueError("Phase 03.2 gate sidecar hashes are invalid")
+    return dict(gate)
+
+
+def validate_phase32_gate_file(
+    gate_path: Path,
+    deployment_path: Path,
+    qualification_path: Path,
+    evidence_path: Path,
+    defect_ledger_path: Path,
+    *,
+    require_current_deployment: bool = True,
+    require_complete_qualification: bool = True,
+    require_current_device_evidence: bool = True,
+    require_no_open_defects: bool = True,
+    require_oracle_up: bool = True,
+) -> dict[str, Any]:
+    """Reopen all final sidecars and apply the same hash-only join as the CLI."""
+    paths = [Path(item).resolve() for item in (
+        gate_path, deployment_path, qualification_path, evidence_path, defect_ledger_path
+    )]
+    gate, deployment, qualification, evidence, ledger = (
+        json.loads(path.read_text(encoding="ascii")) for path in paths
+    )
+    deployment_lock_sha = _phase31_sidecar(paths[1], "Phase 03.2 deployment")
+    qualification_sha = _phase31_sidecar(paths[2], "Phase 03.2 qualification")
+    evidence_sha = _phase31_sidecar(paths[3], "Phase 03.2 device evidence")
+    ledger_sha = _phase31_sidecar(paths[4], "Phase 03.2 defect ledger")
+    if (
+        gate.get("deployment_lock_sha256") != deployment_lock_sha
+        or gate.get("qualification_sha256") != qualification_sha
+        or gate.get("device_evidence_sha256") != evidence_sha
+        or gate.get("defect_ledger_sha256") != ledger_sha
+    ):
+        raise ValueError("Phase 03.2 gate sidecar linkage is invalid")
+    validate_phase32_gate(
+        gate,
+        deployment,
+        qualification,
+        evidence,
+        ledger,
+        require_current_deployment=require_current_deployment,
+        require_complete_qualification=require_complete_qualification,
+        require_current_device_evidence=require_current_device_evidence,
+        require_no_open_defects=require_no_open_defects,
+        require_oracle_up=require_oracle_up,
+    )
+    return gate
 
 def run_phase32_capture(args: argparse.Namespace) -> int:
     firmware = args.firmware.resolve()

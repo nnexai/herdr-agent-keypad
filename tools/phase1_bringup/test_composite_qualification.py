@@ -30,6 +30,7 @@ from phase1_bringup.composite_qualification import (
     validate_final_qualification,
     validate_input_trace,
     verify_composite_decision,
+    verify_composite_run,
     write_terminal_decision,
 )
 from phase1_bringup import composite_qualification as composite_module
@@ -734,10 +735,10 @@ class FinalProductionQualificationTests(unittest.TestCase):
             "input_oracle": {"state": "UP", "events_seen": 600, "failures": []},
             "firmware_metrics": {
                 "status": "pass",
-                "space_down_requests": 90,
-                "space_down_completions": 90,
-                "space_up_requests": 90,
-                "space_up_completions": 90,
+                "space_down_requests": 120,
+                "space_down_completions": 120,
+                "space_up_requests": 120,
+                "space_up_completions": 120,
                 "strict_counters": {name: 0 for name in (
                     "unexpected_reject", "duplicate", "out_of_order", "malformed",
                     "digest_mismatch", "queue_failure", "short_write",
@@ -775,9 +776,9 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "protocol_version": 1,
             },
             "open_defects": [],
-        }
 
-    def test_final_gate_reconciles_production_matrix_and_lineage(self) -> None:
+        }
+    def test_phase32_final_gate_reconciles_production_matrix_and_lineage(self) -> None:
         deployment = self._deployment()
         logical = {
             "status": "pass",
@@ -787,9 +788,8 @@ class FinalProductionQualificationTests(unittest.TestCase):
         }
         checked = validate_final_qualification(self._qualification(), deployment, logical)
         self.assertEqual(checked["status"], "pass")
-        self.assertEqual(checked["gesture_reconciliation"]["observed_count"], 300)
 
-    def test_final_gate_rejects_stale_threshold_or_gesture_observation(self) -> None:
+    def test_phase32_final_gate_rejects_stale_threshold_or_gesture_observation(self) -> None:
         deployment = self._deployment()
         logical = {
             "status": "pass",

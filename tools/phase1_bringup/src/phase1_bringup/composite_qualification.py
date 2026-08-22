@@ -100,6 +100,358 @@ REQUIRED_RUN_FILES = (
 _INPUT_EVENT = struct.Struct("llHHI")
 _EV_KEY = 0x01
 _KEY_SPACE = 57
+FINAL_QUALIFICATION_SCHEMA_VERSION = 1
+FINAL_QUALIFICATION_KIND = "phase03.2-final-qualification"
+FINAL_SHARED_THRESHOLD_MS = 550
+FINAL_CDC_MAX_LINE_BYTES = 4096
+FINAL_LATENCY_TARGET_P95_MS = 80
+FINAL_LATENCY_HARD_MAX_MS = 120
+FINAL_STRESS_COUNTS = dict(STRESS_COUNTS)
+FINAL_ROW_COUNTS = {
+    "build-controller": 1,
+    "usb-identity": 6,
+    "exact-pairing": 1,
+    "threshold-calibration": 204,
+    "immediate-focus-short-separation": 90,
+    "focus-before-hid-ordering": 180,
+    "release-before-ack": 120,
+    "stale-failure-source-session": 220,
+    "repeat-behavior": 30,
+    "active-owner-independence": 30,
+    "cdc-under-hid": 4000,
+    "physical-release": 90,
+    "usb-removal": 5,
+    "controlled-reset": 5,
+    "suspend-resume": 5,
+    "reconnect-session": 10,
+    "normal-flashing": 5,
+    "boot-recovery": 1,
+    "input-latency": 100,
+    "mixed-stress": 300,
+}
+FINAL_EDGE_ASSUMPTIONS = (
+    {
+        "id": "EA-01",
+        "requirement": "HOLD-01",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "occupied and non-actionable short gestures with immediate focus and zero HID-down observation",
+    },
+    {
+        "id": "EA-02",
+        "requirement": "HOLD-02",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "ack-before-threshold and threshold-before-ack with exact action, binding, session, and threshold reconciliation",
+    },
+    {
+        "id": "EA-03",
+        "requirement": "HOLD-03",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "release and every stale, failure, source, and session path must remain monotonic and HID-up",
+    },
+    {
+        "id": "EA-04",
+        "requirement": "HOLD-04",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "threshold equality, one-poll edge, and same-poll chord boundaries use explicit wrap-safe transitions",
+    },
+    {
+        "id": "EA-05",
+        "requirement": "HOLD-04",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "empty-first release/removal/reset/suspend/resume/reconnect lifecycle observations and all-keys-up rearm",
+    },
+    {
+        "id": "EA-06",
+        "requirement": "HOLD-04",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "all six ordered owner/other-key pairs, owner release, and no ownership transfer",
+    },
+    {
+        "id": "EA-07",
+        "requirement": "HOLD-05",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "exact deployment identity, descriptor stability, CDC/HID lifecycle, flashing, recovery, latency, and stuck-key rows",
+    },
+    {
+        "id": "EA-08",
+        "requirement": "SAFE-02",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "closed protocol and fixed-Space negative matrix reject generic action, key, macro, text, and provider authority",
+    },
+    {
+        "id": "EA-09",
+        "requirement": "SAFE-02",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "4096-byte-including-LF v2 envelope, overlong rejection, and next-valid-frame recovery",
+    },
+    {
+        "id": "EA-10",
+        "requirement": "SAFE-02",
+        "status": "ASSUMED_UNRESOLVED",
+        "backstop": "bounded CDC traffic during active HID, focus changes, lifecycle interruption, and seeded mixed stress",
+    },
+)
+FINAL_STRICT_COUNTERS = STRICT_COUNTERS
+
+
+def _final_failure(message: str) -> None:
+    raise CompositeQualificationError(f"final production qualification {message}")
+
+
+def _validate_final_rows(rows: Any) -> dict[str, Mapping[str, Any]]:
+    if not isinstance(rows, list):
+        _final_failure("rows must be a list")
+    mapped: dict[str, Mapping[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or not isinstance(row.get("id"), str):
+            _final_failure("row is not an object with an id")
+        row_id = str(row["id"])
+        if row_id in mapped:
+            _final_failure("rows contain a duplicate id")
+        mapped[row_id] = row
+    if tuple(mapped) != tuple(FINAL_ROW_COUNTS):
+        _final_failure("row matrix differs from the restored production matrix")
+    for row_id, required in FINAL_ROW_COUNTS.items():
+        row = mapped[row_id]
+        if (
+            row.get("applicable") is not True
+            or row.get("required_count") != required
+            or row.get("observed_count") != required
+            or row.get("status") != "pass"
+        ):
+            _final_failure(f"row {row_id} is incomplete or failed")
+    return mapped
+
+
+def _validate_final_latency(latency: Any) -> None:
+    if not isinstance(latency, Mapping):
+        _final_failure("latency evidence is missing")
+    for name in ("eligible_to_down", "release_to_up"):
+        sample = latency.get(name)
+        if not isinstance(sample, Mapping):
+            _final_failure(f"{name} latency evidence is missing")
+        values = sample.get("samples_ms")
+        if (
+            not isinstance(values, list)
+            or len(values) < FINAL_ROW_COUNTS["input-latency"]
+            or any(
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or value < 0
+                for value in values
+            )
+        ):
+            _final_failure(f"{name} latency requires at least 100 non-negative samples")
+        p95 = _percentile(values, 95)
+        maximum = max(values)
+        if (
+            sample.get("count") != len(values)
+            or sample.get("p95_ms") != p95
+            or sample.get("max_ms") != maximum
+            or p95 > FINAL_LATENCY_TARGET_P95_MS
+            or maximum > FINAL_LATENCY_HARD_MAX_MS
+        ):
+            _final_failure(f"{name} latency exceeds the production bound or is not recomputable")
+
+
+def _validate_final_cdc(cdc: Any) -> None:
+    if not isinstance(cdc, Mapping):
+        _final_failure("CDC evidence is missing")
+    if cdc.get("maximum_line_bytes_including_lf") != FINAL_CDC_MAX_LINE_BYTES:
+        _final_failure("CDC bound is not the production v2 maximum")
+    counts = cdc.get("counts")
+    if not isinstance(counts, Mapping):
+        _final_failure("CDC counters are missing")
+    for direction in ("host_to_device", "device_to_host"):
+        entry = counts.get(direction)
+        if not isinstance(entry, Mapping):
+            _final_failure(f"CDC {direction} counters are missing")
+        if any(entry.get(name) != 2000 for name in ("expected", "sent", "received", "acknowledged")):
+            _final_failure(f"CDC {direction} counters are not exactly equal")
+    strict = cdc.get("strict_counters")
+    if (
+        not isinstance(strict, Mapping)
+        or set(strict) != set(FINAL_STRICT_COUNTERS)
+        or any(not isinstance(value, int) or isinstance(value, bool) or value != 0 for value in strict.values())
+    ):
+        _final_failure("CDC strict counters are nonzero or incomplete")
+    if cdc.get("overlong_rejected") is not True or cdc.get("next_valid_accepted") is not True:
+        _final_failure("CDC overlong recovery is missing")
+
+
+def _validate_final_gestures(
+    reconciliation: Any,
+    deployment: Mapping[str, Any],
+) -> tuple[int, int]:
+    if not isinstance(reconciliation, Mapping):
+        _final_failure("gesture reconciliation is missing")
+    if (
+        reconciliation.get("scheduled_count") != FINAL_ROW_COUNTS["mixed-stress"]
+        or reconciliation.get("observed_count") != FINAL_ROW_COUNTS["mixed-stress"]
+        or reconciliation.get("mismatches") != []
+        or reconciliation.get("scheduled_counts") != FINAL_STRESS_COUNTS
+        or reconciliation.get("observed_counts") != FINAL_STRESS_COUNTS
+    ):
+        _final_failure("gesture scheduled/observed counts are unequal")
+    records = reconciliation.get("records")
+    if not isinstance(records, list) or len(records) != FINAL_ROW_COUNTS["mixed-stress"]:
+        _final_failure("gesture records do not cover the seeded 300-case schedule")
+    expected_categories = list(FINAL_STRESS_COUNTS)
+    counts: Counter[str] = Counter()
+    down_total = 0
+    up_total = 0
+    for record in records:
+        if not isinstance(record, Mapping):
+            _final_failure("gesture record is not an object")
+        category = record.get("category")
+        if category not in FINAL_STRESS_COUNTS:
+            _final_failure("gesture record has an unknown category")
+        counts[str(category)] += 1
+        if (
+            not isinstance(record.get("id"), str)
+            or not isinstance(record.get("slot"), int)
+            or isinstance(record.get("slot"), bool)
+            or record["slot"] not in AGENT_KEYS
+            or record.get("threshold_ms") != FINAL_SHARED_THRESHOLD_MS
+            or not isinstance(record.get("physical_down"), bool)
+            or record.get("oracle_after") != "UP"
+        ):
+            _final_failure("gesture record has an incomplete physical/threshold observation")
+        focus = record.get("focus")
+        if not isinstance(focus, Mapping):
+            _final_failure("gesture record lacks exact focus/session evidence")
+        if (
+            not isinstance(focus.get("action_id"), str)
+            or focus.get("binding_digest") != deployment.get("pair_digest")
+            or focus.get("host_epoch") in (None, "")
+            or not isinstance(focus.get("snapshot_revision"), int)
+            or focus.get("snapshot_revision") <= 0
+            or focus.get("usb_session", focus.get("session_id")) != deployment.get("session_id")
+            or not isinstance(focus.get("outcome"), str)
+            or not isinstance(focus.get("focused"), bool)
+            or not isinstance(focus.get("authorized"), bool)
+        ):
+            _final_failure("gesture record focus/session correlation is incomplete")
+        values = record.get("hid_values")
+        if not isinstance(values, list) or any(value not in (0, 1, 2) for value in values):
+            _final_failure("gesture record HID values are invalid")
+        if values.count(1) > 1 or values.count(0) > 1 or (values.count(1) and not values.count(0)):
+            _final_failure("gesture record HID down/up sequence is invalid")
+        if values.count(1):
+            if values.index(1) > values.index(0) or focus.get("authorized") is not True:
+                _final_failure("gesture record admitted HID before exact focus authorization")
+            down_total += 1
+            up_total += values.count(0)
+        elif focus.get("authorized") is True and category in {"short", "early_release", "stale_failure_session_lifecycle"}:
+            _final_failure("gesture record claims authorization without HID or cancellation evidence")
+        firmware = record.get("firmware")
+        if not isinstance(firmware, Mapping):
+            _final_failure("gesture record firmware metrics are missing")
+        if any(
+            firmware.get(name) != (1 if values.count(1) else 0)
+            for name in ("space_down_requests", "space_down_completions")
+        ) or any(
+            firmware.get(name) != (1 if values.count(0) else 0)
+            for name in ("space_up_requests", "space_up_completions")
+        ):
+            _final_failure("gesture record firmware counters do not reconcile to HID values")
+    expected_down = (
+        FINAL_STRESS_COUNTS["authorized_hold"]
+        + FINAL_STRESS_COUNTS["delayed_ack_threshold_first"]
+    )
+    if (
+        counts != Counter(FINAL_STRESS_COUNTS)
+        or down_total != expected_down
+        or up_total != expected_down
+    ):
+        _final_failure("gesture category or HID totals do not reconcile")
+    return down_total, up_total
+
+
+def validate_final_qualification(
+    qualification: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+    logical_evidence: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Reopen the strict production matrix without hardware access.
+
+    This is deliberately separate from the Plan 00 feasibility validator.  The
+    production gate cannot inherit deferred rows, the 385-byte tracer bound, or
+    the 12-sample latency floor.
+    """
+    if (
+        qualification.get("schema_version") != FINAL_QUALIFICATION_SCHEMA_VERSION
+        or qualification.get("kind") != FINAL_QUALIFICATION_KIND
+        or qualification.get("status") != "pass"
+    ):
+        _final_failure("schema/status is not a terminal pass")
+    deployment_id = deployment.get("deployment_id")
+    firmware_sha256 = deployment.get("firmware_sha256")
+    if (
+        not isinstance(deployment_id, str)
+        or not isinstance(firmware_sha256, str)
+        or qualification.get("deployment_id") != deployment_id
+        or qualification.get("firmware_sha256") != firmware_sha256
+    ):
+        _final_failure("deployment or binary lineage is stale")
+    if qualification.get("threshold_ms") != FINAL_SHARED_THRESHOLD_MS:
+        _final_failure("shared threshold is not the measured 550 ms")
+    lock_sha = qualification.get("deployment_lock_sha256")
+    if not isinstance(lock_sha, str) or len(lock_sha) != 64:
+        _final_failure("deployment lock sidecar hash is missing")
+    if logical_evidence is not None and (
+        logical_evidence.get("status") != "pass"
+        or logical_evidence.get("deployment_id") != deployment_id
+        or logical_evidence.get("firmware_sha256") != firmware_sha256
+        or logical_evidence.get("deployment_lock_sha256") != lock_sha
+    ):
+        _final_failure("logical evidence lineage is stale or incomplete")
+    expected_deployment = qualification.get("deployment")
+    if not isinstance(expected_deployment, Mapping):
+        _final_failure("exact deployment tuple is missing")
+    for field in (
+        "pair_digest", "pairing_record_sha256", "descriptor_tuple_sha256",
+        "boot_id", "session_id", "decision_sha256", "decision_manifest_sha256",
+    ):
+        if expected_deployment.get(field) != deployment.get(field):
+            _final_failure(f"exact deployment field {field} differs")
+    if (
+        expected_deployment.get("protocol_version") != deployment.get("protocol_version")
+        or deployment.get("protocol_version") != 1
+    ):
+        _final_failure("exact deployment protocol differs")
+    _validate_final_rows(qualification.get("rows"))
+    assumptions = qualification.get("edge_assumptions")
+    if assumptions != list(FINAL_EDGE_ASSUMPTIONS):
+        _final_failure("edge assumptions or named backstops changed")
+    _validate_final_cdc(qualification.get("cdc"))
+    _validate_final_latency(qualification.get("latency"))
+    down_total, up_total = _validate_final_gestures(
+        qualification.get("gesture_reconciliation"), deployment
+    )
+    metrics = qualification.get("firmware_metrics")
+    if (
+        not isinstance(metrics, Mapping)
+        or metrics.get("status") != "pass"
+        or metrics.get("space_down_requests") != down_total
+        or metrics.get("space_down_completions") != down_total
+        or metrics.get("space_up_requests") != up_total
+        or metrics.get("space_up_completions") != up_total
+        or metrics.get("strict_counters") != {name: 0 for name in FINAL_STRICT_COUNTERS}
+    ):
+        _final_failure("firmware metrics do not reconcile to observed HID")
+    oracle = qualification.get("input_oracle")
+    if (
+        not isinstance(oracle, Mapping)
+        or oracle.get("state") != "UP"
+        or oracle.get("failures") != []
+        or not isinstance(oracle.get("events_seen"), int)
+        or oracle.get("events_seen") <= 0
+    ):
+        _final_failure("external Linux input oracle is not UP")
+    if qualification.get("open_defects") != []:
+        _final_failure("open defect evidence is present")
+    return dict(qualification)
 
 
 class CompositeQualificationError(ValueError):
