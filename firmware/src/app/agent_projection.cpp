@@ -334,10 +334,19 @@ void AgentProjection::applyHoldPresentation(
 
   const bool candidate_index_valid =
       presentation.candidate_slot < kSlotCount;
+  const Feedback candidate_feedback =
+      candidate_index_valid ? feedback_[presentation.candidate_slot]
+                            : Feedback::Disabled;
+  // A qualified candidate remains presentation-worthy after the bounded
+  // success cue expires. Failure feedback is never admitted here; the
+  // controller's exact failed result clears the candidate before Ready can
+  // reappear.
   const bool candidate_feedback_visible =
       candidate_index_valid &&
-      (feedback_[presentation.candidate_slot] == Feedback::Pending ||
-       feedback_[presentation.candidate_slot] == Feedback::Success);
+      (candidate_feedback == Feedback::Pending ||
+       candidate_feedback == Feedback::Success ||
+       (candidate_feedback == Feedback::Ready &&
+        presentation.threshold_qualified));
   if (candidate_index_valid &&
       generation.tiles[presentation.candidate_slot].binding.occupied &&
       candidate_feedback_visible) {
