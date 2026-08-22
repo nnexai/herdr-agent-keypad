@@ -4,8 +4,8 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: executing
-stopped_at: "Blocked before 03.2-01: gsd-executor routed sol instead of luna:xhigh"
-last_updated: "2026-08-22T05:30:31Z"
+stopped_at: "Ready to execute 03.2-01 after OMP agent route repair"
+last_updated: "2026-08-22T05:31:09Z"
 last_activity: 2026-08-22
 last_activity_desc: "Completed quick task 260822-abq: aligned OMP agent routing with Codex definitions"
 state_head: a9ae12af03b03495bd03ed7283154921573d39dd
@@ -201,7 +201,6 @@ None yet.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
 - [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
 - [Phase 02.1]: Bounded live-sync smoke evidence and exact-device physical checkpoint passed; no long qualification rerun.
-- Phase 03.2 blocked before Plan 01: fresh-session native gsd-executor probe ExecutorRouteProbe2 resolved openai-codex/gpt-5.6-sol instead of configured gpt-5.6-luna xhigh; no Plan 01 edits.
 
 ### Roadmap Evolution
 
@@ -230,5 +229,5 @@ None yet.
 
 **Resume file:** .planning/phases/03.2-focus-then-hold-usb-keyboard/.continue-here.md
 
-Last session: 2026-08-22T05:20:49.423Z
-Stopped at: Blocked before 03.2-01: gsd-executor routed sol instead of luna:xhigh
+Last session: 2026-08-22T05:31:09Z
+Stopped at: Ready to execute 03.2-01 after OMP agent route repair
