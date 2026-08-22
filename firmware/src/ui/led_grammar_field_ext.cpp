@@ -10,9 +10,41 @@ constexpr uint16_t kHealthPair = (1U << 12) | (1U << 13);
 constexpr uint16_t kL13 = 1U << 13;
 
 void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
-         uint16_t hue, uint8_t saturation, uint8_t brightness) {
+         uint16_t hue, uint8_t saturation, uint8_t brightness,
+         uint8_t hold_slot = kLedInvalidSlot) {
   if (mask == 0 || count >= cap || brightness == 0) return;
-  out[count++] = {mask, hue, saturation, brightness};
+  out[count++] = {mask, hue, saturation, brightness,
+                  hold_slot != kLedInvalidSlot, hold_slot};
+}
+
+bool addHoldCue(const RenderState::Slot& tile, const RenderState& state,
+                const LedEvents& events, uint8_t slot, uint32_t now_us,
+                LedSegment* out, size_t& count, size_t capacity) {
+  const uint16_t zone = kKeyMasks[slot];
+  if (!ledHoldPresentationAllowed(state, slot)) return false;
+  if (tile.hold_active_owner) {
+    add(out, count, capacity, zone, 120, 100, 45, slot);
+    return true;
+  }
+  if (ledHoldCancellationActive(
+          state, events, slot, now_us,
+          kFieldExtensionHoldCancellationDurationUs)) {
+    add(out, count, capacity, zone, 60, 100, 45, slot);
+    return true;
+  }
+  if (tile.hold_candidate && tile.hold_threshold_qualified) {
+    uint8_t phase = tile.feedback_phase;
+    uint8_t semantic_phase = 0;
+    if (ledSemanticPhase(tile, events, semantic_phase)) {
+      phase = semantic_phase;
+    }
+    const uint8_t step = static_cast<uint8_t>(phase % 3U);
+    add(out, count, capacity,
+        static_cast<uint16_t>(1U << (slot * 3U + step)),
+        185, 100, 45, slot);
+    return true;
+  }
+  return false;
 }
 
 uint8_t level(TileState state, bool pulse_high) {
@@ -67,7 +99,6 @@ class FieldExtension final : public LedGrammar {
  public:
   size_t frame(const RenderState& state, const LedEvents& events,
                uint32_t now_us, LedSegment* out, size_t capacity) const override {
-    (void)now_us;
     size_t count = 0;
     const bool health = ledPresentationUnhealthy(state);
     if (health) {
@@ -80,6 +111,10 @@ class FieldExtension final : public LedGrammar {
     }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
       const RenderState::Slot& tile = state.slots[slot];
+      if (addHoldCue(tile, state, events, slot, now_us, out, count,
+                     capacity)) {
+        continue;
+      }
       const uint16_t key = kKeyMasks[slot];
       if (addFeedback(tile, events, slot, out, count, capacity)) {
         continue;

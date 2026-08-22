@@ -8,11 +8,17 @@
 
 class BoardAdapter;
 
+constexpr uint8_t kLedInvalidSlot = 0xFF;
+
 struct LedSegment {
   uint16_t mask = 0;
   uint16_t hue = 0;
   uint8_t saturation = 0;
   uint8_t brightness = 0;
+  // Hold overlays carry their physical slot so LedEngine can fence them
+  // centrally without classifying ordinary focus colors by hue.
+  bool hold_cue = false;
+  uint8_t hold_slot = kLedInvalidSlot;
 };
 
 inline bool ledPresentationUnhealthy(const RenderState& state);
@@ -32,7 +38,6 @@ enum class LedSemanticEvent : uint8_t {
   Sync,
   State,
 };
-constexpr uint8_t kLedInvalidSlot = 0xFF;
 
 // D-13 is one transient observation, not a RenderState or ownership fact.
 // The producer supplies the physical slot and event-clock origin; grammars
@@ -46,6 +51,8 @@ struct LedHoldCancellation {
 
 constexpr uint32_t kRailEchoHoldCancellationDurationUs = 120000UL;
 constexpr uint32_t kExceptionChannelHoldCancellationDurationUs = 90000UL;
+constexpr uint32_t kFieldExtensionHoldCancellationDurationUs = 105000UL;
+constexpr uint32_t kMeterLampsHoldCancellationDurationUs = 75000UL;
 
 
 // Transient controls and the bounded semantic presentation clock shared by

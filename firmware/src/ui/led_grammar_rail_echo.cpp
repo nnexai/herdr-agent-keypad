@@ -48,9 +48,10 @@ Hsv feedbackHsv(const RenderState::Slot& tile, const LedEvents& events,
 }
 
 void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
-         Hsv value) {
+         Hsv value, uint8_t hold_slot = kLedInvalidSlot) {
   if (mask == 0 || count >= cap || value.brightness == 0) return;
-  out[count++] = {mask, value.hue, value.saturation, value.brightness};
+  out[count++] = {mask, value.hue, value.saturation, value.brightness,
+                  hold_slot != kLedInvalidSlot, hold_slot};
 }
 
 bool addHoldCue(const RenderState& state, const LedEvents& events,
@@ -61,19 +62,19 @@ bool addHoldCue(const RenderState& state, const LedEvents& events,
   if (!ledHoldPresentationAllowed(state, slot)) return false;
   if (tile.hold_active_owner) {
     add(out, count, capacity, mask,
-        {kHoldOwnerHue, 100, 45});
+        {kHoldOwnerHue, 100, 45}, slot);
     return true;
   }
   if (ledHoldCancellationActive(
           state, events, slot, now_us,
           kRailEchoHoldCancellationDurationUs)) {
     add(out, count, capacity, mask,
-        {kHoldCancellationHue, 100, 45});
+        {kHoldCancellationHue, 100, 45}, slot);
     return true;
   }
   if (tile.hold_candidate && tile.hold_threshold_qualified) {
     add(out, count, capacity, mask,
-        {kHoldCandidateHue, 100, 45});
+        {kHoldCandidateHue, 100, 45}, slot);
     return true;
   }
   return false;

@@ -3095,14 +3095,15 @@ void test_all_grammar_hold_precedence_caps_and_deduplication() {
   struct GrammarCase {
     LedGrammar* grammar;
     uint16_t owner_mask;
+    uint8_t owner_brightness;
     uint16_t cancellation_hue;
     uint32_t cancellation_duration_us;
   };
   const GrammarCase cases[] = {
-      {&railEchoGrammar(), 1U << 1, 45, 120000},
-      {&exceptionChannelGrammar(), 1U << 1, 350, 90000},
-      {&fieldExtensionGrammar(), 0x0007, 60, 105000},
-      {&meterLampsGrammar(), 1U << 1, 300, 75000},
+      {&railEchoGrammar(), 1U << 1, 45, 45, 120000},
+      {&exceptionChannelGrammar(), 1U << 1, 30, 350, 90000},
+      {&fieldExtensionGrammar(), 0x0007, 45, 60, 105000},
+      {&meterLampsGrammar(), 1U << 1, 45, 300, 75000},
   };
 
   for (const GrammarCase& test_case : cases) {
@@ -3118,8 +3119,16 @@ void test_all_grammar_hold_precedence_caps_and_deduplication() {
     const size_t owner_count = test_case.grammar->frame(
         state, LedEvents(), 1000, segments, kLedGrammarMaxSegments);
     TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, owner_count);
-    TEST_ASSERT_TRUE(hasLedValue(segments, owner_count, test_case.owner_mask,
-                                 120, 45));
+    TEST_ASSERT_TRUE_MESSAGE(
+        hasLedValue(segments, owner_count, test_case.owner_mask, 120,
+                     test_case.owner_brightness),
+        test_case.grammar == &railEchoGrammar()
+            ? "Rail Echo owner missing"
+            : test_case.grammar == &exceptionChannelGrammar()
+                  ? "Exception owner missing"
+                  : test_case.grammar == &fieldExtensionGrammar()
+                        ? "Field Extension owner missing"
+                        : "Meter Lamps owner missing");
 
     LedEngine engine;
     BoardAdapter board;
@@ -3144,10 +3153,9 @@ void test_all_grammar_hold_precedence_caps_and_deduplication() {
     LedEngine failure_engine;
     failure_engine.setGrammar(*test_case.grammar);
     failure_engine.render(state, LedEvents(), 2000, board);
-    TEST_ASSERT_FALSE(hasLedValue(
-        &segments[0], 0, test_case.owner_mask, 120, 45));
     TEST_ASSERT_FALSE(failure_engine.resolved(1).hue == 120 &&
-                      failure_engine.resolved(1).brightness == 45);
+                      failure_engine.resolved(1).brightness ==
+                          test_case.owner_brightness);
 
     state.slots[0].feedback = TileFeedback::Ready;
     state.source_status = "stale";
@@ -3155,7 +3163,8 @@ void test_all_grammar_hold_precedence_caps_and_deduplication() {
     source_engine.setGrammar(*test_case.grammar);
     source_engine.render(state, LedEvents(), 3000, board);
     TEST_ASSERT_FALSE(source_engine.resolved(1).hue == 120 &&
-                      source_engine.resolved(1).brightness == 45);
+                      source_engine.resolved(1).brightness ==
+                          test_case.owner_brightness);
 
     state.source_status = "current";
     state.hold_lifecycle_blocked = true;
@@ -3164,7 +3173,8 @@ void test_all_grammar_hold_precedence_caps_and_deduplication() {
     lifecycle_engine.setGrammar(*test_case.grammar);
     lifecycle_engine.render(state, LedEvents(), 4000, board);
     TEST_ASSERT_FALSE(lifecycle_engine.resolved(1).hue == 120 &&
-                      lifecycle_engine.resolved(1).brightness == 45);
+                      lifecycle_engine.resolved(1).brightness ==
+                          test_case.owner_brightness);
 
     state.hold_lifecycle_blocked = false;
     state.hold_empty_report_complete = true;
@@ -3179,7 +3189,9 @@ void test_all_grammar_hold_precedence_caps_and_deduplication() {
     g_led_calls.clear();
     LedEvents all_off;
     all_off.all_off = true;
-    engine.render(state, all_off, 6000, board);
+    LedEngine all_off_engine;
+    all_off_engine.setGrammar(*test_case.grammar);
+    all_off_engine.render(state, all_off, 6000, board);
     TEST_ASSERT_EQUAL_UINT32(1, g_led_calls.size());
     TEST_ASSERT_EQUAL_UINT16(LedEngine::kAllMask, g_led_calls[0].mask);
     TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
@@ -3193,8 +3205,10 @@ void test_all_grammar_hold_precedence_caps_and_deduplication() {
     const size_t cancel_count = test_case.grammar->frame(
         state, cancellation, 7000, segments, kLedGrammarMaxSegments);
     TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, cancel_count);
-    TEST_ASSERT_TRUE(hasLedValue(segments, cancel_count, test_case.owner_mask,
-                                 test_case.cancellation_hue, 45));
+    TEST_ASSERT_TRUE(hasLedValue(segments, cancel_count,
+                                 test_case.owner_mask,
+                                 test_case.cancellation_hue,
+                                 test_case.owner_brightness));
   }
 }
 

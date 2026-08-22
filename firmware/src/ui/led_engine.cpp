@@ -20,6 +20,13 @@ void LedEngine::resolve(const LedSegment* segments, size_t count,
   for (uint8_t index = 0; index < kLedCount; ++index) resolved_[index] = {};
   for (size_t segment = 0; segment < count; ++segment) {
     const LedSegment& input = segments[segment];
+    if (input.hold_cue &&
+        (events.all_off ||
+         events.semantic_event == LedSemanticEvent::Health ||
+         events.semantic_event == LedSemanticEvent::Sync ||
+         !ledHoldPresentationAllowed(state, input.hold_slot))) {
+      continue;
+    }
     for (uint8_t index = 0; index < kLedCount; ++index) {
       if ((input.mask & (static_cast<uint16_t>(1U) << index)) == 0) continue;
       resolved_[index] = {input.hue, input.saturation, input.brightness};

@@ -6,9 +6,33 @@ constexpr uint16_t kKeyMasks[3] = {(1U << 1), (1U << 4), (1U << 7)};
 constexpr uint16_t kLamps = (1U << 0) | (1U << 2) | (1U << 3) | (1U << 6);
 
 void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
-         uint16_t hue, uint8_t saturation, uint8_t brightness) {
+         uint16_t hue, uint8_t saturation, uint8_t brightness,
+         uint8_t hold_slot = kLedInvalidSlot) {
   if (mask == 0 || count >= cap || brightness == 0) return;
-  out[count++] = {mask, hue, saturation, brightness};
+  out[count++] = {mask, hue, saturation, brightness,
+                  hold_slot != kLedInvalidSlot, hold_slot};
+}
+
+bool addHoldCue(const RenderState::Slot& tile, const RenderState& state,
+                const LedEvents& events, uint8_t slot, uint32_t now_us,
+                LedSegment* out, size_t& count, size_t capacity) {
+  const uint16_t lamp = kKeyMasks[slot];
+  if (!ledHoldPresentationAllowed(state, slot)) return false;
+  if (tile.hold_active_owner) {
+    add(out, count, capacity, lamp, 120, 100, 45, slot);
+    return true;
+  }
+  if (ledHoldCancellationActive(
+          state, events, slot, now_us,
+          kMeterLampsHoldCancellationDurationUs)) {
+    add(out, count, capacity, lamp, 300, 100, 45, slot);
+    return true;
+  }
+  if (tile.hold_candidate && tile.hold_threshold_qualified) {
+    add(out, count, capacity, lamp, 185, 100, 45, slot);
+    return true;
+  }
+  return false;
 }
 
 uint8_t brightness(TileState state, bool pulse_high) {
@@ -89,6 +113,10 @@ class MeterLamps final : public LedGrammar {
     }
     for (uint8_t slot = 0; slot < RenderState::kSlotCount; ++slot) {
       const RenderState::Slot& tile = state.slots[slot];
+      if (addHoldCue(tile, state, events, slot, now_us, out, count,
+                     capacity)) {
+        continue;
+      }
       uint16_t color = hue(tile.state);
       uint8_t value = brightness(tile.state, state.blocked_pulse_high);
       if (tile.feedback == TileFeedback::Pending) {

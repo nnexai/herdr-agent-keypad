@@ -13,9 +13,11 @@ bool active(TileFeedback feedback) {
 }
 
 void add(LedSegment* out, size_t& count, size_t cap, uint16_t mask,
-         uint16_t hue, uint8_t saturation, uint8_t brightness) {
+         uint16_t hue, uint8_t saturation, uint8_t brightness,
+         uint8_t hold_slot = kLedInvalidSlot) {
   if (mask == 0 || count >= cap || brightness == 0) return;
-  out[count++] = {mask, hue, saturation, brightness};
+  out[count++] = {mask, hue, saturation, brightness,
+                  hold_slot != kLedInvalidSlot, hold_slot};
 }
 
 bool addHoldCue(const RenderState& state, const LedEvents& events,
@@ -25,17 +27,17 @@ bool addHoldCue(const RenderState& state, const LedEvents& events,
   const uint16_t mask = kKeyMasks[slot];
   if (!ledHoldPresentationAllowed(state, slot)) return false;
   if (tile.hold_active_owner) {
-    add(out, count, capacity, mask, kHoldOwnerHue, 100, 30);
+    add(out, count, capacity, mask, kHoldOwnerHue, 100, 30, slot);
     return true;
   }
   if (ledHoldCancellationActive(
           state, events, slot, now_us,
           kExceptionChannelHoldCancellationDurationUs)) {
-    add(out, count, capacity, mask, kHoldCancellationHue, 100, 30);
+    add(out, count, capacity, mask, kHoldCancellationHue, 100, 30, slot);
     return true;
   }
   if (tile.hold_candidate && tile.hold_threshold_qualified) {
-    add(out, count, capacity, mask, kHoldCandidateHue, 100, 30);
+    add(out, count, capacity, mask, kHoldCandidateHue, 100, 30, slot);
     return true;
   }
   return false;
