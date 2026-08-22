@@ -1,0 +1,197 @@
+{
+  "binary_path": ".pio/build/selected-usb/firmware.bin",
+  "binary_sha256": "f5e3cd25dbf7f2857c4215556e3dc5c6eb6f6e78ef751f66c5c3bae28a1f80f8",
+  "boot_id": "0000fccb0deabf8c-04ccea8c",
+  "composite_firmware_sha256": "7b4e93ac234c533ea4ee260df30b3a9800a0e4ed7f888e5fffee333cf4b4f4f1",
+  "decision_manifest_sha256": "ef916f952c6e4a49722b202a123879ab6efba660027e9599fa72249610f59470",
+  "decision_sha256": "f3dd250e8119fed74e796964d51bf0a41402f40014ec407e3415c1e7bfa610d1",
+  "deployment_id": "9a04faad5282b266bef6a75118d1e414b7a73c7f51485c74332da60d217321cd",
+  "descriptor_expectation_sha256": "200cbc403d8f737b2840af35d49ac185506754e2504fcbb3e2fd12f5a19cc68c",
+  "descriptor_tuple": {
+    "cdc_control_interface": 1,
+    "cdc_data_interface": 2,
+    "cdc_functions": 1,
+    "hid_interface": 0,
+    "pid": 4097,
+    "serial": "8CBFEA0DCBFC",
+    "standard_keyboard_hid": 1,
+    "vid": 12346
+  },
+  "descriptor_tuple_sha256": "dc4751298f8559067d057b996a835b0881c7d4ee961c8003078e7679635f65fb",
+  "firmware_sha256": "f5e3cd25dbf7f2857c4215556e3dc5c6eb6f6e78ef751f66c5c3bae28a1f80f8",
+  "fresh_boot_id": "0000fccb0deabf8c-04ccea8c",
+  "fresh_session_id": "session-0f609383aa8f890c",
+  "hello_firmware": "phase1-bringup",
+  "kind": "phase03.2-final-deployment",
+  "observed_at_unix_ms": 1787395752874,
+  "pair_digest": "dfc89c32966cb7f7fa0f0c98d9d9ed4086a3c31eb1c3340ef26f3ce1304f0257",
+  "pair_identity_digest": "dfc89c32966cb7f7fa0f0c98d9d9ed4086a3c31eb1c3340ef26f3ce1304f0257",
+  "paired_device_id": "0000fccb0deabf8c",
+  "pairing_record_sha256": "dfc89c32966cb7f7fa0f0c98d9d9ed4086a3c31eb1c3340ef26f3ce1304f0257",
+  "phase": "03.2",
+  "platformio_environment": "selected-usb",
+  "protocol_version": 1,
+  "schema_version": 1,
+  "session_id": "session-0f609383aa8f890c",
+  "source_files": [
+    {
+      "path": "platformio.ini",
+      "sha256": "ee15cb322ffc5d12ba5d1ee60cfe9a36654f2822c3c55aec4e3e51b615bebaf9"
+    },
+    {
+      "path": "firmware/src/app/agent_projection.cpp",
+      "sha256": "dccb7b13a1e84d4c07c3af06b7506f6cef2f701477b4b4e4b2a43a98b5ea00fe"
+    },
+    {
+      "path": "firmware/src/app/hold_controller.cpp",
+      "sha256": "5f2366c3eeb0171df7bc7ec534cd841facbce1964dd09daf0ec4bf69c9a2b7fa"
+    },
+    {
+      "path": "firmware/src/app/menu_controller.cpp",
+      "sha256": "ba1dc64a19e9510de479fea218d360459c2d9957f0b8a51dcd8cd927adc21b05"
+    },
+    {
+      "path": "firmware/src/app/product_input_router.cpp",
+      "sha256": "bc41fe19e7a6e9eff8e3181e044efea591cf6849ef64538a8debcf791e464695"
+    },
+    {
+      "path": "firmware/src/app/settings_store.cpp",
+      "sha256": "642936ac81128c4aa023f811a1d0757035de9c20db0a1d88b32617e61872811f"
+    },
+    {
+      "path": "firmware/src/board/board_adapter.cpp",
+      "sha256": "2d289e1cfe0b5b25cc38a35de5130f47f2aac3e654eb787b7c9f360ee5accea2"
+    },
+    {
+      "path": "firmware/src/feasibility/composite_probe.cpp",
+      "sha256": "7da28360c8f33a7dd420ab619dc489ce1056ef1ed003436e7358efc08bbbd305"
+    },
+    {
+      "path": "firmware/src/main.cpp",
+      "sha256": "f7f69ffbcf6edadf4d1f267fde2686e424db15df1daa74d8649972db0c311d48"
+    },
+    {
+      "path": "firmware/src/protocol/protocol.cpp",
+      "sha256": "e5f58d7f9a504ef3c36239733f5bc38fafb02f56b974d397b749057fd013f7eb"
+    },
+    {
+      "path": "firmware/src/transport/fixed_space_hid.cpp",
+      "sha256": "39995ab4f96de7fa4d75044a5ef5d2c07937d98912cc1091070f9440936407b3"
+    },
+    {
+      "path": "firmware/src/transport/usb_cdc.cpp",
+      "sha256": "45583cb95b0b565bfe487a34351b4c513536f0ddca3a7008026626b0ad8497e2"
+    },
+    {
+      "path": "firmware/src/ui/led_engine.cpp",
+      "sha256": "a503556b7ef2a8493aa94f81552f7ef51c7e544bb17e141f903d1bac0771bed6"
+    },
+    {
+      "path": "firmware/src/ui/led_grammar_exception.cpp",
+      "sha256": "79c5cd5b26f4d326f16547796e30334998092a9d2030667d660437b5ae59ac53"
+    },
+    {
+      "path": "firmware/src/ui/led_grammar_field_ext.cpp",
+      "sha256": "809590ef8bb100d82ac7c716c8e35ce24b50855369df0b677077bdb0a2de5836"
+    },
+    {
+      "path": "firmware/src/ui/led_grammar_meter_lamps.cpp",
+      "sha256": "69cbb65ddb0d1e887d004c1a9b2fc023e39fe417a91e79821e2ce1938854255e"
+    },
+    {
+      "path": "firmware/src/ui/led_grammar_rail_echo.cpp",
+      "sha256": "b718a876c97adc6bc18268d1add596ffbe88f2ee28092ed31b5b833f394fcdf0"
+    },
+    {
+      "path": "firmware/src/ui/theme_beacon.cpp",
+      "sha256": "91addf699e8ce4dff756c14c35c106c36d37bb33f28cb34da5036f3f03217a13"
+    },
+    {
+      "path": "firmware/src/ui/theme_instrument.cpp",
+      "sha256": "22d4727298ac291dab65848ac0bca25902f457da62c6ce411547b9937cb6f95d"
+    },
+    {
+      "path": "firmware/src/ui/theme_ledger.cpp",
+      "sha256": "198886bbf3495c3474096a709779f0a4507ffd6804d14ca945751ffef06dda97"
+    },
+    {
+      "path": "firmware/src/ui/theme_signal_edge.cpp",
+      "sha256": "7156509115ca99f40c08987db4b5c55069afe2aad868ad1cc08ed749799b9118"
+    },
+    {
+      "path": "firmware/src/app/agent_projection.h",
+      "sha256": "be43b2102f5a9e3f458e4900c86b29af06851af3d2b064e306ac7091777ad56a"
+    },
+    {
+      "path": "firmware/src/app/hold_controller.h",
+      "sha256": "ba6cd4935b67fd2fd866532f1348e8696f306fa4fe910e455debe201581a7323"
+    },
+    {
+      "path": "firmware/src/app/menu_controller.h",
+      "sha256": "c16fa5f16eca95ac9675d77ee66c5f76a96ab45950544836f90cfd60ceafb8e1"
+    },
+    {
+      "path": "firmware/src/app/product_input_router.h",
+      "sha256": "bbbaff5d856107e492c07d62ecaef5c8f786cce21f96e5cf8d8a89ca4e0d63a8"
+    },
+    {
+      "path": "firmware/src/app/settings_store.h",
+      "sha256": "9662f0b22edd23e11c65d179b4ed7ccf28782ad76552f02daee882dc70bcf9a6"
+    },
+    {
+      "path": "firmware/src/board/board_adapter.h",
+      "sha256": "8cc8567859e3e5edb7fa450b8d14783b5ddebae27b792f3c7c972a08730fd760"
+    },
+    {
+      "path": "firmware/src/board/physical_map.h",
+      "sha256": "f734e1db188ce12b9dd6a56b61c5a1f83ca927bcb18073e9933501fbd2983de1"
+    },
+    {
+      "path": "firmware/src/metrics/proof_metrics.h",
+      "sha256": "a053595b7ab251bc603e08e46e7d3b203cf9f3a315ba7b4a3b3e6fbb8975ed45"
+    },
+    {
+      "path": "firmware/src/protocol/protocol.h",
+      "sha256": "1f8e88627c22fe1050b087efea76468e16e05a378753daf16a3a14aa32ef5f61"
+    },
+    {
+      "path": "firmware/src/transport/fixed_space_hid.h",
+      "sha256": "9911e345d3d10383638ad8c2fdb1e6991d80b743a04ec2bfa843c3b3fd99f407"
+    },
+    {
+      "path": "firmware/src/transport/link.h",
+      "sha256": "f6bf84747c671a33aa877662f0dcbf9137d8235f9ba8fddd039f591eb6b3da26"
+    },
+    {
+      "path": "firmware/src/ui/animation.h",
+      "sha256": "d1be5e4ebc1f92d50a831a7c347729d3ad0b7622fadba73e9e34f29801e0e5b0"
+    },
+    {
+      "path": "firmware/src/ui/bringup_renderer.h",
+      "sha256": "833f5f3bf23a688b2cfab0818ace27c28eaeb359344e8df953bf105d4663b840"
+    },
+    {
+      "path": "firmware/src/ui/led_engine.h",
+      "sha256": "35ea5a9b57ecceb39bef0a87191fddb8c1cc791e31f55814cf612dc9c4b9f399"
+    },
+    {
+      "path": "firmware/src/ui/led_grammar.h",
+      "sha256": "2d1bac1fb8015b126d6c80d8e7e6f4afde8939b14972dbb8026551ee14e47541"
+    },
+    {
+      "path": "firmware/src/ui/render_state.h",
+      "sha256": "237586cc5a08c99b8b1bf7398ab6b06f8f95a3310c24c31c1936abd462231bbb"
+    },
+    {
+      "path": "firmware/src/ui/theme.h",
+      "sha256": "aab762301fd4b14dac1e9c156b9ec7dff72ee4245fb6cf3e261323e00bb6a47f"
+    },
+    {
+      "path": "firmware/src/ui/theme_common.h",
+      "sha256": "e347324b8c0f47f94476f9063adcfa3a87d573866b65c1e32ee77aa4e82772da"
+    }
+  ],
+  "source_sha256": "5570ceb526a33a7780c38377285d0767bc794a8faca8133125030f127cde92bd",
+  "upload_result": "pass",
+  "usb_serial": "8C:BF:EA:0D:CB:FC"
+}
