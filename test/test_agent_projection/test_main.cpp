@@ -215,6 +215,9 @@ void tearDown() {
   g_led_calls.clear();
   g_brightness_calls.clear();
   g_sync_draw_count = 0;
+  g_projection_space_down = 0;
+  g_projection_release_all = 0;
+  g_projection_hid_ready = true;
 }
 
 // --- Preserved Phase 02.1 behavior ---------------------------------------
@@ -3483,6 +3486,8 @@ int runAllTests() {
   RUN_TEST(test_rejected_persists_beyond_success_bound);
   RUN_TEST(test_terminal_feedback_does_not_block_next_press);
   RUN_TEST(test_pending_press_is_superseded_by_new_press);
+  RUN_TEST(test_render_state_exposes_passive_hold_candidate_and_owner);
+  RUN_TEST(test_passive_owner_survives_focus_and_snapshot_generation_changes);
   RUN_TEST(test_multiple_agent_keys_capture_without_waiting);
   RUN_TEST(test_settings_fresh_and_legacy_load_without_boot_write);
   RUN_TEST(test_settings_v2_roundtrip_and_bounded_brightness);

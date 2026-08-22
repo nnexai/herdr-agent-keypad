@@ -5,6 +5,7 @@
 
 #include "../board/board_adapter.h"
 #include "../ui/theme.h"
+#include "hold_controller.h"
 
 namespace {
 constexpr const char* kSourceStatuses[] = {"current", "empty", "stale", "unavailable", "offline"};
@@ -44,6 +45,15 @@ bool validVersion(const char* value) {
     }
   }
   return has_digit;
+}
+
+bool holdFeedbackFailure(TileFeedback feedback) {
+  return feedback == TileFeedback::Rejected ||
+         feedback == TileFeedback::Stale ||
+         feedback == TileFeedback::Vanished ||
+         feedback == TileFeedback::Offline ||
+         feedback == TileFeedback::Uncertain ||
+         feedback == TileFeedback::Failed;
 }
 
 LGFX_Sprite g_composition;
@@ -301,6 +311,47 @@ MenuState menuCaptureFixture(CaptureScene scene) {
 
 AgentProjection::AgentProjection() : feedback_{} {
   for (uint8_t slot = 0; slot < kSlotCount; ++slot) feedback_[slot] = Feedback::Disabled;
+}
+
+void AgentProjection::applyHoldPresentation(
+    RenderState& state, const Generation& generation) const {
+  if (hold_controller_ == nullptr) return;
+
+  const HoldController::PresentationState presentation =
+      hold_controller_->presentation();
+  state.hold_lifecycle_cleared_epoch =
+      presentation.lifecycle_cleared_epoch;
+  state.hold_lifecycle_blocked = presentation.lifecycle_blocked;
+  state.hold_empty_report_complete = presentation.empty_report_complete;
+
+  // A source fence or projection sync can never decorate a frame with stale
+  // physical ownership. The controller remains the only authority that can
+  // clear that ownership; this branch only suppresses its passive view.
+  if (state.syncing || strcmp(generation.source_status, "current") != 0 ||
+      presentation.lifecycle_blocked || !presentation.empty_report_complete) {
+    return;
+  }
+
+  const bool candidate_index_valid =
+      presentation.candidate_slot < kSlotCount;
+  const bool candidate_feedback_visible =
+      candidate_index_valid &&
+      (feedback_[presentation.candidate_slot] == Feedback::Pending ||
+       feedback_[presentation.candidate_slot] == Feedback::Success);
+  if (candidate_index_valid &&
+      generation.tiles[presentation.candidate_slot].binding.occupied &&
+      candidate_feedback_visible) {
+    RenderState::Slot& candidate =
+        state.slots[presentation.candidate_slot];
+    candidate.hold_candidate = true;
+    candidate.hold_threshold_qualified = presentation.threshold_qualified;
+  }
+
+  if (presentation.owner_slot < kSlotCount &&
+      generation.tiles[presentation.owner_slot].binding.occupied &&
+      !holdFeedbackFailure(feedback_[presentation.owner_slot])) {
+    state.slots[presentation.owner_slot].hold_active_owner = true;
+  }
 }
 
 ThemeRenderer& AgentProjection::theme() const {
@@ -726,6 +777,7 @@ bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
   state.diagnostics.revision_suffix = generation.diagnostics_revision_suffix;
   state.diagnostics.error_code = generation.diagnostics_error_code;
   out.feedback = feedback;
+  applyHoldPresentation(state, generation);
   renderer.composeTile(g_composition, slot, state);
   g_composition.pushSprite(display, 0, 0);
 #ifdef ARDUINO
@@ -949,6 +1001,7 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
   state.diagnostics.session_suffix = committed_generation_.diagnostics_session_suffix;
   state.diagnostics.revision_suffix = committed_generation_.diagnostics_revision_suffix;
   state.diagnostics.error_code = committed_generation_.diagnostics_error_code;
+  applyHoldPresentation(state, committed_generation_);
   return state;
 }
 

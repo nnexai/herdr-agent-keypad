@@ -789,6 +789,7 @@ void setup() {
   board.begin(physicalMap);
   settingsStore.load();
   menuController.resetFromStore();
+  agentProjection.setHoldController(holdController);
   agentProjection.setTheme(themeById(menuController.storedTheme()));
   presentedTheme = menuController.storedTheme();
   agentProjection.animation().setAmbientPeriod(agentProjection.theme().ambientPeriodUs());

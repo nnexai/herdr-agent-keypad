@@ -7,6 +7,7 @@
 #include "../ui/animation.h"
 #include "../ui/render_state.h"
 
+class HoldController;
 class BoardAdapter;
 class ThemeRenderer;
 struct MenuState;
@@ -74,6 +75,12 @@ class AgentProjection final {
   // Presentation is delegated to the active theme; staging, commit fencing,
   // bindings, and flush ownership stay here.
   void setTheme(ThemeRenderer& theme) { theme_ = &theme; }
+  // HoldController remains the sole authority for candidate and owner
+  // lifetime. AgentProjection retains only this non-owning source pointer and
+  // reads its passive query while materializing each complete RenderState.
+  void setHoldController(const HoldController& hold_controller) {
+    hold_controller_ = &hold_controller;
+  }
   ThemeRenderer& theme() const;
   RenderState renderState(uint32_t now_us) const;
   AnimationScheduler& animation() { return animation_; }
@@ -163,6 +170,8 @@ class AgentProjection final {
     char diagnostics_revision_suffix[7] = "UNAVAL";
     char diagnostics_error_code[17] = {};
   };
+  void applyHoldPresentation(RenderState& state,
+                             const Generation& generation) const;
   bool copyBounded(char* destination, size_t capacity, const char* source, bool allow_empty) const;
   bool copyOptional(char* destination, size_t capacity, JsonVariantConst value, bool& present) const;
   bool copyDisplay(char* destination, size_t capacity, const char* source, const char* fallback) const;
@@ -203,6 +212,7 @@ class AgentProjection final {
   bool syncing_ = true;
   uint32_t next_action_ = 1;
   ThemeRenderer* theme_ = nullptr;
+  const HoldController* hold_controller_ = nullptr;
   AnimationScheduler animation_{};
   uint32_t semantic_event_epoch_ = 0;
   uint32_t semantic_event_started_us_ = 0;

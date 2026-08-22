@@ -74,7 +74,12 @@ struct RenderState {
     // One complete-frame physical press cue. Presentation only: it never
     // changes request authority or implies host acknowledgement.
     bool press_impulse = false;
-    };
+    // Passive HoldController facts. These are value-only presentation flags;
+    // they carry no action, binding, session, keycode, timer, or mutation path.
+    bool hold_candidate = false;
+    bool hold_threshold_qualified = false;
+    bool hold_active_owner = false;
+  };
   CodexRenderView codex;
   DiagnosticsRenderView diagnostics;
 
@@ -89,6 +94,11 @@ struct RenderState {
   uint32_t semantic_event_epoch = 0;
   uint32_t semantic_event_started_us = 0;
   uint8_t semantic_event_phase = 0;
+  // Passive lifecycle facts from HoldController. They remain bounded and
+  // cannot clear, authorize, transfer, or extend physical state.
+  uint32_t hold_lifecycle_cleared_epoch = 0;
+  bool hold_lifecycle_blocked = false;
+  bool hold_empty_report_complete = true;
   uint8_t ambient_phase = 0;
   // BLOCKED pulse phase from the AnimationScheduler (1.2 s period, eight
   // complete samples, LED synced). Themes use this for smooth motion.
