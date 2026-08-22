@@ -14,6 +14,12 @@ from phase1_bringup.phase3_smoke import (
     ROOT,
     _phase31_sidecar,
     finalize_evidence,
+    phase32_descriptor_tuple,
+    phase32_source_digest,
+    phase32_deployment_id_for,
+    validate_phase32_composite_lineage,
+    validate_phase32_deployment,
+    validate_phase32_deployment_file,
     run_guided,
     sha256_file,
     validate_phase31_current_deployment_identity,
@@ -692,3 +698,131 @@ class Phase31BudgetLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+class Phase32DeploymentLockTests(unittest.TestCase):
+    def _fixture(self, root: Path) -> tuple[dict[str, object], dict[str, object], dict[str, object], Path]:
+        decision = json.loads(
+            (ROOT / "artifacts/phase03.2/composite-decision.json").read_text(
+                encoding="ascii"
+            )
+        )
+        manifest = json.loads(
+            (ROOT / "artifacts/phase03.2/composite-manifest.json").read_text(
+                encoding="ascii"
+            )
+        )
+        firmware = root / "firmware.bin"
+        firmware.write_bytes(b"phase32 selected-usb fixture")
+        source_paths = [ROOT / "platformio.ini", ROOT / "firmware/src/main.cpp"]
+        source_files = [
+            {"path": str(path.relative_to(ROOT)), "sha256": sha256_file(path)}
+            for path in source_paths
+        ]
+        descriptor = phase32_descriptor_tuple()
+        deployment: dict[str, object] = {
+            "schema_version": 1,
+            "kind": "phase03.2-final-deployment",
+            "phase": "03.2",
+            "platformio_environment": "selected-usb",
+            "binary_path": str(firmware.relative_to(ROOT)),
+            "binary_sha256": sha256_file(firmware),
+            "firmware_sha256": sha256_file(firmware),
+            "source_files": source_files,
+            "source_sha256": phase32_source_digest(source_paths),
+            "upload_result": "pass",
+            "paired_device_id": "0000fccb0deabf8c",
+            "pair_digest": decision["deployment"]["pair_digest"],
+            "pair_identity_digest": decision["deployment"]["pair_digest"],
+            "pairing_record_sha256": decision["deployment"]["pairing_record_sha256"],
+            "hello_firmware": "phase1-bringup",
+            "protocol_version": 1,
+            "fresh_boot_id": "phase32-boot-2",
+            "fresh_session_id": "phase32-session-2",
+            "boot_id": "phase32-boot-2",
+            "session_id": "phase32-session-2",
+            "observed_at_unix_ms": 2,
+            "decision_sha256": decision["decision_sha256"],
+            "decision_manifest_sha256": decision["manifest_sha256"],
+            "composite_firmware_sha256": decision["deployment"]["firmware_binary_sha256"],
+            "descriptor_expectation_sha256": decision["deployment"]["descriptor_expectation_sha256"],
+            "descriptor_tuple": descriptor,
+            "descriptor_tuple_sha256": phase32_source_digest([]) if False else "",
+        }
+        deployment["descriptor_tuple_sha256"] = phase32_source_digest([]) if False else (
+            __import__("hashlib").sha256(
+                json.dumps(
+                    descriptor, sort_keys=True, separators=(",", ":")
+                ).encode("ascii")
+            ).hexdigest()
+        )
+        deployment["deployment_id"] = phase32_deployment_id_for(deployment)
+        return deployment, decision, manifest, firmware
+
+    def test_phase32_lineage_reopens_terminal_pass_and_descriptor_tuple(self):
+        binding_path = Path.home() / ".config/herdr/keypad-binding.json"
+        lineage = validate_phase32_composite_lineage(
+            ROOT / "artifacts/phase03.2/composite-decision.json",
+            binding_path,
+        )
+        self.assertEqual(lineage["decision"]["status"], "PASS")
+        self.assertEqual(lineage["descriptor"]["cdc_control_interface"], 1)
+        self.assertEqual(lineage["descriptor"]["cdc_data_interface"], 2)
+
+    def test_phase32_deployment_rejects_every_stale_lineage_fact(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            deployment, decision, manifest, firmware = self._fixture(Path(directory))
+            binding = SimpleNamespace(
+                device_id="0000fccb0deabf8c", firmware="phase1-bringup", protocol=1
+            )
+            cases = (
+                ("pair", "pair_digest", "0" * 64, "pair digest"),
+                ("descriptor", "descriptor_tuple_sha256", "0" * 64, "descriptor tuple"),
+                ("decision", "decision_sha256", "0" * 64, "decision"),
+                ("source", "source_sha256", "0" * 64, "source"),
+                ("firmware", "hello_firmware", "old-firmware", "firmware"),
+                ("protocol", "protocol_version", 2, "protocol"),
+            )
+            for name, field, value, message in cases:
+                with self.subTest(name=name):
+                    candidate = dict(deployment)
+                    candidate[field] = value
+                    with self.assertRaisesRegex(ValueError, message):
+                        validate_phase32_deployment(
+                            candidate, firmware, decision, manifest, binding
+                        )
+            previous = dict(deployment)
+            with self.assertRaisesRegex(ValueError, "fresh boot"):
+                validate_phase32_deployment(
+                    deployment, firmware, decision, manifest, binding, previous=previous
+                )
+            previous["boot_id"] = "phase32-boot-old"
+            with self.assertRaisesRegex(ValueError, "fresh session"):
+                validate_phase32_deployment(
+                    deployment, firmware, decision, manifest, binding, previous=previous
+                )
+
+    def test_phase32_deployment_file_reopens_sidecar_and_rejects_tamper(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            root = Path(directory)
+            deployment, _decision, _manifest, firmware = self._fixture(root)
+            deployment_path = root / "deployment.json"
+            write_json(deployment_path, deployment, checksum=True)
+            reopened = validate_phase32_deployment_file(
+                deployment_path,
+                firmware=firmware,
+                decision_path=ROOT / "artifacts/phase03.2/composite-decision.json",
+                binding_path=Path.home() / ".config/herdr/keypad-binding.json",
+            )
+            self.assertEqual(reopened["deployment_id"], deployment["deployment_id"])
+            deployment_path.write_text(
+                deployment_path.read_text(encoding="ascii").replace(
+                    "phase32-session-2", "tampered-session"
+                ),
+                encoding="ascii",
+            )
+            with self.assertRaisesRegex(ValueError, "checksum"):
+                validate_phase32_deployment_file(
+                    deployment_path,
+                    firmware=firmware,
+                    decision_path=ROOT / "artifacts/phase03.2/composite-decision.json",
+                    binding_path=Path.home() / ".config/herdr/keypad-binding.json",
+                )
