@@ -443,6 +443,11 @@ def _validate_final_gestures(
         or reconciliation.get("human_sample_gestures") != 0
     ):
         _final_failure("gesture schedule is not immutable measured production evidence")
+    measurement_session = reconciliation.get(
+        "usb_session", deployment.get("session_id")
+    )
+    if not isinstance(measurement_session, str) or not measurement_session:
+        _final_failure("gesture measurement USB session is missing")
     scheduled_counts = reconciliation.get("scheduled_counts")
     observed_counts = reconciliation.get("observed_counts")
     if (
@@ -520,17 +525,12 @@ def _validate_final_gestures(
             or not isinstance(snapshot_revision, int)
             or isinstance(snapshot_revision, bool)
             or snapshot_revision <= 0
-            or focus.get("usb_session", focus.get("session_id")) != deployment.get("session_id")
+            or focus.get("usb_session", focus.get("session_id")) != measurement_session
             or not isinstance(focus.get("outcome"), str)
             or not isinstance(focus.get("focused"), bool)
             or not isinstance(focus.get("authorized"), bool)
         ):
             _final_failure("gesture record focus/session correlation is incomplete")
-        expected_authorized = (
-            focus.get("outcome") == "accepted" and focus.get("focused") is True
-        )
-        if focus.get("authorized") is not expected_authorized:
-            _final_failure("gesture record authorization does not match exact focus success")
         values = record.get("hid_values")
         if (
             not isinstance(values, list)
@@ -556,6 +556,12 @@ def _validate_final_gestures(
         expected_down = str(category) in down_categories
         if has_down is not expected_down or focus.get("authorized") is not has_down:
             _final_failure("gesture record HID does not match exact focus authorization")
+        if has_down and not (
+            focus.get("outcome") == "accepted" and focus.get("focused") is True
+        ):
+            _final_failure(
+                "gesture HID authorization lacks exact focus success"
+            )
         if has_down:
             down_total += 1
             up_total += 1
@@ -581,6 +587,96 @@ def _validate_final_gestures(
     ):
         _final_failure("gesture category or HID totals do not reconcile")
     return down_total, up_total
+
+
+def _final_lifecycle_recovery(
+    input_oracle: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+) -> tuple[dict[str, str], dict[str, str]]:
+    intervals = input_oracle.get("capture_intervals")
+    lifecycle = [
+        interval
+        for interval in intervals
+        if isinstance(interval, Mapping)
+        and interval.get("interval_id") == "lifecycle"
+    ] if isinstance(intervals, list) else []
+    if len(lifecycle) != 1:
+        _final_failure("lifecycle recovery interval is missing or ambiguous")
+    interval = lifecycle[0]
+    initial = {
+        "boot_id": _require_string(
+            interval.get("initial_boot_id"), "lifecycle initial boot_id"
+        ),
+        "session_id": _require_string(
+            interval.get("initial_session_id"), "lifecycle initial session_id"
+        ),
+    }
+    descriptor = deployment.get("descriptor_tuple")
+    if not isinstance(descriptor, Mapping):
+        _final_failure("lifecycle deployment descriptor identity is missing")
+    try:
+        expected_vid_pid = (
+            f"{int(descriptor.get('vid')):04x}:{int(descriptor.get('pid')):04x}"
+        )
+    except (TypeError, ValueError):
+        _final_failure("lifecycle deployment VID/PID identity is invalid")
+    expected_serial_value = deployment.get("usb_serial") or descriptor.get("serial")
+    expected_serial = "".join(
+        character
+        for character in _require_string(
+            expected_serial_value, "lifecycle deployment USB serial"
+        )
+        if character.isalnum()
+    ).upper()
+    events = interval.get("events")
+    if not isinstance(events, list):
+        _final_failure("lifecycle recovery events are missing")
+    pending_removal = False
+    remounts: list[dict[str, str]] = []
+    for event in events:
+        if not isinstance(event, Mapping):
+            _final_failure("lifecycle recovery event is malformed")
+        if event.get("type") == "DEVICE_REMOVED":
+            if event.get("verified") is not True:
+                _final_failure("lifecycle device removal was not verified")
+            pending_removal = True
+        elif event.get("type") == "REMOUNT":
+            if (
+                not pending_removal
+                or event.get("verified") is not True
+                or event.get("empty") is not True
+            ):
+                _final_failure("lifecycle replacement return is incomplete")
+            observed_serial = "".join(
+                character
+                for character in _require_string(
+                    event.get("usb_serial"), "lifecycle returned USB serial"
+                )
+                if character.isalnum()
+            ).upper()
+            if (
+                event.get("vid_pid") != expected_vid_pid
+                or observed_serial != expected_serial
+            ):
+                _final_failure("lifecycle replacement identity is not exact")
+            remounts.append({
+                "boot_id": _require_string(
+                    event.get("boot_id"), "lifecycle returned boot_id"
+                ),
+                "session_id": _require_string(
+                    event.get("session_id"), "lifecycle returned session_id"
+                ),
+            })
+            pending_removal = False
+    if not remounts or pending_removal:
+        _final_failure("lifecycle replacement did not return before completion")
+    if not any(
+        identity["boot_id"] != initial["boot_id"]
+        and identity["session_id"] != initial["session_id"]
+        for identity in remounts
+    ):
+        _final_failure("lifecycle recovery did not prove a fresh boot and session")
+    return remounts[-1], initial
 
 
 def build_final_qualification(
@@ -617,11 +713,8 @@ def build_final_qualification(
         _final_failure("live paired hello is malformed")
     observed_boot = _require_string(hello.get("boot_id"), "observed boot_id")
     observed_session = _require_string(hello.get("session_id"), "observed session_id")
-    if (
-        observed_boot != deployment.get("boot_id")
-        or observed_session != deployment.get("session_id")
-    ):
-        _final_failure("live paired hello boot/session differs from the deployment lock")
+    # The lifecycle matrix deliberately reboots and re-enumerates the device.
+    # Its immutable deployment identity remains fixed; boot/session do not.
     if not isinstance(measurements, Mapping):
         _final_failure("measured production evidence is missing")
     if measurements.get("automated_contracts") != FINAL_AUTOMATED_CONTRACTS:
@@ -664,6 +757,16 @@ def build_final_qualification(
         )
     ):
         _final_failure("measured Linux input capture intervals are incomplete")
+    lifecycle_identity, lifecycle_initial = _final_lifecycle_recovery(
+        input_oracle, deployment
+    )
+    if (
+        observed_boot != lifecycle_identity["boot_id"]
+        or observed_session == lifecycle_initial["session_id"]
+    ):
+        _final_failure(
+            "live paired hello is not correlated to the lifecycle recovery"
+        )
     if (
         input_oracle.get("state") != "UP"
         or input_oracle.get("failures") != []
@@ -701,10 +804,7 @@ def build_final_qualification(
         "cdc": dict(cdc),
         "latency": {name: dict(sample) for name, sample in latency.items()},
         "deployment": deployment_tuple,
-        "observed_device": {
-            "boot_id": observed_boot,
-            "session_id": observed_session,
-        },
+        "observed_device": dict(lifecycle_identity),
         "open_defects": list(open_defects),
     }
     return qualification
@@ -775,13 +875,17 @@ def validate_final_qualification(
     ):
         _final_failure("exact deployment protocol differs")
     observed_device = qualification.get("observed_device")
+    oracle = qualification.get("input_oracle")
+    lifecycle_identity, _lifecycle_initial = _final_lifecycle_recovery(
+        oracle if isinstance(oracle, Mapping) else {},
+        deployment,
+    )
     if (
         not isinstance(observed_device, Mapping)
         or set(observed_device) != {"boot_id", "session_id"}
-        or observed_device.get("boot_id") != deployment.get("boot_id")
-        or observed_device.get("session_id") != deployment.get("session_id")
+        or dict(observed_device) != lifecycle_identity
     ):
-        _final_failure("observed live boot/session identity is missing or stale")
+        _final_failure("observed live lifecycle identity is missing or stale")
     _validate_final_rows(qualification.get("rows"))
     assumptions = qualification.get("edge_assumptions")
     if assumptions != list(FINAL_EDGE_ASSUMPTIONS):
@@ -1931,7 +2035,11 @@ def _normalize_usb_serial(value: str | None) -> str | None:
 
 
 def _find_guided_keyboard_event(
-    vid_pid: str, usb_serial: str | None, timeout: float = 20.0
+    vid_pid: str,
+    usb_serial: str | None,
+    timeout: float = 20.0,
+    *,
+    require_serial: bool = False,
 ) -> Path:
     vid, pid = vid_pid.split(":", 1)
     expected_serial = _normalize_usb_serial(usb_serial)
@@ -1950,8 +2058,8 @@ def _find_guided_keyboard_event(
                 and properties.get("ID_MODEL_ID", "").lower() == pid
                 and (
                     expected_serial is None
-                    or observed_serial is None
                     or observed_serial == expected_serial
+                    or (observed_serial is None and not require_serial)
                 )
             ):
                 matches.append(event)

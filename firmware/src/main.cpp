@@ -12,6 +12,7 @@
 #include "board/board_adapter.h"
 #include "board/physical_map.h"
 #include "metrics/proof_metrics.h"
+#include "metrics/hid_reset_journal.h"
 #include "protocol/protocol.h"
 #include "transport/link.h"
 #include "transport/fixed_space_hid.h"
@@ -495,35 +496,81 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
       return;
     }
     proofMetrics.normalizeUntouchedSamples();
+    const HidResetSnapshot& hid_reset = hidResetJournal().snapshot();
     JsonDocument reply;
     reply["acknowledged"] = proofMetrics.acknowledged;
     reply["allocation_stable"] = proofMetrics.allocation_stable;
     reply["animation_duty_max_percent"] = proofMetrics.animation_duty_max_percent;
+    reply["candidate_transitions"] = proofMetrics.candidate_transitions;
+    reply["chord_lockouts"] = proofMetrics.chord_lockouts;
     reply["compose_flush_max_us"] = proofMetrics.compose_flush_max_us;
     reply["degraded_frames"] = proofMetrics.degraded_frames;
     reply["digest_mismatch"] = proofMetrics.digest_mismatch;
     reply["duplicate"] = proofMetrics.duplicate;
+    reply["eligibility_events"] = proofMetrics.eligibility_events;
+    reply["eligibility_to_down_max_us"] =
+        proofMetrics.eligibility_to_down_max_us;
     reply["first_encoder_response_us"] = proofMetrics.first_encoder_response_us;
     reply["first_press_response_us"] = proofMetrics.first_press_response_us;
+    reply["focus_result_to_eligibility_max_us"] =
+        proofMetrics.focus_result_to_eligibility_max_us;
     reply["frame_count"] = proofMetrics.frame_count;
     reply["full_frames"] = proofMetrics.full_frames;
     reply["half_frames"] = proofMetrics.half_frames;
+    reply["hid_not_ready"] = proofMetrics.hid_not_ready;
+    reply["hid_send_failures"] = proofMetrics.hid_send_failures;
+    reply["hold_poll_gap_max_us"] = proofMetrics.hold_poll_gap_max_us;
     reply["largest_free_block"] = proofMetrics.largest_free_block;
     reply["level_changes"] = proofMetrics.level_changes;
+    reply["lifecycle_clears"] = proofMetrics.lifecycle_clears;
     reply["loop_wall_max_us"] = proofMetrics.loop_wall_max_us;
     reply["malformed"] = proofMetrics.malformed;
     reply["max_display_flush_us"] = proofMetrics.max_display_flush_us;
     reply["max_key_poll_gap_us"] = proofMetrics.max_key_poll_gap_us;
     reply["minimum_free_heap"] = proofMetrics.minimum_free_heap;
     reply["out_of_order"] = proofMetrics.out_of_order;
+    reply["owner_transitions"] = proofMetrics.owner_transitions;
     reply["parser_high_water"] = proofMetrics.parser_high_water;
+    reply["physical_release_to_up_max_us"] =
+        proofMetrics.physical_release_to_up_max_us;
     reply["queue_high_water"] = proofMetrics.queue_high_water;
     reply["received"] = proofMetrics.received;
     reply["rejected"] = proofMetrics.rejected;
+    reply["release_all_attempts"] = proofMetrics.release_all_attempts;
+    reply["release_all_failures"] = proofMetrics.release_all_failures;
+    reply["reset_reason"] = hid_reset.reset_reason;
+    reply["retained_boot_sequence"] = hid_reset.current_boot_sequence;
+    reply["retained_previous_boot_sequence"] =
+        hid_reset.previous_boot_sequence;
+    reply["retained_previous_boot_valid"] =
+        hid_reset.previous_boot_valid ? 1U : 0U;
+    reply["retained_previous_empty_report_completions"] =
+        hid_reset.previous_empty_report_completions;
+    reply["retained_previous_last_lifecycle_event"] =
+        hid_reset.previous_last_lifecycle_event;
+    reply["retained_previous_last_lifecycle_status"] =
+        hid_reset.previous_last_lifecycle_status;
+    reply["retained_previous_last_report_kind"] =
+        hid_reset.previous_last_report_kind;
+    reply["retained_previous_last_report_status"] =
+        hid_reset.previous_last_report_status;
+    reply["retained_previous_lifecycle_clears"] =
+        hid_reset.previous_lifecycle_clears;
+    reply["retained_previous_report_attempts"] =
+        hid_reset.previous_report_attempts;
+    reply["retained_previous_report_completions"] =
+        hid_reset.previous_report_completions;
+    reply["retained_previous_space_down_completions"] =
+        hid_reset.previous_space_down_completions;
     reply["reveal_max_us"] = proofMetrics.reveal_max_us;
     reply["sent"] = proofMetrics.sent;
     reply["skipped_frames"] = proofMetrics.skipped_frames;
+    reply["space_down_completions"] = proofMetrics.space_down_completions;
+    reply["space_down_requests"] = proofMetrics.space_down_requests;
+    reply["space_up_completions"] = proofMetrics.space_up_completions;
+    reply["space_up_requests"] = proofMetrics.space_up_requests;
     reply["static_frames"] = proofMetrics.static_frames;
+    reply["threshold_crossings"] = proofMetrics.threshold_crossings;
     reply["watchdog_reset"] = proofMetrics.watchdog_reset;
     sendFrame("metrics_ack", admission.frame.sequence, reply.as<JsonObjectConst>(), false);
     completeAdmission();
@@ -781,6 +828,11 @@ void dispatchAvailableProductInput(uint32_t now_us) {
 }
 }  // namespace
 void setup() {
+  const esp_reset_reason_t reset_reason = esp_reset_reason();
+  beginHidResetJournal(static_cast<uint32_t>(reset_reason));
+  proofMetrics.watchdog_reset =
+      reset_reason == ESP_RST_INT_WDT || reset_reason == ESP_RST_TASK_WDT ||
+      reset_reason == ESP_RST_WDT;
 #if defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0
   USB.onEvent(onUsbEvent);
 #endif

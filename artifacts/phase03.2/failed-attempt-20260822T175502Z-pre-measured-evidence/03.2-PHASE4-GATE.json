@@ -1,0 +1,81 @@
+{
+  "defect_ledger_sha256": "7549cf44b45f2c133ae34550b80c300e1a0e536e2d64e77e4a47867e4f427754",
+  "deployment_id": "9a04faad5282b266bef6a75118d1e414b7a73c7f51485c74332da60d217321cd",
+  "deployment_lock_sha256": "f9f5b78c3404e8281834f9d02a97248747daacb56a2562a15b04b9bc266f5c72",
+  "device_evidence_sha256": "4628bd22425f6b3da886c27894f7e2ba7f173e98b5e51e89a1a2c2dd524f7775",
+  "edge_assumptions": [
+    {
+      "backstop": "occupied and non-actionable short gestures with immediate focus and zero HID-down observation",
+      "id": "EA-01",
+      "requirement": "HOLD-01",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "ack-before-threshold and threshold-before-ack with exact action, binding, session, and threshold reconciliation",
+      "id": "EA-02",
+      "requirement": "HOLD-02",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "release and every stale, failure, source, and session path must remain monotonic and HID-up",
+      "id": "EA-03",
+      "requirement": "HOLD-03",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "threshold equality, one-poll edge, and same-poll chord boundaries use explicit wrap-safe transitions",
+      "id": "EA-04",
+      "requirement": "HOLD-04",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "empty-first release/removal/reset/suspend/resume/reconnect lifecycle observations and all-keys-up rearm",
+      "id": "EA-05",
+      "requirement": "HOLD-04",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "all six ordered owner/other-key pairs, owner release, and no ownership transfer",
+      "id": "EA-06",
+      "requirement": "HOLD-04",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "exact deployment identity, descriptor stability, CDC/HID lifecycle, flashing, recovery, latency, and stuck-key rows",
+      "id": "EA-07",
+      "requirement": "HOLD-05",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "closed protocol and fixed-Space negative matrix reject generic action, key, macro, text, and provider authority",
+      "id": "EA-08",
+      "requirement": "SAFE-02",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "4096-byte-including-LF v2 envelope, overlong rejection, and next-valid-frame recovery",
+      "id": "EA-09",
+      "requirement": "SAFE-02",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "bounded CDC traffic during active HID, focus changes, lifecycle interruption, and seeded mixed stress",
+      "id": "EA-10",
+      "requirement": "SAFE-02",
+      "status": "ASSUMED_UNRESOLVED"
+    }
+  ],
+  "firmware_sha256": "f5e3cd25dbf7f2857c4215556e3dc5c6eb6f6e78ef751f66c5c3bae28a1f80f8",
+  "kind": "phase03.2-phase4-gate",
+  "logical_evidence": {
+    "deployment_id": "9a04faad5282b266bef6a75118d1e414b7a73c7f51485c74332da60d217321cd",
+    "deployment_lock_sha256": "f9f5b78c3404e8281834f9d02a97248747daacb56a2562a15b04b9bc266f5c72",
+    "firmware_sha256": "f5e3cd25dbf7f2857c4215556e3dc5c6eb6f6e78ef751f66c5c3bae28a1f80f8",
+    "status": "pass"
+  },
+  "oracle_state": "UP",
+  "phase4_ready": true,
+  "qualification_sha256": "ec7710cbbbaad7295612813c2d93a27fa23aee2ce75db6ddb59de47b4d64c129",
+  "schema_version": 1,
+  "status": "pass"
+}

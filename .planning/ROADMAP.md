@@ -14,7 +14,7 @@ Herdr Agent Keypad reaches its first usable release through eight roadmap phases
 - [x] **Phase 02.2: Firmware Themes, LED Bars, and Device Selection Menu** - All four proposed display languages and LED grammars are implemented in firmware and selectable from the encoder menu without weakening direct agent focus. (completed 2026-08-20)
 - [x] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness. (completed 2026-08-21)
 - [x] **Phase 03.1: High-Fidelity Animation and Interaction Polish** - Smooth and stable motion, transitions, and feedback are measured and refined on the actual keypad without weakening semantic clarity, input responsiveness, or focus safety. (INSERTED) (completed 2026-08-21)
-- [ ] **Phase 03.2: Focus-Then-Hold USB Keyboard** - A short agent-key press remains focus-only, while a deliberate hold first focuses the exact rendered pane and then behaves as a real held Space key through composite USB HID. (INSERTED)
+- [x] **Phase 03.2: Focus-Then-Hold USB Keyboard** - A short agent-key press remains focus-only, while a deliberate hold first focuses the exact rendered pane and then behaves as a real held Space key through composite USB HID. (INSERTED) (completed 2026-08-22)
 - [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
 
 ## Phase Details
@@ -359,7 +359,7 @@ Plans:
 
 **Wave 9** *(requires every production and evidence plan)*
 
-- [ ] 03.2-09-PLAN.md — Requalify the final exact device and publish the strict Phase 4 release gate
+- [x] 03.2-09-PLAN.md — Requalify the final exact device and publish the strict Phase 4 release gate
 
 **UI hint:** yes
 
@@ -395,7 +395,7 @@ Plans:
 | 02.2 Firmware Themes, LED Bars, and Device Selection Menu | 5/5 | Complete    | 2026-08-20 |
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
-| 03.2 Focus-Then-Hold USB Keyboard | 9/10 | In Progress|  |
+| 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 
 ## Backlog

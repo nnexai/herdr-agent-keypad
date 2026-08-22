@@ -1,11 +1,11 @@
 {
   "binary_path": ".pio/build/selected-usb/firmware.bin",
-  "binary_sha256": "f5e3cd25dbf7f2857c4215556e3dc5c6eb6f6e78ef751f66c5c3bae28a1f80f8",
-  "boot_id": "0000fccb0deabf8c-04ccea8c",
+  "binary_sha256": "20bbe16b082af8cc4dfd518eb1321c315912123a363b3ae3392e864e9de8ac65",
+  "boot_id": "0000fccb0deabf8c-8b13ee34",
   "composite_firmware_sha256": "7b4e93ac234c533ea4ee260df30b3a9800a0e4ed7f888e5fffee333cf4b4f4f1",
   "decision_manifest_sha256": "ef916f952c6e4a49722b202a123879ab6efba660027e9599fa72249610f59470",
   "decision_sha256": "f3dd250e8119fed74e796964d51bf0a41402f40014ec407e3415c1e7bfa610d1",
-  "deployment_id": "9a04faad5282b266bef6a75118d1e414b7a73c7f51485c74332da60d217321cd",
+  "deployment_id": "5abd44411450f414a8a611e44adff8d56736ad3007a45d231bd6e6add93b4e36",
   "descriptor_expectation_sha256": "200cbc403d8f737b2840af35d49ac185506754e2504fcbb3e2fd12f5a19cc68c",
   "descriptor_tuple": {
     "cdc_control_interface": 1,
@@ -18,12 +18,12 @@
     "vid": 12346
   },
   "descriptor_tuple_sha256": "dc4751298f8559067d057b996a835b0881c7d4ee961c8003078e7679635f65fb",
-  "firmware_sha256": "f5e3cd25dbf7f2857c4215556e3dc5c6eb6f6e78ef751f66c5c3bae28a1f80f8",
-  "fresh_boot_id": "0000fccb0deabf8c-04ccea8c",
-  "fresh_session_id": "session-0f609383aa8f890c",
+  "firmware_sha256": "20bbe16b082af8cc4dfd518eb1321c315912123a363b3ae3392e864e9de8ac65",
+  "fresh_boot_id": "0000fccb0deabf8c-8b13ee34",
+  "fresh_session_id": "session-af33134a9e9ea43c",
   "hello_firmware": "phase1-bringup",
   "kind": "phase03.2-final-deployment",
-  "observed_at_unix_ms": 1787395752874,
+  "observed_at_unix_ms": 1787417530433,
   "pair_digest": "dfc89c32966cb7f7fa0f0c98d9d9ed4086a3c31eb1c3340ef26f3ce1304f0257",
   "pair_identity_digest": "dfc89c32966cb7f7fa0f0c98d9d9ed4086a3c31eb1c3340ef26f3ce1304f0257",
   "paired_device_id": "0000fccb0deabf8c",
@@ -32,11 +32,11 @@
   "platformio_environment": "selected-usb",
   "protocol_version": 1,
   "schema_version": 1,
-  "session_id": "session-0f609383aa8f890c",
+  "session_id": "session-af33134a9e9ea43c",
   "source_files": [
     {
       "path": "platformio.ini",
-      "sha256": "ee15cb322ffc5d12ba5d1ee60cfe9a36654f2822c3c55aec4e3e51b615bebaf9"
+      "sha256": "e448833818bb09758f66771422ec6414fe7d23dd30d19c00c9e18a29ed2ccb2f"
     },
     {
       "path": "firmware/src/app/agent_projection.cpp",
@@ -44,7 +44,7 @@
     },
     {
       "path": "firmware/src/app/hold_controller.cpp",
-      "sha256": "5f2366c3eeb0171df7bc7ec534cd841facbce1964dd09daf0ec4bf69c9a2b7fa"
+      "sha256": "c985168098b2df3f772c638af43b52fe6fa67aa26e63612c744189fbf35f1ce1"
     },
     {
       "path": "firmware/src/app/menu_controller.cpp",
@@ -68,7 +68,11 @@
     },
     {
       "path": "firmware/src/main.cpp",
-      "sha256": "f7f69ffbcf6edadf4d1f267fde2686e424db15df1daa74d8649972db0c311d48"
+      "sha256": "4858121c14de99f286beb4178f6fe8c0b4a36260b9ab15cef9853304950e20d7"
+    },
+    {
+      "path": "firmware/src/metrics/hid_reset_journal.cpp",
+      "sha256": "5b84e9fad0e1b4a78ec59a62c76ba873220baba1c822175e88c8f9dac20d3ebe"
     },
     {
       "path": "firmware/src/protocol/protocol.cpp",
@@ -76,7 +80,7 @@
     },
     {
       "path": "firmware/src/transport/fixed_space_hid.cpp",
-      "sha256": "39995ab4f96de7fa4d75044a5ef5d2c07937d98912cc1091070f9440936407b3"
+      "sha256": "3f854f3e4908704fd9c9baa208356d98840a538eb28dfd002bb9ce24f45d045a"
     },
     {
       "path": "firmware/src/transport/usb_cdc.cpp",
@@ -147,6 +151,10 @@
       "sha256": "f734e1db188ce12b9dd6a56b61c5a1f83ca927bcb18073e9933501fbd2983de1"
     },
     {
+      "path": "firmware/src/metrics/hid_reset_journal.h",
+      "sha256": "a394ed3ed5ab2cdf78fd82ccdb733caea550495ab7da299fdb43f7e67087adc5"
+    },
+    {
       "path": "firmware/src/metrics/proof_metrics.h",
       "sha256": "a053595b7ab251bc603e08e46e7d3b203cf9f3a315ba7b4a3b3e6fbb8975ed45"
     },
@@ -191,7 +199,7 @@
       "sha256": "e347324b8c0f47f94476f9063adcfa3a87d573866b65c1e32ee77aa4e82772da"
     }
   ],
-  "source_sha256": "5570ceb526a33a7780c38377285d0767bc794a8faca8133125030f127cde92bd",
+  "source_sha256": "5761644c0d6d306d937e1698eff3079666ac7cd8c84e7f39d008ad97cef0570c",
   "upload_result": "pass",
   "usb_serial": "8C:BF:EA:0D:CB:FC"
 }

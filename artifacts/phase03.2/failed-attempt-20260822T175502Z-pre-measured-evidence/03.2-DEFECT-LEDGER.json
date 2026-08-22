@@ -1,0 +1,11 @@
+{
+  "defects": [],
+  "deployment_id": "9a04faad5282b266bef6a75118d1e414b7a73c7f51485c74332da60d217321cd",
+  "deployment_lock_sha256": "f9f5b78c3404e8281834f9d02a97248747daacb56a2562a15b04b9bc266f5c72",
+  "device_evidence_sha256": "4628bd22425f6b3da886c27894f7e2ba7f173e98b5e51e89a1a2c2dd524f7775",
+  "history": [],
+  "kind": "phase03.2-defect-ledger",
+  "qualification_sha256": "ec7710cbbbaad7295612813c2d93a27fa23aee2ce75db6ddb59de47b4d64c129",
+  "schema_version": 1,
+  "status": "pass"
+}

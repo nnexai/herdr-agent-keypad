@@ -19,7 +19,10 @@ from phase1_bringup.phase3_smoke import (
     _phase31_sidecar,
     _phase32_checkpoint_template,
     _phase32_load_checkpoint,
+    _phase32_capture_input_until,
+    _phase32_capture_lifecycle_until,
     _phase32_stop_observer,
+    _Phase32DeviceRemoved,
     _Phase32ObserverCapture,
     _phase32_save_checkpoint,
     _phase32_row_hash,
@@ -937,6 +940,37 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
         self.assertIn("all four themes", PHASE32_OPERATOR_PROMPTS[1][1])
         self.assertIn("unplug/replug", PHASE32_OPERATOR_PROMPTS[2][1])
         self.assertIn("never touches live Herdr", PHASE32_OPERATOR_PROMPTS[1][1])
+    def test_phase32_evdev_observer_grabs_keyboard_without_leaking_space_to_prompt(self) -> None:
+        class Selector:
+            def register(self, _fd: int, _mask: int) -> None:
+                return None
+
+            def select(self, _timeout: float) -> list[object]:
+                stop.set()
+                return []
+
+            def close(self) -> None:
+                return None
+
+        stop = __import__("threading").Event()
+        stop.set()
+        with (
+            patch("phase1_bringup.phase3_smoke.os.open", return_value=7),
+            patch("phase1_bringup.phase3_smoke.os.close"),
+            patch("phase1_bringup.phase3_smoke.fcntl.ioctl") as ioctl,
+            patch("phase1_bringup.phase3_smoke.selectors.DefaultSelector", return_value=Selector()),
+        ):
+            self.assertEqual(
+                _phase32_capture_input_until(Path("/dev/input/event-test"), stop),
+                [],
+            )
+        self.assertEqual(
+            ioctl.call_args_list,
+            [
+                ((7, phase3_smoke._EVIOCGRAB, 1), {}),
+                ((7, phase3_smoke._EVIOCGRAB, 0), {}),
+            ],
+        )
     def test_phase32_fixture_controller_keeps_snapshot_and_exact_focus_round_trip_live(self) -> None:
         completed = __import__("threading").Event()
 
@@ -1061,6 +1095,11 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
                 self.assertEqual(accepted["snapshot_revision"], fake_usb.snapshot["snapshot_revision"])
                 self.assertEqual(accepted["entry_id"], first["entry_id"])
             self.assertTrue(fake_usb.closed)
+    def test_phase32_measured_evidence_fails_closed_without_runtime_context(self) -> None:
+        controller = object.__new__(phase3_smoke._Phase32FixtureController)
+        with self.assertRaisesRegex(RuntimeError, "runtime context"):
+            controller.measured_evidence()
+
     def test_phase32_fixture_controller_reconnects_exact_and_republishes_snapshot(self) -> None:
         from herdr_keypad.usb import UsbSessionError
 
@@ -1204,6 +1243,16 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
             def assert_batch(self, step_id: str) -> None:
                 self.assert_running()
                 self.batches.append(step_id)
+            def connection_marker(self) -> tuple[int, dict[str, str]]:
+                return 1, {"boot_id": "boot-1", "session_id": "session-1"}
+
+            def wait_for_connection(
+                self, marker: int, timeout: float
+            ) -> tuple[int, dict[str, str]]:
+                raise AssertionError(
+                    f"patched lifecycle observer unexpectedly waited after {marker=} {timeout=}"
+                )
+
 
             def evidence(self) -> dict[str, object]:
                 return {
@@ -1211,7 +1260,7 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
                     "live_herdr_connected": False,
                     "accepted_focus_slots": [0, 1, 2],
                 }
-            def measured_evidence(self) -> dict[str, object]:
+            def measured_evidence(self, **_context: object) -> dict[str, object]:
                 return {}
 
         deployment = {
@@ -1270,6 +1319,10 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
                 ),
                 patch(
                     "phase1_bringup.phase3_smoke._phase32_start_observer",
+                    return_value=(object(), object(), object()),
+                ),
+                patch(
+                    "phase1_bringup.phase3_smoke._phase32_start_lifecycle_observer",
                     return_value=(object(), object(), object()),
                 ),
                 patch(
@@ -1381,6 +1434,148 @@ class Phase32QualificationRunnerTests(unittest.TestCase):
         empty.ended_monotonic_ns = 2
         with self.assertRaisesRegex(RuntimeError, "no required transition"):
             _phase32_stop_observer(SimpleNamespace(set=lambda: None), observer, empty)
+
+    def test_phase32_lifecycle_observer_requires_exact_return_fresh_boot_and_final_up(self) -> None:
+        observer = SimpleNamespace(join=lambda timeout: None, is_alive=lambda: False)
+        stop = SimpleNamespace(set=lambda: None)
+        incomplete = _Phase32ObserverCapture("lifecycle", 1)
+        incomplete.complete = True
+        incomplete.ended_monotonic_ns = 2
+        incomplete.initial_boot_id = "boot-1"
+        incomplete.initial_session_id = "session-1"
+        incomplete.events = [{"type": "EV_KEY", "code": "KEY_SPACE", "value": 0}]
+        with self.assertRaisesRegex(RuntimeError, "replacement"):
+            _phase32_stop_observer(stop, observer, incomplete)
+
+        stale = _Phase32ObserverCapture("lifecycle", 1)
+        stale.complete = True
+        stale.ended_monotonic_ns = 2
+        stale.initial_boot_id = "boot-1"
+        stale.initial_session_id = "session-1"
+        stale.events = [
+            {"type": "DEVICE_REMOVED", "verified": True, "monotonic_ns": 2},
+            {
+                "type": "REMOUNT",
+                "verified": True,
+                "empty": True,
+                "boot_id": "boot-1",
+                "session_id": "session-2",
+                "monotonic_ns": 3,
+            },
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 0, "monotonic_ns": 4},
+        ]
+        with self.assertRaisesRegex(RuntimeError, "fresh boot"):
+            _phase32_stop_observer(stop, observer, stale)
+
+        stuck = _Phase32ObserverCapture("lifecycle", 1)
+        stuck.complete = True
+        stuck.ended_monotonic_ns = 2
+        stuck.initial_boot_id = "boot-1"
+        stuck.initial_session_id = "session-1"
+        stuck.events = [
+            {"type": "DEVICE_REMOVED", "verified": True, "monotonic_ns": 2},
+            {
+                "type": "REMOUNT",
+                "verified": True,
+                "empty": False,
+                "boot_id": "boot-2",
+                "session_id": "session-2",
+                "monotonic_ns": 3,
+            },
+        ]
+        with self.assertRaisesRegex(RuntimeError, "KEY_SPACE UP"):
+            _phase32_stop_observer(stop, observer, stuck)
+    def test_phase32_lifecycle_observer_continues_on_exact_replacement_node(self) -> None:
+        stop = __import__("threading").Event()
+        old_path = Path("/dev/input/event12")
+        new_path = Path("/dev/input/event19")
+
+        def capture(
+            event_path: Path,
+            _stop: object,
+            *,
+            on_ready: object = None,
+        ) -> list[dict[str, object]]:
+            if event_path == old_path:
+                raise _Phase32DeviceRemoved([
+                    {
+                        "type": "EV_KEY",
+                        "code": "KEY_SPACE",
+                        "value": 1,
+                        "monotonic_ns": 1,
+                    }
+                ])
+            self.assertEqual(event_path, new_path)
+            self.assertIsNotNone(on_ready)
+            on_ready(7)
+            stop.set()
+            return [
+                {
+                    "type": "EV_KEY",
+                    "code": "KEY_SPACE",
+                    "value": 0,
+                    "monotonic_ns": 4,
+                }
+            ]
+
+        with (
+            patch(
+                "phase1_bringup.phase3_smoke._phase32_capture_input_until",
+                side_effect=capture,
+            ),
+            patch(
+                "phase1_bringup.phase3_smoke._phase32_space_is_up",
+                return_value=True,
+            ),
+            patch(
+                "phase1_bringup.composite_qualification._find_guided_keyboard_event",
+                return_value=new_path,
+            ) as discover,
+        ):
+            events = _phase32_capture_lifecycle_until(
+                old_path,
+                stop,
+                vid_pid="303a:1001",
+                serial_number="8C:BF:EA:0D:CB:FC",
+                connection_marker=1,
+                wait_for_connection=lambda marker, _timeout: (
+                    marker + 1,
+                    {"boot_id": "boot-2", "session_id": "session-2"},
+                ),
+                timeout=1.0,
+            )
+
+        self.assertEqual(
+            [event["type"] for event in events],
+            ["EV_KEY", "DEVICE_REMOVED", "REMOUNT", "EV_KEY"],
+        )
+        remount = events[2]
+        self.assertEqual(remount["event_path"], str(new_path))
+        self.assertEqual(remount["boot_id"], "boot-2")
+        self.assertEqual(remount["session_id"], "session-2")
+        self.assertTrue(remount["empty"])
+        discover.assert_called_once_with(
+            "303a:1001",
+            "8C:BF:EA:0D:CB:FC",
+            timeout=1.0,
+            require_serial=True,
+        )
+
+
+    def test_phase32_non_lifecycle_observer_rejects_node_replacement(self) -> None:
+        observer = SimpleNamespace(join=lambda timeout: None, is_alive=lambda: False)
+        captured = _Phase32ObserverCapture("presentation", 1)
+        captured.complete = True
+        captured.ended_monotonic_ns = 2
+        captured.events = [
+            {"type": "DEVICE_REMOVED", "verified": True, "monotonic_ns": 2},
+            {"type": "REMOUNT", "verified": True, "empty": True, "monotonic_ns": 3},
+            {"type": "EV_KEY", "code": "KEY_SPACE", "value": 0, "monotonic_ns": 4},
+        ]
+        with self.assertRaisesRegex(RuntimeError, "replaced"):
+            _phase32_stop_observer(
+                SimpleNamespace(set=lambda: None), observer, captured
+            )
 
 class Phase32PhysicalGateTests(unittest.TestCase):
     @staticmethod
@@ -1540,6 +1735,42 @@ class Phase32PhysicalGateTests(unittest.TestCase):
             staging = list(output_root.parent.glob(f".{output_root.name}.qualification-staging-*"))
             self.assertEqual(len(staging), 1)
             self.assertTrue(staging[0].is_dir())
+    def test_phase32_final_writer_publishes_checkable_sidecars(self) -> None:
+        deployment_path = ROOT / "artifacts/phase03.2/03.2-FINAL-DEPLOYMENT.json"
+        logical_path = ROOT / "artifacts/phase03.2/03.2-FRAMEBUFFER-EVIDENCE.json"
+        qualification = json.loads(
+            (ROOT / "artifacts/phase03.2/03.2-FINAL-QUALIFICATION.json").read_text(
+                encoding="ascii"
+            )
+        )
+        evidence = json.loads(
+            (ROOT / "artifacts/phase03.2/03.2-DEVICE-EVIDENCE.json").read_text(
+                encoding="ascii"
+            )
+        )
+        observations = {
+            row["id"]: {
+                "answer": row["observation"]["value"]["answer"],
+                "prompt": row["observation"]["value"]["prompt"],
+                "observed_at_unix_ms": row["observation"]["observed_at_unix_ms"],
+            }
+            for row in evidence["rows"]
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            output_root = Path(directory) / "final"
+            write_phase32_final_artifacts(
+                output_root,
+                deployment_path,
+                logical_path,
+                qualification,
+                observations,
+            )
+            for path in output_root.glob("*.json"):
+                sidecar = path.with_suffix(path.suffix + ".sha256")
+                digest, target = sidecar.read_text(encoding="ascii").strip().split()
+                self.assertEqual(digest, sha256_file(path))
+                self.assertEqual(target, path.relative_to(ROOT).as_posix())
+
     def test_phase32_gate_rejects_wrong_schema_before_hash_join(self) -> None:
         deployment = self._deployment()
         gate = {

@@ -1,0 +1,471 @@
+{
+  "deployment_id": "5abd44411450f414a8a611e44adff8d56736ad3007a45d231bd6e6add93b4e36",
+  "deployment_lock_sha256": "c493679187d3ec1e611fe4807f0e175d6686f2cb2d8d0c0efb3b7f5869e707aa",
+  "edge_assumptions": [
+    {
+      "backstop": "occupied and non-actionable short gestures with immediate focus and zero HID-down observation",
+      "id": "EA-01",
+      "requirement": "HOLD-01",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "ack-before-threshold and threshold-before-ack with exact action, binding, session, and threshold reconciliation",
+      "id": "EA-02",
+      "requirement": "HOLD-02",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "release and every stale, failure, source, and session path must remain monotonic and HID-up",
+      "id": "EA-03",
+      "requirement": "HOLD-03",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "threshold equality, one-poll edge, and same-poll chord boundaries use explicit wrap-safe transitions",
+      "id": "EA-04",
+      "requirement": "HOLD-04",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "empty-first release/removal/reset/suspend/resume/reconnect lifecycle observations and all-keys-up rearm",
+      "id": "EA-05",
+      "requirement": "HOLD-04",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "all six ordered owner/other-key pairs, owner release, and no ownership transfer",
+      "id": "EA-06",
+      "requirement": "HOLD-04",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "exact deployment identity, descriptor stability, CDC/HID lifecycle, flashing, recovery, latency, and stuck-key rows",
+      "id": "EA-07",
+      "requirement": "HOLD-05",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "closed protocol and fixed-Space negative matrix reject generic action, key, macro, text, and provider authority",
+      "id": "EA-08",
+      "requirement": "SAFE-02",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "4096-byte-including-LF v2 envelope, overlong rejection, and next-valid-frame recovery",
+      "id": "EA-09",
+      "requirement": "SAFE-02",
+      "status": "ASSUMED_UNRESOLVED"
+    },
+    {
+      "backstop": "bounded CDC traffic during active HID, focus changes, lifecycle interruption, and seeded mixed stress",
+      "id": "EA-10",
+      "requirement": "SAFE-02",
+      "status": "ASSUMED_UNRESOLVED"
+    }
+  ],
+  "firmware_sha256": "20bbe16b082af8cc4dfd518eb1321c315912123a363b3ae3392e864e9de8ac65",
+  "kind": "phase03.2-device-evidence",
+  "oracle_state": "UP",
+  "qualification_sha256": "a5c0b66c2afc2ba85cca9634e45e4d6cf9fcdcfcf3fa659f253b16224de98a7a",
+  "rows": [
+    {
+      "id": "D-01",
+      "machine_invariant": {
+        "row_id": "threshold-calibration",
+        "row_sha256": "791a3f5ca62c6dd631ad482e2331d2b8ab78715f1c8d0665553ad7705c45f59c"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419024048,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "THRESHOLD BATCH: on KEY-1, KEY-2, KEY-3 do SHORTx3 then LONGx3, then final SHORT+LONG (24 gestures total). SHORT is natural under 0.5 s; LONG is clearly over 1.5 s. Reply Y only after all three keys agree at the shared threshold.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "threshold-calibration"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-02",
+      "machine_invariant": {
+        "row_id": "immediate-focus-short-separation",
+        "row_sha256": "8f3428c9f802a929395b893a70636fe979d49b6c634fc85aa5fc8235aa8bc395"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419024048,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "THRESHOLD BATCH: on KEY-1, KEY-2, KEY-3 do SHORTx3 then LONGx3, then final SHORT+LONG (24 gestures total). SHORT is natural under 0.5 s; LONG is clearly over 1.5 s. Reply Y only after all three keys agree at the shared threshold.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "threshold-calibration"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-03",
+      "machine_invariant": {
+        "row_id": "focus-before-hid-ordering",
+        "row_sha256": "a3a6d299b9ef4802a8940214ce0f9d43536da260875c996e2ced655f5b3b792f"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419024048,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "THRESHOLD BATCH: on KEY-1, KEY-2, KEY-3 do SHORTx3 then LONGx3, then final SHORT+LONG (24 gestures total). SHORT is natural under 0.5 s; LONG is clearly over 1.5 s. Reply Y only after all three keys agree at the shared threshold.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "threshold-calibration"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-04",
+      "machine_invariant": {
+        "row_id": "focus-before-hid-ordering",
+        "row_sha256": "a3a6d299b9ef4802a8940214ce0f9d43536da260875c996e2ced655f5b3b792f"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419024048,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "THRESHOLD BATCH: on KEY-1, KEY-2, KEY-3 do SHORTx3 then LONGx3, then final SHORT+LONG (24 gestures total). SHORT is natural under 0.5 s; LONG is clearly over 1.5 s. Reply Y only after all three keys agree at the shared threshold.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "threshold-calibration"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-05",
+      "machine_invariant": {
+        "row_id": "release-before-ack",
+        "row_sha256": "8d74cda78a17c3bac0192f164cc698fe7cb6e614b0cec293725584dcded15e2d"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419024048,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "THRESHOLD BATCH: on KEY-1, KEY-2, KEY-3 do SHORTx3 then LONGx3, then final SHORT+LONG (24 gestures total). SHORT is natural under 0.5 s; LONG is clearly over 1.5 s. Reply Y only after all three keys agree at the shared threshold.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "threshold-calibration"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-06",
+      "machine_invariant": {
+        "row_id": "active-owner-independence",
+        "row_sha256": "7901cf1a0f8189382ff0db16ece219fb3d95dc09ce9c3825db6b67632c4cadfc"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-07",
+      "machine_invariant": {
+        "row_id": "active-owner-independence",
+        "row_sha256": "7901cf1a0f8189382ff0db16ece219fb3d95dc09ce9c3825db6b67632c4cadfc"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-08",
+      "machine_invariant": {
+        "row_id": "active-owner-independence",
+        "row_sha256": "7901cf1a0f8189382ff0db16ece219fb3d95dc09ce9c3825db6b67632c4cadfc"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-09",
+      "machine_invariant": {
+        "row_id": "physical-release",
+        "row_sha256": "ac8db465ce68c08bc1dcd6ed699739e5d930f942c56b3b65fcb936fef11a3407"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-10",
+      "machine_invariant": {
+        "row_id": "stale-failure-source-session",
+        "row_sha256": "b4b2938965a6c44bec5ede2a63e320ee595713a5627712620755566f6b50fcb1"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-11",
+      "machine_invariant": {
+        "row_id": "stale-failure-source-session",
+        "row_sha256": "b4b2938965a6c44bec5ede2a63e320ee595713a5627712620755566f6b50fcb1"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-12",
+      "machine_invariant": {
+        "row_id": "active-owner-independence",
+        "row_sha256": "7901cf1a0f8189382ff0db16ece219fb3d95dc09ce9c3825db6b67632c4cadfc"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-13",
+      "machine_invariant": {
+        "row_id": "release-before-ack",
+        "row_sha256": "8d74cda78a17c3bac0192f164cc698fe7cb6e614b0cec293725584dcded15e2d"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-14",
+      "machine_invariant": {
+        "row_id": "stale-failure-source-session",
+        "row_sha256": "b4b2938965a6c44bec5ede2a63e320ee595713a5627712620755566f6b50fcb1"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419079707,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "PRESENTATION BATCH: use the controlled QUALIFY KEY 1-3 tiles (the gate never touches live Herdr). Inspect all four themes and LED grammars while showing pending, active owner, cancellation, and failure/lifecycle states. Confirm mic clarity, owner persistence, mapped LED zones, and failure precedence. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "presentation"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-15",
+      "machine_invariant": {
+        "row_id": "usb-removal",
+        "row_sha256": "b4170ea6d761a8b39756ae59893bc60e25332727e78562bde5fb79e32b082136"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419748682,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "LIFECYCLE BATCH: perform unplug/replug, suspend/resume, reset, and BOOT recovery on the paired keypad. Confirm empty-first state, release, reconnect identity, and no stuck Space. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "lifecycle"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-16",
+      "machine_invariant": {
+        "row_id": "controlled-reset",
+        "row_sha256": "f11a072c344a6b08c8a9bdfcc8407cbcde04a3607374c54301ef6bf1f27f3555"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419748682,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "LIFECYCLE BATCH: perform unplug/replug, suspend/resume, reset, and BOOT recovery on the paired keypad. Confirm empty-first state, release, reconnect identity, and no stuck Space. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "lifecycle"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-17",
+      "machine_invariant": {
+        "row_id": "mixed-stress",
+        "row_sha256": "cfa72d64b0d67d735e209f306c5626b874d53960d3421f7b234933f17f71405f"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419748682,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "LIFECYCLE BATCH: perform unplug/replug, suspend/resume, reset, and BOOT recovery on the paired keypad. Confirm empty-first state, release, reconnect identity, and no stuck Space. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "lifecycle"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    },
+    {
+      "id": "D-18",
+      "machine_invariant": {
+        "row_id": "suspend-resume",
+        "row_sha256": "c89291ba0d3333cce1a2743e340f4fcf9b6e2fe2a2753eb3b55777a669c0babe"
+      },
+      "observation": {
+        "kind": "typed",
+        "observed_at_unix_ms": 1787419748682,
+        "result": "pass",
+        "value": {
+          "answer": "Y",
+          "claim_scope": "operator-observation-only",
+          "prompt": "LIFECYCLE BATCH: perform unplug/replug, suspend/resume, reset, and BOOT recovery on the paired keypad. Confirm empty-first state, release, reconnect identity, and no stuck Space. Reply Y/N.",
+          "reduced_human_threshold_sample": true,
+          "step_id": "lifecycle"
+        }
+      },
+      "physical_claim": true,
+      "result": "pass",
+      "source": "physical-observation"
+    }
+  ],
+  "schema_version": 1,
+  "status": "pass",
+  "threshold_ms": 550
+}

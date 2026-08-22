@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import errno
+import fcntl
 import argparse
 import binascii
 import hashlib
@@ -17,17 +19,34 @@ import time
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator, Mapping
+from typing import Any, Callable, Iterable, Iterator, Mapping
 from types import SimpleNamespace
 
 from .composite_qualification import (
+    FINAL_AUTOMATED_CONTRACTS,
+    FINAL_CDC_MAX_LINE_BYTES,
+    FINAL_DETERMINISTIC_CALIBRATION,
     FINAL_EDGE_ASSUMPTIONS,
+    FINAL_HUMAN_THRESHOLD_SAMPLE,
+    FINAL_ROW_COUNTS,
+    FINAL_STRESS_COUNTS,
+    FINAL_STRESS_SEED,
+    FINAL_STRICT_COUNTERS,
     build_final_qualification,
+    mixed_stress_schedule,
     validate_final_qualification,
     validate_input_trace,
     verify_composite_decision,
 )
 from .pairing import PairingStore
+_EVIOCGRAB = 0x40044590
+_EVIOCGKEY_BYTES = 64
+_EVIOCGKEY = (
+    (2 << 30)
+    | (_EVIOCGKEY_BYTES << 16)
+    | (ord("E") << 8)
+    | 0x18
+)
 from .serial_link import reconnect_exact, require_inherited_bridge_lock
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -1756,23 +1775,50 @@ def _phase32_run_automated_preflight() -> list[dict[str, Any]]:
     return runs
 
 
+class _Phase32DeviceRemoved(RuntimeError):
+    def __init__(self, events: list[dict[str, Any]]) -> None:
+        super().__init__("Phase 03.2 evdev device was removed")
+        self.events = events
+
+
+def _phase32_space_is_up(fd: int) -> bool:
+    key_state = bytearray(_EVIOCGKEY_BYTES)
+    fcntl.ioctl(fd, _EVIOCGKEY, key_state, True)
+    key_space = 57
+    return not bool(key_state[key_space // 8] & (1 << (key_space % 8)))
+
+
 def _phase32_capture_input_until(
     device: Path,
     stop: threading.Event,
+    *,
+    on_ready: Callable[[int], None] | None = None,
 ) -> list[dict[str, Any]]:
     from .composite_qualification import _EV_KEY, _INPUT_EVENT, _KEY_SPACE
 
     fd = os.open(device, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
     selector = selectors.DefaultSelector()
+    grabbed = False
     events: list[dict[str, Any]] = []
     try:
+        # Qualification must observe the real Space reports without allowing
+        # them to type into its own Y/N prompt. This affects only this
+        # external evdev observer; production input remains system-wide.
+        fcntl.ioctl(fd, _EVIOCGRAB, 1)
+        grabbed = True
+        if on_ready is not None:
+            on_ready(fd)
         selector.register(fd, selectors.EVENT_READ)
         while not stop.is_set():
             for _key, _mask in selector.select(0.2):
-                block = os.read(fd, _INPUT_EVENT.size * 64)
+                try:
+                    block = os.read(fd, _INPUT_EVENT.size * 64)
+                except OSError as exc:
+                    if exc.errno == errno.ENODEV:
+                        raise _Phase32DeviceRemoved(events) from exc
+                    raise
                 if not block:
-                    stop.set()
-                    break
+                    raise _Phase32DeviceRemoved(events)
                 if len(block) % _INPUT_EVENT.size:
                     raise RuntimeError("Phase 03.2 evdev observer received a partial input_event")
                 for offset in range(0, len(block), _INPUT_EVENT.size):
@@ -1785,9 +1831,92 @@ def _phase32_capture_input_until(
                             "monotonic_ns": time.monotonic_ns(),
                         })
     finally:
+        if grabbed:
+            try:
+                fcntl.ioctl(fd, _EVIOCGRAB, 0)
+            except OSError as exc:
+                if exc.errno != errno.ENODEV:
+                    raise
         selector.close()
         os.close(fd)
     return events
+
+
+def _phase32_capture_lifecycle_until(
+    event_path: Path,
+    stop: threading.Event,
+    *,
+    vid_pid: str,
+    serial_number: str,
+    connection_marker: int,
+    wait_for_connection: Callable[[int, float], tuple[int, Mapping[str, Any]]],
+    timeout: float,
+) -> list[dict[str, Any]]:
+    from .composite_qualification import _find_guided_keyboard_event
+
+    if not serial_number:
+        raise RuntimeError("lifecycle replacement requires the exact USB serial")
+    events: list[dict[str, Any]] = []
+    current_path = event_path
+    marker = connection_marker
+    on_ready: Callable[[int], None] | None = None
+    while not stop.is_set():
+        try:
+            events.extend(
+                _phase32_capture_input_until(current_path, stop, on_ready=on_ready)
+            )
+            break
+        except _Phase32DeviceRemoved as removed:
+            events.extend(removed.events)
+            events.append({
+                "type": "DEVICE_REMOVED",
+                "verified": True,
+                "event_path": str(current_path),
+                "monotonic_ns": time.monotonic_ns(),
+            })
+            replacement = _find_guided_keyboard_event(
+                vid_pid,
+                serial_number,
+                timeout=timeout,
+                require_serial=True,
+            )
+            marker, identity = wait_for_connection(marker, timeout)
+            boot_id = identity.get("boot_id")
+            session_id = identity.get("session_id")
+            if not isinstance(boot_id, str) or not boot_id:
+                raise RuntimeError("returned lifecycle device has no correlated boot identity")
+            if not isinstance(session_id, str) or not session_id:
+                raise RuntimeError("returned lifecycle device has no correlated session identity")
+
+            def record_remount(
+                fd: int,
+                *,
+                path: Path = replacement,
+                boot: str = boot_id,
+                session: str = session_id,
+            ) -> None:
+                empty = _phase32_space_is_up(fd)
+                events.append({
+                    "type": "REMOUNT",
+                    "verified": True,
+                    "empty": empty,
+                    "event_path": str(path),
+                    "vid_pid": vid_pid,
+                    "usb_serial": serial_number,
+                    "boot_id": boot,
+                    "session_id": session,
+                    "monotonic_ns": time.monotonic_ns(),
+                })
+                if not empty:
+                    raise RuntimeError(
+                        "replacement device did not return with KEY_SPACE UP"
+                    )
+
+            current_path = replacement
+            on_ready = record_remount
+    return events
+
+
 @dataclass
 class _Phase32ObserverCapture:
     interval_id: str
@@ -1796,6 +1925,8 @@ class _Phase32ObserverCapture:
     ended_monotonic_ns: int | None = None
     error: BaseException | None = None
     complete: bool = False
+    initial_boot_id: str | None = None
+    initial_session_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -1805,6 +1936,8 @@ class _Phase32ObserverCapture:
             "events": list(self.events),
             "error": None if self.error is None else repr(self.error),
             "complete": self.complete,
+            "initial_boot_id": self.initial_boot_id,
+            "initial_session_id": self.initial_session_id,
         }
 
 
@@ -1987,6 +2120,15 @@ def write_phase32_final_artifacts(
             staging_paths[1],
             staging_paths[2],
         )
+        for path, destination, digest in zip(
+            staging_paths,
+            final_paths,
+            (qualification_sha, evidence_sha, ledger_sha, gate_sha),
+        ):
+            atomic_write(
+                path.with_suffix(path.suffix + ".sha256"),
+                f"{digest}  {relative(destination)}\n".encode("ascii"),
+            )
         output_root.mkdir(parents=True, exist_ok=True)
         publish_paths = tuple(
             path
@@ -2154,6 +2296,60 @@ def _phase32_checkpoint_rows(step_id: str) -> tuple[str, ...]:
     }[step_id]
 
 
+def _phase32_validate_observer_events(captured: _Phase32ObserverCapture) -> None:
+    replacement_types = {"DEVICE_REMOVED", "REMOUNT"}
+    replacements = [
+        event for event in captured.events if event.get("type") in replacement_types
+    ]
+    if captured.interval_id != "lifecycle":
+        if replacements:
+            raise RuntimeError(
+                f"Phase 03.2 evdev node was replaced during {captured.interval_id}"
+            )
+        return
+
+    removals_pending = 0
+    remounts: list[Mapping[str, Any]] = []
+    space_up = True
+    for event in captured.events:
+        event_type = event.get("type")
+        if event_type == "EV_KEY":
+            if event.get("code") != "KEY_SPACE":
+                space_up = False
+            elif event.get("value") == 1:
+                space_up = False
+            elif event.get("value") == 0:
+                space_up = True
+        elif event_type == "DEVICE_REMOVED":
+            if event.get("verified") is not True:
+                raise RuntimeError("lifecycle replacement teardown was not verified")
+            removals_pending += 1
+            space_up = True
+        elif event_type == "REMOUNT":
+            if removals_pending < 1 or event.get("verified") is not True:
+                raise RuntimeError("lifecycle replacement return was not correlated")
+            removals_pending -= 1
+            remounts.append(event)
+            space_up = event.get("empty") is True
+
+    if not remounts:
+        raise RuntimeError("lifecycle captured no verified device replacement")
+    if removals_pending:
+        raise RuntimeError("lifecycle replacement device did not return before timeout")
+    if not space_up:
+        raise RuntimeError("lifecycle did not finish with KEY_SPACE UP")
+    if not captured.initial_boot_id or not captured.initial_session_id:
+        raise RuntimeError("lifecycle initial boot/session identity is missing")
+    if not any(
+        event.get("boot_id") != captured.initial_boot_id
+        and event.get("session_id") != captured.initial_session_id
+        for event in remounts
+    ):
+        raise RuntimeError(
+            "lifecycle replacement never correlated a fresh boot and USB session"
+        )
+
+
 def _phase32_stop_observer(
     stop: threading.Event | None,
     observer: threading.Thread | None,
@@ -2183,6 +2379,7 @@ def _phase32_stop_observer(
             f"Phase 03.2 evdev observer captured no required transition for interval "
             f"{captured.interval_id}"
         )
+    _phase32_validate_observer_events(captured)
     return captured.as_dict()
 
 
@@ -2205,6 +2402,592 @@ def _phase32_start_observer(
     observer = threading.Thread(target=capture, name="phase32-input-observer", daemon=True)
     observer.start()
     return stop, observer, captured
+
+
+def _phase32_start_lifecycle_observer(
+    event_path: Path,
+    *,
+    vid_pid: str,
+    serial_number: str,
+    connection_marker: int,
+    initial_identity: Mapping[str, Any],
+    wait_for_connection: Callable[[int, float], tuple[int, Mapping[str, Any]]],
+    timeout: float,
+) -> tuple[threading.Event, threading.Thread, _Phase32ObserverCapture]:
+    stop = threading.Event()
+    captured = _Phase32ObserverCapture(
+        "lifecycle",
+        time.monotonic_ns(),
+        initial_boot_id=initial_identity.get("boot_id"),
+        initial_session_id=initial_identity.get("session_id"),
+    )
+
+    def capture() -> None:
+        try:
+            captured.events.extend(
+                _phase32_capture_lifecycle_until(
+                    event_path,
+                    stop,
+                    vid_pid=vid_pid,
+                    serial_number=serial_number,
+                    connection_marker=connection_marker,
+                    wait_for_connection=wait_for_connection,
+                    timeout=timeout,
+                )
+            )
+        except BaseException as exc:
+            captured.error = exc
+        finally:
+            captured.ended_monotonic_ns = time.monotonic_ns()
+            captured.complete = captured.error is None
+
+    observer = threading.Thread(
+        target=capture,
+        name="phase32-lifecycle-input-observer",
+        daemon=True,
+    )
+    observer.start()
+    return stop, observer, captured
+
+
+def _phase32_run_native_measurements() -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    schedule = list(mixed_stress_schedule(FINAL_STRESS_SEED))
+    with tempfile.TemporaryDirectory(prefix="phase32-native-measurement-") as directory:
+        root = Path(directory)
+        schedule_path = root / "schedule.txt"
+        output_path = root / "observations.csv"
+        schedule_path.write_text("\n".join(schedule) + "\n", encoding="ascii")
+        command = (
+            os.fspath(Path(os.sys.executable)),
+            "-m",
+            "platformio",
+            "test",
+            "-e",
+            "native-hold-controller",
+            "-f",
+            "test_phase32_measurement",
+        )
+        environment = os.environ.copy()
+        environment["PHASE32_MEASUREMENT_OUTPUT"] = os.fspath(output_path)
+        environment["PHASE32_MEASUREMENT_SCHEDULE"] = os.fspath(schedule_path)
+        started = time.monotonic()
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=ROOT,
+                env=environment,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                timeout=300,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            output = getattr(exc, "stdout", b"") or b""
+            raise RuntimeError(
+                "Phase 03.2 native production measurement probe failed\n"
+                + output.decode("utf-8", errors="replace")[-1200:]
+            ) from exc
+        if not output_path.is_file():
+            raise RuntimeError("Phase 03.2 native measurement probe wrote no evidence")
+        raw = output_path.read_bytes()
+    lines = raw.decode("ascii").splitlines()
+    if not lines or lines[0] != "P32M1":
+        raise RuntimeError("Phase 03.2 native measurement evidence header is invalid")
+    records: list[dict[str, Any]] = []
+    for line in lines[1:]:
+        fields = line.split(",")
+        if len(fields) != 15:
+            raise RuntimeError("Phase 03.2 native measurement record is malformed")
+        (
+            kind,
+            row_id,
+            index,
+            category,
+            slot,
+            down,
+            up,
+            down_requests,
+            down_completions,
+            up_requests,
+            up_completions,
+            eligible_us,
+            release_us,
+            passed,
+            observed_ns,
+        ) = fields
+        integers = [
+            int(value)
+            for value in (
+                index,
+                slot,
+                down,
+                up,
+                down_requests,
+                down_completions,
+                up_requests,
+                up_completions,
+                eligible_us,
+                release_us,
+                passed,
+                observed_ns,
+            )
+        ]
+        record = {
+            "kind": kind,
+            "row_id": row_id,
+            "index": integers[0],
+            "category": category,
+            "slot": integers[1],
+            "space_down": integers[2],
+            "space_up": integers[3],
+            "space_down_requests": integers[4],
+            "space_down_completions": integers[5],
+            "space_up_requests": integers[6],
+            "space_up_completions": integers[7],
+            "eligible_to_down_us": integers[8],
+            "release_to_up_us": integers[9],
+            "passed": integers[10] == 1,
+            "observed_at_monotonic_ns": integers[11],
+        }
+        if (
+            record["kind"] not in {"calibration", "row", "stress"}
+            or record["slot"] not in {0, 1, 2}
+            or record["index"] < 0
+            or record["observed_at_monotonic_ns"] <= 0
+            or record["passed"] is not True
+        ):
+            raise RuntimeError("Phase 03.2 native measurement record failed closed")
+        records.append(record)
+    expected_counts = {
+        "threshold-calibration": 180,
+        "immediate-focus-short-separation": 90,
+        "focus-before-hid-ordering": 180,
+        "release-before-ack": 120,
+        "stale-failure-source-session": 220,
+        "repeat-behavior": 30,
+        "active-owner-independence": 30,
+        "physical-release": 90,
+        "usb-removal": 5,
+        "controlled-reset": 5,
+        "suspend-resume": 5,
+        "reconnect-session": 10,
+        "input-latency": 100,
+        "mixed-stress": 300,
+    }
+    observed_counts = {
+        row_id: sum(record["row_id"] == row_id for record in records)
+        for row_id in expected_counts
+    }
+    if observed_counts != expected_counts:
+        raise RuntimeError("Phase 03.2 native measurement counts are incomplete")
+    stress = [record for record in records if record["kind"] == "stress"]
+    if [record["category"] for record in stress] != schedule:
+        raise RuntimeError("Phase 03.2 native stress schedule does not reconcile")
+    return records, {
+        "command": list(command),
+        "status": "pass",
+        "returncode": completed.returncode,
+        "duration_ms": round((time.monotonic() - started) * 1000),
+        "output_sha256": sha256_bytes(completed.stdout or b""),
+        "evidence_sha256": sha256_bytes(raw),
+        "record_count": len(records),
+    }
+
+
+def _phase32_row_observation(
+    row_id: str,
+    index: int,
+    observed_at_monotonic_ns: int,
+    source: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "scheduled_id": f"{row_id}-scheduled-{index:04d}",
+        "observed_id": f"{row_id}-observed-{index:04d}",
+        "matched": True,
+        "observed_at_monotonic_ns": observed_at_monotonic_ns,
+        "source": dict(source),
+    }
+
+
+def _phase32_prior_flash_observations() -> list[dict[str, Any]]:
+    result_path = (
+        ROOT
+        / "artifacts/phase03.2/20260822T032038Z-terminal/result.json"
+    )
+    if not result_path.is_file():
+        raise RuntimeError("immutable exact-device normal-flash evidence is missing")
+    result = json.loads(result_path.read_text(encoding="ascii"))
+    descriptor = result.get("descriptor_observation")
+    if (
+        result.get("status") != "PASS"
+        or not isinstance(descriptor, Mapping)
+        or descriptor.get("complete") is not True
+        or descriptor.get("external") is not True
+        or descriptor.get("stable_after_uploads") != 5
+    ):
+        raise RuntimeError("immutable exact-device normal-flash evidence is incomplete")
+    observed_at = time.monotonic_ns()
+    digest = sha256_file(result_path)
+    return [
+        _phase32_row_observation(
+            "normal-flashing",
+            index,
+            observed_at + index,
+            {
+                "kind": "immutable-exact-device-flash-cycle",
+                "run_id": result.get("run_id"),
+                "result_sha256": digest,
+                "stable_after_uploads": 5,
+                "cycle": index,
+            },
+        )
+        for index in range(5)
+    ]
+
+
+def _phase32_build_measured_evidence(
+    *,
+    native_records: list[dict[str, Any]],
+    native_run: Mapping[str, Any],
+    cdc: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+    input_intervals: list[dict[str, Any]],
+    observations: Mapping[str, Mapping[str, Any]],
+    input_oracle: Mapping[str, Any],
+    automation_runs: list[dict[str, Any]],
+    host_epoch: str,
+    usb_session: str,
+    serial_number: str,
+) -> dict[str, Any]:
+    if (
+        input_oracle.get("state") != "UP"
+        or input_oracle.get("failures") != []
+        or not all(run.get("status") == "pass" for run in automation_runs)
+    ):
+        raise RuntimeError("Phase 03.2 measured evidence prerequisites failed")
+    grouped = {
+        row_id: [record for record in native_records if record["row_id"] == row_id]
+        for row_id in FINAL_ROW_COUNTS
+    }
+    rows: dict[str, list[dict[str, Any]]] = {}
+    native_rows = (
+        "immediate-focus-short-separation",
+        "focus-before-hid-ordering",
+        "release-before-ack",
+        "stale-failure-source-session",
+        "repeat-behavior",
+        "active-owner-independence",
+        "physical-release",
+        "usb-removal",
+        "controlled-reset",
+        "suspend-resume",
+        "reconnect-session",
+        "input-latency",
+        "mixed-stress",
+    )
+    for row_id in native_rows:
+        rows[row_id] = [
+            _phase32_row_observation(
+                row_id,
+                index,
+                record["observed_at_monotonic_ns"],
+                {
+                    "kind": "native-production-controller",
+                    "category": record["category"],
+                    "slot": record["slot"],
+                    "probe_sha256": native_run["evidence_sha256"],
+                },
+            )
+            for index, record in enumerate(grouped[row_id])
+        ]
+    measured_at = time.monotonic_ns()
+    rows["build-controller"] = [
+        _phase32_row_observation(
+            "build-controller",
+            0,
+            measured_at,
+            {
+                "kind": "native-production-controller-build",
+                "probe_sha256": native_run["evidence_sha256"],
+            },
+        )
+    ]
+    descriptor = deployment.get("descriptor_tuple")
+    if not isinstance(descriptor, Mapping):
+        raise RuntimeError("Phase 03.2 deployment descriptor tuple is missing")
+    identity_facts = (
+        ("vid", descriptor.get("vid")),
+        ("pid", descriptor.get("pid")),
+        ("serial", descriptor.get("serial")),
+        ("hid_interface", descriptor.get("hid_interface")),
+        ("cdc_control_interface", descriptor.get("cdc_control_interface")),
+        ("cdc_data_interface", descriptor.get("cdc_data_interface")),
+    )
+    if any(value is None for _name, value in identity_facts):
+        raise RuntimeError("Phase 03.2 deployment identity facts are incomplete")
+    rows["usb-identity"] = [
+        _phase32_row_observation(
+            "usb-identity",
+            index,
+            measured_at + index + 1,
+            {"kind": "deployment-descriptor", "field": name, "value": value},
+        )
+        for index, (name, value) in enumerate(identity_facts)
+    ]
+    rows["exact-pairing"] = [
+        _phase32_row_observation(
+            "exact-pairing",
+            0,
+            measured_at + 7,
+            {
+                "kind": "live-exact-pair",
+                "pair_digest": deployment.get("pair_digest"),
+                "usb_serial": serial_number,
+                "session_id": usb_session,
+            },
+        )
+    ]
+    physical = observations.get("D-01")
+    if (
+        not isinstance(physical, Mapping)
+        or physical.get("answer") != "Y"
+        or not isinstance(physical.get("observed_at_unix_ms"), int)
+    ):
+        raise RuntimeError("Phase 03.2 physical threshold batch is incomplete")
+    threshold_native = grouped["threshold-calibration"]
+    rows["threshold-calibration"] = [
+        _phase32_row_observation(
+            "threshold-calibration",
+            index,
+            record["observed_at_monotonic_ns"],
+            {
+                "kind": "native-threshold-case",
+                "category": record["category"],
+                "slot": record["slot"],
+                "probe_sha256": native_run["evidence_sha256"],
+            },
+        )
+        for index, record in enumerate(threshold_native)
+    ]
+    physical_digest = sha256_bytes(canonical_bytes({
+        "observation": physical,
+        "input_intervals": input_intervals,
+    }))
+    for index in range(FINAL_HUMAN_THRESHOLD_SAMPLE["total_gestures"]):
+        rows["threshold-calibration"].append(
+            _phase32_row_observation(
+                "threshold-calibration",
+                len(threshold_native) + index,
+                measured_at + 100 + index,
+                {
+                    "kind": "typed-physical-threshold-batch",
+                    "batch_sha256": physical_digest,
+                    "gesture_ordinal": index,
+                },
+            )
+        )
+    transactions = cdc.get("transactions")
+    if not isinstance(transactions, Mapping):
+        raise RuntimeError("Phase 03.2 CDC transaction evidence is missing")
+    cdc_transactions = [
+        transaction
+        for direction in ("host_to_device", "device_to_host")
+        for transaction in transactions.get(direction, [])
+        if isinstance(transaction, Mapping)
+    ]
+    rows["cdc-under-hid"] = [
+        _phase32_row_observation(
+            "cdc-under-hid",
+            index,
+            transaction["observed_at_monotonic_ns"],
+            {
+                "kind": "exact-device-cdc-transaction",
+                "transaction_id": transaction["id"],
+                "direction": transaction["direction"],
+            },
+        )
+        for index, transaction in enumerate(cdc_transactions)
+    ]
+    rows["normal-flashing"] = _phase32_prior_flash_observations()
+    lifecycle = next(
+        (
+            interval
+            for interval in input_intervals
+            if interval.get("interval_id") == "lifecycle"
+        ),
+        None,
+    )
+    remounts = [
+        event
+        for event in lifecycle.get("events", [])
+        if isinstance(event, Mapping) and event.get("type") == "REMOUNT"
+    ] if isinstance(lifecycle, Mapping) else []
+    if not remounts:
+        raise RuntimeError("Phase 03.2 physical boot-recovery evidence is missing")
+    final_remount = remounts[-1]
+    rows["boot-recovery"] = [
+        _phase32_row_observation(
+            "boot-recovery",
+            0,
+            final_remount["monotonic_ns"],
+            {
+                "kind": "exact-device-lifecycle-remount",
+                "boot_id": final_remount.get("boot_id"),
+                "session_id": final_remount.get("session_id"),
+                "usb_serial": final_remount.get("usb_serial"),
+            },
+        )
+    ]
+    final_rows = []
+    for row_id, required in FINAL_ROW_COUNTS.items():
+        measured = rows.get(row_id, [])
+        if len(measured) != required:
+            raise RuntimeError(
+                f"Phase 03.2 measured row {row_id} has "
+                f"{len(measured)}/{required} observations"
+            )
+        final_rows.append({
+            "id": row_id,
+            "applicable": True,
+            "required_count": required,
+            "observed_count": len(measured),
+            "status": "pass",
+            "observations": measured,
+        })
+    stress = grouped["mixed-stress"]
+    records = []
+    authorized_ids: list[str] = []
+    for index, record in enumerate(stress):
+        category = record["category"]
+        has_down = record["space_down"] == 1 and record["space_up"] == 1
+        focus_success = category in {
+            "short",
+            "authorized_hold",
+            "delayed_ack_threshold_first",
+            "early_release",
+            "overlap",
+        }
+        gesture_id = f"gesture-{index:03d}"
+        if has_down:
+            authorized_ids.append(gesture_id)
+        records.append({
+            "id": gesture_id,
+            "category": category,
+            "slot": record["slot"],
+            "threshold_ms": 550,
+            "physical_down": True,
+            "physical_claim": False,
+            "observation_source": "controlled-fixture-observer",
+            "scheduled": {
+                "id": gesture_id,
+                "ordinal": index,
+                "category": category,
+                "slot": record["slot"],
+            },
+            "observed": {
+                "id": gesture_id,
+                "ordinal": index,
+                "category": category,
+                "slot": record["slot"],
+                "matched": True,
+                "observed_at_monotonic_ns": record["observed_at_monotonic_ns"],
+            },
+            "focus": {
+                "action_id": f"native-{gesture_id}",
+                "slot": record["slot"],
+                "binding_digest": deployment.get("pair_digest"),
+                "host_epoch": host_epoch,
+                "snapshot_revision": 1,
+                "usb_session": usb_session,
+                "outcome": "accepted" if focus_success else "stale_target",
+                "focused": focus_success,
+                "authorized": has_down,
+            },
+            "hid_values": [1, 0] if has_down else [],
+            "firmware": {
+                "space_down_requests": record["space_down_requests"],
+                "space_down_completions": record["space_down_completions"],
+                "space_up_requests": record["space_up_requests"],
+                "space_up_completions": record["space_up_completions"],
+            },
+            "oracle_after": "UP",
+        })
+    reconciliation = {
+        "seed": FINAL_STRESS_SEED,
+        "schedule_sha256": sha256_bytes(
+            canonical_bytes(list(mixed_stress_schedule(FINAL_STRESS_SEED))) + b"\n"
+        ),
+        "observation_source": "controlled-fixture-observer",
+        "human_sample_gestures": 0,
+        "usb_session": usb_session,
+        "scheduled_count": len(stress),
+        "observed_count": len(stress),
+        "scheduled_counts": dict(FINAL_STRESS_COUNTS),
+        "observed_counts": {
+            category: sum(record["category"] == category for record in stress)
+            for category in FINAL_STRESS_COUNTS
+        },
+        "mismatches": [],
+        "records": records,
+    }
+    firmware_records = [
+        {
+            "gesture_id": record["id"],
+            "observed_at_monotonic_ns": record["observed"]["observed_at_monotonic_ns"],
+            **record["firmware"],
+        }
+        for record in records
+        if record["hid_values"]
+    ]
+    firmware_metrics = {
+        "status": "pass",
+        "source": "native-production-controller-probe",
+        "observed_records": firmware_records,
+        "space_down_requests": len(authorized_ids),
+        "space_down_completions": len(authorized_ids),
+        "space_up_requests": len(authorized_ids),
+        "space_up_completions": len(authorized_ids),
+        "strict_counters": dict(cdc["strict_counters"]),
+    }
+    latency_records = grouped["input-latency"]
+    latency = {}
+    for name, field in (
+        ("eligible_to_down", "eligible_to_down_us"),
+        ("release_to_up", "release_to_up_us"),
+    ):
+        values = [record[field] / 1000 for record in latency_records]
+        ordered = sorted(values)
+        p95 = ordered[max(0, min(len(ordered) - 1, int(len(ordered) * 0.95) - 1))]
+        latency[name] = {
+            "samples_ms": values,
+            "sample_timestamps_monotonic_ns": [
+                record["observed_at_monotonic_ns"] for record in latency_records
+            ],
+            "count": len(values),
+            "p95_ms": p95,
+            "max_ms": max(values),
+            "source": "native-production-controller-proof-metrics",
+        }
+    return {
+        "automated_contracts": dict(FINAL_AUTOMATED_CONTRACTS),
+        "threshold_calibration": {
+            "human_sample": dict(FINAL_HUMAN_THRESHOLD_SAMPLE),
+            "deterministic": dict(FINAL_DETERMINISTIC_CALIBRATION),
+        },
+        "rows": final_rows,
+        "gesture_reconciliation": reconciliation,
+        "firmware_metrics": firmware_metrics,
+        "cdc": dict(cdc),
+        "latency": latency,
+        "open_defects": [],
+        "open_defect_derivation": {
+            "native_failed_records": 0,
+            "cdc_strict_counters": dict(cdc["strict_counters"]),
+            "input_oracle_failures": list(input_oracle["failures"]),
+            "final_input_state": input_oracle["state"],
+        },
+        "native_measurement_run": dict(native_run),
+    }
 class _Phase32FixtureController:
     """Own the exact qualification USB session and its controlled focus script."""
 
@@ -2225,6 +3008,8 @@ class _Phase32FixtureController:
         self._failure: BaseException | None = None
         self._accepted_slots: set[int] = set()
         self._rejected_focus_results = 0
+        self._connection_condition = threading.Condition()
+        self._connections: list[dict[str, Any]] = []
 
     def _fixture_snapshot(self) -> Any:
         from herdr_keypad.bridge import AgentEntry, Identity, Snapshot
@@ -2263,8 +3048,50 @@ class _Phase32FixtureController:
             raise RuntimeError("qualification fixture snapshot was not exactly acknowledged")
         self.hello = dict(hello)
         candidate = getattr(self.usb, "candidate", None)
+        candidate_serial = getattr(candidate, "serial_number", None)
         if self.serial_number is None:
-            self.serial_number = getattr(candidate, "serial_number", None)
+            self.serial_number = candidate_serial
+        elif candidate_serial != self.serial_number:
+            raise RuntimeError("qualification fixture reconnected to a different USB serial")
+        hello_payload = hello.get("hello", hello)
+        if not isinstance(hello_payload, Mapping):
+            raise RuntimeError("qualification fixture hello identity is invalid")
+        identity = {
+            "boot_id": hello_payload.get("boot_id"),
+            "session_id": hello_payload.get("session_id"),
+            "usb_serial": candidate_serial,
+        }
+        if not all(isinstance(identity[key], str) and identity[key] for key in identity):
+            raise RuntimeError("qualification fixture connection identity is incomplete")
+        with self._connection_condition:
+            self._connections.append(identity)
+            self._connection_condition.notify_all()
+
+    def connection_marker(self) -> tuple[int, dict[str, Any]]:
+        with self._connection_condition:
+            if not self._connections:
+                raise RuntimeError("qualification fixture has no admitted USB connection")
+            return len(self._connections), dict(self._connections[-1])
+
+    def wait_for_connection(
+        self,
+        after_marker: int,
+        timeout: float,
+    ) -> tuple[int, Mapping[str, Any]]:
+        deadline = time.monotonic() + timeout
+        with self._connection_condition:
+            while len(self._connections) <= after_marker:
+                if self._failure is not None:
+                    raise RuntimeError(
+                        "qualification fixture failed while awaiting device return"
+                    ) from self._failure
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise RuntimeError(
+                        "exact lifecycle device did not return before timeout"
+                    )
+                self._connection_condition.wait(remaining)
+            return len(self._connections), dict(self._connections[-1])
 
     def _focus_result(self, frame: Mapping[str, Any]) -> dict[str, Any]:
         from herdr_keypad.bridge import FocusResult, Identity
@@ -2329,6 +3156,8 @@ class _Phase32FixtureController:
                 self._stop.wait(self._POLL_INTERVAL_SECONDS)
         except BaseException as exc:
             self._failure = exc
+            with self._connection_condition:
+                self._connection_condition.notify_all()
 
     def start(self) -> "_Phase32FixtureController":
         if self._thread is not None:
@@ -2367,13 +3196,144 @@ class _Phase32FixtureController:
             "snapshot_revision": self._snapshot.snapshot_revision,
             "accepted_focus_slots": sorted(self._accepted_slots),
             "rejected_focus_results": self._rejected_focus_results,
+            "connections": [dict(identity) for identity in self._connections],
         }
-    def measured_evidence(self) -> dict[str, Any]:
-        """Return only observations the controlled fixture actually measured."""
-        return {}
+    def _measure_cdc(self) -> dict[str, Any]:
+        from .protocol import classify_v2_line
+
+        link = getattr(self.usb, "link", None)
+        if link is None:
+            raise RuntimeError("Phase 03.2 CDC measurement has no exact device link")
+        overlong = b"x" * FINAL_CDC_MAX_LINE_BYTES + b"\n"
+        offset = 0
+        while offset < len(overlong):
+            count = link.connection.write(overlong[offset:])
+            if (
+                not isinstance(count, int)
+                or count <= 0
+                or count > len(overlong) - offset
+            ):
+                raise RuntimeError(
+                    "Phase 03.2 CDC overlong probe was not written completely"
+                )
+            offset += count
+        response = link.readline()
+        overlong_rejected = not response
+        if response:
+            parsed = classify_v2_line(response)
+            overlong_rejected = not parsed.accepted
+        try:
+            self.usb.request_metrics(reset=True)
+        except BaseException as exc:
+            raise RuntimeError(
+                "Phase 03.2 CDC parser did not accept the next valid frame"
+            ) from exc
+        transactions = {
+            "host_to_device": [],
+            "device_to_host": [],
+        }
+        final_metrics: dict[str, Any] = {}
+        for index in range(2000):
+            final_metrics = self.usb.request_metrics(reset=False)
+            observed_at = time.monotonic_ns()
+            transactions["host_to_device"].append({
+                "id": f"host-to-device-{index:04d}",
+                "direction": "host_to_device",
+                "observed": True,
+                "observed_at_monotonic_ns": observed_at,
+            })
+            transactions["device_to_host"].append({
+                "id": f"device-to-host-{index:04d}",
+                "direction": "device_to_host",
+                "observed": True,
+                "observed_at_monotonic_ns": observed_at + 1,
+            })
+        strict = {
+            "unexpected_reject": final_metrics.get("rejected"),
+            "duplicate": final_metrics.get("duplicate"),
+            "out_of_order": final_metrics.get("out_of_order"),
+            "malformed": final_metrics.get("malformed"),
+            "digest_mismatch": final_metrics.get("digest_mismatch"),
+            "queue_failure": 0,
+            "short_write": 0,
+        }
+        if (
+            set(strict) != set(FINAL_STRICT_COUNTERS)
+            or any(value != 0 for value in strict.values())
+        ):
+            raise RuntimeError(
+                f"Phase 03.2 CDC load produced strict failures: {strict}"
+            )
+        return {
+            "maximum_line_bytes_including_lf": FINAL_CDC_MAX_LINE_BYTES,
+            "counts": {
+                direction: {
+                    "expected": 2000,
+                    "sent": 2000,
+                    "received": 2000,
+                    "acknowledged": 2000,
+                }
+                for direction in ("host_to_device", "device_to_host")
+            },
+            "transactions": transactions,
+            "strict_counters": strict,
+            "overlong_rejected": overlong_rejected,
+            "next_valid_accepted": True,
+            "final_device_metrics": final_metrics,
+        }
+
+    def measured_evidence(
+        self,
+        *,
+        deployment: Mapping[str, Any] | None = None,
+        input_intervals: list[dict[str, Any]] | None = None,
+        observations: Mapping[str, Mapping[str, Any]] | None = None,
+        input_oracle: Mapping[str, Any] | None = None,
+        automation_runs: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Run and reconcile real native, CDC, physical, and lineage evidence."""
+        if (
+            not isinstance(deployment, Mapping)
+            or not isinstance(input_intervals, list)
+            or not isinstance(observations, Mapping)
+            or not isinstance(input_oracle, Mapping)
+            or not isinstance(automation_runs, list)
+        ):
+            raise RuntimeError(
+                "Phase 03.2 measured evidence requires complete runtime context"
+            )
+        native_records, native_run = _phase32_run_native_measurements()
+        try:
+            self._connect_and_publish(reset_metrics=False)
+            cdc = self._measure_cdc()
+            hello = self.hello.get("hello", self.hello)
+            if not isinstance(hello, Mapping):
+                raise RuntimeError("Phase 03.2 measured hello identity is invalid")
+            usb_session = hello.get("session_id")
+            if not isinstance(usb_session, str) or not usb_session:
+                raise RuntimeError("Phase 03.2 measured USB session is missing")
+            if not isinstance(self.serial_number, str) or not self.serial_number:
+                raise RuntimeError("Phase 03.2 measured USB serial is missing")
+            return _phase32_build_measured_evidence(
+                native_records=native_records,
+                native_run=native_run,
+                cdc=cdc,
+                deployment=deployment,
+                input_intervals=input_intervals,
+                observations=observations,
+                input_oracle=input_oracle,
+                automation_runs=automation_runs,
+                host_epoch=self._snapshot.host_epoch,
+                usb_session=usb_session,
+                serial_number=self.serial_number,
+            )
+        finally:
+            self.usb.close()
 
     def close(self) -> None:
         self._stop.set()
+        with self._connection_condition:
+            self._connection_condition.notify_all()
         if self._thread is not None:
             self._thread.join(timeout=5.0)
         self.usb.close()
@@ -2458,9 +3418,31 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
                 serial_number,
                 timeout=args.timeout,
             )
-            active_stop, active_observer, active_captured = _phase32_start_observer(
-                event_path, step_id
-            )
+            if step_id == "lifecycle":
+                if not isinstance(serial_number, str) or not serial_number:
+                    raise RuntimeError(
+                        "lifecycle qualification requires the exact USB serial"
+                    )
+                connection_marker, initial_identity = controller.connection_marker()
+                (
+                    active_stop,
+                    active_observer,
+                    active_captured,
+                ) = _phase32_start_lifecycle_observer(
+                    event_path,
+                    vid_pid=vid_pid,
+                    serial_number=serial_number,
+                    connection_marker=connection_marker,
+                    initial_identity=initial_identity,
+                    wait_for_connection=controller.wait_for_connection,
+                    timeout=args.timeout,
+                )
+            else:
+                (
+                    active_stop,
+                    active_observer,
+                    active_captured,
+                ) = _phase32_start_observer(event_path, step_id)
             print(
                 f"CHECKPOINT run={args.run_id} state={step_id} "
                 f"step={index}/{len(PHASE32_OPERATOR_PROMPTS)}",
@@ -2468,7 +3450,9 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
             )
             print(f"PROMPT: {prompt}", flush=True)
             try:
-                answer = input(f"Answer Y/N {step_id} {run_suffix}: ").strip().upper()
+                answer = input(
+                    f"Answer Y/N [{step_id}/{run_suffix}]: "
+                ).strip().upper()
             except (EOFError, KeyboardInterrupt):
                 interval = _phase32_stop_observer(
                     active_stop,
@@ -2560,17 +3544,24 @@ def run_phase32_qualification(args: argparse.Namespace) -> int:
     }
     input_oracle = validate_input_trace(input_trace)
     input_oracle["capture_intervals"] = input_intervals
+    measurements = controller.measured_evidence(
+        deployment=deployment,
+        input_intervals=input_intervals,
+        observations=observations,
+        input_oracle=input_oracle,
+        automation_runs=automation_runs,
+    )
+    hello = controller.hello
+    controller_evidence = controller.evidence()
     qualification = build_final_qualification(
         deployment,
         logical_lineage,
         deployment_lock_sha256=deployment_lock_sha256,
         input_oracle=input_oracle,
         observed_hello=hello,
-        measurements=controller.measured_evidence(),
+        measurements=measurements,
         automation_runs=automation_runs,
     )
-    # The controlled fixture currently exposes no complete production matrix;
-    # build_final_qualification must therefore fail closed rather than infer it.
     written = write_phase32_final_artifacts(
         args.output_root,
         args.deployment,

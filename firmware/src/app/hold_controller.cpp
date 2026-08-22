@@ -2,6 +2,10 @@
 
 #include <string.h>
 
+#ifdef ARDUINO
+#include "metrics/hid_reset_journal.h"
+#endif
+
 namespace {
 uint8_t bitCount(uint8_t value) {
   uint8_t count = 0;
@@ -122,9 +126,12 @@ bool HoldController::attemptEmptyReport() {
   return completed;
 }
 
-bool HoldController::onLifecycle(LifecycleEvent /*event*/) {
+bool HoldController::onLifecycle(LifecycleEvent event) {
   // Clear all local authority before attempting any report. This ordering is
   // required even when the endpoint has disappeared and SendReport fails.
+#ifdef ARDUINO
+  hidResetJournal().beginLifecycle(static_cast<uint32_t>(event));
+#endif
   if (metrics_ != nullptr) metrics_->recordLifecycleClear();
   invalidateCandidate();
   if (owner_.active && metrics_ != nullptr) metrics_->recordOwnerTransition();
@@ -135,7 +142,11 @@ bool HoldController::onLifecycle(LifecycleEvent /*event*/) {
   all_keys_up_ = false;
   ++lifecycle_cleared_epoch_;
   if (lifecycle_cleared_epoch_ == 0) lifecycle_cleared_epoch_ = 1;
-  return attemptEmptyReport();
+  const bool completed = attemptEmptyReport();
+#ifdef ARDUINO
+  hidResetJournal().completeLifecycle(completed);
+#endif
+  return completed;
 }
 
 void HoldController::releaseOwner(uint8_t /*released_mask*/, uint32_t /*now_us*/) {

@@ -22,6 +22,7 @@ from phase1_bringup.phase22_smoke import (
     fnv1a64,
     snapshot_payload,
 )
+from phase1_bringup.protocol import PAYLOAD_KEYS
 from phase1_bringup.serial_link import SerialLinkError
 
 
@@ -173,28 +174,25 @@ class FragmentedConnection:
 
 def metrics_ack_frame(*, boot_id: str = "device-boot", session_id: str = "host-session",
                       sequence: int = 2, reply_to: int = 1) -> bytes:
+    payload = {name: 0 for name in PAYLOAD_KEYS["metrics_ack"]}
+    payload.update({
+        "acknowledged": 1,
+        "largest_free_block": 1,
+        "max_display_flush_us": 1,
+        "max_key_poll_gap_us": 1,
+        "minimum_free_heap": 1,
+        "parser_high_water": 1,
+        "queue_high_water": 1,
+        "received": 1,
+        "retained_boot_sequence": 1,
+        "sent": 1,
+    })
     return encode_frame(
         "metrics_ack",
         boot_id,
         session_id,
         sequence,
-        {
-            "acknowledged": 1,
-            "digest_mismatch": 0,
-            "duplicate": 0,
-            "largest_free_block": 1,
-            "malformed": 0,
-            "max_display_flush_us": 1,
-            "max_key_poll_gap_us": 1,
-            "minimum_free_heap": 1,
-            "out_of_order": 0,
-            "parser_high_water": 1,
-            "queue_high_water": 1,
-            "received": 1,
-            "rejected": 0,
-            "sent": 1,
-            "watchdog_reset": 0,
-        },
+        payload,
         version=1,
         reply_to=reply_to,
     )

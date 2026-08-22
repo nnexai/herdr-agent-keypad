@@ -527,6 +527,37 @@ class GuidedCompositePreflightTests(unittest.TestCase):
 
         self.assertEqual(selected, event)
         close_device.assert_called_once_with(7)
+    def test_keyboard_observer_strict_identity_rejects_missing_serial(self) -> None:
+        event = Path("/dev/input/event13")
+        properties = {
+            "ID_INPUT_KEYBOARD": "1",
+            "ID_VENDOR_ID": "303a",
+            "ID_MODEL_ID": "1001",
+        }
+        with (
+            patch.object(Path, "glob", return_value=[event]),
+            patch.object(composite_module, "_udev_properties", return_value=properties),
+            patch.object(
+                composite_module.time,
+                "monotonic",
+                side_effect=[0.0, 0.0, 2.0],
+            ),
+            patch.object(composite_module.time, "sleep"),
+            patch.object(composite_module.os, "open") as open_device,
+        ):
+            with self.assertRaisesRegex(
+                composite_module.CompositeQualificationError,
+                "did not expose",
+            ):
+                composite_module._find_guided_keyboard_event(
+                    "303a:1001",
+                    "8C:BF:EA:0D:CB:FC",
+                    timeout=1.0,
+                    require_serial=True,
+                )
+
+        open_device.assert_not_called()
+
 
 
     def test_cli_reports_only_the_current_exact_pairing_action(self) -> None:
@@ -693,6 +724,12 @@ class FinalProductionQualificationTests(unittest.TestCase):
             "decision_manifest_sha256": "m" * 64,
             "protocol_version": 1,
             "paired_device_id": "device-final",
+            "descriptor_tuple": {
+                "vid": 0x303A,
+                "pid": 0x1001,
+                "serial": "SERIALFINAL",
+            },
+            "usb_serial": "SERIAL-FINAL",
         }
 
     @classmethod
@@ -799,11 +836,33 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "failures": [],
                 "capture_intervals": [
                     {
-                        "interval_id": step_id,
+                        "interval_id": "threshold-calibration",
                         "complete": True,
                         "events": [{"type": "EV_KEY", "value": 0}],
-                    }
-                    for step_id in ("threshold-calibration", "presentation", "lifecycle")
+                    },
+                    {
+                        "interval_id": "presentation",
+                        "complete": True,
+                        "events": [{"type": "EV_KEY", "value": 0}],
+                    },
+                    {
+                        "interval_id": "lifecycle",
+                        "complete": True,
+                        "initial_boot_id": deployment["boot_id"],
+                        "initial_session_id": deployment["session_id"],
+                        "events": [
+                            {"type": "DEVICE_REMOVED", "verified": True},
+                            {
+                                "type": "REMOUNT",
+                                "verified": True,
+                                "empty": True,
+                                "boot_id": "boot-recovered",
+                                "session_id": "session-recovered",
+                                "usb_serial": deployment["usb_serial"],
+                                "vid_pid": "303a:1001",
+                            },
+                        ],
+                    },
                 ],
             },
             "firmware_metrics": {
@@ -881,8 +940,8 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "protocol_version": 1,
             },
             "observed_device": {
-                "boot_id": deployment["boot_id"],
-                "session_id": deployment["session_id"],
+                "boot_id": "boot-recovered",
+                "session_id": "session-recovered",
             },
             "open_defects": [],
         }
@@ -916,17 +975,6 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 },
                 automation_runs=[{"status": "pass"}],
             )
-        with self.assertRaisesRegex(CompositeQualificationError, "boot/session"):
-            build_final_qualification(
-                deployment,
-                logical,
-                deployment_lock_sha256="l" * 64,
-                input_oracle=oracle,
-                observed_hello={"hello": {"boot_id": "wrong", "session_id": "wrong"}},
-                measurements={},
-                automation_runs=[{"status": "pass"}],
-            )
-
         source = self._qualification()
         measured = {
             name: source[name]
@@ -941,6 +989,17 @@ class FinalProductionQualificationTests(unittest.TestCase):
                 "open_defects",
             )
         }
+        with self.assertRaisesRegex(CompositeQualificationError, "lifecycle"):
+            build_final_qualification(
+                deployment,
+                logical,
+                deployment_lock_sha256="l" * 64,
+                input_oracle=oracle,
+                observed_hello={"hello": {"boot_id": "wrong", "session_id": "wrong"}},
+                measurements=measured,
+                automation_runs=[{"status": "pass"}],
+            )
+
         built = build_final_qualification(
             deployment,
             logical,
@@ -948,8 +1007,8 @@ class FinalProductionQualificationTests(unittest.TestCase):
             input_oracle=source["input_oracle"],
             observed_hello={
                 "hello": {
-                    "boot_id": deployment["boot_id"],
-                    "session_id": deployment["session_id"],
+                    "boot_id": "boot-recovered",
+                    "session_id": "session-current",
                 }
             },
             measurements=measured,
@@ -959,7 +1018,7 @@ class FinalProductionQualificationTests(unittest.TestCase):
         self.assertEqual(built["gesture_reconciliation"], source["gesture_reconciliation"])
         self.assertEqual(
             built["observed_device"],
-            {"boot_id": deployment["boot_id"], "session_id": deployment["session_id"]},
+            {"boot_id": "boot-recovered", "session_id": "session-recovered"},
         )
     def test_phase32_final_gate_requires_amended_reduced_human_sample_and_deterministic_coverage(self) -> None:
         deployment = self._deployment()
