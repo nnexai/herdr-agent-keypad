@@ -196,6 +196,19 @@ FINAL_STRICT_COUNTERS = STRICT_COUNTERS
 
 def _final_failure(message: str) -> None:
     raise CompositeQualificationError(f"final production qualification {message}")
+FINAL_AUTOMATED_CONTRACTS = {
+    "native-hold-controller": "pass",
+    "native-board-adapter": "pass",
+    "native-agent-projection": "pass",
+    "native-protocol": "pass",
+    "host-integration": "pass",
+    "logical-evidence": "pass",
+    "descriptor-pair": "pass",
+    "linux-input-oracle": "pass",
+    "firmware-metrics": "pass",
+    "lifecycle-matrix": "pass",
+    "seeded-stress": "pass",
+}
 
 
 def _validate_final_rows(rows: Any) -> dict[str, Mapping[str, Any]]:
@@ -379,6 +392,9 @@ def validate_final_qualification(
     production gate cannot inherit deferred rows, the 385-byte tracer bound, or
     the 12-sample latency floor.
     """
+    contracts = qualification.get("automated_contracts")
+    if contracts != FINAL_AUTOMATED_CONTRACTS:
+        _final_failure("automated contract suite is incomplete or failed")
     if (
         qualification.get("schema_version") != FINAL_QUALIFICATION_SCHEMA_VERSION
         or qualification.get("kind") != FINAL_QUALIFICATION_KIND

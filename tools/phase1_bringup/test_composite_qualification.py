@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from phase1_bringup.composite_qualification import (
     CompositeQualificationError,
+    FINAL_AUTOMATED_CONTRACTS,
     FINAL_EDGE_ASSUMPTIONS,
     FINAL_ROW_COUNTS,
     FINAL_STRESS_COUNTS,
@@ -718,6 +719,7 @@ class FinalProductionQualificationTests(unittest.TestCase):
             "schema_version": 1,
             "kind": "phase03.2-final-qualification",
             "status": "pass",
+            "automated_contracts": dict(FINAL_AUTOMATED_CONTRACTS),
             "deployment_id": deployment["deployment_id"],
             "firmware_sha256": deployment["firmware_sha256"],
             "deployment_lock_sha256": "l" * 64,
