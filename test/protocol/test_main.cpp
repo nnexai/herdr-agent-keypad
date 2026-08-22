@@ -350,7 +350,7 @@ void test_closed_v2_types_and_descriptorless_hold_authority(void) {
     const Result rejected = FrameCodec::decode(
         reinterpret_cast<const uint8_t*>(line.data()), line.size());
     TEST_ASSERT_FALSE(rejected.accepted);
-    TEST_ASSERT_EQUAL_STRING("invalid_shape", phase1::protocol::rejection_name(rejected.reason));
+    TEST_ASSERT_EQUAL_STRING("unknown_field", phase1::protocol::rejection_name(rejected.reason));
   }
 
   std::string oversized(phase1::protocol::kMaxLineBytes, 'x');
