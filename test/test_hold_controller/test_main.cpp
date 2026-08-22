@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <cstdio>
 
 #include <unity.h>
 
@@ -209,6 +210,58 @@ void test_unavailable_hid_cancels_candidate_and_owner() {
   TEST_ASSERT_EQUAL_INT(0, g_space_down);
 }
 
+void test_all_ordered_sequential_pairs_keep_one_owner() {
+  for (uint8_t first = 0; first < ProductInputFrame::kAgentSlotCount; ++first) {
+    for (uint8_t second = 0; second < ProductInputFrame::kAgentSlotCount; ++second) {
+      if (first == second) continue;
+      reset_hid();
+      FixedSpaceHid hid;
+      HoldController controller(hid, 550000);
+      char first_action[16] = {};
+      char second_action[16] = {};
+      snprintf(first_action, sizeof(first_action), "a-%u", first);
+      snprintf(second_action, sizeof(second_action), "b-%u", second);
+      TEST_ASSERT_TRUE(controller.registerPress(first, first_action, 1000));
+      controller.observeFrame(input(static_cast<uint8_t>(1U << first),
+                                    static_cast<uint8_t>(1U << first), 0, 1000),
+                              1000, true);
+      TEST_ASSERT_TRUE(controller.registerPress(second, second_action, 2000));
+      controller.observeFrame(
+          input(static_cast<uint8_t>(1U << second),
+                static_cast<uint8_t>((1U << first) | (1U << second)), 0, 2000),
+          2000, true);
+      controller.observeFocusResult(first, first_action, true);
+      controller.observeFocusResult(second, second_action, true);
+      controller.observeFrame(
+          input(0, static_cast<uint8_t>((1U << first) | (1U << second)), 0),
+          552000, true);
+      TEST_ASSERT_EQUAL_UINT8(second, controller.ownerSlot());
+      TEST_ASSERT_EQUAL_INT(1, g_space_down);
+      controller.observeFrame(
+          input(0, static_cast<uint8_t>(1U << first),
+                static_cast<uint8_t>(1U << second)),
+          552001, true);
+      TEST_ASSERT_EQUAL_INT(1, g_release_all);
+      controller.observeFrame(input(0, 0, static_cast<uint8_t>(1U << first)),
+                              552002, true);
+      TEST_ASSERT_EQUAL_INT(1, g_release_all);
+    }
+  }
+}
+
+void test_disconnect_keeps_chord_lockout_until_all_keys_up() {
+  FixedSpaceHid hid;
+  HoldController controller(hid, 550000);
+  TEST_ASSERT_TRUE(controller.registerPress(0, "action-a", 1000));
+  TEST_ASSERT_TRUE(controller.registerPress(1, "action-b", 1000));
+  controller.observeFrame(input(3, 3, 0, 1000), 1000, true);
+  controller.cancelAll();
+  controller.observeFrame(input(0, 1, 0), 2000, true);
+  TEST_ASSERT_FALSE(controller.registerPress(2, "action-c", 3000));
+  controller.observeFrame(input(0, 0, 1), 4000, true);
+  TEST_ASSERT_TRUE(controller.registerPress(2, "action-c", 5000));
+}
+
 }  // namespace
 void setUp() { reset_hid(); }
 void tearDown() {}
@@ -241,5 +294,7 @@ int main(int, char**) {
   RUN_TEST(test_hid_failure_does_not_leave_active_owner_or_retry);
   RUN_TEST(test_wrap_safe_threshold_equality);
   RUN_TEST(test_unavailable_hid_cancels_candidate_and_owner);
+  RUN_TEST(test_disconnect_keeps_chord_lockout_until_all_keys_up);
+  RUN_TEST(test_all_ordered_sequential_pairs_keep_one_owner);
   return UNITY_END();
 }
