@@ -33,7 +33,7 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **HOLD-02**: A deliberate hold emits USB HID Space-down only after Herdr has acknowledged exact focus for the same action, opaque binding, host epoch, snapshot revision, and USB session, and only while that physical key remains held.
 - [x] **HOLD-03**: Release before focus acknowledgment cancels the pending hold; stale identity, late result, focus failure, unavailable source, or disconnected host never emits Space.
 - [x] **HOLD-04**: Once Space-down is active, it behaves like a physical system keyboard across later focus changes and ends on physical release or USB-device removal; controlled reset and suspend paths release all keys.
-- [ ] **HOLD-05**: The exact keypad passes fresh composite CDC + HID qualification for USB identity, pairing, bounded NDJSON transport, reconnect, suspend/resume, flashing, boot recovery, input latency, and stuck-key behavior before recovery acceptance begins.
+- [x] **HOLD-05**: The exact keypad passes fresh composite CDC + HID qualification for USB identity, pairing, bounded NDJSON transport, reconnect, suspend/resume, flashing, boot recovery, input latency, and stuck-key behavior before recovery acceptance begins.
 
 ### Codex Usage
 
@@ -116,7 +116,7 @@ Every v1 requirement maps to exactly one roadmap phase.
 | HOLD-02 | Phase 03.2 | Complete |
 | HOLD-03 | Phase 03.2 | Complete |
 | HOLD-04 | Phase 03.2 | Complete |
-| HOLD-05 | Phase 03.2 | Pending |
+| HOLD-05 | Phase 03.2 | Complete |
 | CODEX-01 | Phase 3 | Complete |
 | CODEX-02 | Phase 3 | Complete |
 | CODEX-03 | Phase 3 | Complete |

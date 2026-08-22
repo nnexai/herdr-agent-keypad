@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: executing
-stopped_at: Completed 03.2-04-PLAN.md
-last_updated: "2026-08-22T07:16:08.698Z"
+stopped_at: Completed 03.2-03-PLAN.md
+last_updated: "2026-08-22T08:07:48.352Z"
 last_activity: 2026-08-22
 last_activity_desc: Phase 03.2 execution resumed (wave continue)
-state_head: dc3c7cea2fec32800d5d5273a2b50b383bf8300c
+state_head: f29d4c727c30f787aeb715f465662a30ce804d27
 progress:
   total_phases: 8
   completed_phases: 5
   total_plans: 53
-  completed_plans: 47
+  completed_plans: 48
 milestone_name: milestone
 ---
 
@@ -48,7 +48,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 ## Current Position
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — EXECUTING
-Plan: 5 of 10
+Plan: 6 of 10
 Status: Ready to execute
 Last activity: 2026-08-22 — Phase 03.2 execution resumed (wave continue)
 
@@ -114,6 +114,7 @@ Progress: [██████████] 97%
 | Phase 03.2 P02 | 5min | 2 tasks | 5 files |
 | Phase 03.2 P02 | 5min | 2 tasks | 5 files |
 | Phase 03.2 P04 | 18min | 2 tasks | 5 files |
+| Phase 03.2 P03 | 35min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -203,6 +204,8 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 03.2]: The restored frozen composite binary and immutable validator PASS remain Plan 00 prerequisite evidence only, not new product qualification.
 - [Phase 03.2]: Plan 03.2-04 freezes composite CDC discovery at VID/PID 0x303a:0x1001, serial 8C:BF:EA:0D:CB:FC, CDC interface 01, while application hello and fresh session remain authorization.
 - [Phase 03.2]: Plan 03.2-04 keeps the v2 wire at exactly agent_snapshot, snapshot_ack, focus_intent, and focus_result; fixed Space hold authority remains local after exact admitted focus_result.
+- [Phase 03.2]: HoldController clears authority before every lifecycle release attempt and requires empty completion plus all-keys-up before rearm.
+- [Phase 03.2]: Hold safety failures remain boot-monotonic while bounded diagnostic counters and timing maxima reset explicitly.
 
 ### Pending Todos
 
@@ -242,5 +245,5 @@ None yet.
 
 **Resume file:** None
 
-Last session: 2026-08-22T07:16:08.599Z
-Stopped at: Completed 03.2-04-PLAN.md
+Last session: 2026-08-22T08:07:48.241Z
+Stopped at: Completed 03.2-03-PLAN.md
