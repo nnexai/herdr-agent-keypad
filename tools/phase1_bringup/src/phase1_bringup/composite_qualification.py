@@ -957,6 +957,459 @@ def verify_composite_decision(
     return decision
 
 
+def _require_guided_bridge_lock() -> None:
+    try:
+        from .serial_link import require_inherited_bridge_lock
+
+        require_inherited_bridge_lock()
+    except RuntimeError as exc:
+        raise CompositeQualificationError(
+            f"exclusive bridge lock is required for guided composite preflight: {exc}"
+        ) from exc
+
+
+def _run_guided_command(argv: tuple[str, ...], cwd: Path) -> bytes:
+    try:
+        completed = subprocess.run(
+            argv,
+            cwd=cwd,
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=900,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        output = getattr(exc, "stdout", b"") or b""
+        detail = output.decode("utf-8", errors="replace")[-4000:]
+        raise CompositeQualificationError(
+            f"guided composite command failed: {' '.join(argv)}"
+            + (f"\n{detail}" if detail else "")
+        ) from exc
+    return completed.stdout
+
+
+def _serial_ports() -> list[Any]:
+    try:
+        from serial.tools import list_ports
+    except ImportError as exc:
+        raise CompositeQualificationError("pyserial is unavailable for composite discovery") from exc
+    return list(list_ports.comports())
+
+
+def _exact_paired_port(binding_path: Path) -> tuple[Any, dict[str, Any]]:
+    from .pairing import PairingStore
+    from .serial_link import reconnect_exact
+
+    binding = PairingStore(binding_path).load()
+    if binding is None:
+        raise CompositeQualificationError(f"pairing binding is missing: {binding_path}")
+
+    def opener(candidate: Any) -> Any:
+        try:
+            import serial
+        except ImportError as exc:
+            raise CompositeQualificationError("pyserial is unavailable for exact pairing") from exc
+        return serial.Serial(candidate.device, 115200, timeout=0.2, write_timeout=2.0)
+
+    try:
+        selected, link, session, _transitions = reconnect_exact(
+            binding, ports=None, opener=opener, timeout=5.0
+        )
+    except Exception as exc:
+        raise CompositeQualificationError(
+            f"current selected-usb exact pairing preflight failed: {exc}"
+        ) from exc
+    try:
+        hello = dict(session.device)
+        if (
+            hello.get("device_id") != binding.device_id
+            or hello.get("protocol") != binding.protocol
+            or hello.get("firmware") != binding.firmware
+        ):
+            raise CompositeQualificationError(
+                "current selected-usb hello differs from the exact pairing binding"
+            )
+        return selected, hello
+    finally:
+        link.close()
+
+
+def _wait_for_composite_port(previous: Any, timeout: float = 30.0) -> Any:
+    deadline = time.monotonic() + timeout
+    previous_serial = getattr(previous, "serial_number", None)
+    previous_path = getattr(previous, "device", None)
+    while time.monotonic() < deadline:
+        candidates = [
+            port
+            for port in _serial_ports()
+            if getattr(port, "device", None)
+            and getattr(port, "vid", None) is not None
+            and getattr(port, "pid", None) is not None
+        ]
+        exact_serial = [
+            port
+            for port in candidates
+            if previous_serial and getattr(port, "serial_number", None) == previous_serial
+        ]
+        if len(exact_serial) == 1:
+            return exact_serial[0]
+        changed_espressif = [
+            port
+            for port in candidates
+            if getattr(port, "vid", None) == 0x303A
+            and getattr(port, "device", None) != previous_path
+        ]
+        if len(changed_espressif) == 1:
+            return changed_espressif[0]
+        time.sleep(0.2)
+    raise CompositeQualificationError(
+        "composite CDC did not enumerate as one unambiguous exact-device candidate"
+    )
+
+
+def _capture_guided_descriptors(vid_pid: str) -> bytes:
+    return _UsbObserver().descriptors(vid_pid)
+
+
+def _udev_properties(device: Path) -> dict[str, str]:
+    output = _UsbObserver.command(
+        ("udevadm", "info", "--query=property", "--name", str(device))
+    )
+    properties: dict[str, str] = {}
+    for line in output.decode("utf-8", errors="strict").splitlines():
+        name, separator, value = line.partition("=")
+        if separator and name:
+            properties[name] = value
+    return properties
+
+
+def _find_guided_keyboard_event(
+    vid_pid: str, usb_serial: str | None, timeout: float = 20.0
+) -> Path:
+    vid, pid = vid_pid.split(":", 1)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        matches: list[Path] = []
+        for event in sorted(Path("/dev/input").glob("event*")):
+            try:
+                properties = _udev_properties(event)
+            except CompositeQualificationError:
+                continue
+            if (
+                properties.get("ID_INPUT_KEYBOARD") == "1"
+                and properties.get("ID_VENDOR_ID", "").lower() == vid
+                and properties.get("ID_MODEL_ID", "").lower() == pid
+                and (
+                    not usb_serial
+                    or properties.get("ID_SERIAL_SHORT") in {usb_serial, None}
+                )
+            ):
+                matches.append(event)
+        if len(matches) == 1:
+            try:
+                fd = os.open(matches[0], os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+            except OSError as exc:
+                raise CompositeQualificationError(
+                    f"Linux evdev observer cannot read {matches[0]}: {exc}"
+                ) from exc
+            else:
+                os.close(fd)
+                return matches[0]
+        if len(matches) > 1:
+            raise CompositeQualificationError(
+                "composite HID observer found multiple matching keyboard event devices"
+            )
+        time.sleep(0.2)
+    raise CompositeQualificationError(
+        "composite HID did not expose one readable Linux keyboard event device"
+    )
+
+
+def _probe_guided_status(cdc_path: str, timeout: float = 8.0) -> dict[str, Any]:
+    try:
+        import serial
+    except ImportError as exc:
+        raise CompositeQualificationError("pyserial is unavailable for tracer preflight") from exc
+    deadline = time.monotonic() + timeout
+    try:
+        connection = serial.Serial(
+            cdc_path, 115200, timeout=0.2, write_timeout=2.0
+        )
+    except Exception as exc:
+        raise CompositeQualificationError(
+            f"composite CDC observer could not open {cdc_path}: {exc}"
+        ) from exc
+    try:
+        connection.reset_input_buffer()
+        while time.monotonic() < deadline:
+            connection.write(b'{"op":"status","id":"guided-preflight"}\n')
+            connection.flush()
+            response_deadline = min(deadline, time.monotonic() + 1.0)
+            while time.monotonic() < response_deadline:
+                raw = connection.readline()
+                if not raw:
+                    continue
+                try:
+                    message = json.loads(raw.decode("ascii"))
+                except (UnicodeError, json.JSONDecodeError):
+                    continue
+                if (
+                    isinstance(message, dict)
+                    and message.get("event") == "status"
+                    and message.get("id") == "guided-preflight"
+                ):
+                    if message.get("requires_clean_release") is True:
+                        time.sleep(0.1)
+                        break
+                    return message
+        raise CompositeQualificationError(
+            "composite CDC did not return a clean-release status before timeout"
+        )
+    finally:
+        connection.close()
+
+
+def prepare_guided_composite_preflight(
+    project_root: Path,
+    binding_path: Path,
+    evidence_root: Path,
+    run_id: str,
+) -> dict[str, Any]:
+    """Build recovery + tracer, upload once, and freeze the exact observer checkpoint."""
+    _require_guided_bridge_lock()
+    if (
+        not isinstance(run_id, str)
+        or not run_id
+        or any(token in run_id for token in ("/", "\\"))
+        or run_id in {".", ".."}
+    ):
+        raise CompositeQualificationError("guided run_id must be one path component")
+    root = Path(project_root).resolve()
+    binding_path = Path(binding_path).resolve()
+    evidence_root = Path(evidence_root).resolve()
+    if evidence_root == root or root not in evidence_root.parents:
+        raise CompositeQualificationError("guided evidence root must be inside the project")
+    receipt_path = evidence_root / f"{run_id}-preflight.json"
+    descriptors_path = evidence_root / f"{run_id}-usb-descriptors.txt"
+    if receipt_path.exists() or descriptors_path.exists():
+        raise CompositeQualificationError(
+            "guided preflight artifacts already exist and cannot be overwritten"
+        )
+    python = root / "tools/phase1_bringup/.venv/bin/python3"
+    if not python.exists():
+        raise CompositeQualificationError("project-local Python/PlatformIO environment is missing")
+
+    previous, previous_hello = _exact_paired_port(binding_path)
+    commands = [
+        (str(python), "-m", "platformio", "run", "-e", "selected-usb"),
+        (str(python), "-m", "platformio", "run", "-e", "composite-feasibility"),
+        (
+            str(python),
+            "-m",
+            "platformio",
+            "run",
+            "-e",
+            "composite-feasibility",
+            "-t",
+            "upload",
+        ),
+    ]
+    command_hashes: list[str] = []
+    for command in commands:
+        command_hashes.append(_sha256_bytes(_run_guided_command(command, root)))
+
+    recovery = root / ".pio/build/selected-usb/firmware.bin"
+    composite = root / ".pio/build/composite-feasibility/firmware.bin"
+    for path, label in ((recovery, "selected-usb recovery"), (composite, "composite")):
+        if not path.is_file() or path.is_symlink():
+            raise CompositeQualificationError(f"{label} firmware binary is missing after build")
+
+    port = _wait_for_composite_port(previous)
+    vid = getattr(port, "vid", None)
+    pid = getattr(port, "pid", None)
+    if not isinstance(vid, int) or not isinstance(pid, int):
+        raise CompositeQualificationError("composite CDC lacks a measured VID/PID")
+    vid_pid = f"{vid:04x}:{pid:04x}"
+    descriptor_bytes = _capture_guided_descriptors(vid_pid)
+    if not descriptor_bytes:
+        raise CompositeQualificationError("composite descriptor capture is empty")
+    event_path = _find_guided_keyboard_event(
+        vid_pid, getattr(port, "serial_number", None)
+    )
+    status = _probe_guided_status(str(port.device))
+    if (
+        status.get("usb_started") is not True
+        or status.get("usb_suspended") is not False
+        or status.get("hid_ready") is not True
+        or status.get("space_active") is not False
+        or status.get("requires_clean_release") is not False
+    ):
+        raise CompositeQualificationError(
+            "composite tracer preflight is not clean, HID-ready, and Space-UP"
+        )
+
+    binding_bytes = binding_path.read_bytes()
+    descriptor_sha = _sha256_bytes(descriptor_bytes)
+    observed_ns = time.time_ns()
+    receipt: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "composite-guided-preflight",
+        "run_id": run_id,
+        "current_row": "exact-pairing",
+        "current_step": "physical-key-challenge",
+        "project_root": root.as_posix(),
+        "binding_path": binding_path.as_posix(),
+        "pairing_record_sha256": _sha256_bytes(binding_bytes),
+        "paired_device_id": previous_hello.get("device_id"),
+        "previous_application_hello": previous_hello,
+        "recovery_firmware_sha256": _sha256_file(recovery),
+        "composite_firmware_sha256": _sha256_file(composite),
+        "build_upload_output_sha256": command_hashes,
+        "cdc_path": str(port.device),
+        "keyboard_event_path": event_path.as_posix(),
+        "usb": {
+            "vid_pid": vid_pid,
+            "serial": getattr(port, "serial_number", None),
+            "manufacturer": getattr(port, "manufacturer", None),
+            "product": getattr(port, "product", None),
+            "descriptor_sha256": descriptor_sha,
+        },
+        "status": status,
+        "observed_usb_boot_id": "usb-observation:"
+        + _sha256_bytes(
+            descriptor_bytes
+            + _canonical_bytes(status)
+            + str(observed_ns).encode("ascii")
+        )[:32],
+        "qualification_session_id": "cdc-session:"
+        + _sha256_bytes(
+            f"{run_id}\0{port.device}\0{observed_ns}".encode("utf-8")
+        )[:32],
+        "observer_ready": {
+            "lsusb": True,
+            "udevadm": True,
+            "linux_evdev_readable": True,
+            "cdc_status": True,
+            "oracle_state": "UP",
+        },
+        "immediate_action": "Press and release physical agent key 1 exactly once.",
+    }
+    evidence_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with descriptors_path.open("xb") as stream:
+            stream.write(descriptor_bytes)
+            stream.flush()
+            os.fsync(stream.fileno())
+        with receipt_path.open("xb") as stream:
+            stream.write(_canonical_bytes(receipt))
+            stream.flush()
+            os.fsync(stream.fileno())
+    except Exception:
+        for path in (receipt_path, descriptors_path):
+            try:
+                path.unlink()
+            except FileNotFoundError:
+                pass
+        raise
+    return receipt
+
+
+def wait_for_guided_pairing_challenge(
+    receipt: Mapping[str, Any], evidence_root: Path, timeout: float = 600.0
+) -> Path:
+    """Observe one exact physical key-1 down/up pair while the bridge lock stays held."""
+    _require_guided_bridge_lock()
+    if receipt.get("current_row") != "exact-pairing":
+        raise CompositeQualificationError(
+            "guided pairing challenge requires the exact-pairing preflight row"
+        )
+    run_id = _require_string(receipt.get("run_id"), "guided run_id")
+    cdc_path = _require_string(receipt.get("cdc_path"), "guided CDC path")
+    output = Path(evidence_root).resolve() / f"{run_id}-pairing-challenge.json"
+    if output.exists():
+        raise CompositeQualificationError(
+            "guided pairing challenge already exists and cannot be overwritten"
+        )
+    try:
+        import serial
+    except ImportError as exc:
+        raise CompositeQualificationError(
+            "pyserial is unavailable for the physical pairing challenge"
+        ) from exc
+    try:
+        connection = serial.Serial(
+            cdc_path, 115200, timeout=0.2, write_timeout=2.0
+        )
+    except Exception as exc:
+        raise CompositeQualificationError(
+            f"guided pairing challenge could not open {cdc_path}: {exc}"
+        ) from exc
+    events: list[dict[str, Any]] = []
+    saw_down = False
+    deadline = time.monotonic() + timeout
+    try:
+        connection.reset_input_buffer()
+        while time.monotonic() < deadline:
+            raw = connection.readline()
+            if not raw:
+                continue
+            try:
+                message = json.loads(raw.decode("ascii"))
+            except (UnicodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(message, dict) or message.get("event") != "key":
+                continue
+            slot = message.get("slot")
+            state = message.get("state")
+            if slot != 0 or state not in {"down", "up"}:
+                raise CompositeQualificationError(
+                    "physical pairing challenge observed the wrong key or state"
+                )
+            events.append({
+                "slot": slot,
+                "state": state,
+                "device_at_us": message.get("at_us"),
+                "host_monotonic_ns": time.monotonic_ns(),
+            })
+            if state == "down":
+                if saw_down:
+                    raise CompositeQualificationError(
+                        "physical pairing challenge observed duplicate key down"
+                    )
+                saw_down = True
+            elif not saw_down:
+                raise CompositeQualificationError(
+                    "physical pairing challenge observed key up before down"
+                )
+            else:
+                break
+        else:
+            raise CompositeQualificationError(
+                "physical pairing challenge timed out before key-1 down/up"
+            )
+    finally:
+        connection.close()
+    challenge = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "composite-guided-pairing-challenge",
+        "run_id": run_id,
+        "row_id": "exact-pairing",
+        "step_id": "physical-key-challenge",
+        "paired_device_id": receipt.get("paired_device_id"),
+        "pairing_record_sha256": receipt.get("pairing_record_sha256"),
+        "composite_firmware_sha256": receipt.get("composite_firmware_sha256"),
+        "usb": receipt.get("usb"),
+        "cdc_path": cdc_path,
+        "events": events,
+        "status": "pass",
+    }
+    with output.open("xb") as stream:
+        stream.write(_canonical_bytes(challenge))
+        stream.flush()
+        os.fsync(stream.fileno())
+    return output
+
+
 def run_composite_qualification(
     manifest_path: Path, bundle_path: Path, evidence_root: Path, run_id: str
 ) -> Path:

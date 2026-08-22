@@ -1374,6 +1374,24 @@ def main(argv: list[str] | None = None) -> int:
     tour.add_argument("--evidence-root", type=Path, default=repo_root() / "artifacts" / "phase1")
     tour.add_argument("--binding", type=Path, default=Path.home() / ".config" / "herdr" / "keypad-binding.json")
     tour.add_argument("--resume", help="resume a tour ID printed at the utility-restart checkpoint")
+    composite_preflight = subparsers.add_parser(
+        "composite-preflight",
+        help="build, upload, and freeze the exact-device observer checkpoint",
+    )
+    composite_preflight.add_argument(
+        "--project-root", type=Path, default=repo_root()
+    )
+    composite_preflight.add_argument(
+        "--binding",
+        type=Path,
+        default=Path.home() / ".config" / "herdr" / "keypad-binding.json",
+    )
+    composite_preflight.add_argument(
+        "--evidence-root",
+        type=Path,
+        default=repo_root() / "artifacts" / "phase03.2",
+    )
+    composite_preflight.add_argument("--run-id", required=True)
     composite_freeze = subparsers.add_parser(
         "composite-freeze-manifest",
         help="freeze the exact Phase 03.2 composite matrix before traffic",
@@ -1445,6 +1463,34 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
+        if args.command == "composite-preflight":
+            from .composite_qualification import (
+                prepare_guided_composite_preflight,
+                wait_for_guided_pairing_challenge,
+            )
+
+            receipt = prepare_guided_composite_preflight(
+                args.project_root,
+                args.binding,
+                args.evidence_root,
+                args.run_id,
+            )
+            print(
+                "COMPOSITE CHECKPOINT "
+                f"run={receipt['run_id']} row={receipt['current_row']} "
+                f"step={receipt['current_step']}",
+                flush=True,
+            )
+            print(f"ACTION: {receipt['immediate_action']}", flush=True)
+            challenge = wait_for_guided_pairing_challenge(
+                receipt,
+                args.evidence_root,
+            )
+            print(
+                f"COMPOSITE PHYSICAL ACTION VERIFIED: {challenge}",
+                flush=True,
+            )
+            return 0
         if args.command == "composite-freeze-manifest":
             from .composite_qualification import freeze_composite_manifest
 

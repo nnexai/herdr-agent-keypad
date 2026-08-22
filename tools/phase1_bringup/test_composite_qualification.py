@@ -8,6 +8,8 @@ import unittest
 from collections import Counter
 from pathlib import Path
 from contextlib import redirect_stdout
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from phase1_bringup.composite_qualification import (
     CompositeQualificationError,
@@ -25,6 +27,7 @@ from phase1_bringup.composite_qualification import (
     verify_composite_run,
     write_terminal_decision,
 )
+from phase1_bringup import composite_qualification as composite_module
 
 
 def canonical_bytes(value: object) -> bytes:
@@ -306,6 +309,175 @@ class FailClosedRunTests(unittest.TestCase):
                         trace,
                         fixture.descriptor_capture,
                     )
+
+
+class GuidedCompositePreflightTests(unittest.TestCase):
+    def test_preflight_builds_recovery_and_composite_upload_then_freezes_exact_observers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tools/phase1_bringup/.venv/bin").mkdir(parents=True)
+            platformio = root / "tools/phase1_bringup/.venv/bin/python3"
+            platformio.write_bytes(b"python")
+            (root / ".pio/build/selected-usb").mkdir(parents=True)
+            (root / ".pio/build/composite-feasibility").mkdir(parents=True)
+            recovery = root / ".pio/build/selected-usb/firmware.bin"
+            composite = root / ".pio/build/composite-feasibility/firmware.bin"
+            recovery.write_bytes(b"recovery")
+            composite.write_bytes(b"composite")
+            binding = root / "pairing.json"
+            binding.write_text(
+                '{"device_id":"0000fccb0deabf8c","protocol":1,"firmware":"phase1-bringup"}\n',
+                encoding="ascii",
+            )
+            event = root / "event-keyboard"
+            event.write_bytes(b"")
+            commands: list[tuple[str, ...]] = []
+
+            def run_command(argv: tuple[str, ...], _cwd: Path) -> bytes:
+                commands.append(argv)
+                return b"ok\n"
+
+            before = [SimpleNamespace(device="/dev/ttyACM0", serial_number="exact-serial", vid=0x303A, pid=0x1001)]
+            after = [SimpleNamespace(
+                device="/dev/ttyACM1",
+                serial_number="exact-serial",
+                vid=0x303A,
+                pid=0x4001,
+                manufacturer="Espressif",
+                product="Composite tracer",
+            )]
+            with (
+                patch.object(composite_module, "_require_guided_bridge_lock"),
+                patch.object(
+                    composite_module,
+                    "_exact_paired_port",
+                    return_value=(
+                        before[0],
+                        {
+                            "device_id": "0000fccb0deabf8c",
+                            "protocol": 1,
+                            "firmware": "phase1-bringup",
+                        },
+                    ),
+                ),
+                patch.object(composite_module, "_serial_ports", return_value=after),
+                patch.object(composite_module, "_run_guided_command", side_effect=run_command),
+                patch.object(composite_module, "_capture_guided_descriptors", return_value=b"exact descriptors\n"),
+                patch.object(composite_module, "_find_guided_keyboard_event", return_value=event),
+                patch.object(
+                    composite_module,
+                    "_probe_guided_status",
+                    return_value={
+                        "event": "status",
+                        "usb_started": True,
+                        "usb_suspended": False,
+                        "hid_ready": True,
+                        "space_active": False,
+                        "requires_clean_release": False,
+                    },
+                ),
+            ):
+                receipt = composite_module.prepare_guided_composite_preflight(
+                    root,
+                    binding,
+                    root / "artifacts/phase03.2",
+                    "run-exact-001",
+                )
+
+            self.assertEqual(
+                commands,
+                [
+                    (str(platformio), "-m", "platformio", "run", "-e", "selected-usb"),
+                    (str(platformio), "-m", "platformio", "run", "-e", "composite-feasibility"),
+                    (
+                        str(platformio),
+                        "-m",
+                        "platformio",
+                        "run",
+                        "-e",
+                        "composite-feasibility",
+                        "-t",
+                        "upload",
+                    ),
+                ],
+            )
+            self.assertEqual(receipt["run_id"], "run-exact-001")
+            self.assertEqual(receipt["current_row"], "exact-pairing")
+            self.assertEqual(receipt["cdc_path"], "/dev/ttyACM1")
+            self.assertEqual(receipt["usb"]["vid_pid"], "303a:4001")
+            self.assertEqual(receipt["status"]["space_active"], False)
+            self.assertEqual(
+                json.loads(
+                    (root / "artifacts/phase03.2/run-exact-001-preflight.json").read_text(
+                        encoding="ascii"
+                    )
+                ),
+                receipt,
+            )
+            self.assertEqual(
+                (root / "artifacts/phase03.2/run-exact-001-usb-descriptors.txt").read_bytes(),
+                b"exact descriptors\n",
+            )
+
+    def test_cli_reports_only_the_current_exact_pairing_action(self) -> None:
+        from phase1_bringup.__main__ import main
+
+        receipt = {
+            "run_id": "run-exact-001",
+            "current_row": "exact-pairing",
+            "current_step": "physical-key-challenge",
+            "immediate_action": "Press and release physical agent key 1 exactly once.",
+        }
+        output = io.StringIO()
+        with (
+            patch.object(
+                composite_module,
+                "prepare_guided_composite_preflight",
+                return_value=receipt,
+            ),
+            patch.object(
+                composite_module,
+                "wait_for_guided_pairing_challenge",
+                return_value=Path("/repo/artifacts/phase03.2/run-exact-001-pairing-challenge.json"),
+            ),
+            redirect_stdout(output),
+        ):
+            status = main([
+                "composite-preflight",
+                "--project-root",
+                "/repo",
+                "--binding",
+                "/binding.json",
+                "--evidence-root",
+                "/repo/artifacts/phase03.2",
+                "--run-id",
+                "run-exact-001",
+            ])
+        self.assertEqual(status, 0)
+        self.assertEqual(
+            output.getvalue(),
+            "COMPOSITE CHECKPOINT run=run-exact-001 row=exact-pairing "
+            "step=physical-key-challenge\n"
+            "ACTION: Press and release physical agent key 1 exactly once.\n"
+            "COMPOSITE PHYSICAL ACTION VERIFIED: "
+            "/repo/artifacts/phase03.2/run-exact-001-pairing-challenge.json\n",
+        )
+
+
+    def test_preflight_fails_before_commands_without_exclusive_bridge_lock(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(
+                composite_module,
+                "_require_guided_bridge_lock",
+                side_effect=CompositeQualificationError("exclusive bridge lock is required"),
+            ), self.assertRaisesRegex(CompositeQualificationError, "exclusive bridge lock"):
+                composite_module.prepare_guided_composite_preflight(
+                    root,
+                    root / "pairing.json",
+                    root / "artifacts/phase03.2",
+                    "run-exact-001",
+                )
 
 
 class TerminalDecisionTests(unittest.TestCase):
