@@ -435,7 +435,7 @@ def udev_rule_check(path: Any) -> None:
     from pathlib import Path
 
     text = Path(path).read_text(encoding="utf-8")
-    required = ('SUBSYSTEM=="tty"', 'ATTRS{idVendor}=="303a"', 'ATTRS{idProduct}=="1001"', 'ENV{ID_SERIAL_SHORT}=="8C:BF:EA:0D:CB:FC"', 'ENV{ID_USB_INTERFACE_NUM}=="00"', 'GROUP="dialout"', 'TAG+="uaccess"')
+    required = ('SUBSYSTEM=="tty"', 'ATTRS{idVendor}=="303a"', 'ATTRS{idProduct}=="1001"', 'ENV{ID_SERIAL_SHORT}=="8C:BF:EA:0D:CB:FC"', 'ENV{ID_USB_INTERFACE_NUM}=="01"', 'GROUP="dialout"', 'TAG+="uaccess"')
     missing = [token for token in required if token not in text]
     if missing:
         raise AssertionError("udev rule is missing measured narrow tokens: " + ", ".join(missing))

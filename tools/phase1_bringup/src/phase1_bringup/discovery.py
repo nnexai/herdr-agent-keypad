@@ -6,6 +6,9 @@ from typing import Any, Iterable
 
 EXPECTED_VID = 0x303A
 EXPECTED_PID = 0x1001
+EXPECTED_SERIAL = "8C:BF:EA:0D:CB:FC"
+EXPECTED_CDC_INTERFACE = "01"
+EXPECTED_HID_INTERFACE = "00"
 
 
 class DiscoveryError(RuntimeError):
@@ -32,7 +35,12 @@ class Candidate:
 
     @property
     def compatible(self) -> bool:
-        return self.vid == EXPECTED_VID and self.pid == EXPECTED_PID
+        return (
+            self.vid == EXPECTED_VID
+            and self.pid == EXPECTED_PID
+            and self.serial_number == EXPECTED_SERIAL
+            and _interface_number(self.interface, self.location) == EXPECTED_CDC_INTERFACE
+        )
 
     def snapshot(self) -> dict[str, Any]:
         return {
@@ -48,16 +56,34 @@ class Candidate:
         }
 
 
+def _interface_number(value: Any, location: Any = None) -> str | None:
+    """Normalize pyserial's ``ifNN`` or Linux location interface number."""
+    for raw in (value, location):
+        if raw is None:
+            continue
+        text = str(raw)
+        if text.startswith("if"):
+            text = text[2:]
+        elif ":" in text:
+            text = text.rsplit(":", 1)[1]
+            if "." in text:
+                text = text.rsplit(".", 1)[1]
+        if text.isdigit():
+            return f"{int(text):02d}"
+    return None
+
+
 def candidate_from_port(port: Any) -> Candidate:
+    location = getattr(port, "location", None)
     return Candidate(
         device=str(getattr(port, "device", "")),
         vid=getattr(port, "vid", None),
         pid=getattr(port, "pid", None),
         serial_number=getattr(port, "serial_number", None),
-        location=getattr(port, "location", None),
+        location=location,
         manufacturer=getattr(port, "manufacturer", None),
         product=getattr(port, "product", None),
-        interface=getattr(port, "interface", None),
+        interface=_interface_number(getattr(port, "interface", None), location),
     )
 
 
@@ -106,28 +132,42 @@ def exact_identity_candidate(
 
 def discovery_check() -> None:
     class Port:
-        def __init__(self, device: str, serial_number: str, location: str):
+        def __init__(self, device: str, location: str):
             self.device = device
             self.vid = EXPECTED_VID
             self.pid = EXPECTED_PID
-            self.serial_number = serial_number
+            self.serial_number = EXPECTED_SERIAL
             self.location = location
             self.manufacturer = "Espressif"
-            self.product = "USB JTAG/serial debug unit"
-            self.interface = "00"
+            self.product = "USB composite CDC + keyboard"
+            self.interface = "if01"
 
-    first = Port("/dev/ttyACM9", "lookalike", "1-2:1.0")
-    second = Port("/dev/ttyACM0", "paired", "1-1:1.0")
+    first = Port("/dev/ttyACM9", "1-2:1.1")
+    second = Port("/dev/ttyACM0", "1-1:1.1")
     candidates = enumerate_candidates([first, second])
     if [candidate.device for candidate in candidates] != ["/dev/ttyACM9", "/dev/ttyACM0"]:
         raise AssertionError("candidate descriptor facts were not preserved")
     try:
-        exact_identity_candidate(candidates, {first.device: {"device_id": "paired", "protocol": 1}, second.device: {"device_id": "paired", "protocol": 1}}, "paired")
+        exact_identity_candidate(
+            candidates,
+            {
+                first.device: {"device_id": "paired", "protocol": 1},
+                second.device: {"device_id": "paired", "protocol": 1},
+            },
+            "paired",
+        )
     except DiscoveryError as exc:
         if exc.code != "ambiguous":
             raise
     else:
         raise AssertionError("two exact identities must fail closed")
-    chosen = exact_identity_candidate(candidates, {first.device: {"device_id": "other", "protocol": 1}, second.device: {"device_id": "paired", "protocol": 1}}, "paired")
+    chosen = exact_identity_candidate(
+        candidates,
+        {
+            first.device: {"device_id": "other", "protocol": 1},
+            second.device: {"device_id": "paired", "protocol": 1},
+        },
+        "paired",
+    )
     if chosen.device != second.device:
         raise AssertionError("exact application identity did not select the paired candidate")
