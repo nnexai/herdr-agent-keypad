@@ -2832,6 +2832,173 @@ void test_menu_all_off_and_grammar_switch_keep_led_engine_precedence() {
   TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
 }
 
+struct HoldGrammarCase {
+  LedGrammar* grammar;
+  uint16_t owner_mask;
+  uint16_t candidate_hue;
+  uint16_t owner_hue;
+  uint16_t cancellation_hue;
+  uint8_t owner_brightness;
+  uint32_t cancellation_duration_us;
+};
+
+RenderState ledHoldGrammarState() {
+  RenderState state;
+  state.source_status = "current";
+  state.codex.source_state = CodexSourceState::Current;
+  state.slots[0].occupied = true;
+  state.slots[0].state = TileState::Idle;
+  state.slots[0].feedback = TileFeedback::Pending;
+  state.slots[1].occupied = true;
+  state.slots[1].state = TileState::Working;
+  state.slots[1].feedback = TileFeedback::Ready;
+  state.slots[2].state = TileState::Empty;
+  return state;
+}
+
+bool hasLedValue(const LedSegment* segments, size_t count, uint16_t mask,
+                 uint16_t hue, uint8_t brightness) {
+  for (size_t index = 0; index < count; ++index) {
+    if ((segments[index].mask & mask) != 0 &&
+        segments[index].hue == hue &&
+        segments[index].brightness == brightness) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void test_rail_and_exception_hold_owner_cancellation_semantics() {
+  const HoldGrammarCase cases[] = {
+      {&railEchoGrammar(), 1U << 1, 185, 120, 45, 45, 120000},
+      {&exceptionChannelGrammar(), 1U << 1, 185, 120, 350, 30, 90000},
+  };
+  for (const HoldGrammarCase& test_case : cases) {
+    RenderState state = ledHoldGrammarState();
+    state.slots[0].hold_candidate = true;
+    state.slots[0].hold_threshold_qualified = true;
+    state.slots[1].feedback = TileFeedback::Success;
+    LedSegment segments[kLedGrammarMaxSegments]{};
+
+    size_t count = test_case.grammar->frame(
+        state, LedEvents(), 1000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(kLedGrammarMaxSegments, count);
+    TEST_ASSERT_TRUE_MESSAGE(
+        hasLedValue(segments, count, test_case.owner_mask,
+                    test_case.candidate_hue, 0) == false,
+        "candidate cue must not emit a zero-brightness segment");
+    bool candidate_zone_lit = false;
+    for (size_t index = 0; index < count; ++index) {
+      if ((segments[index].mask & test_case.owner_mask) != 0 &&
+          segments[index].brightness != 0) {
+        candidate_zone_lit = true;
+      }
+    }
+    TEST_ASSERT_TRUE(candidate_zone_lit);
+
+    state.slots[0].hold_candidate = false;
+    state.slots[0].hold_threshold_qualified = false;
+    state.slots[0].hold_active_owner = true;
+    state.slots[0].feedback = TileFeedback::Ready;
+    count = test_case.grammar->frame(
+        state, LedEvents(), 2000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_TRUE(hasLedValue(segments, count, test_case.owner_mask,
+                                 test_case.owner_hue,
+                                 test_case.owner_brightness));
+    bool other_slot_visible = false;
+    for (size_t index = 0; index < count; ++index) {
+      if ((segments[index].mask & (1U << 4)) != 0 &&
+          segments[index].brightness != 0) {
+        other_slot_visible = true;
+      }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(
+        other_slot_visible,
+        "another slot's focus feedback must not erase the physical owner cue");
+
+    state.slots[0].hold_active_owner = false;
+    state.slots[0].feedback = TileFeedback::Pending;
+    LedEvents cancellation;
+    cancellation.hold_cancellation.active = true;
+    cancellation.hold_cancellation.slot = 0;
+    cancellation.hold_cancellation.epoch = 9;
+    cancellation.hold_cancellation.started_us = 3000;
+    count = test_case.grammar->frame(
+        state, cancellation, 3000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_TRUE(hasLedValue(segments, count, test_case.owner_mask,
+                                 test_case.cancellation_hue,
+                                 test_case.owner_brightness));
+    count = test_case.grammar->frame(
+        state, cancellation,
+        3000 + test_case.cancellation_duration_us - 1,
+        segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_TRUE(hasLedValue(segments, count, test_case.owner_mask,
+                                 test_case.cancellation_hue,
+                                 test_case.owner_brightness));
+    count = test_case.grammar->frame(
+        state, cancellation,
+        3000 + test_case.cancellation_duration_us,
+        segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_FALSE(hasLedValue(segments, count, test_case.owner_mask,
+                                  test_case.cancellation_hue,
+                                  test_case.owner_brightness));
+    TEST_ASSERT_TRUE(hasLedValue(segments, count, test_case.owner_mask,
+                                 test_case.candidate_hue,
+                                 test_case.owner_brightness));
+
+    cancellation.hold_cancellation.active = false;
+    count = test_case.grammar->frame(
+        state, cancellation, 4000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_FALSE(hasLedValue(segments, count, test_case.owner_mask,
+                                  test_case.cancellation_hue,
+                                  test_case.owner_brightness));
+    TEST_ASSERT_TRUE_MESSAGE(
+        hasLedValue(segments, count, test_case.owner_mask,
+                    test_case.candidate_hue, test_case.owner_brightness),
+        "pre-threshold release remains ordinary pending feedback");
+
+    state.slots[0].hold_active_owner = true;
+    state.slots[0].feedback = TileFeedback::Failed;
+    count = test_case.grammar->frame(
+        state, LedEvents(), 5000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_FALSE(hasLedValue(segments, count, test_case.owner_mask,
+                                  test_case.owner_hue,
+                                  test_case.owner_brightness));
+
+    state.source_status = "stale";
+    state.slots[0].feedback = TileFeedback::Ready;
+    count = test_case.grammar->frame(
+        state, LedEvents(), 6000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_FALSE(hasLedValue(segments, count, test_case.owner_mask,
+                                  test_case.owner_hue,
+                                  test_case.owner_brightness));
+
+    state.source_status = "current";
+    state.hold_lifecycle_blocked = true;
+    count = test_case.grammar->frame(
+        state, LedEvents(), 7000, segments, kLedGrammarMaxSegments);
+    TEST_ASSERT_FALSE(hasLedValue(segments, count, test_case.owner_mask,
+                                  test_case.owner_hue,
+                                  test_case.owner_brightness));
+
+    for (const LedSemanticEvent fence :
+         {LedSemanticEvent::Sync}) {
+      state.hold_lifecycle_blocked = false;
+      state.slots[0].hold_active_owner = true;
+      LedEvents events;
+      events.semantic_event = fence;
+      LedEngine engine;
+      BoardAdapter board;
+      engine.setGrammar(*test_case.grammar);
+      g_led_calls.clear();
+      engine.render(state, events, 8000, board);
+      TEST_ASSERT_EQUAL_UINT32(1, g_led_calls.size());
+      TEST_ASSERT_EQUAL_UINT16(LedEngine::kAllMask, g_led_calls[0].mask);
+      TEST_ASSERT_EQUAL_UINT8(0, g_led_calls[0].brightness);
+    }
+  }
+}
+
 void test_led_grammars_and_policy() {
   RenderState state;
   state.source_status = "current";
@@ -4047,6 +4214,7 @@ int runAllTests() {
   RUN_TEST(test_urgent_generation_cuts_transition_and_fences_bindings);
   RUN_TEST(test_static_commit_flushes_complete_semantics_without_motion);
   RUN_TEST(test_blocked_motion_suppressed_by_fence_and_no_alloc);
+  RUN_TEST(test_rail_and_exception_hold_owner_cancellation_semantics);
   RUN_TEST(test_led_grammars_and_policy);
   RUN_TEST(test_led_policy_clamps_bright_led_count_and_all_off);
   RUN_TEST(test_led_grammar_scene_masks);
