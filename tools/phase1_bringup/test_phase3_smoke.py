@@ -14,6 +14,7 @@ from phase1_bringup.phase3_smoke import (
     ROOT,
     _phase31_sidecar,
     finalize_evidence,
+    _phase32_row_hash,
     PHASE32_FAILURE_EVENTS,
     PHASE32_HOLD_SCENES,
     PHASE32_LED_EVENTS,
@@ -877,6 +878,7 @@ class Phase32LogicalEvidenceTests(unittest.TestCase):
                 candidate = [dict(row) for row in rows]
                 target = next(row for row in candidate if row["event"] == event)
                 target.update(changes)
+                target["content_sha256"] = _phase32_row_hash(target)
                 with self.assertRaisesRegex(ValueError, message):
                     validate_phase32_led_rows(
                         candidate,

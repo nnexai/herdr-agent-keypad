@@ -43,6 +43,31 @@ HOLD_SCENES = (
     "hold-pending", "space-active-owner", "cancellation-return",
     "owner-after-other-focus", "failure-preemption", "lifecycle-clear",
 )
+
+# Phase 03.2 keeps the production renderer's six closed hold fixtures but
+# publishes a separate logical LED matrix so every failure/source fence is
+# represented even when the framebuffer fixture has no dedicated token.
+PHASE32_HOLD_SCENES = HOLD_SCENES
+PHASE32_LEVELS = ("full", "half", "static")
+PHASE32_FAILURE_EVENTS = (
+    "rejected", "stale", "vanished", "offline", "uncertain", "timeout", "failed",
+)
+PHASE32_SOURCE_EVENTS = ("source-stale", "source-offline", "source-unavailable")
+PHASE32_LED_EVENTS = (
+    "pending", "active-owner", "owner-after-other-focus", "cancellation-return",
+    *PHASE32_FAILURE_EVENTS, *PHASE32_SOURCE_EVENTS, "lifecycle-clear",
+)
+PHASE32_GRAMMAR_MASKS = {
+    "rail-echo": (1 << 1, 1 << 4, 1 << 7),
+    "exception": (1 << 1, 1 << 4, 1 << 7),
+    "field-extension": (
+        (1 << 0) | (1 << 1) | (1 << 2),
+        (1 << 3) | (1 << 4) | (1 << 5),
+        (1 << 6) | (1 << 7) | (1 << 8),
+    ),
+    "meter-lamps": (1 << 1, 1 << 4, 1 << 7),
+}
+PHASE32_LEVEL_PHASE = {"full": 3, "half": 2, "static": 0}
 LED_GRAMMARS = ("rail-echo", "exception", "field-extension", "meter-lamps")
 MOTION_STATE_SCENES = {
     "BLOCKED": "blocked", "UNSEEN": "unseen", "WORKING": "working",
@@ -1091,6 +1116,403 @@ def run_phase32_validate_deployment(args: argparse.Namespace) -> int:
     return 0
 
 
+def _phase32_row_hash(row: Mapping[str, Any]) -> str:
+    payload = {key: value for key, value in row.items() if key != "content_sha256"}
+    return sha256_bytes(canonical_bytes(payload))
+
+
+def phase32_led_rows(
+    deployment_id: str,
+    firmware_sha256: str,
+    deployment_lock_sha256: str,
+) -> list[dict[str, Any]]:
+    if (
+        not valid_publication_identity(deployment_id)
+        or len(firmware_sha256) != 64
+        or len(deployment_lock_sha256) != 64
+    ):
+        raise ValueError("Phase 03.2 LED lineage is incomplete")
+    rows: list[dict[str, Any]] = []
+    for grammar in LED_GRAMMARS:
+        masks = PHASE32_GRAMMAR_MASKS[grammar]
+        for event in PHASE32_LED_EVENTS:
+            candidate = event == "pending"
+            active_owner = event in {"active-owner", "owner-after-other-focus"}
+            owner_slot = 0 if event in {
+                "pending", "active-owner", "owner-after-other-focus",
+                "cancellation-return",
+            } else None
+            focus_slot = 1 if event == "owner-after-other-focus" else None
+            hold_mask = masks[0] if owner_slot is not None else 0
+            if event in PHASE32_FAILURE_EVENTS or event in PHASE32_SOURCE_EVENTS:
+                hold_mask = 0
+                owner_slot = None
+            if event == "lifecycle-clear":
+                hold_mask = 0
+                owner_slot = None
+            hue = {
+                "pending": 185,
+                "active-owner": 120,
+                "owner-after-other-focus": 120,
+                "cancellation-return": 45,
+            }.get(event, 0)
+            segments = [] if hold_mask == 0 else [{
+                "zone_mask": hold_mask,
+                "slot": owner_slot,
+                "hue": hue,
+                "saturation": 100,
+                "brightness": 45,
+            }]
+            row: dict[str, Any] = {
+                "id": f"{grammar}-{event}",
+                "grammar": grammar,
+                "event": event,
+                "source": "resolved-bounded-led-event",
+                "evidence_kind": "logical-only",
+                "deployment_id": deployment_id,
+                "firmware_sha256": firmware_sha256,
+                "deployment_lock_sha256": deployment_lock_sha256,
+                "candidate": candidate,
+                "active_owner": active_owner,
+                "owner_slot": owner_slot,
+                "focus_slot": focus_slot,
+                "lifecycle_cleared": event == "lifecycle-clear",
+                "source_fenced": event in PHASE32_SOURCE_EVENTS,
+                "failure": event in PHASE32_FAILURE_EVENTS,
+                "hold_mask": hold_mask,
+                "segments": segments,
+                "physical_claim": False,
+            }
+            row["content_sha256"] = _phase32_row_hash(row)
+            rows.append(row)
+    return rows
+
+
+def validate_phase32_led_rows(
+    rows: list[Mapping[str, Any]],
+    deployment_id: str,
+    firmware_sha256: str,
+    deployment_lock_sha256: str,
+) -> None:
+    expected = {(grammar, event) for grammar in LED_GRAMMARS for event in PHASE32_LED_EVENTS}
+    actual = {(row.get("grammar"), row.get("event")) for row in rows}
+    if actual != expected or len(rows) != len(expected):
+        raise ValueError("Phase 03.2 LED grammar event matrix is incomplete")
+    for row in rows:
+        grammar = row.get("grammar")
+        event = row.get("event")
+        if (
+            row.get("deployment_id") != deployment_id
+            or row.get("firmware_sha256") != firmware_sha256
+            or row.get("deployment_lock_sha256") != deployment_lock_sha256
+        ):
+            raise ValueError("Phase 03.2 LED deployment linkage is invalid")
+        if (
+            grammar not in LED_GRAMMARS
+            or event not in PHASE32_LED_EVENTS
+            or row.get("source") != "resolved-bounded-led-event"
+            or row.get("evidence_kind") != "logical-only"
+            or row.get("physical_claim") is not False
+        ):
+            raise ValueError("Phase 03.2 LED evidence makes a physical claim")
+        if row.get("content_sha256") != _phase32_row_hash(row):
+            raise ValueError("Phase 03.2 LED content hash mismatch")
+        active = event in {"active-owner", "owner-after-other-focus"}
+        owner = event in {
+            "pending", "active-owner", "owner-after-other-focus",
+            "cancellation-return",
+        }
+        if event in PHASE32_FAILURE_EVENTS or event in PHASE32_SOURCE_EVENTS or event == "lifecycle-clear":
+            if row.get("active_owner") or row.get("owner_slot") is not None or row.get("hold_mask") != 0:
+                category = "failure" if event in PHASE32_FAILURE_EVENTS else (
+                    "source" if event in PHASE32_SOURCE_EVENTS else "lifecycle"
+                )
+                raise ValueError(f"Phase 03.2 {category} fence admits active owner")
+        elif row.get("active_owner") is not active or (row.get("owner_slot") is not (0 if owner else None)):
+            raise ValueError("Phase 03.2 LED owner identity is invalid")
+        if event == "owner-after-other-focus" and row.get("focus_slot") != 1:
+            raise ValueError("Phase 03.2 owner-after-other-focus slot is invalid")
+        if event != "owner-after-other-focus" and row.get("focus_slot") is not None:
+            raise ValueError("Phase 03.2 unexpected focus slot")
+        expected_mask = (
+            PHASE32_GRAMMAR_MASKS[grammar][0]
+            if owner and not (
+                event in PHASE32_FAILURE_EVENTS or
+                event in PHASE32_SOURCE_EVENTS or
+                event == "lifecycle-clear"
+            )
+            else 0
+        )
+        if row.get("hold_mask") != expected_mask:
+            raise ValueError("Phase 03.2 LED mapped zone is invalid")
+        segments = row.get("segments")
+        if expected_mask == 0:
+            if segments != []:
+                raise ValueError("Phase 03.2 fenced LED row retains a segment")
+        elif (
+            not isinstance(segments, list)
+            or len(segments) != 1
+            or segments[0].get("zone_mask") != expected_mask
+            or segments[0].get("slot") != 0
+        ):
+            raise ValueError("Phase 03.2 LED segment mapping is invalid")
+
+
+def validate_phase32_framebuffer_evidence(
+    evidence: Mapping[str, Any],
+    deployment: Mapping[str, Any],
+    *,
+    deployment_lock_sha256: str,
+) -> None:
+    required = {
+        "schema_version", "kind", "status", "source", "evidence_boundary",
+        "deployment_id", "firmware_sha256", "deployment_lock_sha256",
+        "captures", "led_events", "contact_sheets", "matrix", "row_counts",
+    }
+    if (
+        set(evidence) != required
+        or evidence.get("schema_version") != 1
+        or evidence.get("kind") != "phase03.2-framebuffer-evidence"
+        or evidence.get("status") != "pass"
+        or evidence.get("source") != "logical-framebuffer-only"
+    ):
+        raise ValueError("Phase 03.2 framebuffer evidence schema is not closed")
+    deployment_id = deployment.get("deployment_id")
+    firmware_sha256 = deployment.get("firmware_sha256")
+    if (
+        evidence.get("deployment_id") != deployment_id
+        or evidence.get("firmware_sha256") != firmware_sha256
+        or evidence.get("deployment_lock_sha256") != deployment_lock_sha256
+    ):
+        raise ValueError("Phase 03.2 framebuffer deployment linkage mismatch")
+    boundary = evidence.get("evidence_boundary")
+    if (
+        not isinstance(boundary, Mapping)
+        or boundary.get("physical_claims") != "none"
+        or boundary.get("deferred_to") != "03.2-09"
+    ):
+        raise ValueError("Phase 03.2 framebuffer evidence makes physical claims")
+
+    captures = evidence.get("captures")
+    expected_capture_count = len(THEMES) * len(PHASE32_HOLD_SCENES) * len(PHASE32_LEVELS)
+    if not isinstance(captures, list) or len(captures) != expected_capture_count:
+        raise ValueError("Phase 03.2 framebuffer capture matrix is incomplete")
+    expected_captures = {
+        (theme, scene, level)
+        for theme in THEMES
+        for scene in PHASE32_HOLD_SCENES
+        for level in PHASE32_LEVELS
+    }
+    actual_captures = set()
+    for capture in captures:
+        key = (capture.get("theme"), capture.get("scene"), capture.get("level"))
+        if key in actual_captures or key not in expected_captures:
+            raise ValueError("Phase 03.2 framebuffer capture matrix has invalid rows")
+        actual_captures.add(key)
+        if (
+            capture.get("width") != 128
+            or capture.get("height") != 128
+            or capture.get("panel") != 4
+            or capture.get("deployment_id") != deployment_id
+            or capture.get("firmware_sha256") != firmware_sha256
+            or capture.get("deployment_lock_sha256") != deployment_lock_sha256
+            or capture.get("source") != "deterministic-device-framebuffer"
+        ):
+            raise ValueError("Phase 03.2 framebuffer capture lineage is invalid")
+        for path_key, hash_key in (("rgb565_path", "rgb565_sha256"), ("png_path", "png_sha256")):
+            artifact = resolve_repo_path(capture[path_key])
+            if sha256_file(artifact) != capture[hash_key]:
+                raise ValueError(f"Phase 03.2 framebuffer capture hash mismatch: {capture['id']}")
+        raw = resolve_repo_path(capture["rgb565_path"])
+        png = resolve_repo_path(capture["png_path"])
+        if raw.stat().st_size != 128 * 128 * 2 or not png_has_deployment(png, deployment_id):
+            raise ValueError("Phase 03.2 framebuffer capture payload is invalid")
+    if actual_captures != expected_captures:
+        raise ValueError("Phase 03.2 framebuffer capture matrix is incomplete")
+
+    matrix = evidence.get("matrix")
+    if (
+        not isinstance(matrix, Mapping)
+        or set(matrix.get("themes", [])) != set(THEMES)
+        or set(matrix.get("levels", [])) != set(PHASE32_LEVELS)
+        or set(matrix.get("hold_scenes", {}).keys()) != set(THEMES)
+    ):
+        raise ValueError("Phase 03.2 framebuffer matrix header is incomplete")
+    for theme in THEMES:
+        if (
+            set(matrix["hold_scenes"].get(theme, [])) != set(PHASE32_HOLD_SCENES)
+            or set(matrix.get("levels_by_theme", {}).get(theme, [])) != set(PHASE32_LEVELS)
+        ):
+            raise ValueError("Phase 03.2 framebuffer hold matrix is incomplete")
+
+    led_rows = evidence.get("led_events")
+    if not isinstance(led_rows, list):
+        raise ValueError("Phase 03.2 LED evidence is missing")
+    validate_phase32_led_rows(
+        led_rows, deployment_id, firmware_sha256, deployment_lock_sha256
+    )
+    contacts = evidence.get("contact_sheets")
+    if not isinstance(contacts, list) or {item.get("theme") for item in contacts} != set(THEMES):
+        raise ValueError("Phase 03.2 contact-sheet matrix is incomplete")
+    for contact in contacts:
+        artifact = resolve_repo_path(contact["path"])
+        if (
+            sha256_file(artifact) != contact.get("sha256")
+            or contact.get("deployment_id") != deployment_id
+            or contact.get("firmware_sha256") != firmware_sha256
+            or contact.get("deployment_lock_sha256") != deployment_lock_sha256
+            or not png_has_deployment(artifact, deployment_id)
+        ):
+            raise ValueError("Phase 03.2 contact-sheet linkage is invalid")
+    counts = evidence.get("row_counts")
+    if counts != {
+        "captures": expected_capture_count,
+        "led_events": len(LED_GRAMMARS) * len(PHASE32_LED_EVENTS),
+        "contact_sheets": len(THEMES),
+    }:
+        raise ValueError("Phase 03.2 evidence row counts are invalid")
+
+
+def validate_phase32_framebuffer_evidence_file(
+    path: Path,
+    deployment_path: Path,
+    *,
+    firmware: Path | None = None,
+    require_current: bool = False,
+) -> dict[str, Any]:
+    path = path.resolve()
+    deployment_path = deployment_path.resolve()
+    _phase31_sidecar(path, "Phase 03.2 framebuffer evidence")
+    deployment = validate_phase32_deployment_file(
+        deployment_path,
+        firmware=(firmware or ROOT / ".pio/build/selected-usb/firmware.bin").resolve(),
+        require_current=require_current,
+    )
+    evidence = json.loads(path.read_text(encoding="ascii"))
+    validate_phase32_framebuffer_evidence(
+        evidence,
+        deployment,
+        deployment_lock_sha256=_phase31_sidecar(deployment_path, "Phase 03.2 deployment"),
+    )
+    return evidence
+
+
+def run_phase32_capture(args: argparse.Namespace) -> int:
+    firmware = args.firmware.resolve()
+    deployment_path = args.deployment.resolve()
+    deployment = validate_phase32_deployment_file(
+        deployment_path, firmware=firmware, require_current=True
+    )
+    deployment_lock_sha256 = _phase31_sidecar(deployment_path, "Phase 03.2 deployment")
+    evidence_path = args.evidence.resolve()
+    frames_dir = evidence_path.parent / "screenshots" / "frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+    records: list[dict[str, Any]] = []
+    contacts: list[dict[str, Any]] = []
+    for theme in THEMES:
+        frames: list[bytes] = []
+        for scene in PHASE32_HOLD_SCENES:
+            for level in PHASE32_LEVELS:
+                record, rgb = _phase31_capture_ppm(
+                    args,
+                    frames_dir,
+                    panel=3,
+                    theme=theme,
+                    scene=scene,
+                    level=level,
+                    phase=PHASE32_LEVEL_PHASE[level],
+                    deployment_id=deployment["deployment_id"],
+                )
+                record.update({
+                    "kind": "hold",
+                    "firmware_sha256": deployment["firmware_sha256"],
+                    "deployment_lock_sha256": deployment_lock_sha256,
+                })
+                frames.append(rgb)
+                records.append(record)
+        width, height, payload = make_contact(
+            frames, len(PHASE32_LEVELS), deployment["deployment_id"]
+        )
+        contact_path = evidence_path.parent / "screenshots" / f"hold-{theme}-contact.png"
+        atomic_write(contact_path, payload)
+        contacts.append({
+            "theme": theme,
+            "path": relative(contact_path),
+            "sha256": sha256_file(contact_path),
+            "width": width,
+            "height": height,
+            "source_frame_width": 128,
+            "source_frame_height": 128,
+            "deployment_id": deployment["deployment_id"],
+            "firmware_sha256": deployment["firmware_sha256"],
+            "deployment_lock_sha256": deployment_lock_sha256,
+        })
+    evidence = {
+        "schema_version": 1,
+        "kind": "phase03.2-framebuffer-evidence",
+        "status": "pass",
+        "source": "logical-framebuffer-only",
+        "evidence_boundary": {
+            "physical_claims": "none",
+            "deferred_to": "03.2-09",
+            "machine_claims": [
+                "logical composition",
+                "bounded LED masks and events",
+                "deployment and content hashes",
+            ],
+        },
+        "deployment_id": deployment["deployment_id"],
+        "firmware_sha256": deployment["firmware_sha256"],
+        "deployment_lock_sha256": deployment_lock_sha256,
+        "captures": records,
+        "led_events": phase32_led_rows(
+            deployment["deployment_id"],
+            deployment["firmware_sha256"],
+            deployment_lock_sha256,
+        ),
+        "contact_sheets": contacts,
+        "matrix": {
+            "themes": list(THEMES),
+            "hold_scenes": {theme: list(PHASE32_HOLD_SCENES) for theme in THEMES},
+            "levels": list(PHASE32_LEVELS),
+            "levels_by_theme": {theme: list(PHASE32_LEVELS) for theme in THEMES},
+            "failure_events": list(PHASE32_FAILURE_EVENTS),
+            "source_events": list(PHASE32_SOURCE_EVENTS),
+        },
+        "row_counts": {
+            "captures": len(records),
+            "led_events": len(LED_GRAMMARS) * len(PHASE32_LED_EVENTS),
+            "contact_sheets": len(contacts),
+        },
+    }
+    write_json(evidence_path, evidence, checksum=True)
+    reopened = json.loads(evidence_path.read_text(encoding="ascii"))
+    validate_phase32_framebuffer_evidence(
+        reopened, deployment, deployment_lock_sha256=deployment_lock_sha256
+    )
+    print(
+        f"captured {len(records)} logical hold frames and "
+        f"{len(evidence['led_events'])} LED rows for deployment "
+        f"{deployment['deployment_id']}"
+    )
+    return 0
+
+
+def run_phase32_validate(args: argparse.Namespace) -> int:
+    evidence = validate_phase32_framebuffer_evidence_file(
+        args.evidence,
+        args.deployment,
+        firmware=args.firmware,
+        require_current=args.require_current_deployment,
+    )
+    print(
+        f"validated Phase 03.2 framebuffer evidence with "
+        f"{evidence['row_counts']['captures']} captures for "
+        f"{evidence['deployment_id']}"
+    )
+    return 0
+
+
 def deployment_id_for(deployment: Mapping[str, Any]) -> str:
     tuple_value = {
         "boot_id": deployment.get("boot_id", deployment.get("fresh_boot_id")),
@@ -1108,8 +1530,6 @@ def deployment_id_for(deployment: Mapping[str, Any]) -> str:
     if tuple_value["protocol_version"] != 1:
         raise ValueError("deployment identity protocol is invalid")
     return sha256_bytes(canonical_bytes(tuple_value))
-
-
 def validate_deployment(
     deployment: Mapping[str, Any],
     firmware: Path,
@@ -3070,6 +3490,17 @@ def main(argv: list[str] | None = None) -> int:
     deploy32_validate.add_argument("--firmware", type=Path, required=True)
     deploy32_validate.add_argument("--deployment", type=Path, required=True)
     deploy32_validate.add_argument("--require-current-deployment", action="store_true")
+    capture32 = subparsers.add_parser("phase32-capture")
+    capture32.add_argument("--binding", type=Path, required=True)
+    capture32.add_argument("--firmware", type=Path, required=True)
+    capture32.add_argument("--deployment", type=Path, required=True)
+    capture32.add_argument("--evidence", type=Path, required=True)
+    capture32.add_argument("--timeout", type=float, default=5.0)
+    validate32 = subparsers.add_parser("phase32-validate")
+    validate32.add_argument("--firmware", type=Path, required=True)
+    validate32.add_argument("--deployment", type=Path, required=True)
+    validate32.add_argument("--evidence", type=Path, required=True)
+    validate32.add_argument("--require-current-deployment", action="store_true")
     current31 = subparsers.add_parser("phase31-current-deployment")
     current31.add_argument("--binding", type=Path, required=True)
     current31.add_argument("--firmware", type=Path, required=True)
@@ -3121,6 +3552,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_phase32_deploy_lock(args)
     if args.command == "phase32-validate-deployment":
         return run_phase32_validate_deployment(args)
+    if args.command == "phase32-capture":
+        return run_phase32_capture(args)
+    if args.command == "phase32-validate":
+        return run_phase32_validate(args)
     if args.command == "phase31-deploy-lock":
         return run_phase31_deploy_lock(args)
     if args.command == "phase31-validate-deployment":
