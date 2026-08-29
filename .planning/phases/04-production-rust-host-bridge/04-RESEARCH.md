@@ -244,6 +244,20 @@ The exact event names above are illustrative, not protocol additions; the only d
 
 **When to use:** Every device frame, Herdr socket response/event, Codex child line, and local control request. Device v2 is capped at 4096 bytes; Herdr push/response handling is capped at 65,536 bytes; keep these bounds distinct rather than raising the wire limit globally. `[VERIFIED: protocol/schema/v2.json:25-26; host/herdr_keypad/src/herdr_keypad/herdr.py:26-319]`
 
+### Recommended resource bounds
+
+| Resource | Bound | Policy |
+|---|---:|---|
+| Device v2 frame | 4096 bytes | Reject before allocation; preserve the canonical schema bound. `[VERIFIED: protocol/schema/v2.json:25-26]` |
+| Herdr response/push frame | 65,536 bytes | Reject/close malformed or oversized stream input; preserve the existing client limit. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/herdr.py:26-319]` |
+| Pending focus requests | 16 | Never queue beyond this; clear on USB/session invalidation. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/usb.py:50-63; host/herdr_keypad/src/herdr_keypad/bridge.py:945-1000]` |
+| Concurrent focus jobs | 16 | Use a bounded semaphore/channel; old-generation results are discarded. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:945-1000]` |
+| Codex line/window parsing | 4096-byte lines, 8 buckets | Preserve the Python collector's parser/bucket bounds; use a separate child-stream cap from device frames. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/codex.py:19-30]` |
+| Transition/error history | 32 records | Recommended fixed ring of safe codes/timestamps only; never retain raw upstream text. `[RECOMMENDATION; VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44]` |
+| Status/control payload | 16 KiB each | Recommended hard cap for read-only status and local control replies; reject larger requests before deserialization. `[RECOMMENDATION; VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44]` |
+
+Backoff should be deterministic and capped for tests (for example, 0.5, 1, 2, 4, 8 seconds with bounded jitter, never exceeding 8 seconds); the exact schedule is delegated by the `the agent's Discretion` decision and must be recorded in parity/resource evidence. `[RECOMMENDATION; VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:32-56,560-688; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:46-50]`
+
 ### Anti-patterns to avoid
 
 - **Fixed polling loop:** Recreates the Python `sleep(0.1)` wakeup, burns idle resources, and can race event invalidation. Use event notifications and only explicit reconnect/freshness/Codex deadlines. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:1038-1095; RECOMMENDATION]`
