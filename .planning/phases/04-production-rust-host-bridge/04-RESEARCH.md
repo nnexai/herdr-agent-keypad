@@ -256,7 +256,7 @@ The exact event names above are illustrative, not protocol additions; the only d
 | Transition/error history | 32 records | Recommended fixed ring of safe codes/timestamps only; never retain raw upstream text. `[RECOMMENDATION; VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44]` |
 | Status/control payload | 16 KiB each | Recommended hard cap for read-only status and local control replies; reject larger requests before deserialization. `[RECOMMENDATION; VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44]` |
 
-Backoff should be deterministic and capped for tests (for example, 0.5, 1, 2, 4, 8 seconds with bounded jitter, never exceeding 8 seconds); the exact schedule is delegated by the `the agent's Discretion` decision and must be recorded in parity/resource evidence. `[RECOMMENDATION; VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:32-56,560-688; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:46-50]`
+Backoff should be deterministic and capped for tests (for example, 0.5, 1, 2, 4, 8 seconds with bounded jitter, never exceeding 8 seconds); the exact schedule is delegated by the discretion area in the locked context and must be recorded in parity/resource evidence. `[RECOMMENDATION; VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:32-56,560-688; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:46-50]`
 
 ### Anti-patterns to avoid
 
