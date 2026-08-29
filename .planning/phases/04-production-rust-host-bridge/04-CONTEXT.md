@@ -14,40 +14,40 @@ Replace the current Python host bridge with one production Rust executable bundl
 ## Implementation Decisions
 
 ### Launch and lifecycle
-- **D-01:** Herdr owns the production bridge lifecycle through the bundled plugin. The ordinary user does not install or manage a separate OS service and does not need to launch a foreground bridge command.
-- **D-02:** Once Herdr starts it, the bridge remains alive through Herdr server exit, restart, and temporary API unavailability. It marks Herdr unavailable, keeps the last known agent entries under an unmistakable offline veil, disables every agent action, reconnects with bounded backoff, and requires a complete authoritative resynchronization before actions become available again.
-- **D-03:** Starting before Herdr is ready or before the exact paired keypad is connected is not fatal. The process remains alive, reports each unavailable boundary independently, and reconnects when that exact source or device appears.
-- **D-04:** Plugin disable/removal, an explicit stop command, and user logout intentionally stop the bridge. An ordinary Herdr restart does not.
-- **D-05:** A repeated start with the same effective configuration is idempotent: it reports the active instance and succeeds without disturbing live USB, Herdr, or Codex sessions.
-- **D-06:** There is only one Herdr instance and one bridge authority. If a later Herdr invocation supplies changed plugin settings, the active bridge reconfigures live: fence current authority first, adopt the new effective configuration atomically, and establish fresh source/device sessions before publishing current state. Never start a second bridge.
-- **D-07:** Herdr automatically restarts the bridge after a process crash. Repeated crashes continue retrying with capped backoff and expose one bounded persistent diagnostic; they must not form a hot restart loop or permanently lock the product out.
-- **D-08:** The same bridge process recovers after host suspend/resume. It invalidates pre-suspend USB and source sessions, reconnects each boundary, and publishes a fresh complete snapshot before restoring actionability.
+- **D-01:** Herdr owns the production bridge session through the bundled plugin's one-shot startup hook. The hook launches the executable directly. The ordinary user does not install or manage an OS service, background shell daemon, separate runtime, or foreground bridge command. This relaxes the earlier assumption that Herdr supervises the child after launch.
+- **D-02:** The bridge monitors both the Herdr socket and Herdr process boundary. It may recover from temporary socket/API unavailability while the launching Herdr session remains alive, but it exits when Herdr shuts down. A later Herdr start launches a fresh bridge. This replaces the earlier guarantee that one bridge survives a Herdr exit or restart.
+- **D-03:** Herdr launches the bridge after its startup boundary. A temporarily unavailable socket or missing exact paired keypad is not fatal while that Herdr process remains alive: the bridge reports each boundary independently, reconnects with bounded backoff, and requires complete authoritative resynchronization before actions become available.
+- **D-04:** Herdr shutdown and an explicit stop action intentionally stop the bridge. Herdr 0.8.2 disable and unlink do not stop an already running process, so the documented disable/removal procedure requires an explicit stop first and makes no automatic-stop claim. User logout is covered only when it terminates Herdr or the bridge process, not by a nonexistent plugin logout hook.
+- **D-05:** Explicit start and restart actions use same-user local control IPC and are idempotent. Starting an active bridge with the same effective configuration reports the active instance and succeeds without disturbing live USB, Herdr, or Codex sessions; restart deliberately replaces its authority.
+- **D-06:** There is one bridge authority. Settings exist only under `HERDR_PLUGIN_CONFIG_DIR`, validate at startup, and take effect only through an explicit restart or the next Herdr start. A start request with changed settings must report that restart is required rather than reconfigure the active process or start a second bridge. This relaxes live atomic reconfiguration.
+- **D-07:** Herdr 0.8.2 does not restart the bridge after a crash in the same Herdr session. Recovery is an explicit idempotent start/restart action or the next Herdr start. No shell watchdog, OS service, second runtime, or hidden retry daemon may restore the removed automatic-restart guarantee.
+- **D-08:** If the launching Herdr process remains alive across host suspend/resume, the same bridge invalidates pre-suspend USB and source sessions, reconnects each boundary, and publishes a fresh complete snapshot before restoring actionability. If Herdr exits, D-02 applies and the next Herdr start launches a fresh bridge; no separate supervisor keeps it alive.
 - **D-09:** HID Space is owned by firmware after the device asserts it. Bridge stop, crash, reconfiguration, or replacement must not synthesize Space-up or assume keyboard authority. Physical owner release, device removal/reset, or USB suspend ends the HID state through the existing firmware contract.
 
 ### Install and upgrades
 - **D-10:** Bundle the correct native executable inside the Herdr plugin. Installing the plugin installs the whole production integration; no standalone bridge package, runtime, or package-manager dependency is required.
 - **D-11:** Phase 4 release targets are Linux x86-64 and macOS Apple Silicon. Intel macOS and ARM64 Linux artifacts are not required for this phase.
-- **D-12:** A plugin update activates its bundled bridge through a controlled immediate restart. The old process authority ends before the new executable establishes fresh USB, Herdr, and Codex sessions and restores current data. No live state handoff between bridge versions.
+- **D-12:** A plugin update activates its bundled bridge on an explicit restart or the next Herdr start. The old process authority ends before the updated executable establishes fresh USB, Herdr, and Codex sessions and restores current data. There is no live state handoff or hidden immediate lifecycle hook. This relaxes immediate update activation.
 - **D-13:** Automatic rollback is not required. Recovery from a failed update is a documented manual reinstall of a known plugin release.
 
 ### Configuration and migration
 - **D-14:** Reuse the existing `~/.config/herdr/keypad-binding.json` exact-device binding in place. The Rust bridge validates and reads the frozen format without rewriting or silently migrating it, so the paired device remains authoritative across the cutover.
 - **D-15:** An ordinary plugin installation requires zero configuration. Use Herdr-provided runtime information, the existing exact-device binding, the installed Codex command, and platform-native defaults.
-- **D-16:** Advanced overrides live only in one validated Herdr plugin settings surface. Do not create competing environment-variable, standalone config-file, and CLI configuration authorities.
+- **D-16:** Advanced overrides live only in validated files under `HERDR_PLUGIN_CONFIG_DIR`. The bridge validates them at startup, never watches or reloads them live, and applies changes only after explicit restart. Do not create competing environment-variable, standalone external config-file, or CLI configuration authorities. This replaces the unavailable Herdr settings surface and live callback with the directory Herdr 0.8.2 provides.
 - **D-17:** Malformed or incompatible binding/settings state fails closed and remains unchanged on disk. The bridge stays alive, exposes a bounded diagnostic, never connects to a different device or guesses values, and requires an explicit repair or re-pair action.
 
 ### Diagnostics surface
-- **D-18:** Herdr plugin status is the primary operational diagnostic surface. The existing device `HEALTH` page remains the bounded on-device truth for link, Herdr, and Codex health but is not expected to diagnose plugin installation or startup failures.
+- **D-18:** A read-only Herdr plugin `status` action is the primary operational diagnostic surface. The action queries the active bridge through bounded same-user local control IPC and reports it as stopped/unreachable when no process answers. Herdr 0.8.2 has no first-class plugin status publication API; this accepted action replaces that earlier guarantee. The device `HEALTH` page remains the bounded on-device truth for link, Herdr, and Codex health.
 - **D-19:** Default status shows current device-link, Herdr, and Codex states; active bridge version and bounded effective-configuration identity; reconnect/backoff state; one last bounded error; and a small bounded list of recent state transitions/error codes. It does not expose verbose protocol or request traces.
-- **D-20:** The bridge emits structured, redacted operational events to Herdr's plugin logging facility. It does not own a second rotating-file log system or divergent journald/macOS unified-log user contract.
+- **D-20:** Operational logging is disabled by default. When explicitly enabled through validated plugin configuration, the bridge emits bounded, structured, redacted `tracing` events to standard error, which Herdr captures in command invocation logs. The bridge owns no file logger, rotating-log system, journald integration, macOS unified-log integration, streaming ingestion contract, or default-on trace stream. This replaces the unavailable dedicated Herdr plugin logging facility.
 - **D-21:** Status is read-only. Explicit plugin start, stop, restart, repair, and re-pair operations remain separate and auditable; observing status cannot mutate bridge, pairing, source, focus, or HID authority.
 - **D-22:** Existing privacy limits remain absolute across status and logs: no credentials, account identity, prompts, transcripts, raw upstream errors, host filesystem paths, or developer evidence payloads. Only bounded operational codes, short safe identities, versions, state transitions, and timings needed to operate the bridge may appear.
 
 ### the agent's Discretion
 - Select the maintained Rust crates, async runtime, serialization strategy, serial/device discovery APIs, locking/IPC mechanism, and platform adapter boundaries after mandatory migration and platform research.
-- Define exact capped-backoff schedules, bounded transition-history size, status/config identity encoding, structured event schema, and reconfiguration handshake while preserving D-01 through D-22.
+- Define exact capped-backoff schedules, bounded transition-history size, status/config identity encoding, optional stderr event schema, and restart handshake while preserving D-01 through D-22.
 - Choose reproducible build, signing/notarization, and plugin-bundle mechanics required for the two selected release targets. Do not expand the architecture matrix or distribution channels.
-- Decide how Herdr's verified plugin APIs implement automatic restart, read-only status, logging, live reconfiguration, and explicit lifecycle commands. If an assumed Herdr facility does not exist, research must surface the gap before planning rather than silently introducing an OS service.
+- Implement the verified Herdr 0.8.2 contract directly: one-shot startup, process/socket-bound exit, explicit idempotent lifecycle actions, status over same-user local IPC, restart-applied config under `HERDR_PLUGIN_CONFIG_DIR`, optional stderr tracing, and update activation on restart or next Herdr start. Do not wait for unavailable supervision, stop hooks, status publication, log ingestion, or live settings APIs, and do not replace them with an OS service or daemon.
 
 </decisions>
 
@@ -84,7 +84,7 @@ Replace the current Python host bridge with one production Rust executable bundl
 - `host/herdr_keypad/tests/test_focus.py` — exact target/result correlation and failure vocabulary.
 - `host/herdr_keypad/tests/test_codex.py` — Codex full/sparse normalization, nullability, freshness, failure classification, and redaction behavior.
 
-No external specification was named during discussion. Mandatory research must verify the current Herdr plugin lifecycle/status/logging/config APIs, maintained Rust serial and async I/O stacks, macOS USB serial discovery and permissions, Apple Silicon packaging/signing requirements, and reproducible cross-target release mechanics before planning.
+No external specification was named during discussion. Research verified Herdr v0.8.2, released 2026-08-19 and marked latest stable, against its immutable release notes, tagged source, and generated schema. Those sources establish the supported lifecycle/config/status/log contract above and confirm the absence of supervision, stop/logout hooks, first-class status publication, structured log ingestion, and live settings APIs. Mandatory implementation research still covers maintained Rust serial and async I/O stacks, macOS USB serial discovery and permissions, Apple Silicon packaging/signing requirements, and reproducible cross-target release mechanics.
 
 </canonical_refs>
 
@@ -105,22 +105,22 @@ No external specification was named during discussion. Mandatory research must v
 - Current Python production code is entangled with source-checkout paths, Phase 1 Python imports, developer smoke/evidence commands, a venv fallback, Linux `/proc`, shell `flock`, and a Linux-only plugin manifest. These are migration liabilities and explicit clean-cutover targets, not patterns to reproduce in the portable core.
 
 ### Integration Points
-- Replace `herdr-plugin.toml` startup/event shell invocations and `scripts/ensure-bridge.sh` with direct bundled-binary lifecycle commands backed by one cross-platform single-instance/reconfiguration control seam.
-- Port `PermanentBridge` orchestration into a platform-independent core with explicit ports for time, Herdr events/requests, Codex app-server supervision, exact USB transport, lifecycle control, status/log events, configuration, and persistence.
-- Implement Linux and macOS adapters only for serial discovery/I/O, Herdr endpoint/process integration, per-user runtime/config paths, locking/control IPC, signals/session logout, packaging, and permissions.
+- Replace `herdr-plugin.toml` startup/event shell invocations and `scripts/ensure-bridge.sh` with a direct bundled-binary startup command plus explicit start/stop/restart/status actions backed by one cross-platform single-instance control seam. The bridge monitors Herdr and exits with it.
+- Port `PermanentBridge` orchestration into a platform-independent core with explicit ports for time, Herdr events/requests, Codex app-server supervision, exact USB transport, lifecycle control, status, optional stderr tracing, configuration, and persistence.
+- Implement Linux and macOS adapters only for serial discovery/I/O, Herdr endpoint/process monitoring, Herdr plugin runtime/config/state paths, locking/control IPC, signals/suspend, packaging, and permissions.
 - Freeze the Python behavior through shared protocol fixtures and a black-box parity matrix before cutover; keep Python runnable only as the test oracle during migration, then remove its launcher and runtime from the supported plugin path.
-- Reuse `~/.config/herdr/keypad-binding.json` as the exact pairing authority and add live plugin-settings reconfiguration without allowing configuration changes to bypass session and snapshot fences.
-- Publish Herdr plugin status and structured redacted logs from normalized core health/state transitions, keeping read-only diagnostics separate from lifecycle and repair commands.
+- Reuse `~/.config/herdr/keypad-binding.json` as the exact pairing authority. Read advanced settings only from `HERDR_PLUGIN_CONFIG_DIR`, validate them at startup, and require explicit restart to apply changes.
+- Expose read-only status through a Herdr action backed by same-user local control IPC. Keep operational tracing off by default; when enabled, send bounded redacted events to stderr for Herdr command-log capture.
 
 </code_context>
 
 <specifics>
 ## Specific Ideas
 
-- Herdr server restart should look like a recoverable source outage: last agent entries remain visible under an offline veil, actions are fenced, and a full fresh snapshot restores them without restarting the bridge process.
-- Repeated matching plugin starts should feel idempotent. A changed invocation represents the single Herdr instance changing settings and should atomically reconfigure the active bridge rather than create or replace competing authorities.
-- Plugin installation should feel like one product install: the correct Linux x86-64 or macOS Apple Silicon binary is already inside the plugin.
-- Herdr plugin status should be the first operational view and include a bounded recent transition history, while device HEALTH remains glanceable source truth.
+- Temporary Herdr socket failure while the launching Herdr process remains alive is a recoverable source outage: last agent entries remain visible under an offline veil, actions are fenced, and a full fresh snapshot restores them. Herdr shutdown ends the bridge process.
+- Repeated matching plugin starts are idempotent. Changed configuration requires an explicit restart; it never creates competing authorities or triggers live reconfiguration.
+- Plugin installation remains one product install: the correct Linux x86-64 or macOS Apple Silicon binary is already inside the plugin. An update activates on restart or the next Herdr start.
+- The read-only status action is the first operational view and includes a bounded recent transition history. Device HEALTH remains glanceable source truth. Optional stderr tracing is disabled by default.
 
 </specifics>
 

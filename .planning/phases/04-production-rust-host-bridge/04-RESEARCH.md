@@ -3,40 +3,40 @@
 
 ### Locked Decisions
 ### Launch and lifecycle
-- **D-01:** Herdr owns the production bridge lifecycle through the bundled plugin. The ordinary user does not install or manage a separate OS service and does not need to launch a foreground bridge command.
-- **D-02:** Once Herdr starts it, the bridge remains alive through Herdr server exit, restart, and temporary API unavailability. It marks Herdr unavailable, keeps the last known agent entries under an unmistakable offline veil, disables every agent action, reconnects with bounded backoff, and requires a complete authoritative resynchronization before actions become available again.
-- **D-03:** Starting before Herdr is ready or before the exact paired keypad is connected is not fatal. The process remains alive, reports each unavailable boundary independently, and reconnects when that exact source or device appears.
-- **D-04:** Plugin disable/removal, an explicit stop command, and user logout intentionally stop the bridge. An ordinary Herdr restart does not.
-- **D-05:** A repeated start with the same effective configuration is idempotent: it reports the active instance and succeeds without disturbing live USB, Herdr, or Codex sessions.
-- **D-06:** There is only one Herdr instance and one bridge authority. If a later Herdr invocation supplies changed plugin settings, the active bridge reconfigures live: fence current authority first, adopt the new effective configuration atomically, and establish fresh source/device sessions before publishing current state. Never start a second bridge.
-- **D-07:** Herdr automatically restarts the bridge after a process crash. Repeated crashes continue retrying with capped backoff and expose one bounded persistent diagnostic; they must not form a hot restart loop or permanently lock the product out.
-- **D-08:** The same bridge process recovers after host suspend/resume. It invalidates pre-suspend USB and source sessions, reconnects each boundary, and publishes a fresh complete snapshot before restoring actionability.
+- **D-01:** Herdr owns the bridge session through the bundled plugin's one-shot startup hook. The hook launches the executable directly, with no OS service, background shell daemon, separate runtime, or foreground command. Herdr does not supervise the child after launch.
+- **D-02:** The bridge monitors the Herdr socket and process boundary, may recover temporary API unavailability while that Herdr process lives, and exits on Herdr shutdown. A later Herdr start launches a fresh bridge.
+- **D-03:** A temporarily unavailable socket or missing exact paired keypad is not fatal while the launching Herdr process remains alive. Each boundary reconnects independently, and complete authoritative resynchronization precedes actions.
+- **D-04:** Herdr shutdown and explicit stop intentionally stop the bridge. Disable/unlink does not stop it on Herdr 0.8.2, so disable/removal instructions require explicit stop first. No logout hook is claimed.
+- **D-05:** Explicit start/restart actions use same-user local control IPC and are idempotent. A matching start reports the active instance without disturbing it; restart deliberately replaces authority.
+- **D-06:** One bridge owns authority. Settings exist only under `HERDR_PLUGIN_CONFIG_DIR`, validate at startup, and take effect through explicit restart or the next Herdr start. Changed settings never reconfigure live or start a second bridge.
+- **D-07:** A crash does not auto-restart during the same Herdr session. Recovery is explicit idempotent start/restart or the next Herdr start. No watchdog, service, second runtime, or hidden daemon substitutes for supervision.
+- **D-08:** If Herdr remains alive across suspend/resume, the same bridge invalidates old sessions and resynchronizes before restoring actions. If Herdr exits, the bridge exits and the next Herdr start launches a fresh process.
 - **D-09:** HID Space is owned by firmware after the device asserts it. Bridge stop, crash, reconfiguration, or replacement must not synthesize Space-up or assume keyboard authority. Physical owner release, device removal/reset, or USB suspend ends the HID state through the existing firmware contract.
 
 ### Install and upgrades
 - **D-10:** Bundle the correct native executable inside the Herdr plugin. Installing the plugin installs the whole production integration; no standalone bridge package, runtime, or package-manager dependency is required.
 - **D-11:** Phase 4 release targets are Linux x86-64 and macOS Apple Silicon. Intel macOS and ARM64 Linux artifacts are not required for this phase.
-- **D-12:** A plugin update activates its bundled bridge through a controlled immediate restart. The old process authority ends before the new executable establishes fresh USB, Herdr, and Codex sessions and restores current data. No live state handoff between bridge versions.
+- **D-12:** A plugin update activates on explicit restart or the next Herdr start. The old authority ends before the new executable establishes fresh USB, Herdr, and Codex sessions. There is no live handoff or hidden immediate restart.
 - **D-13:** Automatic rollback is not required. Recovery from a failed update is a documented manual reinstall of a known plugin release.
 
 ### Configuration and migration
 - **D-14:** Reuse the existing `~/.config/herdr/keypad-binding.json` exact-device binding in place. The Rust bridge validates and reads the frozen format without rewriting or silently migrating it, so the paired device remains authoritative across the cutover.
 - **D-15:** An ordinary plugin installation requires zero configuration. Use Herdr-provided runtime information, the existing exact-device binding, the installed Codex command, and platform-native defaults.
-- **D-16:** Advanced overrides live only in one validated Herdr plugin settings surface. Do not create competing environment-variable, standalone config-file, and CLI configuration authorities.
+- **D-16:** Advanced overrides live only in validated files under `HERDR_PLUGIN_CONFIG_DIR`, validate at startup, and apply only after explicit restart. No live callback, environment-variable authority, external standalone config path, or CLI settings authority is allowed.
 - **D-17:** Malformed or incompatible binding/settings state fails closed and remains unchanged on disk. The bridge stays alive, exposes a bounded diagnostic, never connects to a different device or guesses values, and requires an explicit repair or re-pair action.
 
 ### Diagnostics surface
-- **D-18:** Herdr plugin status is the primary operational diagnostic surface. The existing device `HEALTH` page remains the bounded on-device truth for link, Herdr, and Codex health but is not expected to diagnose plugin installation or startup failures.
+- **D-18:** A read-only Herdr plugin `status` action is the primary operational diagnostic surface. It queries bounded same-user local control IPC and reports stopped/unreachable if no bridge answers. This accepted action replaces unavailable first-class status publication. Device `HEALTH` remains bounded on-device truth.
 - **D-19:** Default status shows current device-link, Herdr, and Codex states; active bridge version and bounded effective-configuration identity; reconnect/backoff state; one last bounded error; and a small bounded list of recent state transitions/error codes. It does not expose verbose protocol or request traces.
-- **D-20:** The bridge emits structured, redacted operational events to Herdr's plugin logging facility. It does not own a second rotating-file log system or divergent journald/macOS unified-log user contract.
+- **D-20:** Operational logging is disabled by default. When enabled in validated plugin config, bounded structured redacted tracing goes to standard error for Herdr command-log capture. The bridge owns no files, rotation, journald, unified-log integration, streaming ingestion, or default-on trace stream.
 - **D-21:** Status is read-only. Explicit plugin start, stop, restart, repair, and re-pair operations remain separate and auditable; observing status cannot mutate bridge, pairing, source, focus, or HID authority.
 - **D-22:** Existing privacy limits remain absolute across status and logs: no credentials, account identity, prompts, transcripts, raw upstream errors, host filesystem paths, or developer evidence payloads. Only bounded operational codes, short safe identities, versions, state transitions, and timings needed to operate the bridge may appear.
 
 ### the agent's Discretion
 - Select the maintained Rust crates, async runtime, serialization strategy, serial/device discovery APIs, locking/IPC mechanism, and platform adapter boundaries after mandatory migration and platform research.
-- Define exact capped-backoff schedules, bounded transition-history size, status/config identity encoding, structured event schema, and reconfiguration handshake while preserving D-01 through D-22.
-- Choose reproducible build, signing/notarization, and plugin-bundle mechanics required for the two selected release targets. Do not expand the architecture matrix or distribution channels.
-- Decide how Herdr's verified plugin APIs implement automatic restart, read-only status, logging, live reconfiguration, and explicit lifecycle commands. If an assumed Herdr facility does not exist, research must surface the gap before planning rather than silently introducing an OS service.
+- Define capped backoff, transition-history bounds, status/config identity encoding, optional stderr event schema, and restart handshake while preserving D-01 through D-22.
+- Choose reproducible build, signing/notarization, and plugin-bundle mechanics for the two selected release targets. Do not expand the architecture matrix or distribution channels.
+- Implement against verified Herdr v0.8.2 one-shot startup, explicit action, environment-directory, and command-log behavior. Do not wait for unavailable supervision, stop/logout hooks, status publication, log ingestion, or live settings APIs, and do not add an OS service or daemon.
 
 ### Deferred Ideas (OUT OF SCOPE)
 None — discussion stayed within the Phase 4 Rust migration, lifecycle, packaging, configuration, and diagnostics boundary.
@@ -46,7 +46,7 @@ None — discussion stayed within the Phase 4 Rust migration, lifecycle, packagi
 
 **Researched:** 2026-08-29
 **Domain:** Rust native host integration, Herdr plugin lifecycle, USB serial/device boundaries, closed v2 protocol parity, and cross-platform packaging
-**Confidence:** MEDIUM overall; the current Herdr lifecycle capability is a HIGH-impact unresolved integration gap.
+**Confidence:** HIGH for the current Herdr v0.8.2 capability boundary and Python parity contract; MEDIUM overall until macOS adapter and release mechanics are exercised.
 
 ## Project Constraints (from AGENTS.md)
 
@@ -60,13 +60,13 @@ None — discussion stayed within the Phase 4 Rust migration, lifecycle, packagi
 
 ## Summary
 
-The Python bridge is already a useful behavioral oracle with separable projection, Herdr, Codex, USB, focus, protocol, and lifecycle seams. The Rust port should preserve those observable boundaries, not Python object structure: complete authoritative reads establish inbox order after invalidation; source and device sessions are independently fenced; only an exact generation-bound focus acknowledgement authorizes the result; Codex null/unavailable/stale states remain distinct; and the device owns asserted HID Space. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:32-56,219-273,560-688,859-1095; host/herdr_keypad/src/herdr_keypad/projection.py:232-386; host/herdr_keypad/src/herdr_keypad/focus.py:75-140; host/herdr_keypad/src/herdr_keypad/codex.py:183-674]`
+The Python bridge is a useful behavioral oracle with separable projection, Herdr, Codex, USB, focus, protocol, and lifecycle seams. The Rust port should preserve observable boundaries, not Python object structure. Complete authoritative reads establish inbox order after invalidation; source and device sessions are independently fenced; only exact generation-bound focus acknowledgement authorizes the result; Codex null/unavailable/stale states remain distinct; and the device owns asserted HID Space. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:32-56,219-273,560-688,859-1095; host/herdr_keypad/src/herdr_keypad/projection.py:232-386; host/herdr_keypad/src/herdr_keypad/focus.py:75-140; host/herdr_keypad/src/herdr_keypad/codex.py:183-674]`
 
-A portable, event-driven Tokio core with explicit ports for Herdr, Codex, USB, time, lifecycle, configuration, status, and logging is the recommended shape. Tokio provides async tasks, channels, timers, Unix sockets, subprocesses, and signals; `tokio-serial` provides async serial streams; Serde provides typed models; and the existing closed JSON schema remains the wire authority. `[CITED: https://tokio.rs/tokio/tutorial; https://docs.rs/tokio/latest/tokio/process/struct.Command.html; https://docs.rs/tokio-serial/latest/tokio_serial/; https://serde.rs/]`
+A portable, event-driven Tokio core with explicit ports for Herdr, Codex, USB, time, lifecycle, configuration, status, and optional stderr tracing is the recommended shape. Tokio provides async tasks, channels, timers, Unix sockets, subprocesses, and signals; `tokio-serial` provides async serial streams; Serde provides typed models; and the existing closed JSON schema remains the wire authority. `[CITED: https://tokio.rs/tokio/tutorial; https://docs.rs/tokio/latest/tokio/process/struct.Command.html; https://docs.rs/tokio-serial/latest/tokio_serial/; https://serde.rs/]`
 
-There is a material platform prerequisite: Herdr 0.8.2 documents bundled commands and one-shot startup/event invocations, but not a supervised long-running command, first-class plugin status publication, structured log ingestion, or live settings callback. That means D-01/D-02/D-04/D-07/D-18/D-20 and the live part of D-16 cannot be claimed from documented Herdr facilities alone. The plan must resolve this as an explicit Herdr capability gate or upstream change; it must not silently introduce an OS service or a second user-visible configuration/logging contract. `[CITED: https://herdr.dev/docs/plugins/; https://herdr.dev/docs/socket-api/; https://herdr.dev/docs/cli-reference/]`
+Herdr v0.8.2 is the latest stable release, published 2026-08-19. Its immutable release notes, exact tagged source, and generated API schema show one-shot startup/action commands and invocation logs but no supervised child, crash restart, stop/logout hook, first-class status publication, structured log ingestion, or live settings callback. Those absences are now supported constraints, not blockers. Phase 04 launches the executable from the one-shot startup hook, ties its lifetime to the Herdr socket/process boundary, uses explicit idempotent lifecycle and read-only status actions over same-user local IPC, reads restart-applied config only under `HERDR_PLUGIN_CONFIG_DIR`, keeps stderr tracing off by default, and activates updates on restart or the next Herdr start. `[CITED: https://github.com/herdrdev/herdr/releases/tag/v0.8.2; https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/runtime.rs#L100-L143; https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/mod.rs#L113-L136; https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/mod.rs#L613-L640; VERIFIED: installed Herdr 0.8.2 generated schema lines 5712-5830]`
 
-**Primary recommendation:** Freeze the Python contract and protocol fixtures first, build one Rust binary around bounded event-driven state machines and platform ports, and block production cutover on a verified Herdr supervision/status/logging/configuration seam that satisfies the locked decisions.
+**Primary recommendation:** Freeze the Python contract and protocol fixtures first, then build one Rust binary around bounded event-driven state machines and the verified Herdr v0.8.2 launch/control/config/log contract. Do not add supervision or lifecycle facilities outside Herdr.
 
 ## Architectural Responsibility Map
 
@@ -76,8 +76,8 @@ There is a material platform prerequisite: Herdr 0.8.2 documents bundled command
 | Codex app-server supervision and limit normalization | API / Backend (bridge core) | Codex process adapter | Credentials and authenticated access stay on the host; the core classifies full/sparse/unavailable/stale data independently. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/codex.py:19-30,104-139,183-303,325-674]` |
 | Exact paired USB discovery, CDC I/O, v2 framing, and session fencing | API / Backend (bridge core) | Linux/macOS device adapters | Core owns admission, sequence, ACK, and generation authority; adapters differ only in discovery and native serial I/O. `[VERIFIED: tools/phase1_bringup/src/phase1_bringup/discovery.py:7-11,45-52,99-139; host/herdr_keypad/src/herdr_keypad/usb.py:33-70,81-113,124-169]` |
 | Device-owned HID Space | Device / Firmware | Bridge CDC result path | The bridge never emits Space-up or assumes keyboard authority; firmware owns the asserted HID state. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:25; .planning/PROJECT.md:54-58]` |
-| Lifecycle, single instance, live reconfiguration, and control commands | Frontend Server / plugin process | Herdr plugin API | The bridge authority must be one process, while Herdr owns installation and lifecycle; the documented Herdr API gap must be resolved before claiming compliance. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-24,46-50; CITED: https://herdr.dev/docs/plugins/]` |
-| Status and structured redacted operational events | Frontend Server / plugin process | Herdr plugin diagnostic surface | Status/log payloads come from normalized core state and must be read-only, bounded, and privacy-safe. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44]` |
+| Lifecycle, single instance, and control actions | Frontend Server / plugin process | Herdr one-shot startup and action commands | Startup launches the long-lived bridge; the bridge monitors Herdr and exits with it. Explicit same-user IPC-backed actions provide idempotent start/restart/stop without claiming Herdr supervision or automatic disable/unlink stop. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-24; CITED: https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/runtime.rs#L100-L143]` |
+| Status and optional redacted operational tracing | Frontend Server / plugin process | Herdr action and command logs | The read-only status action queries local IPC. Tracing is disabled by default and, when enabled, emits bounded redacted stderr captured in command logs. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44; installed Herdr 0.8.2 generated schema lines 5712-5830]` |
 | Native packaging, signing, and artifact verification | CDN / Static | Herdr plugin installer | The plugin bundle selects one target binary; macOS signing/notarization is a release concern, not runtime bridge logic. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:27-31; CITED: https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution]` |
 
 ## Standard Stack
@@ -97,8 +97,8 @@ There is a material platform prerequisite: Herdr 0.8.2 documents bundled command
 | Library | Version | Purpose | When to use |
 |---|---:|---|---|
 | `tracing` | 0.1.44 | Structured event/span instrumentation | Emit normalized operational events, never raw upstream payloads. `[VERIFIED: crates.io registry/package-legitimacy 2026-08-29; CITED: https://docs.rs/tracing/latest/tracing/]` |
-| `tracing-subscriber` | 0.3.23 | Structured stderr/event formatting | Use JSON or compact structured output consumed by the resolved Herdr logging seam; do not create a rotating file logger. `[VERIFIED: crates.io registry/package-legitimacy 2026-08-29; CITED: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/]` |
-| `toml` | 1.1.4+spec-1.1.0 | Parse one validated advanced-settings document | Use only if the resolved Herdr plugin settings surface supplies the document; do not create an independent user-facing config authority. `[VERIFIED: crates.io registry/package-legitimacy 2026-08-29; CITED: https://docs.rs/toml/latest/toml/]` |
+| `tracing-subscriber` | 0.3.23 | Bounded stderr event formatting | Enable only through validated plugin config; default logging remains off and output stays redacted. `[VERIFIED: crates.io registry/package-legitimacy 2026-08-29; CITED: https://docs.rs/tracing/latest/tracing/]` |
+| `toml` | 1.1.4+spec-1.1.0 | Parse validated settings under `HERDR_PLUGIN_CONFIG_DIR` | Read only at startup; reject malformed settings and require explicit restart to apply changes. `[VERIFIED: crates.io registry/package-legitimacy 2026-08-29; CITED: https://docs.rs/toml/latest/toml/]` |
 | `sha2` | 0.11.0 | Internal effective-config and artifact identity digest | Hash canonical typed settings; expose only a short safe prefix in status. `[VERIFIED: crates.io registry/package-legitimacy 2026-08-29; CITED: https://docs.rs/sha2/latest/sha2/]` |
 | `fs2` | 0.4.3 | Cross-platform exclusive lock for one bridge authority | Hold the lock for process lifetime and combine it with a bounded local control socket; a stale PID/socket is never authority. `[VERIFIED: crates.io registry/package-legitimacy 2026-08-29; CITED: https://docs.rs/fs2/latest/fs2/]` |
 
@@ -116,7 +116,7 @@ serde_json = "1.0.151"
 serialport = { version = "4.10.0", default-features = false }
 tokio-serial = { version = "5.5.0", default-features = false }
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["fmt", "json", "env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["fmt", "json"] }
 toml = "1.1.4"
 sha2 = "0.11.0"
 fs2 = "0.4.3"
@@ -130,9 +130,9 @@ Every package in this example is listed in the verified standard-stack table. Th
 |---|---|---|
 | Tokio event loop | A synchronous thread-per-boundary design | Easier local code but risks idle polling, lifecycle races, and duplicated cancellation/fencing logic; not recommended for D-02/D-08 resource behavior. `[RECOMMENDATION; CITED: https://tokio.rs/tokio/tutorial]` |
 | `tokio-serial` | Blocking `serialport` in a dedicated thread | Could work as an adapter fallback, but adds thread lifecycle and wakeup overhead; use only if a target-specific async-open issue is demonstrated. `[RECOMMENDATION; CITED: https://docs.rs/serialport/latest/serialport/; https://docs.rs/tokio-serial/latest/tokio_serial/]` |
-| Exclusive lock plus UDS control | PID file alone | PID files cannot prove ownership after crash or PID reuse; retain the lock as authority and use UDS only for control. `[RECOMMENDATION; CITED: https://docs.rs/fs2/latest/fs2/; https://docs.rs/tokio/latest/tokio/net/struct.UnixListener.html]` |
+| Exclusive lock plus local control IPC | PID file alone | PID files cannot prove ownership after crash or PID reuse; retain the lock as authority and use same-user IPC only for bounded actions/status. `[RECOMMENDATION; CITED: https://docs.rs/fs2/latest/fs2/; https://docs.rs/tokio/latest/tokio/net/struct/UnixListener.html]` |
 | Existing binding JSON | New Rust pairing database | Violates D-14 and creates split authority; read and validate the frozen file without rewriting it. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:33-37; host/herdr_keypad/src/herdr_keypad/usb.py:41-63]` |
-| Herdr plugin logging | A second rotating-file/journald contract | Violates D-20 and creates platform-specific privacy/retention behavior; resolve Herdr logging ingestion instead. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44]` |
+| Default-off stderr tracing | File rotation, journald, unified log, or default-on output | Matches D-20 and Herdr v0.8.2 command-log behavior without creating another retention contract. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44; installed Herdr 0.8.2 generated schema lines 5712-5830]` |
 
 ## Package Legitimacy Audit
 
@@ -156,19 +156,19 @@ All rows are `[VERIFIED: package-legitimacy check --ecosystem crates 2026-08-29]
 ### System architecture diagram
 
 ```text
-Herdr startup/control/event boundary ─┐
-Herdr public socket + invalidations ──┼─> bounded event ingress ──┐
-Codex app-server child JSONL ─────────┤                           │
-USB discovery + async CDC frames ─────┘                           v
-                                      portable Rust core/state machine
-       timers: reconnect / freshness / Codex poll / shutdown ──> │
-       config + binding + lock/control IPC ─────────────────────> │
-       generation/session fences ────────────────────────────────> │
-                                                                  v
+Herdr one-shot startup/action boundary ─┐
+Herdr public socket + process monitor ─┼─> bounded event ingress ──┐
+Codex app-server child JSONL ──────────┤                           │
+USB discovery + async CDC frames ──────┘                           v
+                                       portable Rust core/state machine
+       timers: reconnect / freshness / Codex poll / shutdown ──>  │
+       config + binding + lock/control IPC ─────────────────────>  │
+       generation/session fences ───────────────────────────────>  │
+                                                                   v
                  complete projection + device snapshot + status
                     │                         │                 │
                     v                         v                 v
-              v2 snapshot/focus         read-only status   redacted Herdr events
+              v2 snapshot/focus       read-only action   optional redacted stderr
                     │
                     v
              exact device CDC/firmware (HID ownership remains device-side)
@@ -193,7 +193,7 @@ host/herdr_keypad/
 │   └── tests/               # black-box contract/resource tests
 ├── protocol/schema/v2.json  # existing canonical schema, not copied/extended
 ├── tests/                   # Python oracle and current behavioral corpus
-├── herdr-plugin.toml        # direct bundled binary manifest after capability gate
+├── herdr-plugin.toml        # direct bundled binary startup and action manifest
 └── bundle/                  # target-specific native artifacts, not Python runtime
 ```
 
@@ -222,9 +222,9 @@ The exact event names above are illustrative, not protocol additions; the only d
 
 ### Pattern 2: Boundary state machines and generation fencing
 
-**What:** Give Herdr, USB, and Codex independent states and sessions. On disconnect/reconfiguration/suspend, invalidate that boundary, retain only truthful stale/offline presentation, reject old results, and require a complete fresh snapshot plus matching device ACK before actionability. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:560-688,859-1095; host/herdr_keypad/src/herdr_keypad/usb.py:81-113; host/herdr_keypad/src/herdr_keypad/focus.py:75-140]`
+**What:** Give Herdr, USB, and Codex independent states and sessions. On disconnect/explicit restart/suspend, invalidate that boundary, retain only truthful stale/offline presentation, reject old results, and require a complete fresh snapshot plus matching device ACK before actionability. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:560-688,859-1095; host/herdr_keypad/src/herdr_keypad/usb.py:81-113; host/herdr_keypad/src/herdr_keypad/focus.py:75-140]`
 
-**When to use:** Every source/device process restart, host suspend/resume, settings change, and plugin update. No deferred focus request may cross a generation boundary; the existing USB pending-focus capacity is 16 and should remain a hard bound. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/usb.py:50-63; host/herdr_keypad/src/herdr_keypad/bridge.py:945-1000]`
+**When to use:** Every source/device reconnect, explicit bridge restart, host suspend/resume, and updated binary activation. Settings and plugin updates apply through that explicit restart or a later Herdr start. No deferred focus request may cross a generation boundary; the existing USB pending-focus capacity is 16 and remains a hard bound. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/usb.py:50-63; host/herdr_keypad/src/herdr_keypad/bridge.py:945-1000]`
 
 ### Pattern 3: Black-box differential parity
 
@@ -234,9 +234,9 @@ The exact event names above are illustrative, not protocol additions; the only d
 
 ### Pattern 4: Lock-authoritative control IPC
 
-**What:** Acquire one exclusive lock in the Herdr plugin state directory. The winner owns a bounded Unix-domain control socket. A duplicate start connects to that socket and sends a versioned, bounded request containing the effective configuration identity; same configuration returns active/idempotent, changed configuration requests an atomic fence-and-reconfigure. `[RECOMMENDATION; CITED: https://docs.rs/fs2/latest/fs2/; https://docs.rs/tokio/latest/tokio/net/struct.UnixListener.html]`
+**What:** Acquire one exclusive lock under Herdr's plugin state directory. The winner owns bounded same-user local control IPC. A duplicate start sends a versioned request with the effective configuration identity. Matching configuration returns active/idempotent. Changed configuration returns restart-required; only an explicit restart fences and replaces the active authority. `[RECOMMENDATION; CITED: https://docs.rs/fs2/latest/fs2/; https://docs.rs/tokio/latest/tokio/net/struct.UnixListener.html]`
 
-**When to use:** Start/status/stop/restart/repair/re-pair and live settings updates. Never use a PID file or socket existence as proof of ownership. `[RECOMMENDATION; VERIFIED: host/herdr_keypad/scripts/ensure-bridge.sh:1-106]`
+**When to use:** Start, status, stop, restart, repair, and re-pair actions. Configuration files are read only at process startup, not pushed over IPC for live update. Never use a PID file or socket existence as proof of ownership. `[RECOMMENDATION; VERIFIED: host/herdr_keypad/scripts/ensure-bridge.sh:1-106]`
 
 ### Pattern 5: Strict bounded protocol admission
 
@@ -263,8 +263,8 @@ Backoff should be deterministic and capped for tests (for example, 0.5, 1, 2, 4,
 - **Fixed polling loop:** Recreates the Python `sleep(0.1)` wakeup, burns idle resources, and can race event invalidation. Use event notifications and only explicit reconnect/freshness/Codex deadlines. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:1038-1095; RECOMMENDATION]`
 - **Descriptor-only authorization:** VID/PID/path or first-match order cannot authorize the paired device; filter measured descriptors, then require exact application hello identity and protocol. `[VERIFIED: tools/phase1_bringup/src/phase1_bringup/discovery.py:45-52,99-139; host/herdr_keypad/tests/test_integration.py:686-707]`
 - **Cross-boundary replay:** Never queue focus across a disconnect, old source revision, generation, or session. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:219-273,945-1000; host/herdr_keypad/src/herdr_keypad/focus.py:75-140]`
-- **Second configuration/logging authority:** Do not add env-var overrides, an independent TOML path, rotating files, journald, or macOS unified-log requirements outside the resolved Herdr surfaces. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:33-44]`
-- **Daemon hidden behind a one-shot hook:** A long-running process started by a one-shot hook is not equivalent to Herdr-supervised lifecycle. Resolve the documented Herdr gap first; do not daemonize or install an OS service. `[CITED: https://herdr.dev/docs/plugins/]`
+- **Second configuration/logging authority:** Do not add environment overrides, config outside `HERDR_PLUGIN_CONFIG_DIR`, rotating files, journald, or macOS unified-log requirements. Validated config is startup-only, and optional redacted stderr tracing is off by default. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:33-44]`
+- **Hidden supervisor:** The one-shot startup hook may launch the long-running executable, but neither it nor a shell wrapper may become a watchdog. The bridge monitors Herdr and exits with it; crash recovery remains an explicit action or the next Herdr start. `[CITED: https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/runtime.rs#L100-L143]`
 - **Raw diagnostics:** Do not serialize upstream errors, credentials, prompts, transcripts, paths, account IDs, or developer evidence into status/log output. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44; host/herdr_keypad/src/herdr_keypad/codex.py:325-674]`
 
 ## Don't Hand-Roll
@@ -276,7 +276,7 @@ Backoff should be deterministic and capped for tests (for example, 0.5, 1, 2, 4,
 | Async serial transport | Manual nonblocking fd reactor | `tokio-serial` backed by `serialport` | Cross-platform serial setup and async stream behavior already exist. `[CITED: https://docs.rs/tokio-serial/latest/tokio_serial/; https://docs.rs/serialport/latest/serialport/]` |
 | Cryptographic digest | Custom hash or FNV for security | `sha2` for config/artifact identity; retain FNV only where v2 compatibility requires it | FNV in the v2 schema is a compatibility digest, not an authentication primitive. `[VERIFIED: protocol/schema/v2.json:25-26; CITED: https://docs.rs/sha2/latest/sha2/]` |
 | Cross-process ownership | PID file and stale-socket heuristics | `fs2` lock plus Tokio Unix socket and same-user peer checks | A held lock proves ownership; control IPC carries bounded intent. `[CITED: https://docs.rs/fs2/latest/fs2/; https://docs.rs/tokio/latest/tokio/net/struct.UnixStream.html]` |
-| Operational logging | Rotating file logger and platform-specific adapters | `tracing`/subscriber routed through the resolved Herdr logging facility | Keeps D-20's one operational logging contract and redaction boundary. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44]` |
+| Operational logging | Rotating file logger and platform-specific adapters | Default-off `tracing` subscriber writing bounded redacted stderr | Matches Herdr v0.8.2 command-log capture and D-20 without another retention system. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44; installed Herdr 0.8.2 generated schema lines 5712-5830]` |
 | Inbox priority | A new priority/ranking algorithm | Existing projection rank/order and complete-read semantics | Herdr inbox is authoritative and has tested ordering. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/projection.py:232-335; .planning/PROJECT.md:42-43]` |
 
 **Key insight:** The hard parts are authority transitions and privacy-preserving state, not JSON or serial syntax. Reuse maintained primitives and keep policy in the portable core; otherwise a superficially working port can reconnect, focus, or publish stale data incorrectly.
@@ -307,7 +307,7 @@ The existing binding model is exactly `{schema_version: 1, device_id: <opaque>, 
 - Projection traces: empty/partial/full inbox, rank ties, state-change ordering, source invalidation, material revision changes, stale/offline veil, and bounded title/discriminator normalization. `[VERIFIED: host/herdr_keypad/tests/test_projection.py; host/herdr_keypad/src/herdr_keypad/projection.py:83-335]`
 - Focus traces: exact current target, source/device generation mismatch, pane/identity churn, retry after unfocused acknowledgement, vanished/timeout/empty response. `[VERIFIED: host/herdr_keypad/tests/test_focus.py; host/herdr_keypad/src/herdr_keypad/focus.py:75-140]`
 - Codex traces: zero versus null, full baseline, sparse merge/refetch, duration mapping, reset selection, stale/freshness, auth/process failure, redaction, child exit, account change. `[VERIFIED: host/herdr_keypad/tests/test_codex.py; host/herdr_keypad/src/herdr_keypad/codex.py:183-674]`
-- Integration traces: independent Herdr/USB/Codex outage, bounded backoff, event-stream rebuild, reconnect snapshot ACK, exact descriptor/udev admission, single authority, config reconfiguration, and production/developer command separation. `[VERIFIED: host/herdr_keypad/tests/test_integration.py:188-1114]`
+- Integration traces: independent Herdr/USB/Codex outage, bounded backoff, event-stream rebuild, reconnect snapshot ACK, exact descriptor/udev admission, single authority, idempotent start/restart/status/stop, Herdr-process exit, restart-applied configuration, and production/developer command separation. `[VERIFIED: host/herdr_keypad/tests/test_integration.py:188-1114; RECOMMENDATION]`
 - Resource traces: idle event-driven process, bounded queues/history/diagnostic payloads, reconnect timers, Codex polling only at its explicit deadline, and no source polling wakeups while the event stream is healthy. `[RECOMMENDATION; VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:1038-1095; host/herdr_keypad/src/herdr_keypad/codex.py:19-30]`
 
 ## Runtime State Inventory
@@ -315,28 +315,28 @@ The existing binding model is exactly `{schema_version: 1, device_id: <opaque>, 
 | Category | Items found | Action required |
 |---|---|---|
 | Stored data | The existing `~/.config/herdr/keypad-binding.json` exists with the frozen binding shape and values `schema_version: 1`, `protocol: 1`, and firmware `phase1-bringup`; the opaque device identity is intentionally not reproduced here. `[VERIFIED: local runtime inspection 2026-08-29; tools/phase1_bringup/src/phase1_bringup/pairing.py:28-47]` | Code edit only: Rust reads/validates it in place and never rewrites or migrates it. No data migration is authorized by D-14. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:33-37]` |
-| Live service config | Herdr 0.8.2 is running; no installed `herdr-keypad` plugin or keypad-specific Herdr config/state directory was found in the local inspection. `[VERIFIED: local Herdr CLI/config inspection 2026-08-29]` | Install/link must create plugin-owned config/state through Herdr. Do not mutate the private `herdr-agent-inbox` runtime state or add a competing config authority. `[RECOMMENDATION; CITED: https://herdr.dev/docs/plugins/; VERIFIED: .planning/PROJECT.md:42-47]` |
-| OS-registered state | No running bridge process was found. Stale lock files were found under the XDG cache/runtime locations used by the old shell launcher. `[VERIFIED: local process/path inspection 2026-08-29; host/herdr_keypad/scripts/ensure-bridge.sh:1-106]` | No migration of stale PID/lock artifacts; the new binary cleans stale control socket state only after acquiring the new authority lock. Remove old launcher assumptions from the supported production path. `[RECOMMENDATION; VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:27-37]` |
-| Secrets and environment variables | Codex credentials are host-owned and the current Python implementation obtains them through the installed Codex process; Herdr supplies runtime variables such as socket/plugin root/config/state/context. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/codex.py:325-674; CITED: https://herdr.dev/docs/plugins/]` | No secret migration. Do not preserve old developer env vars as runtime configuration; consume only the resolved Herdr settings surface and injected runtime information. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/__main__.py:27-338; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:33-37]` |
+| Live service config | Herdr 0.8.2 is running; no installed `herdr-keypad` plugin or keypad-specific Herdr config/state directory was found in the local inspection. `[VERIFIED: local Herdr CLI/config inspection 2026-08-29]` | Install/link creates plugin-owned config/state directories. Advanced settings live only under `HERDR_PLUGIN_CONFIG_DIR`, validate at startup, and apply after explicit restart. Do not mutate private inbox state or add another config authority. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:33-37; CITED: https://herdr.dev/docs/plugins/]` |
+| OS-registered state | No running bridge process was found. Stale lock files were found under the XDG cache/runtime locations used by the old shell launcher. `[VERIFIED: local process/path inspection 2026-08-29; host/herdr_keypad/scripts/ensure-bridge.sh:1-106]` | Do not migrate stale PID/lock artifacts. The new binary cleans stale control IPC only after acquiring its authority lock. Remove old launcher assumptions and add no OS service or shell daemon. `[RECOMMENDATION; VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-24]` |
+| Secrets and environment variables | Codex credentials are host-owned; Herdr supplies socket, binary, plugin root, config, state, and context paths. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/codex.py:325-674; CITED: https://herdr.dev/docs/plugins/]` | No secret migration. Keep runtime information from Herdr, but accept advanced settings only from validated files under `HERDR_PLUGIN_CONFIG_DIR`. Do not preserve developer environment variables as settings. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/__main__.py:27-338; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:33-37]` |
 | Build artifacts / installed packages | Python `__pycache__`, a Python virtual environment, and developer evidence artifacts exist in the repository workspace; the local Herdr installation has no keypad plugin. `[VERIFIED: local workspace/Herdr inspection 2026-08-29]` | Do not ship these as production dependencies. Python remains test-oracle-only during parity work, then the release bundle contains only the target Rust executable, manifest, and required static metadata. `[RECOMMENDATION; VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:27-31,69-77]` |
 
-**Canonical migration conclusion:** after source files are changed, the only user data that must remain is the existing binding file; no data migration is permitted. Runtime lifecycle/config/status/log state must be newly owned through verified Herdr plugin facilities, and the old Linux shell/Python process artifacts must not remain supported authorities. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:27-44; host/herdr_keypad/scripts/ensure-bridge.sh:1-106]`
+**Canonical migration conclusion:** the existing binding file remains the only carried user data. Herdr owns startup/action invocation, config/state paths, and command logs. The Rust process owns its bounded runtime lock/control IPC and exits with Herdr. The old Linux shell/Python lifecycle artifacts do not remain supported authorities. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-44; host/herdr_keypad/scripts/ensure-bridge.sh:1-106]`
 
 ## Common Pitfalls
 
-### Pitfall 1: Treating one-shot startup as a supervisor
+### Pitfall 1: Inventing supervision around one-shot startup
 
-**What goes wrong:** A startup command can launch a long-lived process, but Herdr's current documentation describes startup hooks as one-shot commands run after restore/socket readiness; it does not promise child supervision or restart after crash. `[CITED: https://herdr.dev/docs/plugins/]`
+**What goes wrong:** Herdr v0.8.2 waits for a spawned command but provides no crash restart, stop hook, or supervisor. A shell watchdog or detached daemon would create an undeclared lifecycle authority. `[CITED: https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/runtime.rs#L100-L143]`
 
-**Why it happens:** The current manifest has startup and event shell commands, so it is easy to infer daemon semantics from command placement. `[VERIFIED: host/herdr_keypad/herdr-plugin.toml:1-80]`
+**Why it happens:** The current manifest has startup and event shell commands, so command placement can be mistaken for supervision. `[VERIFIED: host/herdr_keypad/herdr-plugin.toml:1-80]`
 
-**How to avoid:** Make Herdr supervision/restart a Wave 0 capability gate. If the verified API cannot supervise/restart the binary, stop planning the cutover and obtain an upstream/user-approved Herdr mechanism; do not add an OS service. `[RECOMMENDATION; VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-24,46-50]`
+**How to avoid:** Launch the executable directly from the startup hook, monitor the Herdr socket/process boundary, and exit on Herdr shutdown. Expose explicit idempotent start/restart/stop actions. A crash remains stopped until one of those actions or the next Herdr start. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-24]`
 
-### Pitfall 2: Assuming status/log/config APIs exist
+### Pitfall 2: Requiring APIs Herdr v0.8.2 does not have
 
-**What goes wrong:** The documented socket/CLI API exposes plugin management, action invocation, and invocation logs, but no documented plugin.status publication, streaming bridge-log ingestion, or live settings callback. `[CITED: https://herdr.dev/docs/socket-api/; https://herdr.dev/docs/cli-reference/]`
+**What goes wrong:** First-class status publication, streaming log ingestion, live settings callbacks, and disable/unlink stop do not exist in the latest stable release. Treating them as requirements blocks a compatible implementation or encourages hidden substitutes. `[CITED: https://github.com/herdrdev/herdr/releases/tag/v0.8.2; https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/mod.rs#L113-L136; https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/mod.rs#L613-L640; VERIFIED: installed Herdr 0.8.2 generated schema lines 5712-5830]`
 
-**How to avoid:** Verify the installed Herdr binary/schema against each desired operation. A read-only `status` action may be possible, but it is not equivalent to a first-class plugin status surface; structured logging/config reload require an explicit resolved facility. `[VERIFIED: local Herdr 0.8.2 API schema inspection 2026-08-29; CITED: https://herdr.dev/docs/plugins/]`
+**How to avoid:** Use a read-only status action over same-user local IPC. Read validated config under `HERDR_PLUGIN_CONFIG_DIR` only at startup. Keep tracing off by default and send bounded redacted events to stderr only when enabled. Require explicit stop before disable/unlink. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:20-24,33-44]`
 
 ### Pitfall 3: Reintroducing polling under a new name
 
@@ -405,13 +405,13 @@ Do not claim byte-for-byte reproducibility for timestamped signatures without ev
 | Rust/Cargo | Native build and tests | Yes | rustc/cargo 1.82, Linux x86-64 | — `[VERIFIED: local toolchain inspection 2026-08-29]` |
 | Linux target | Local release smoke | Yes | `x86_64-unknown-linux-gnu` installed | — `[VERIFIED: local toolchain inspection 2026-08-29]` |
 | Python oracle | Differential parity only | Yes | Python 3.14.7; existing venv/source | Keep test-only; never bundle for production `[VERIFIED: local runtime inspection; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:69-77]` |
-| Herdr | Plugin API/lifecycle integration | Yes | 0.8.2 | Capability gate/upstream change required for missing supervision/status/log/config facilities `[VERIFIED: local Herdr inspection; CITED: https://herdr.dev/docs/plugins/]` |
+| Herdr | Plugin launch/control/config/log integration | Yes | Latest stable and installed v0.8.2, released 2026-08-19 | Implement verified one-shot startup, explicit actions, config directory, and command-log semantics; no upstream capability is required `[CITED: https://github.com/herdrdev/herdr/releases/tag/v0.8.2; VERIFIED: installed Herdr 0.8.2 generated schema lines 5712-5830]` |
 | Codex CLI | Host-side usage collector | Yes | 0.151.0; no running Codex process during inspection | Report unavailable until installed/authenticated process is available; do not fake current data `[VERIFIED: local runtime inspection; host/herdr_keypad/src/herdr_keypad/codex.py:325-674]` |
 | Exact USB serial | Phase 4 adapter smoke only | Yes on this host | Expected ESP32-S3 serial CDC is present | Physical acceptance remains Phase 5; keep device checks black-box `[VERIFIED: local device inspection; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:6-10]` |
 | macOS Apple Silicon runner | Native build/sign/notarize | No | No Apple target/signing tools on Linux | Required CI/worker; no honest local fallback for D-11 distribution `[VERIFIED: local toolchain inspection 2026-08-29]` |
 | Apple notarization credentials | Distribution release | Not checked / unavailable locally | Requires Apple Developer account credentials | Human/CI secret provisioning; never commit or log credentials `[CITED: https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution; RECOMMENDATION]` |
 
-**Missing dependencies with no local fallback:** macOS Apple Silicon build/sign/notarization worker for the D-11 release artifact; a verified Herdr supervision/status/logging/configuration capability for the full D-01..D-07/D-16/D-18/D-20 contract. `[VERIFIED: local toolchain and Herdr docs inspection 2026-08-29; CITED: https://herdr.dev/docs/plugins/]`
+**Missing dependencies with no local fallback:** a macOS Apple Silicon build/sign/notarization worker and Apple credentials for the D-11 release artifact. Herdr v0.8.2 is available and its verified capability boundary supports the approved Phase 04 lifecycle; it is not a blocker. `[VERIFIED: local toolchain and Herdr inspection 2026-08-29; CITED: https://github.com/herdrdev/herdr/releases/tag/v0.8.2]`
 
 ## Security Domain
 
@@ -438,16 +438,16 @@ Security enforcement is enabled at ASVS level 1 in project configuration. `[VERI
 | Credentials/account/prompts in logs | Information disclosure | Fixed operational codes, redaction before status/log serialization, no raw upstream errors or payloads. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44; host/herdr_keypad/src/herdr_keypad/codex.py:325-674]` |
 | PATH/subprocess substitution | Elevation | Resolve Herdr-provided absolute binary paths, direct argv (no shell), verify Codex command identity, and retain child process boundary. `[CITED: https://herdr.dev/docs/plugins/; VERIFIED: host/herdr_keypad/src/herdr_keypad/codex.py:325-360]` |
 
-## Herdr Capability Gate
+## Verified Herdr v0.8.2 Capability Contract
 
-Current documentation and installed-schema inspection establish the following:
+The latest stable Herdr release is v0.8.2, published 2026-08-19. Immutable release metadata, exact tagged source, and the installed generated schema establish:
 
-1. Herdr can install/link a plugin, inject `HERDR_SOCKET_PATH`, `HERDR_BIN_PATH`, `HERDR_PLUGIN_ROOT`, `HERDR_PLUGIN_CONFIG_DIR`, `HERDR_PLUGIN_STATE_DIR`, and context, and run direct-argv build/startup/action/event commands. `[CITED: https://herdr.dev/docs/plugins/]`
-2. Startup hooks are one-shot after restore/socket readiness and are not documented as supervised daemons restarted after crash or server restart. `[CITED: https://herdr.dev/docs/plugins/]`
-3. The socket/CLI API documents plugin listing/linking/enabling/disabling, action listing/invocation, and invocation-log listing, but not a first-class long-lived bridge status endpoint, streaming child-log ingestion, or settings-change callback. `[CITED: https://herdr.dev/docs/socket-api/; https://herdr.dev/docs/cli-reference/]`
-4. Therefore, a status action can be investigated as a read-only fallback, but it does not satisfy D-18 unless the status surface is explicitly accepted as Herdr plugin status; similarly, direct stderr/tracing output is not proven to be Herdr plugin logging facility ingestion. `[INFERENCE: based on cited API surface]`
+1. Herdr can install/link a plugin, inject `HERDR_SOCKET_PATH`, `HERDR_BIN_PATH`, `HERDR_PLUGIN_ROOT`, `HERDR_PLUGIN_CONFIG_DIR`, `HERDR_PLUGIN_STATE_DIR`, and context, then run direct-argv startup and action commands. `[CITED: https://herdr.dev/docs/plugins/; https://github.com/herdrdev/herdr/releases/tag/v0.8.2]`
+2. Plugin commands spawn and wait to completion. There is no supervisor, crash restart/backoff, timeout/cancel/kill lifecycle, or hidden stop/logout hook. `[CITED: https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/runtime.rs#L100-L143]`
+3. Disable persists registry state and clears an agent view; unlink removes registry records while explicitly leaving panes running. Neither operation stops a launched bridge. `[CITED: https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/mod.rs#L113-L136; https://github.com/herdrdev/herdr/blob/v0.8.2/src/app/api/plugins/mod.rs#L613-L640]`
+4. The schema exposes plugin link/list/unlink/enable/disable, action list/invoke, and invocation-log list. It has no first-class status publication, log-ingestion stream, or live plugin configuration method. `[VERIFIED: installed Herdr 0.8.2 generated schema lines 5712-5830]`
 
-**Planning decision required:** Add a capability checkpoint before Rust production implementation. The checkpoint must exercise the installed Herdr version (or an explicitly approved upstream API) for: supervised persistent child, crash restart with capped backoff, explicit stop/disable/logout semantics, status publication, structured redacted event ingestion, and live validated settings/reconfiguration. If any requirement is unavailable, report the exact gap and obtain a decision; do not add an OS service, daemonize behind shell, or create second config/log authorities. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-24,33-50; CITED: https://herdr.dev/docs/plugins/]`
+**Planning contract:** Build against those facts. Use startup launch plus Herdr process/socket monitoring, explicit IPC-backed lifecycle/status actions, explicit stop before disable/removal, startup-only configuration under `HERDR_PLUGIN_CONFIG_DIR`, default-off stderr tracing captured by invocation logs, and update activation on explicit restart or next Herdr start. No Herdr capability checkpoint or upstream change blocks Phase 04. `[VERIFIED: .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-50]`
 
 ## State of the Art
 
@@ -455,7 +455,7 @@ Current documentation and installed-schema inspection establish the following:
 |---|---|---|---|
 | Python source-checkout launcher, venv/PYTHONPATH, Linux shell `flock`/`/proc` | Bundled native Rust executable and platform adapters | Phase 04 decision, 2026-08-29 | Removes runtime/package-manager dependency from production and makes Linux/macOS bundle selection explicit. `[VERIFIED: host/herdr_keypad/scripts/ensure-bridge.sh:1-106; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:27-31]` |
 | Fixed 0.1-second fallback polling | Event-driven stream plus explicit bounded timers | Phase 04 decision, 2026-08-29 | Reduces idle wakeups while retaining reconnect/freshness deadlines. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/bridge.py:1038-1095; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:46-50]` |
-| PID/shell lifecycle assumptions | Lock-authoritative control IPC and verified Herdr lifecycle | Phase 04 decision, 2026-08-29 | Supports idempotent start/reconfigure without competing authorities, subject to Herdr capability gate. `[VERIFIED: host/herdr_keypad/scripts/ensure-bridge.sh:1-106; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-24]` |
+| PID/shell lifecycle assumptions | Lock-authoritative local control IPC plus verified Herdr v0.8.2 startup/process boundary | Phase 04 relaxation, 2026-08-30 | Supports one authority, idempotent actions, explicit recovery, and clean Herdr-bound exit without inventing supervision. `[VERIFIED: host/herdr_keypad/scripts/ensure-bridge.sh:1-106; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:16-24]` |
 | Linux-only plugin startup | Target-selected Linux x86-64/macOS Apple Silicon bundle | Phase 04 decision, 2026-08-29 | Requires native macOS build/sign/notarization pipeline. `[VERIFIED: host/herdr_keypad/herdr-plugin.toml:1-80; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:27-31]` |
 
 **Deprecated/outdated for the production path:** Python launcher, shell `ensure-bridge.sh`, developer evidence/smoke commands, source-checkout imports, environment-variable configuration authorities, and any OS service workaround. They may remain as migration/test fixtures only where needed to prove parity. `[VERIFIED: host/herdr_keypad/src/herdr_keypad/__main__.py:27-338; host/herdr_keypad/scripts/ensure-bridge.sh:1-106; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:69-77]`
@@ -464,7 +464,7 @@ Current documentation and installed-schema inspection establish the following:
 
 | # | Claim | Section | Risk if wrong |
 |---|---|---|---|
-| A1 | The documented Herdr 0.8.2 behavior is representative of the installed production lifecycle and no hidden supervisor/status/log/config APIs are available. | Herdr Capability Gate | High: D-01/D-07/D-18/D-20/D-16 cannot be implemented honestly without an approved facility. Confirm with an executable capability probe or upstream API contract. `[ASSUMED]` |
+| A1 | Same-user local control IPC and process-boundary monitoring can be implemented on both Linux x86-64 and macOS Apple Silicon without another runtime authority. | Verified Herdr v0.8.2 Capability Contract | Medium: platform-specific peer/process APIs differ; prove start/status/stop/restart and Herdr-exit behavior on each target. `[ASSUMED]` |
 | A2 | A maintained native Linux/macOS adapter can expose the exact composite CDC interface metadata required by the frozen descriptor gate. | Platform and Release Mechanics | High: macOS exact-device admission could remain unresolved; prove with target-native adapter tests before packaging. `[ASSUMED]` |
 | A3 | Herdr's plugin-owned state directory is the approved location for lock/socket/runtime state on both release targets. | Runtime State Inventory / control IPC | Medium: incorrect path would violate D-15 or create a second config authority; confirm in the resolved Herdr contract. `[ASSUMED]` |
 | A4 | The chosen Linux target's libc/device-library policy is acceptable to Herdr's supported Linux x86-64 installations. | Linux x86-64 | Medium: a binary could require an unavailable runtime library; verify release dependency inspection on the support baseline. `[ASSUMED]` |
@@ -472,48 +472,29 @@ Current documentation and installed-schema inspection establish the following:
 
 ## Open Questions
 
-1. **What exact Herdr facility supervises a persistent bridge and restarts it after crash?** `[VERIFIED: current docs show no documented facility; CITED: https://herdr.dev/docs/plugins/]`
-   - What we know: startup/event commands and plugin management are documented; startup is one-shot. `[CITED: https://herdr.dev/docs/plugins/]`
-   - What's unclear: whether an unreleased/installed API supports persistent child supervision and capped restart backoff.
-   - Recommendation: make this the first plan checkpoint; block production cutover if it cannot be verified without an OS service. `[RECOMMENDATION]`
+The Herdr lifecycle, status, logging, settings, disable/unlink, crash recovery, and update activation questions are resolved by the verified v0.8.2 contract above. They are not planning blockers.
 
-2. **How is read-only plugin status published and queried?** `[VERIFIED: https://herdr.dev/docs/socket-api/; https://herdr.dev/docs/cli-reference/]`
-   - What we know: action invocation exists; a first-class plugin status surface is not documented.
-   - What's unclear: whether a status action is accepted as D-18's primary surface or Herdr needs a status API.
-   - Recommendation: specify status schema and auditability only after the capability probe; keep status side-effect free. `[RECOMMENDATION]`
-
-3. **How do structured bridge events enter Herdr's plugin logging facility while preserving D-22?** `[VERIFIED: https://herdr.dev/docs/plugins/; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:39-44]`
-   - What we know: plugin invocation logs are documented; streaming daemon log ingestion is not.
-   - What's unclear: whether inherited stderr is retained/streamed for a persistent command.
-   - Recommendation: use `tracing` internally but gate release logging on a verified Herdr ingestion contract. `[RECOMMENDATION]`
-
-4. **What is the single validated Herdr settings surface and its live-change notification?** `[VERIFIED: https://herdr.dev/docs/plugins/; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:33-37]`
-   - What we know: Herdr injects plugin config/state directories; D-16 permits one settings surface.
-   - What's unclear: schema publication, validation ownership, and callback/restart semantics.
-   - Recommendation: do not invent a standalone config TOML authority; resolve ownership in the capability gate. `[RECOMMENDATION]`
-
-5. **Which native metadata path proves the exact CDC interface on macOS Apple Silicon?** `[ASSUMED]`
+1. **Which native metadata path proves the exact CDC interface on macOS Apple Silicon?** `[ASSUMED]`
    - What we know: the Python oracle requires interface `01` and exact application identity; `serialport` is cross-platform but adapter metadata coverage needs target testing. `[VERIFIED: tools/phase1_bringup/src/phase1_bringup/discovery.py:7-11,45-52; CITED: https://docs.rs/serialport/latest/serialport/]`
    - What's unclear: target-native property names and permissions for the exact composite descriptor.
    - Recommendation: implement and test a macOS adapter on the required runner before deleting Python production discovery. `[RECOMMENDATION]`
 
-6. **Which Linux binary target and baseline satisfy Herdr's x86-64 support without package-manager dependencies?** `[ASSUMED]`
+2. **Which Linux binary target and baseline satisfy Herdr's x86-64 support without package-manager dependencies?** `[ASSUMED]`
    - What we know: local GNU x86-64 Rust is available; D-10 forbids separately installed bridge packages. `[VERIFIED: local toolchain inspection; .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md:27-31]`
    - What's unclear: supported libc baseline and whether static linking is compatible with the host/plugin environment.
    - Recommendation: choose after dependency inspection and a clean plugin install smoke test on the target baseline. `[RECOMMENDATION]`
-
 
 ## Sources
 
 ### Primary / authoritative
 
-- `.planning/phases/04-production-rust-host-bridge/04-CONTEXT.md` — locked D-01 through D-22, canonical references, and explicit Herdr capability-gap requirement. `[VERIFIED: local source]`
+- `.planning/phases/04-production-rust-host-bridge/04-CONTEXT.md` — locked D-01 through D-22 and the approved Herdr v0.8.2 lifecycle relaxation. `[VERIFIED: local source]`
 - `.planning/PROJECT.md` — product authority, privacy, focus/HID boundary, and v1 exclusions. `[VERIFIED: local source]`
 - `protocol/schema/v2.json` — closed device wire contract and bounds. `[VERIFIED: local source]`
 - `host/herdr_keypad/src/herdr_keypad/bridge.py`, `projection.py`, `herdr.py`, `codex.py`, `focus.py`, `usb.py` — Python behavioral oracle. `[VERIFIED: local source]`
 - `tools/phase1_bringup/src/phase1_bringup/discovery.py`, `pairing.py`, `protocol.py` — measured descriptor, frozen binding, framing/session behavior. `[VERIFIED: local source]`
 - `host/herdr_keypad/tests/test_integration.py`, `test_protocol.py`, `test_projection.py`, `test_focus.py`, `test_codex.py` — parity corpus. `[VERIFIED: local source]`
-- Herdr documentation: https://herdr.dev/docs/plugins/, https://herdr.dev/docs/socket-api/, https://herdr.dev/docs/cli-reference/ — plugin lifecycle, environment, manifest, socket, CLI, and logging facilities. `[CITED]`
+- Herdr authoritative evidence: https://github.com/herdrdev/herdr/releases/tag/v0.8.2; tagged `src/app/api/plugins/runtime.rs` lines 100-143; tagged `src/app/api/plugins/mod.rs` lines 113-136 and 613-640; installed v0.8.2 generated schema lines 5712-5830; plus https://herdr.dev/docs/plugins/, https://herdr.dev/docs/socket-api/, and https://herdr.dev/docs/cli-reference/. These establish latest-stable release status, command lifetime, disable/unlink behavior, exposed APIs, environment paths, actions, and invocation logs. `[CITED; VERIFIED]`
 - Tokio documentation: https://tokio.rs/tokio/tutorial, https://docs.rs/tokio/latest/tokio/process/struct.Command.html, https://docs.rs/tokio/latest/tokio/net/struct.UnixListener.html — runtime, process, and local socket primitives. `[CITED]`
 - Serde documentation: https://serde.rs/, https://serde.rs/deserialize-struct.html — typed serialization/deserialization patterns. `[CITED]`
 - Rust serial documentation: https://docs.rs/serialport/latest/serialport/, https://docs.rs/tokio-serial/latest/tokio_serial/ — enumeration and async stream APIs. `[CITED]`
@@ -528,7 +509,7 @@ Current documentation and installed-schema inspection establish the following:
 
 **Confidence breakdown:**
 - Standard stack: HIGH for Tokio/Serde/serial crates and registry legitimacy; MEDIUM for exact feature flags until a Rust crate exists and compiles. `[VERIFIED: docs/registry sources cited above]`
-- Architecture: HIGH for the Python parity contract and protocol; MEDIUM for Herdr integration because supervision/status/logging/config APIs are unresolved. `[VERIFIED: local oracle and Herdr docs cited above]`
+- Architecture: HIGH for the Python parity/protocol contract and Herdr v0.8.2 launch/control/config/log boundary; MEDIUM for target-specific process monitoring and local IPC until both release targets run it. `[VERIFIED: local oracle, tagged Herdr source, installed schema, and cited release evidence]`
 - Pitfalls: HIGH for session/protocol/privacy/reconnect pitfalls from focused tests; MEDIUM for native macOS descriptor details pending target-runner evidence. `[VERIFIED: local tests and cited platform docs]`
 
 **Research date:** 2026-08-29
