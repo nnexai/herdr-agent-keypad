@@ -369,7 +369,7 @@ Plans:
 **Goal:** As a keypad user, I want the production host bridge to provide the same inbox projection, exact focus, truthful Codex capacity, freshness/error states, reconnect behavior, and authorized focus-then-hold workflow as the Python bridge, but as one efficient native Rust executable that runs on Linux and macOS without a separately installed language runtime or bridge dependency.
 **Mode:** mvp
 **Depends on:** Phase 03.2
-**Requirements:** TBD — establish Rust migration requirements during discussion and planning.
+**Requirements:** RUST-01, RUST-02, RUST-03, RUST-04, RUST-05, RUST-06, RUST-07, RUST-08
 **Research flag:** Mandatory migration research must inventory the Python bridge's observable contract, freeze protocol and identity compatibility, select a maintained Rust stack with no runtime dependency, and verify Linux/macOS seams for serial discovery, USB I/O, Herdr socket/process integration, Codex app-server supervision, configuration/state paths, single-instance locking, signals, and packaging. Production and developer surfaces must be separated before implementation; polling is permitted only for explicit timers or when push/event intake is unavailable.
 
 **Success Criteria** (what must be TRUE):
@@ -383,11 +383,33 @@ Plans:
   7. Linux and macOS installation and lifecycle behavior are documented and exercised: ordinary-user startup, exact keypad discovery/reconnect, Herdr and Codex child-process/socket failure recovery, clean shutdown, single-instance enforcement, configuration/state placement, and removal of the Python launcher from the supported production path.
   8. Focused native tests and end-to-end smoke checks compare Rust against the frozen Python contract with malformed/oversized frames, duplicate messages, stale identities, reconnects, missing optional Codex fields, unavailable push events, and sustained idle/traffic resource measurements; the final release artifacts are reproducible, versioned, and free of development-only dependencies.
 
-**Plans:** TBD
+**Plans:** 9 plans
 
 Plans:
 
-- [ ] 04-01: TBD (run $gsd-plan-phase 4 to break down)
+**Wave 1**
+
+- [ ] 04-01-PLAN.md - Prove one production-quality Herdr-to-device-to-exact-focus Rust tracer and freeze shared interfaces.
+- [ ] 04-02-PLAN.md - Freeze deterministic Python-oracle parity fixtures with lineage, bounds, closure, and privacy checks.
+
+**Wave 2** *(requires Waves 1 plans; no files overlap within this wave)*
+
+- [ ] 04-03-PLAN.md - Port strict protocol, authoritative projection, and exact focus into the portable core.
+- [ ] 04-04-PLAN.md - Port bounded event-driven Herdr and truthful Codex source adapters.
+- [ ] 04-05-PLAN.md - Implement exact paired USB plus Linux x86-64 and macOS Apple Silicon platform adapters.
+- [ ] 04-06-PLAN.md - Implement Herdr 0.8.2 lifecycle, config, control, status, logging, and resource bounds.
+
+**Wave 3** *(requires all Wave 2 plans)*
+
+- [ ] 04-07-PLAN.md - Integrate shared crate/orchestration seams and cut the plugin production path to the native executable.
+
+**Wave 4** *(requires Wave 3)*
+
+- [ ] 04-08-PLAN.md - Build, test, inspect, and package native Linux and macOS artifacts with reproducible unsigned evidence.
+
+**Wave 5** *(requires Wave 4)*
+
+- [ ] 04-09-PLAN.md - Publish automated parity, resource, production-surface, and two-target release evidence.
 
 ### Phase 5: Independent Recovery and Actual-Device Acceptance
 
@@ -422,6 +444,6 @@ Plans:
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
 | 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
-| 4. Production Rust Host Bridge | 0/TBD | Not started | - |
+| 4. Production Rust Host Bridge | 0/9 | Planned | - |
 | 5. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 

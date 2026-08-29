@@ -35,6 +35,17 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 - [x] **HOLD-04**: Once Space-down is active, it behaves like a physical system keyboard across later focus changes and ends on physical release or USB-device removal; controlled reset and suspend paths release all keys.
 - [x] **HOLD-05**: The exact keypad passes fresh composite CDC + HID qualification for USB identity, pairing, bounded NDJSON transport, reconnect, suspend/resume, flashing, boot recovery, input latency, and stuck-key behavior before recovery acceptance begins.
 
+### Production Rust Host Bridge
+
+- [ ] **RUST-01**: One platform-independent Rust core preserves the Python bridge's authoritative three-entry inbox projection, exact focus, Codex normalization, freshness/error policy, diagnostics, and complete-snapshot readiness behavior without copying Python-only implementation structure.
+- [ ] **RUST-02**: The Rust bridge preserves the closed four-message v2 protocol, bounded admission and queues, fresh USB sessions, ACK/generation/identity fences, sole typed `agent.focus` authority, and firmware-owned fixed-Space HID behavior without adding a provider, action, command, key, or protocol capability.
+- [ ] **RUST-03**: Herdr, Codex, USB, and control boundaries run through event-driven intake and explicit bounded timers, recover independently with capped backoff, discard old authority on interruption, and require complete authoritative resynchronization before focus becomes actionable.
+- [ ] **RUST-04**: Linux x86-64 and macOS Apple Silicon adapters discover and open only the exact measured composite CDC interface, then authorize it through the unchanged read-only `~/.config/herdr/keypad-binding.json` format and fresh application hello rather than a transient device path or first match.
+- [ ] **RUST-05**: The bundled plugin follows the verified Herdr v0.8.2 contract: direct one-shot startup, Herdr-bound exit, one lock-authoritative bridge, explicit idempotent start/stop/restart, read-only status, restart-applied configuration only under `HERDR_PLUGIN_CONFIG_DIR`, and default-off bounded redacted stderr tracing, with no OS service or hidden supervisor.
+- [ ] **RUST-06**: Release automation builds and tests native Linux x86-64 and macOS Apple Silicon executables, bundles the matching executable in the plugin, records target/toolchain/dependency/hash evidence, and requires no Python, Node, JVM, installed Rust runtime, or separately installed bridge package in production.
+- [ ] **RUST-07**: The supported production path launches only the bundled Rust executable and exposes only approved lifecycle, repair, re-pair, and read-only status operations; Python remains test-oracle-only, and production status/logs/bundles contain no credentials, account identity, prompts, transcripts, raw upstream errors, host paths, developer commands, fixtures, or evidence payloads.
+- [ ] **RUST-08**: Automated differential, malformed-input, lifecycle, resource, platform, bundle, and release checks prove Python behavioral parity, firmware compatibility, bounded idle/traffic operation, independent recovery, reproducible unsigned artifacts, and a Python-free production smoke on Linux plus native build/test on macOS Apple Silicon without claiming signing or notarization that did not run.
+
 ### Codex Usage
 
 - [x] **CODEX-01**: The fourth display remains dedicated to read-only Codex subscription usage and shows both primary and secondary usage-window percentages when the installed account supplies them.
@@ -117,6 +128,14 @@ Every v1 requirement maps to exactly one roadmap phase.
 | HOLD-03 | Phase 03.2 | Complete |
 | HOLD-04 | Phase 03.2 | Complete |
 | HOLD-05 | Phase 03.2 | Complete |
+| RUST-01 | Phase 4 | Pending |
+| RUST-02 | Phase 4 | Pending |
+| RUST-03 | Phase 4 | Pending |
+| RUST-04 | Phase 4 | Pending |
+| RUST-05 | Phase 4 | Pending |
+| RUST-06 | Phase 4 | Pending |
+| RUST-07 | Phase 4 | Pending |
+| RUST-08 | Phase 4 | Pending |
 | CODEX-01 | Phase 3 | Complete |
 | CODEX-02 | Phase 3 | Complete |
 | CODEX-03 | Phase 3 | Complete |
@@ -135,11 +154,11 @@ Every v1 requirement maps to exactly one roadmap phase.
 
 **Coverage:**
 
-- v1 requirements: 31 total
-- Mapped to phases: 31
+- v1 requirements: 39 total
+- Mapped to phases: 39
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-29 — Phase 4 Production Rust Host Bridge moved before Phase 5 actual-device acceptance.*
+*Last updated: 2026-08-30 — Added RUST-01 through RUST-08 for the Phase 4 Production Rust Host Bridge migration.*
 *Previous amendment: 2026-08-18 — Phase 02.2 amendments to SYNC-02 and the decorative-animation exclusion (R-1/R-2).*
