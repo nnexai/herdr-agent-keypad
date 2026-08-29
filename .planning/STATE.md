@@ -10,7 +10,7 @@ last_activity: 2026-08-22
 last_activity_desc: Quick-tap focus passed exact-device six-switch and hold/release verification after bridge refresh fencing fix
 state_head: ed0e69e7fc6d47f5894dbad5bc7f594d5f02eb69
 progress:
-  total_phases: 8
+  total_phases: 9
   completed_phases: 6
   total_plans: 53
   completed_plans: 53
@@ -245,6 +245,7 @@ None yet.
 - Phase 03.2 inserted after Phase 3: Production Rust Herdr Bridge (URGENT)
 - Phase 03.2 inserted after Phase 03.1: Focus-Then-Hold USB Keyboard; comparative exploration gate required before composite USB commitment (URGENT)
 - Phase 03.2 edited: composite CDC + HID is the sole feasibility target; alternative backends are explored only after a recorded composite failure
+- Phase 5 promoted from backlog: Production Rust Host Bridge
 
 ## Deferred Items
 

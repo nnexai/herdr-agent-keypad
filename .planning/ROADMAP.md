@@ -2,7 +2,7 @@
 
 ## Overview
 
-Herdr Agent Keypad reaches its first usable release through eight roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; raise animation and interaction quality to a measured high-fidelity bar; prove focus-then-hold behavior through a real composite USB keyboard; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, or approves. The sole additional host-input capability is a fixed Space hold authorized by an acknowledged exact focus action.
+Herdr Agent Keypad reaches its first usable release through nine roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; raise animation and interaction quality to a measured high-fidelity bar; prove focus-then-hold behavior through a real composite USB keyboard; prove independent recovery and the complete personal workflow on the connected keypad; then replace the development Python bridge with an efficient, portable Rust host executable. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, or approves. The sole additional host-input capability is a fixed Space hold authorized by an acknowledged exact focus action.
 
 ## Phases
 
@@ -16,6 +16,7 @@ Herdr Agent Keypad reaches its first usable release through eight roadmap phases
 - [x] **Phase 03.1: High-Fidelity Animation and Interaction Polish** - Smooth and stable motion, transitions, and feedback are measured and refined on the actual keypad without weakening semantic clarity, input responsiveness, or focus safety. (INSERTED) (completed 2026-08-21)
 - [x] **Phase 03.2: Focus-Then-Hold USB Keyboard** - A short agent-key press remains focus-only, while a deliberate hold first focuses the exact rendered pane and then behaves as a real held Space key through composite USB HID. (INSERTED) (completed 2026-08-22)
 - [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
+- [ ] **Phase 5: Production Rust Host Bridge** - A dependency-free native Rust bridge preserves the Python bridge's end-user behavior across Linux and macOS with an event-driven portable core.
 
 ## Phase Details
 
@@ -385,6 +386,31 @@ Plans:
 
 **UI hint:** yes
 
+### Phase 5: Production Rust Host Bridge
+
+**Goal:** As a keypad user, I want the production host bridge to provide the same inbox projection, exact focus, truthful Codex capacity, freshness/error states, reconnect behavior, and authorized focus-then-hold workflow as the Python bridge, but as one efficient native Rust executable that runs on Linux and macOS without a separately installed language runtime or bridge dependency.
+**Mode:** mvp
+**Depends on:** Phase 4
+**Requirements:** TBD — establish Rust migration requirements during discussion and planning.
+**Research flag:** Mandatory migration research must inventory the Python bridge's observable contract, freeze protocol and identity compatibility, select a maintained Rust stack with no runtime dependency, and verify Linux/macOS seams for serial discovery, USB I/O, Herdr socket/process integration, Codex app-server supervision, configuration/state paths, single-instance locking, signals, and packaging. Production and developer surfaces must be separated before implementation; polling is permitted only for explicit timers or when push/event intake is unavailable.
+
+**Success Criteria** (what must be TRUE):
+
+  1. A black-box parity matrix proves the Rust executable preserves every end-user behavior of the Python bridge: authoritative three-entry projection and ordering, exact generation/session-bound focus, focus-only action authorization, truthful current/stale/unavailable/offline/authentication-failed states, Codex primary and secondary windows, diagnostics, reconnect/resynchronization, and the existing composite CDC + HID hold authorization path.
+  2. The Rust bridge keeps the closed v2 device protocol and all existing firmware semantics compatible, including bounded frames, fresh sessions, ACK/readiness fencing, identity-bound focus results, no replay after interruption, and no new arbitrary Herdr or keyboard-action surface.
+  3. The implementation has a platform-independent core containing protocol validation, normalized domain state, projection and focus state machines, freshness/error policy, bounded queues, reconnect timers, and orchestration contracts; Linux and macOS adapters contain only OS-specific device discovery/I/O, Herdr endpoint/process integration, filesystem/config paths, locking, signals, and packaging concerns.
+  4. Normal operation is event-driven and resource-bounded: serial and Herdr/Codex streams wake the core only on input, timers cover only reconnect/freshness/explicit refresh deadlines, fallback polling is used only when the installed Herdr interface cannot provide push events, and no fixed-rate busy loop or unnecessary polling remains.
+  5. Release builds produce a native Linux executable and a native macOS executable that require no Python, Node, JVM, shared bridge package, or separately installed Rust runtime; all application dependencies are compiled into the binary, with only documented operating-system facilities and permissions remaining.
+  6. The production launch path contains no tracer, fixture, acceptance harness, debug-only command, developer filesystem assumption, credential output, transcript/path leakage, or test fallback; bounded user-facing health/error diagnostics and structured logs required for operation remain redacted and explicitly limited.
+  7. Linux and macOS installation and lifecycle behavior are documented and exercised: ordinary-user startup, exact keypad discovery/reconnect, Herdr and Codex child-process/socket failure recovery, clean shutdown, single-instance enforcement, configuration/state placement, and removal of the Python launcher from the supported production path.
+  8. Focused native tests and end-to-end smoke checks compare Rust against the frozen Python contract with malformed/oversized frames, duplicate messages, stale identities, reconnects, missing optional Codex fields, unavailable push events, and sustained idle/traffic resource measurements; the final release artifacts are reproducible, versioned, and free of development-only dependencies.
+
+**Plans:** TBD
+
+Plans:
+
+- [ ] TBD (run $gsd-plan-phase 5 to break down)
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -397,15 +423,5 @@ Plans:
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
 | 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
 | 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
+| 5. Production Rust Host Bridge | 0/TBD | Not started | - |
 
-## Backlog
-
-### Phase 999.1: Production End-user Herdr Bridge (BACKLOG)
-
-**Goal:** Replace the development Python bridge with a portable, low-overhead, production-distribution bridge once keypad functionality and protocol behavior are stable.
-**Requirements:** TBD
-**Plans:** 0 plans
-
-Plans:
-
-- [ ] TBD (promote with $gsd-review-backlog when ready)
