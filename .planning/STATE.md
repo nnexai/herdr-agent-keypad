@@ -4,14 +4,14 @@ milestone: v1.0
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
 status: phase_complete
-stopped_at: Resolved post-gate quick-tap focus loss; Phase 4 gate artifact refresh required for changed firmware and bridge
-last_updated: "2026-08-22T18:50:24Z"
-last_activity: 2026-08-22
-last_activity_desc: Quick-tap focus passed exact-device six-switch and hold/release verification after bridge refresh fencing fix
-state_head: ed0e69e7fc6d47f5894dbad5bc7f594d5f02eb69
+stopped_at: Phase 04 context gathered
+last_updated: "2026-08-29T21:35:58.122Z"
+last_activity: 2026-08-29
+last_activity_desc: Reordered remaining work so the Production Rust Host Bridge is Phase 4 before actual-device acceptance
+state_head: 688056b545de9fcf8e0887a51f85c7659f93a78f
 progress:
   total_phases: 9
-  completed_phases: 6
+  completed_phases: 5
   total_plans: 53
   completed_plans: 53
 milestone_name: milestone
@@ -49,7 +49,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 
 Phase: 03.2 (Focus-Then-Hold USB Keyboard) — COMPLETE
 Plan: 09 of 10 — Complete
-Status: Phase complete; prior Phase 4 gate remains valid only for its recorded deployment and requires refresh for the changed binary
+Status: Phase complete; prior Phase 5 gate remains valid only for its recorded deployment and requires refresh for the changed binary
 Last activity: 2026-08-22 — Quick-tap focus regression resolved on exact device; production bridge restored
 
 Progress: [██████████] 100%
@@ -131,7 +131,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 - [Phase 2]: Installed `herdr-agent-inbox` order is authoritative; actions bind opaque identity plus host epoch and snapshot revision, never a numeric slot.
 - [Phase 2]: Native Herdr focus may change seen/manual-unread state; keypad focus cannot settle, dismiss, reply, approve, or invoke arbitrary actions.
 - [Phase 3]: Codex credentials and interpretation stay on the host; absent values remain unavailable and source freshness is independent.
-- [Phase 4]: Release acceptance requires real hardware, installed accounts, and visible recovery rather than mock-only evidence.
+- [Phase 5]: Release acceptance requires real hardware, installed accounts, and visible recovery rather than mock-only evidence.
 - [Phase 1]: Plan 01-02 preserves the Pro-only adapter and fixed renderer as the implementation boundary; no checkpoint workaround was needed.
 - [Phase 1]: Plan 01-02 records only the user's explicit delivered-unit proof scope and does not infer physical facts beyond that evidence.
 - [Phase 1]: Physical input naming is KEY-1..KEY-4 with raw library indices 0..3; encoder click is raw index 4 and remains an observation-only BOOT0-safe input.
@@ -233,7 +233,7 @@ None yet.
 
 - [Phase 1]: Complete under the current-setup scope. Endpoint renumbering and self-restarting the active qualification utility are explicitly non-applicable and remain excluded from the archived profile.
 - [Phase 3]: Installed Codex schema/account buckets, nullability, sparse updates, authentication behavior, and freshness threshold require mandatory research.
-- [Phase 4]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
+- [Phase 5]: Recovery and soak thresholds depend on the transport and physical measurements selected in Phase 1.
 - [Phase 02.1]: Bounded live-sync smoke evidence and exact-device physical checkpoint passed; no long qualification rerun.
 - [Phase 03.2]: Post-gate quick-tap correction changed firmware and bridge hashes. Focused suites plus exact-device six-tap and hold/release checks pass, but the prior full qualification artifact remains bound to its recorded deployment and must not be cited for the new binary.
 
@@ -245,7 +245,7 @@ None yet.
 - Phase 03.2 inserted after Phase 3: Production Rust Herdr Bridge (URGENT)
 - Phase 03.2 inserted after Phase 03.1: Focus-Then-Hold USB Keyboard; comparative exploration gate required before composite USB commitment (URGENT)
 - Phase 03.2 edited: composite CDC + HID is the sole feasibility target; alternative backends are explored only after a recorded composite failure
-- Phase 5 promoted from backlog: Production Rust Host Bridge
+- Phase 4 and Phase 5 reordered: Production Rust Host Bridge now precedes Independent Recovery and Actual-Device Acceptance
 
 ## Deferred Items
 
@@ -263,7 +263,7 @@ None yet.
 
 ## Session Continuity
 
-**Resume file:** `.planning/phases/03.2-focus-then-hold-usb-keyboard/.continue-here.md`
+**Resume file:** .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md
 
-Last session: 2026-08-22T18:50:24Z
-Stopped at: Phase 03.2 post-gate quick-tap fix complete; Phase 4 gate artifact refresh required
+Last session: 2026-08-29T21:35:58.025Z
+Stopped at: Phase 04 context gathered
