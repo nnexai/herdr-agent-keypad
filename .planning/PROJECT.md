@@ -68,7 +68,7 @@ The device must make agents that need attention immediately visible and let the 
 | Keep deeper interaction inside herdr | Detecting and safely reproducing arbitrary agent prompts on four keys adds complexity without improving the primary selection workflow | — Pending |
 | Keep general macros out; permit one fixed Space hold | A system-wide physical Space hold covers the desired push-to-talk gesture without creating configurable keys, text, commands, or CLI-specific integrations | **Selected for Phase 03.2**, gated on acknowledged exact focus |
 | Prefer USB while researching transport | The device is already wired for power, but the exact USB class composition must be proven on real hardware | **Hardware CDC/JTAG validated in Phase 1; composite CDC + HID is the sole Phase 03.2 feasibility target, with alternatives considered only after a recorded failure** |
-| Require physical end-to-end validation for v1 | A simulated bridge or renderer alone does not establish that the companion hardware is useful or reliable | **Phase 1 is the original hardware baseline; Phase 03.2 must add exact-device composite-input evidence before Phase 4** |
+| Require physical end-to-end validation for v1 | A simulated bridge or renderer alone does not establish that the companion hardware is useful or reliable | **Phase 1 is the original hardware baseline; Phase 03.2 must add exact-device composite-input evidence before Phase 5 acceptance** |
 | Preserve the long baseline; qualify the changed composition separately | Repeating an unchanged 30-minute profile adds operator cost, but replacing the USB class composition invalidates transport assumptions | Do not rerun the legacy profile as if unchanged; run a bounded Phase 03.2 composite CDC + HID qualification covering the new risks |
 
 ## Evolution
@@ -89,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-21 after inserting Phase 03.2 focus-then-hold USB keyboard exploration and requirements*
+*Last updated: 2026-08-29 after moving the Production Rust Host Bridge before actual-device acceptance*

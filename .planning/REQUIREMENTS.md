@@ -102,7 +102,7 @@ Every v1 requirement maps to exactly one roadmap phase.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | HARD-01 | Phase 1 | Complete |
-| HARD-02 | Phase 4 | Pending |
+| HARD-02 | Phase 5 | Pending |
 | HARD-03 | Phase 1 | Complete |
 | INBX-01 | Phase 2 | Complete |
 | INBX-02 | Phase 2 | Complete |
@@ -121,17 +121,17 @@ Every v1 requirement maps to exactly one roadmap phase.
 | CODEX-02 | Phase 3 | Complete |
 | CODEX-03 | Phase 3 | Complete |
 | CODEX-04 | Phase 3 | Complete |
-| SYNC-01 | Phase 4 | Pending |
+| SYNC-01 | Phase 5 | Pending |
 | SYNC-02 | Phase 2 | Complete |
 | SYNC-03 | Phase 3 | Complete |
-| SYNC-04 | Phase 4 | Pending |
+| SYNC-04 | Phase 5 | Pending |
 | SAFE-01 | Phase 3 | Complete |
 | SAFE-02 | Phase 03.2 | Complete |
 | MENU-01 | Phase 3 | Complete |
 | MENU-02 | Phase 3 | Complete |
 | MENU-03 | Phase 3 | Complete |
 | MENU-04 | Phase 3 | Complete |
-| E2E-01 | Phase 4 | Pending |
+| E2E-01 | Phase 5 | Pending |
 
 **Coverage:**
 
@@ -141,5 +141,5 @@ Every v1 requirement maps to exactly one roadmap phase.
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-21 — Phase 03.2 adds focus-authorized system-wide USB HID Space hold requirements and narrows SAFE-02's fixed-input exception.*
+*Last updated: 2026-08-29 — Phase 4 Production Rust Host Bridge moved before Phase 5 actual-device acceptance.*
 *Previous amendment: 2026-08-18 — Phase 02.2 amendments to SYNC-02 and the decorative-animation exclusion (R-1/R-2).*

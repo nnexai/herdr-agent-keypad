@@ -2,7 +2,7 @@
 
 ## Overview
 
-Herdr Agent Keypad reaches its first usable release through nine roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; raise animation and interaction quality to a measured high-fidelity bar; prove focus-then-hold behavior through a real composite USB keyboard; prove independent recovery and the complete personal workflow on the connected keypad; then replace the development Python bridge with an efficient, portable Rust host executable. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, or approves. The sole additional host-input capability is a fixed Space hold authorized by an acknowledged exact focus action.
+Herdr Agent Keypad reaches its first usable release through nine roadmap phases: prove the delivered hardware and one reliable host link; project and focus the installed herdr inbox safely; keep live synchronization stable and flicker-free; deliver selectable firmware display themes and LED grammars; add truthful Codex capacity plus device controls; raise animation and interaction quality to a measured high-fidelity bar; prove focus-then-hold behavior through a real composite USB keyboard; replace the development Python bridge with an efficient, portable Rust host executable; then prove independent recovery and the complete personal workflow on the connected keypad. Each phase preserves host authority, identity-bound focus, explicit freshness, and the rule that keypad focus may have Herdr's native seen/manual-unread effects but never settles, dismisses, replies, or approves. The sole additional host-input capability is a fixed Space hold authorized by an acknowledged exact focus action.
 
 ## Phases
 
@@ -15,8 +15,8 @@ Herdr Agent Keypad reaches its first usable release through nine roadmap phases:
 - [x] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness. (completed 2026-08-21)
 - [x] **Phase 03.1: High-Fidelity Animation and Interaction Polish** - Smooth and stable motion, transitions, and feedback are measured and refined on the actual keypad without weakening semantic clarity, input responsiveness, or focus safety. (INSERTED) (completed 2026-08-21)
 - [x] **Phase 03.2: Focus-Then-Hold USB Keyboard** - A short agent-key press remains focus-only, while a deliberate hold first focuses the exact rendered pane and then behaves as a real held Space key through composite USB HID. (INSERTED) (completed 2026-08-22)
-- [ ] **Phase 4: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
-- [ ] **Phase 5: Production Rust Host Bridge** - A dependency-free native Rust bridge preserves the Python bridge's end-user behavior across Linux and macOS with an event-driven portable core.
+- [ ] **Phase 4: Production Rust Host Bridge** - A dependency-free native Rust bridge preserves the Python bridge's end-user behavior across Linux and macOS with an event-driven portable core.
+- [ ] **Phase 5: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
 
 ## Phase Details
 
@@ -124,7 +124,7 @@ Plans:
 ### Phase 02.1: Reliable Live Synchronization, Focus, and Flicker-Free Rendering (INSERTED)
 
 **Goal:** As a user of the delivered keypad, I want live Herdr changes to converge to one ACKed authoritative generation while every press remains bound to the exact pane represented by its pixels, without refresh downtime or partial tile painting.
-**Requirements:** TBD — no requirement IDs are assigned to this inserted phase; Phase 2, Phase 3, and Phase 4 requirement ownership remains unchanged.
+**Requirements:** TBD — no requirement IDs are assigned to this inserted phase; Phase 2, Phase 3, and Phase 5 requirement ownership remains unchanged.
 **Depends on:** Phase 2
 
 **Success Criteria** (what must be TRUE):
@@ -318,7 +318,7 @@ Plans:
   3. Firmware emits HID Space-down only after Herdr acknowledges exact focus and only while the same physical key remains held; release-before-ack, stale identity, late result, focus failure, unavailable source, or disconnected host never emits Space.
   4. Once HID Space-down is active, later focus changes do not cancel it; the input behaves like a physical keyboard and ends on physical release or USB-device removal, with controlled reset and suspend paths releasing all keys.
   5. The fixed Space hold adds no configurable key, macro, text, command, provider, or arbitrary Herdr-action surface, and pending, active, cancelled, and failed hold states remain visibly distinct.
-  6. Fresh exact-device evidence requalifies composite USB identity, pairing, bounded NDJSON CDC exchange, reconnect, suspend/resume, flashing, recovery, input latency, and stuck-key behavior before Phase 4 acceptance begins.
+  6. Fresh exact-device evidence requalifies composite USB identity, pairing, bounded NDJSON CDC exchange, reconnect, suspend/resume, flashing, recovery, input latency, and stuck-key behavior before Phase 5 acceptance begins.
 
 **Planning gate:** Phase planning must schedule the composite CDC + HID feasibility run and exact-device decision record before any production transport, firmware, or host migration plan. It must also test whether the existing correlated `focus_result` is sufficient authorization so the hold path does not add protocol messages without need. Alternative backends remain out of scope unless this gate records a composite failure and the direction is explicitly reconsidered.
 
@@ -360,37 +360,15 @@ Plans:
 
 **Wave 9** *(requires every production and evidence plan)*
 
-- [x] 03.2-09-PLAN.md — Requalify the final exact device and publish the strict Phase 4 release gate
+- [x] 03.2-09-PLAN.md — Requalify the final exact device and publish the strict Phase 5 release gate
 
 **UI hint:** yes
 
-### Phase 4: Independent Recovery and Actual-Device Acceptance
-
-**Goal:** The user can rely on the complete keypad workflow after real component failures, restarts, and reconnections on the actual Herdr setup.
-**Mode:** mvp
-**Depends on:** Phase 03.2
-**Requirements:** HARD-02, SYNC-01, SYNC-04, E2E-01
-**Research flag:** Planning must turn the selected transport and measured device behavior into physical recovery and soak thresholds; acceptance evidence must come from the connected unit and installed Herdr/Codex accounts, not mocks.
-**Success Criteria** (what must be TRUE):
-
-  1. Device, bridge, Herdr, Codex, and link startup or reconnection show deterministic booting, empty, stale, unavailable, or offline states until a complete authoritative four-tile snapshot arrives.
-  2. Agent keys remain disabled before that full snapshot, and disconnected or uncertain keypresses are never queued, replayed, or optimistically retried after reconnection.
-  3. Link health, inbox freshness, and Codex freshness can fail and recover independently without old entries or expired usage remaining visible as current.
-  4. On the actual connected device, a real highest-priority entry renders with correct identity/state, its short keypress focuses that exact pane, its deliberate hold produces and releases fixed system-wide Space only after focus acknowledgment, both real Codex windows render truthfully, and a real disconnect or restart visibly converges to current state.
-
-**Plans:** TBD
-
-Plans:
-
-- [ ] 04-01: TBD during phase planning
-
-**UI hint:** yes
-
-### Phase 5: Production Rust Host Bridge
+### Phase 4: Production Rust Host Bridge
 
 **Goal:** As a keypad user, I want the production host bridge to provide the same inbox projection, exact focus, truthful Codex capacity, freshness/error states, reconnect behavior, and authorized focus-then-hold workflow as the Python bridge, but as one efficient native Rust executable that runs on Linux and macOS without a separately installed language runtime or bridge dependency.
 **Mode:** mvp
-**Depends on:** Phase 4
+**Depends on:** Phase 03.2
 **Requirements:** TBD — establish Rust migration requirements during discussion and planning.
 **Research flag:** Mandatory migration research must inventory the Python bridge's observable contract, freeze protocol and identity compatibility, select a maintained Rust stack with no runtime dependency, and verify Linux/macOS seams for serial discovery, USB I/O, Herdr socket/process integration, Codex app-server supervision, configuration/state paths, single-instance locking, signals, and packaging. Production and developer surfaces must be separated before implementation; polling is permitted only for explicit timers or when push/event intake is unavailable.
 
@@ -409,7 +387,29 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run $gsd-plan-phase 5 to break down)
+- [ ] 04-01: TBD (run $gsd-plan-phase 4 to break down)
+
+### Phase 5: Independent Recovery and Actual-Device Acceptance
+
+**Goal:** The user can rely on the complete keypad workflow after real component failures, restarts, and reconnections on the actual Herdr setup.
+**Mode:** mvp
+**Depends on:** Phase 4
+**Requirements:** HARD-02, SYNC-01, SYNC-04, E2E-01
+**Research flag:** Planning must turn the selected transport and measured device behavior into physical recovery and soak thresholds; acceptance evidence must come from the connected unit and installed Herdr/Codex accounts, not mocks.
+**Success Criteria** (what must be TRUE):
+
+  1. Device, bridge, Herdr, Codex, and link startup or reconnection show deterministic booting, empty, stale, unavailable, or offline states until a complete authoritative four-tile snapshot arrives.
+  2. Agent keys remain disabled before that full snapshot, and disconnected or uncertain keypresses are never queued, replayed, or optimistically retried after reconnection.
+  3. Link health, inbox freshness, and Codex freshness can fail and recover independently without old entries or expired usage remaining visible as current.
+  4. On the actual connected device, a real highest-priority entry renders with correct identity/state, its short keypress focuses that exact pane, its deliberate hold produces and releases fixed system-wide Space only after focus acknowledgment, both real Codex windows render truthfully, and a real disconnect or restart visibly converges to current state.
+
+**Plans:** TBD
+
+Plans:
+
+- [ ] 05-01: TBD (run $gsd-plan-phase 5 to break down)
+
+**UI hint:** yes
 
 ## Progress
 
@@ -422,6 +422,6 @@ Plans:
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
 | 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
-| 4. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
-| 5. Production Rust Host Bridge | 0/TBD | Not started | - |
+| 4. Production Rust Host Bridge | 0/TBD | Not started | - |
+| 5. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
 
