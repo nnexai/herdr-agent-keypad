@@ -224,6 +224,55 @@ fn focus_policy_revalidates_exact_identity_and_allows_one_retry() {
 }
 
 #[test]
+fn identity_comparisons_separate_displayed_echo_from_live_revalidation() {
+    let displayed = Identity {
+        pane_id: "p1".into(),
+        terminal_id: "term-p1".into(),
+        agent_session: Some("herdr:omp:session".into()),
+        source_revision: 410_778,
+        workspace_id: "workspace-1".into(),
+        tab_id: "tab-p1".into(),
+    };
+    let mut later_live = displayed.clone();
+    later_live.source_revision = 410_910;
+
+    assert!(
+        !displayed.displayed_echo_exact(&later_live),
+        "displayed echo integrity includes the exact source revision"
+    );
+    assert!(
+        displayed.live_exact(&later_live),
+        "live revalidation excludes mutable source revision"
+    );
+
+    later_live.agent_session = Some("herdr:omp:replacement".into());
+    assert!(
+        !displayed.live_exact(&later_live),
+        "live revalidation still fences structured session replacement"
+    );
+}
+
+#[test]
+fn forged_source_revision_is_rejected_before_live_read_or_focus() {
+    let rows = vec![row("p1", "2", 151)];
+    let mut projection = InboxProjection::new("epoch-fixed").unwrap();
+    let acknowledged = projection.refresh(&rows, &[workspace()]).unwrap();
+    let mut forged = acknowledged.binding(0).unwrap();
+    forged.identity.source_revision += 1;
+    let intent = FocusIntent::new("action-forged-revision", forged);
+    let mut spy = Spy::new(rows);
+
+    let result =
+        FocusExecutor::new().execute(&projection, &acknowledged, &intent, &mut spy);
+
+    assert_eq!(result.status, FocusStatus::SourceRevisionChanged);
+    assert!(
+        spy.calls.is_empty(),
+        "a binding that does not echo the acknowledged source revision must fail before agent.list"
+    );
+}
+
+#[test]
 fn focus_policy_maps_fences_and_failures_without_other_effects() {
     let rows = vec![row("p1", "2", 4)];
     let mut projection = InboxProjection::new("epoch-fixed").unwrap();

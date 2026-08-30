@@ -5,7 +5,7 @@
 //! generic Herdr method, triage operation, keyboard operation, or keycode.
 
 use super::model::{
-    session_token, Binding, FocusIntent, FocusOutcome, FocusResult, FocusStatus, Identity,
+    session_token, FocusIntent, FocusOutcome, FocusResult, FocusStatus, Identity,
     ProjectionSnapshot,
 };
 use super::projection::InboxProjection;
@@ -92,6 +92,12 @@ impl FocusExecutor {
         if !committed.occupied() || committed.entry_id != binding.entry_id {
             return outcome(intent, FocusStatus::Empty, "slot is not an occupied binding");
         }
+        let Some(displayed_identity) = committed.identity.as_ref() else {
+            return outcome(intent, FocusStatus::Empty, "slot has no displayed identity");
+        };
+        if let Some(status) = displayed_echo_status(displayed_identity, &binding.identity) {
+            return outcome(intent, status, "binding identity differs from displayed identity");
+        }
         if binding.entry_id != binding.identity.pane_id {
             return outcome(intent, FocusStatus::PaneReused, "entry and pane identity differ");
         }
@@ -105,18 +111,8 @@ impl FocusExecutor {
             Ok(None) => return outcome(intent, FocusStatus::Vanished, "pane is absent from current agent.list"),
             Err(_) => return outcome(intent, FocusStatus::PaneReused, "current AgentInfo identity is malformed"),
         };
-        if live.pane_id != binding.identity.pane_id
-            || live.terminal_id != binding.identity.terminal_id
-            || (!binding.identity.workspace_id.is_empty() && live.workspace_id != binding.identity.workspace_id)
-            || (!binding.identity.tab_id.is_empty() && live.tab_id != binding.identity.tab_id)
-        {
-            return outcome(intent, FocusStatus::PaneReused, "current AgentInfo identity differs");
-        }
-        if live.agent_session != binding.identity.agent_session {
-            return outcome(intent, FocusStatus::SessionChanged, "agent session differs");
-        }
-        if live.source_revision != binding.identity.source_revision {
-            return outcome(intent, FocusStatus::SourceRevisionChanged, "source revision differs");
+        if let Some(status) = live_identity_status(displayed_identity, &live) {
+            return outcome(intent, status, "current AgentInfo identity differs");
         }
 
         let first = match port.focus(&binding.identity.pane_id) {
@@ -126,7 +122,7 @@ impl FocusExecutor {
         let Some(first_agent) = acknowledgement_agent(&first) else {
             return outcome(intent, FocusStatus::Rejected, "focus response is not AgentInfo");
         };
-        if let Some(status) = acknowledgement_status(&first_agent, binding) {
+        if let Some(status) = acknowledgement_status(&first_agent, &binding.identity) {
             return outcome(intent, status, "focus acknowledgement identity differs");
         }
         if first_agent.get("focused").and_then(Value::as_bool) != Some(true) {
@@ -137,7 +133,7 @@ impl FocusExecutor {
             let Some(retry_agent) = acknowledgement_agent(&retry) else {
                 return outcome(intent, FocusStatus::Rejected, "focus retry response is not AgentInfo");
             };
-            if let Some(status) = acknowledgement_status(&retry_agent, binding) {
+            if let Some(status) = acknowledgement_status(&retry_agent, &binding.identity) {
                 return outcome(intent, status, "focus retry identity differs");
             }
             if retry_agent.get("focused").and_then(Value::as_bool) != Some(true) {
@@ -159,6 +155,36 @@ impl FocusExecutor {
 
 fn outcome(intent: &FocusIntent, status: FocusStatus, reason: impl Into<String>) -> FocusOutcome {
     FocusOutcome { status, action_id: intent.action_id.clone(), reason: reason.into() }
+}
+
+fn displayed_echo_status(displayed: &Identity, echoed: &Identity) -> Option<FocusStatus> {
+    if displayed.displayed_echo_exact(echoed) {
+        return None;
+    }
+    if displayed.pane_id != echoed.pane_id
+        || displayed.terminal_id != echoed.terminal_id
+        || (!echoed.workspace_id.is_empty() && displayed.workspace_id != echoed.workspace_id)
+        || (!echoed.tab_id.is_empty() && displayed.tab_id != echoed.tab_id)
+    {
+        return Some(FocusStatus::PaneReused);
+    }
+    if displayed.agent_session != echoed.agent_session {
+        return Some(FocusStatus::SessionChanged);
+    }
+    if displayed.source_revision != echoed.source_revision {
+        return Some(FocusStatus::SourceRevisionChanged);
+    }
+    Some(FocusStatus::PaneReused)
+}
+
+fn live_identity_status(displayed: &Identity, live: &Identity) -> Option<FocusStatus> {
+    if displayed.live_exact(live) {
+        None
+    } else if displayed.agent_session != live.agent_session {
+        Some(FocusStatus::SessionChanged)
+    } else {
+        Some(FocusStatus::PaneReused)
+    }
 }
 
 fn read_failure(error: FocusError) -> FocusStatus {
@@ -190,20 +216,25 @@ fn acknowledgement_agent(response: &Value) -> Option<&serde_json::Map<String, Va
         .or_else(|| (object.contains_key("pane_id") && object.contains_key("terminal_id")).then_some(object))
 }
 
-fn acknowledgement_status(agent: &serde_json::Map<String, Value>, binding: &Binding) -> Option<FocusStatus> {
-    if agent.get("pane_id").and_then(Value::as_str) != Some(binding.identity.pane_id.as_str())
-        || agent.get("terminal_id").and_then(Value::as_str) != Some(binding.identity.terminal_id.as_str())
-        || (!binding.identity.workspace_id.is_empty() && agent.get("workspace_id").and_then(Value::as_str) != Some(binding.identity.workspace_id.as_str()))
-        || (!binding.identity.tab_id.is_empty() && agent.get("tab_id").and_then(Value::as_str) != Some(binding.identity.tab_id.as_str()))
+fn acknowledgement_status(
+    agent: &serde_json::Map<String, Value>,
+    displayed: &Identity,
+) -> Option<FocusStatus> {
+    if agent.get("pane_id").and_then(Value::as_str) != Some(displayed.pane_id.as_str())
+        || agent.get("terminal_id").and_then(Value::as_str)
+            != Some(displayed.terminal_id.as_str())
+        || (!displayed.workspace_id.is_empty()
+            && agent.get("workspace_id").and_then(Value::as_str)
+                != Some(displayed.workspace_id.as_str()))
+        || (!displayed.tab_id.is_empty()
+            && agent.get("tab_id").and_then(Value::as_str) != Some(displayed.tab_id.as_str()))
     {
         return Some(FocusStatus::PaneReused);
     }
     let session = session_token(agent.get("agent_session").unwrap_or(&Value::Null)).ok()?;
-    if session != binding.identity.agent_session {
+    if session != displayed.agent_session {
         return Some(FocusStatus::SessionChanged);
     }
     None
 }
 
-#[allow(dead_code)]
-fn _identity_matches(left: &Identity, right: &Identity) -> bool { left.live_exact(right) }

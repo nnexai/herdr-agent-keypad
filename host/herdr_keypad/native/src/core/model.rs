@@ -74,13 +74,13 @@ pub struct Identity {
 }
 
 impl Identity {
-    pub fn exact(&self, other: &Self) -> bool {
-        self.pane_id == other.pane_id
-            && self.terminal_id == other.terminal_id
-            && self.agent_session == other.agent_session
-            && self.source_revision == other.source_revision
-            && self.workspace_id == other.workspace_id
-            && self.tab_id == other.tab_id
+    pub fn displayed_echo_exact(&self, echoed: &Self) -> bool {
+        self.pane_id == echoed.pane_id
+            && self.terminal_id == echoed.terminal_id
+            && self.agent_session == echoed.agent_session
+            && self.source_revision == echoed.source_revision
+            && (echoed.workspace_id.is_empty() || self.workspace_id == echoed.workspace_id)
+            && (echoed.tab_id.is_empty() || self.tab_id == echoed.tab_id)
     }
 
     pub fn live_exact(&self, other: &Self) -> bool {

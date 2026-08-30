@@ -1276,6 +1276,30 @@ mod tests {
         }
     }
 
+    struct RevisionChurnFocusPort {
+        calls: Vec<&'static str>,
+    }
+
+    impl RevisionChurnFocusPort {
+        fn live_agent(focused: bool) -> Value {
+            let mut agent = herdr_agent(focused);
+            agent["revision"] = json!(410_910);
+            agent
+        }
+    }
+
+    impl FocusHerdrPort for RevisionChurnFocusPort {
+        fn complete_read(&mut self) -> Result<Vec<Value>, FocusError> {
+            self.calls.push("agent.list");
+            Ok(vec![Self::live_agent(false)])
+        }
+
+        fn focus(&mut self, _: &str) -> Result<Value, FocusError> {
+            self.calls.push("agent.focus");
+            Ok(json!({"agent": Self::live_agent(true)}))
+        }
+    }
+
     fn install_current_codex(coordinator: &mut RuntimeCoordinator) {
         coordinator.codex = CodexCollector::with_factory(
             "codex",
@@ -1616,6 +1640,38 @@ mod tests {
             outcome.status,
             FocusStatus::Accepted,
             "a newer unacknowledged projection must not replace displayed focus ownership"
+        );
+    }
+
+    #[test]
+    fn displayed_binding_allows_live_revision_churn_for_same_stable_identity() {
+        let mut projection = InboxProjection::new("host-acked").expect("projection");
+        let mut displayed_agent = herdr_agent(false);
+        displayed_agent["revision"] = json!(410_778);
+        displayed_agent["state_change_seq"] = json!(151);
+        let acknowledged = projection
+            .refresh(
+                &[displayed_agent],
+                &[json!({"workspace_id":"workspace-1","label":"repo"})],
+            )
+            .expect("acknowledged projection");
+        let binding = acknowledged.binding(0).expect("displayed binding");
+        assert_eq!(binding.identity.source_revision, 410_778);
+        let intent = ModelFocusIntent::new("focus-after-revision-churn", binding);
+        let mut port = RevisionChurnFocusPort { calls: Vec::new() };
+
+        let outcome =
+            FocusExecutor::new().execute(&projection, &acknowledged, &intent, &mut port);
+
+        assert_eq!(
+            outcome.status,
+            FocusStatus::Accepted,
+            "live AgentInfo revision churn must not replace an otherwise identical displayed agent"
+        );
+        assert_eq!(
+            port.calls,
+            ["agent.list", "agent.focus"],
+            "the displayed binding must reach one direct focus acknowledgement"
         );
     }
 
