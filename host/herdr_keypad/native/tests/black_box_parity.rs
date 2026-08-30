@@ -1,12 +1,14 @@
 use herdr_keypad_native::core::model::{AgentEntry, Identity, ProjectionSnapshot};
 use herdr_keypad_native::core::projection::InboxProjection;
+use herdr_keypad_native::ports::codex::CodexCollector;
 use herdr_keypad_native::protocol::v2::{self, ProtocolSession};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 const FIXTURE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 const ORACLE_EXPORTER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/export_rust_oracle.py");
@@ -142,6 +144,85 @@ fn every_frozen_fixture_has_a_valid_content_hash_and_closed_family() {
         }
     }
     assert!(names.len() >= 40, "the parity corpus must remain substantive");
+}
+#[test]
+fn codex_fixture_views_match_public_collector_contract() {
+    let root = fixture("codex.json");
+    let mut baseline = CodexCollector::with_clock("codex", Duration::from_secs(3), || Duration::ZERO).expect("collector");
+    baseline.apply_full_response(&json!({
+        "rateLimits": {
+            "primary": {"usedPercent": 0},
+            "secondary": {"usedPercent": 57}
+        }
+    }));
+    let baseline_view = baseline.view().as_payload();
+    let mut baseline_expected = expected_case(&root, "codex.current.full-baseline-zero")["expected"]["view"].clone();
+    baseline_expected["observation_age"] = baseline_view["observation_age"].clone();
+    assert_eq!(baseline_view, baseline_expected);
+
+    let mut weekly = CodexCollector::with_clock("codex", Duration::from_secs(3), || Duration::ZERO).expect("collector");
+    weekly.apply_full_response(&json!({
+        "rateLimits": {"primary": {"usedPercent": 40, "windowDurationMins": 10080}}
+    }));
+    let weekly_view = weekly.view().as_payload();
+    let mut weekly_expected = expected_case(&root, "codex.current.weekly-window-mapping")["expected"]["view"].clone();
+    weekly_expected["observation_age"] = weekly_view["observation_age"].clone();
+    assert_eq!(weekly_view, weekly_expected);
+
+    let mut sparse_before = CodexCollector::with_clock("codex", Duration::from_secs(3), || Duration::ZERO).expect("collector");
+    assert!(!sparse_before.apply_sparse_update(&json!({"rateLimits":{"primary":{"usedPercent":99}}})));
+    assert_eq!(
+        sparse_before.view().as_payload(),
+        expected_case(&root, "codex.unavailable.sparse-before-baseline")["expected"]["view"]
+    );
+
+    let mut sparse = CodexCollector::with_clock("codex", Duration::from_secs(3), || Duration::ZERO).expect("collector");
+    sparse.apply_full_response(&json!({
+        "rateLimits": {
+            "primary": {"usedPercent": 10},
+            "secondary": {"usedPercent": 20},
+            "rateLimitReachedType": "primary"
+        }
+    }));
+    assert!(sparse.apply_sparse_update(&json!({
+        "method": "account/rateLimits/updated",
+        "params": {"rateLimits": {
+            "primary": {"usedPercent": 0},
+            "secondary": null,
+            "rateLimitReachedType": null
+        }}
+    })));
+    assert_eq!(
+        sparse.view().as_payload(),
+        expected_case(&root, "codex.current.sparse-merge-and-refetch")["expected"]["view"]
+    );
+
+    let mut auth_reset = CodexCollector::with_clock("codex", Duration::from_secs(3), || Duration::ZERO).expect("collector");
+    auth_reset.apply_full_response(&json!({"rateLimits":{"primary":{"usedPercent":12}}}));
+    auth_reset.account_changed(true);
+    assert_eq!(
+        auth_reset.view().as_payload(),
+        expected_case(&root, "codex.auth-required.account-reset")["expected"]["view"]
+    );
+
+    let now = Arc::new(Mutex::new(Duration::ZERO));
+    let clock = now.clone();
+    let mut stale = CodexCollector::with_clock("codex", Duration::from_secs(3), move || *clock.lock().expect("clock")).expect("collector");
+    stale.apply_full_response(&json!({"rateLimits":{"primary":{"usedPercent":12}}}));
+    *now.lock().expect("clock") = Duration::from_secs(901);
+    assert_eq!(
+        stale.view().as_payload(),
+        expected_case(&root, "codex.stale.after-freshness-deadline")["expected"]["view"]
+    );
+
+    let mut unsupported = CodexCollector::with_clock("codex", Duration::from_secs(3), || Duration::ZERO).expect("collector");
+    unsupported.apply_full_response(&json!({
+        "rateLimits": {"primary": {"usedPercent": 40, "windowDurationMins": 1440}}
+    }));
+    assert_eq!(
+        unsupported.view().as_payload(),
+        expected_case(&root, "codex.unavailable.unsupported-duration")["expected"]["view"]
+    );
 }
 
 #[test]
