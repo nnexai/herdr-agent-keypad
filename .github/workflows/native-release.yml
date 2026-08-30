@@ -48,6 +48,8 @@ jobs:
             cd "$WORK/root-a"
             export CARGO_HOME="$WORK/cargo-home-a"
             export CARGO_TARGET_DIR="$WORK/target-a"
+            export CARGO_INCREMENTAL=0
+            export RUSTFLAGS="--remap-path-prefix=$WORK/root-a=/workspace --remap-path-prefix=$WORK/cargo-home-a=/cargo-home --remap-path-prefix=$WORK/target-a=/target"
             export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform
@@ -57,6 +59,8 @@ jobs:
             cd "$WORK/root-b"
             export CARGO_HOME="$WORK/cargo-home-b"
             export CARGO_TARGET_DIR="$WORK/target-b"
+            export CARGO_INCREMENTAL=0
+            export RUSTFLAGS="--remap-path-prefix=$WORK/root-b=/workspace --remap-path-prefix=$WORK/cargo-home-b=/cargo-home --remap-path-prefix=$WORK/target-b=/target"
             export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform
@@ -68,6 +72,7 @@ jobs:
           test -x "$BIN_A" && test -x "$BIN_B"
           HASH_A="$(sha256sum "$BIN_A" | cut -d ' ' -f 1)"
           HASH_B="$(sha256sum "$BIN_B" | cut -d ' ' -f 1)"
+          printf 'binary_a_sha256=%s\nbinary_b_sha256=%s\n' "$HASH_A" "$HASH_B"
           test "$HASH_A" = "$HASH_B"
           readelf -h "$BIN_A"
           ldd "$BIN_A"
@@ -149,7 +154,7 @@ jobs:
 
   macos-arm64:
     name: macOS Apple Silicon unsigned bundle
-    runs-on: macos-14-xlarge
+    runs-on: macos-14
     timeout-minutes: 30
     steps:
       - name: Checkout workflow commit
@@ -190,6 +195,8 @@ jobs:
             cd "$WORK/root-a"
             export CARGO_HOME="$WORK/cargo-home-a"
             export CARGO_TARGET_DIR="$WORK/target-a"
+            export CARGO_INCREMENTAL=0
+            export RUSTFLAGS="--remap-path-prefix=$WORK/root-a=/workspace --remap-path-prefix=$WORK/cargo-home-a=/cargo-home --remap-path-prefix=$WORK/target-a=/target"
             export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform macos_
@@ -199,6 +206,8 @@ jobs:
             cd "$WORK/root-b"
             export CARGO_HOME="$WORK/cargo-home-b"
             export CARGO_TARGET_DIR="$WORK/target-b"
+            export CARGO_INCREMENTAL=0
+            export RUSTFLAGS="--remap-path-prefix=$WORK/root-b=/workspace --remap-path-prefix=$WORK/cargo-home-b=/cargo-home --remap-path-prefix=$WORK/target-b=/target"
             export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform macos_
@@ -210,6 +219,7 @@ jobs:
           test -x "$BIN_A" && test -x "$BIN_B"
           HASH_A="$(shasum -a 256 "$BIN_A" | cut -d ' ' -f 1)"
           HASH_B="$(shasum -a 256 "$BIN_B" | cut -d ' ' -f 1)"
+          printf 'binary_a_sha256=%s\nbinary_b_sha256=%s\n' "$HASH_A" "$HASH_B"
           test "$HASH_A" = "$HASH_B"
           otool -hv "$BIN_A"
           otool -L "$BIN_A"
@@ -315,9 +325,13 @@ jobs:
           export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
           export CARGO_HOME="$WORK/cargo-home"
           export CARGO_TARGET_DIR="$WORK/target"
-          cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" \
+          if ! cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" \
             --test black_box_parity --test resource_bounds --test production_surface \
-            -- --test-threads=1 > "$WORK/contract-tests.log" 2>&1
+            -- --test-threads=1 > "$WORK/contract-tests.log" 2>&1; then
+            cat "$WORK/contract-tests.log"
+            exit 1
+          fi
+          cat "$WORK/contract-tests.log"
           cargo build --release --locked --target "$TARGET" --manifest-path "$PLUGIN/native/Cargo.toml"
           BIN="$WORK/target/$TARGET/release/herdr-keypad-native"
           test -x "$BIN"

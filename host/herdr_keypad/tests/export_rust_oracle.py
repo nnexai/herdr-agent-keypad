@@ -458,17 +458,17 @@ def codex_cases() -> list[dict[str, object]]:
     traces.append(case("codex.unavailable.unsupported-duration", {"operation": "normalize", "duration_minutes": 1440}, {"view": codex_view(unsupported)}))
 
     auth_process = FakeProcess([{"id": 1, "result": {}}, {"id": 2, "result": {"account": None, "requiresOpenaiAuth": True}}])
-    auth_collector = CodexCollector(process_factory=lambda *args, **kwargs: auth_process, deadline_ms=3000)
+    auth_collector = CodexCollector(process_factory=lambda *args, **kwargs: auth_process, deadline_ms=3000, clock=ManualClock())
     auth_result = auth_collector.collect()
     traces.append(case("codex.auth-required.child-handshake", {"operation": "collect", "scenario": "auth"}, {"view": codex_view(auth_result.view), "evidence": auth_result.as_evidence()}))
 
     offline_process = FakeProcess([{"id": 1, "result": {}}, b"not-json"])
-    offline_collector = CodexCollector(process_factory=lambda *args, **kwargs: offline_process, deadline_ms=3000)
+    offline_collector = CodexCollector(process_factory=lambda *args, **kwargs: offline_process, deadline_ms=3000, clock=ManualClock())
     offline_result = offline_collector.collect()
     traces.append(case("codex.codex-offline.malformed-jsonl", {"operation": "collect", "scenario": "malformed"}, {"view": codex_view(offline_result.view), "evidence": offline_result.as_evidence()}))
 
     exit_process = FakeProcess([{"id": 1, "result": {}}, {"id": 2, "result": {"account": {"type": "chatgpt"}}}, {"id": 3, "result": {"rateLimits": {"primary": {"usedPercent": 1}}}}], returncode=7)
-    exit_collector = CodexCollector(process_factory=lambda *args, **kwargs: exit_process, deadline_ms=3000)
+    exit_collector = CodexCollector(process_factory=lambda *args, **kwargs: exit_process, deadline_ms=3000, clock=ManualClock())
     exit_result = exit_collector.collect()
     traces.append(case("codex.child-exit.nonzero-observed", {"operation": "collect", "scenario": "already-exited"}, {"view": codex_view(exit_result.view), "child_exit": exit_result.as_evidence()["child_exit"]}))
 
