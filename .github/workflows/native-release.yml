@@ -430,7 +430,7 @@ jobs:
             --workflow-ref "$GITHUB_REF" \
             --output "$OUT/phase04-release-evidence.json" \
             --checksum "$OUT/phase04-release-evidence.json.sha256"
-          sha256sum -c "$OUT/phase04-release-evidence.json.sha256"
+          (cd "$OUT" && sha256sum -c phase04-release-evidence.json.sha256)
 
       - name: Upload final Phase 04 evidence and checksum
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
