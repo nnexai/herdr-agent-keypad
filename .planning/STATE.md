@@ -209,7 +209,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 
 ### Pending Todos
 
-None yet.
+- [ ] [Match Copilot tile to active theme](./todos/pending/2026-08-30-match-copilot-tile-to-active-theme.md) — cosmetic
 
 ### Blockers/Concerns
 
