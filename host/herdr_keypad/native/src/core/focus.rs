@@ -4,7 +4,10 @@
 //! `agent.focus` calls.  The port trait is intentionally closed: it has no
 //! generic Herdr method, triage operation, keyboard operation, or keycode.
 
-use super::model::{session_token, Binding, FocusIntent, FocusOutcome, FocusResult, FocusStatus, Identity};
+use super::model::{
+    session_token, Binding, FocusIntent, FocusOutcome, FocusResult, FocusStatus, Identity,
+    ProjectionSnapshot,
+};
 use super::projection::InboxProjection;
 use serde_json::Value;
 use std::fmt;
@@ -53,16 +56,23 @@ impl FocusExecutor {
     /// are opaque and never become an action target.
     pub fn for_device_session(session: &'static str) -> Self { Self { device_session: Some(session) } }
 
-    pub fn execute<P: HerdrPort>(&self, projection: &InboxProjection, intent: &FocusIntent, port: &mut P) -> FocusOutcome {
+    pub fn execute<P: HerdrPort>(
+        &self,
+        projection: &InboxProjection,
+        acknowledged: &ProjectionSnapshot,
+        intent: &FocusIntent,
+        port: &mut P,
+    ) -> FocusOutcome {
         if let Some(device_session) = self.device_session {
             if intent.device_session.as_deref() != Some(device_session) {
                 return outcome(intent, FocusStatus::WrongEpoch, "device session differs");
             }
         }
-        let Some(current) = &projection.current else {
-            return outcome(intent, FocusStatus::Offline, "no committed projection");
-        };
-        if matches!(current.source_status, super::model::SourceStatus::Offline | super::model::SourceStatus::Unavailable) {
+        let current = acknowledged;
+        if matches!(
+            current.source_status,
+            super::model::SourceStatus::Offline | super::model::SourceStatus::Unavailable
+        ) {
             return outcome(intent, FocusStatus::Offline, "source is not current");
         }
         if !current.source_status.is_current() || current.entries.iter().any(|entry| entry.stale) {

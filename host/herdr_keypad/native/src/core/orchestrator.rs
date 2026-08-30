@@ -80,13 +80,16 @@ impl CoordinatorConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+struct PublishedProjection {
+    projection: ProjectionSnapshot,
+    codex_state: BridgeStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct PendingPublication {
     request_sequence: u64,
-    host_epoch: String,
-    snapshot_revision: u64,
-    source_status: String,
+    published: PublishedProjection,
     ack_deadline: Instant,
-    codex_displayable: bool,
 }
 
 /// One production coordinator joining every completed port.
@@ -104,11 +107,12 @@ pub struct RuntimeCoordinator {
     current: Option<ProjectionSnapshot>,
     last_payload: Option<Value>,
     pending_publication: Option<PendingPublication>,
-    acknowledged_projection: Option<(String, u64, bool)>,
+    acknowledged_projection: Option<PublishedProjection>,
     focus_proof: Option<(String, u32)>,
     operational_events: TransitionRing,
     operational_sequence: u64,
     codex_last_error: Option<SafeCode>,
+    codex_observed_state: Option<BridgeStatus>,
     focus_last_error: Option<SafeCode>,
     publication_dirty: bool,
     herdr_healthy: bool,
@@ -177,6 +181,7 @@ impl RuntimeCoordinator {
             operational_events: TransitionRing::default(),
             operational_sequence: 0,
             codex_last_error: None,
+            codex_observed_state: None,
             focus_last_error: None,
             publication_dirty: false,
             herdr_healthy: false,
@@ -221,23 +226,18 @@ impl RuntimeCoordinator {
                 (true, Some(ModelSourceStatus::Stale)) => BridgeStatus::Stale,
                 _ => BridgeStatus::HerdrUnavailable,
             };
-            let current_generation = self.current.as_ref().map(|snapshot| {
-                (snapshot.host_epoch.as_str(), u64::from(snapshot.snapshot_revision))
-            });
             let acknowledged_codex_displayable = self
                 .acknowledged_projection
                 .as_ref()
-                .is_some_and(|(epoch, revision, displayable)| {
-                    *displayable && current_generation == Some((epoch.as_str(), *revision))
-                });
-            status.codex_state = match self.codex.view().source_state.as_str() {
-                "current" if acknowledged_codex_displayable => BridgeStatus::Ready,
-                "stale" if acknowledged_codex_displayable => BridgeStatus::Stale,
-                "codex_offline" => BridgeStatus::CodexUnavailable,
-                _ => BridgeStatus::Unavailable,
-            };
+                .is_some_and(|published| published.codex_state == BridgeStatus::Ready);
+            status.codex_state = self
+                .acknowledged_projection
+                .as_ref()
+                .map(|published| published.codex_state)
+                .unwrap_or(BridgeStatus::Unavailable);
             let focus_path_proven = self.focus_proof.as_ref().is_some_and(|(epoch, revision)| {
-                self.current.as_ref().is_some_and(|snapshot| {
+                self.acknowledged_projection.as_ref().is_some_and(|published| {
+                    let snapshot = &published.projection;
                     snapshot.actionable()
                         && snapshot.host_epoch == *epoch
                         && snapshot.snapshot_revision == *revision
@@ -401,9 +401,7 @@ impl RuntimeCoordinator {
             Ok(Some(crate::BridgeEvent::HerdrInvalidated)) => {
                 self.event_count = self.event_count.saturating_add(1);
                 self.resource_metrics.wakes = self.resource_metrics.wakes.saturating_add(1);
-                self.current = Some(self.projection.invalidate("stale"));
                 self.herdr_dirty = true;
-                self.publish_current().await;
             }
             Ok(Some(crate::BridgeEvent::HerdrAuthorityEnded)) | Ok(Some(crate::BridgeEvent::AuthorityCancelled)) => {
                 self.shutdown(true);
@@ -431,32 +429,46 @@ impl RuntimeCoordinator {
                     self.mark_usb_unavailable(SafeCode::PayloadRejected);
                     return Ok(());
                 };
+                let published = &expected.published;
                 let accepted = ack.accepted
                     && ack.reply_to == expected.request_sequence
-                    && ack.host_epoch == expected.host_epoch
-                    && ack.snapshot_revision == expected.snapshot_revision
-                    && ack.source_status == expected.source_status;
+                    && ack.host_epoch == published.projection.host_epoch
+                    && ack.snapshot_revision == u64::from(published.projection.snapshot_revision)
+                    && ack.source_status == published.projection.source_status.as_str();
                 if !accepted {
                     self.mark_usb_unavailable(SafeCode::PayloadRejected);
                     return Ok(());
                 }
                 self.publication_count = self.publication_count.saturating_add(1);
                 self.resource_metrics.wakes = self.resource_metrics.wakes.saturating_add(1);
+                let link_became_ready = !self.device_link_ready;
+                let previous_codex_state = self
+                    .acknowledged_projection
+                    .as_ref()
+                    .map(|view| view.codex_state);
                 self.device_link_ready = true;
                 self.usb_reconnect_attempt = 0;
                 self.usb_last_error = None;
-                self.acknowledged_projection = Some((
-                    expected.host_epoch,
-                    expected.snapshot_revision,
-                    expected.codex_displayable,
-                ));
-                self.record_operational(SafeCode::SnapshotAcknowledged);
-                if expected.codex_displayable {
-                    self.codex_last_error = None;
-                    self.record_operational(SafeCode::CodexConnected);
+                self.acknowledged_projection = Some(expected.published);
+                if link_became_ready {
+                    self.record_operational(SafeCode::SnapshotAcknowledged);
+                }
+                let codex_state = self
+                    .acknowledged_projection
+                    .as_ref()
+                    .expect("accepted ACK installs published projection")
+                    .codex_state;
+                self.codex_last_error = if codex_state == BridgeStatus::Ready {
+                    None
                 } else {
-                    self.codex_last_error = Some(SafeCode::CodexUnavailable);
-                    self.record_operational(SafeCode::CodexUnavailable);
+                    Some(SafeCode::CodexUnavailable)
+                };
+                if previous_codex_state != Some(codex_state) {
+                    self.record_operational(if codex_state == BridgeStatus::Ready {
+                        SafeCode::CodexConnected
+                    } else {
+                        SafeCode::CodexUnavailable
+                    });
                 }
                 if self.publication_dirty {
                     self.publication_dirty = false;
@@ -513,8 +525,11 @@ impl RuntimeCoordinator {
                 let result = self.projection.refresh(&snapshot.agents, &snapshot.workspaces);
                 match result {
                     Ok(value) => {
+                        let changed = self.current.as_ref() != Some(&value);
                         self.current = Some(value);
-                        self.publish_current().await;
+                        if changed {
+                            self.publish_current().await;
+                        }
                     }
                     Err(_) => self.mark_herdr_unavailable("unavailable").await,
                 }
@@ -550,13 +565,22 @@ impl RuntimeCoordinator {
         let result = tokio::task::block_in_place(|| self.codex.collect());
         self.codex_due = Some(Instant::now() + self.config.codex_interval);
         self.resource_metrics.timer_fires = self.resource_metrics.timer_fires.saturating_add(1);
-        if result.view.source_state == "current" {
-            self.codex_last_error = Some(SafeCode::CodexUnavailable);
-            self.record_operational(SafeCode::CodexConnected);
-        } else {
-            self.codex_last_error = Some(SafeCode::CodexUnavailable);
-            self.record_operational(SafeCode::CodexUnavailable);
+        let codex_observed_state = match result.view.source_state.as_str() {
+            "current" => BridgeStatus::Ready,
+            "stale" => BridgeStatus::Stale,
+            "codex_offline" => BridgeStatus::CodexUnavailable,
+            _ => BridgeStatus::Unavailable,
+        };
+        if self.codex_observed_state != Some(codex_observed_state) {
+            self.record_operational(if codex_observed_state == BridgeStatus::Ready {
+                SafeCode::CodexConnected
+            } else {
+                SafeCode::CodexUnavailable
+            });
         }
+        self.codex_observed_state = Some(codex_observed_state);
+        self.codex_last_error = (result.view.source_state != "current")
+            .then_some(SafeCode::CodexUnavailable);
         if let Some(snapshot) = self.current.as_ref() {
             let _ = self.publish_snapshot(snapshot.clone()).await;
         }
@@ -570,15 +594,7 @@ impl RuntimeCoordinator {
 
     async fn publish_snapshot(&mut self, snapshot: ProjectionSnapshot) -> Result<(), BridgeError> {
         let payload = self.payload_for(&snapshot)?;
-        let codex_displayable = payload
-            .get("codex")
-            .and_then(Value::as_object)
-            .is_some_and(|codex| {
-                codex.get("source_state").and_then(Value::as_str) == Some("current")
-                    && ["primary", "secondary"]
-                        .iter()
-                        .any(|key| codex.get(*key).is_some_and(|value| !value.is_null()))
-            });
+        let codex_state = displayed_codex_state(&payload);
         self.last_payload = Some(payload.clone());
         if !self.usb.connected() {
             return Ok(());
@@ -587,16 +603,15 @@ impl RuntimeCoordinator {
             self.publication_dirty = true;
             return Ok(());
         }
-        let source_status = snapshot.source_status.as_str().to_owned();
         match self.usb.send_snapshot(payload).await {
             Ok(request_sequence) => {
                 self.pending_publication = Some(PendingPublication {
                     request_sequence,
-                    host_epoch: snapshot.host_epoch,
-                    snapshot_revision: u64::from(snapshot.snapshot_revision),
-                    source_status,
+                    published: PublishedProjection {
+                        projection: snapshot,
+                        codex_state,
+                    },
                     ack_deadline: Instant::now() + self.config.snapshot_ack_timeout,
-                    codex_displayable,
                 });
             }
             Err(_) => self.mark_usb_unavailable(SafeCode::DeviceUnavailable),
@@ -711,10 +726,26 @@ impl RuntimeCoordinator {
         while let Some(intent) = self.pending_focus.pop_front() {
             let outcome = {
                 let projection = &self.projection;
+                let acknowledged = self
+                    .acknowledged_projection
+                    .as_ref()
+                    .map(|published| &published.projection);
                 let client = &mut self.herdr;
-                tokio::task::block_in_place(|| {
-                    let mut port = BlockingHerdr { client };
-                    FocusExecutor::new().execute(projection, &intent, &mut port)
+                tokio::task::block_in_place(|| match acknowledged {
+                    Some(acknowledged) => {
+                        let mut port = BlockingHerdr { client };
+                        FocusExecutor::new().execute(
+                            projection,
+                            acknowledged,
+                            &intent,
+                            &mut port,
+                        )
+                    }
+                    None => super::model::FocusOutcome {
+                        status: FocusStatus::Offline,
+                        action_id: intent.action_id.clone(),
+                        reason: "no acknowledged displayed projection".to_owned(),
+                    },
                 })
             };
             let payload = focus_payload(&intent, outcome.status, outcome.success());
@@ -804,6 +835,24 @@ fn reconnect_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
 
 fn codex_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
     reconnect_sleep(deadline)
+}
+
+fn displayed_codex_state(payload: &Value) -> BridgeStatus {
+    let Some(codex) = payload.get("codex").and_then(Value::as_object) else {
+        return BridgeStatus::Unavailable;
+    };
+    match codex.get("source_state").and_then(Value::as_str) {
+        Some("current")
+            if ["primary", "secondary"]
+                .iter()
+                .any(|key| codex.get(*key).is_some_and(|value| !value.is_null())) =>
+        {
+            BridgeStatus::Ready
+        }
+        Some("stale") => BridgeStatus::Stale,
+        Some("codex_offline") => BridgeStatus::CodexUnavailable,
+        _ => BridgeStatus::Unavailable,
+    }
 }
 
 fn aggregate_runtime_state(
@@ -1084,13 +1133,21 @@ mod tests {
     }
 
     fn pending_publication() -> PendingPublication {
+        let mut projection = InboxProjection::new("host-test").expect("projection");
+        let mut snapshot = projection
+            .refresh(
+                &[herdr_agent(false)],
+                &[json!({"workspace_id":"workspace-1","label":"repo"})],
+            )
+            .expect("published projection");
+        snapshot.snapshot_revision = 11;
         PendingPublication {
             request_sequence: 7,
-            host_epoch: "host-test".to_owned(),
-            snapshot_revision: 11,
-            source_status: "current".to_owned(),
+            published: PublishedProjection {
+                projection: snapshot,
+                codex_state: BridgeStatus::Ready,
+            },
             ack_deadline: Instant::now() + DEFAULT_SNAPSHOT_ACK_TIMEOUT,
-            codex_displayable: true,
         }
     }
 
@@ -1205,6 +1262,31 @@ mod tests {
             "agent":"agent",
             "agent_session":null
         })
+    }
+
+    struct AcceptingFocusPort;
+
+    impl FocusHerdrPort for AcceptingFocusPort {
+        fn complete_read(&mut self) -> Result<Vec<Value>, FocusError> {
+            Ok(vec![herdr_agent(false)])
+        }
+
+        fn focus(&mut self, _: &str) -> Result<Value, FocusError> {
+            Ok(json!({"agent": herdr_agent(true)}))
+        }
+    }
+
+    fn install_current_codex(coordinator: &mut RuntimeCoordinator) {
+        coordinator.codex = CodexCollector::with_factory(
+            "codex",
+            Duration::from_millis(250),
+            Arc::new(RepeatingCodexFactory {
+                spawns: Arc::new(AtomicUsize::new(0)),
+            }),
+        )
+        .expect("Codex collector");
+        let result = coordinator.codex.collect();
+        assert_eq!(result.view.source_state, "current");
     }
 
     async fn serve_herdr(listener: UnixListener) {
@@ -1467,6 +1549,177 @@ mod tests {
         }
     }
 
+    #[test]
+    fn displayed_binding_survives_ordinary_herdr_invalidation_until_refresh_finishes() {
+        let mut projection = InboxProjection::new("host-acked").expect("projection");
+        let acknowledged = projection
+            .refresh(
+                &[herdr_agent(false)],
+                &[json!({"workspace_id":"workspace-1","label":"repo"})],
+            )
+            .expect("acknowledged projection");
+        let intent = ModelFocusIntent::new(
+            "focus-after-invalidation",
+            acknowledged.binding(0).expect("displayed binding"),
+        );
+        projection.invalidate("stale");
+
+        let outcome = FocusExecutor::new().execute(
+            &projection,
+            &acknowledged,
+            &intent,
+            &mut AcceptingFocusPort,
+        );
+
+        assert_eq!(
+            outcome.status,
+            FocusStatus::Accepted,
+            "ordinary invalidation must not make the still-displayed acknowledged binding unfocusable"
+        );
+    }
+
+    #[test]
+    fn displayed_binding_survives_newer_unacknowledged_projection() {
+        let mut projection = InboxProjection::new("host-acked").expect("projection");
+        let acknowledged = projection
+            .refresh(
+                &[herdr_agent(false)],
+                &[json!({"workspace_id":"workspace-1","label":"repo"})],
+            )
+            .expect("acknowledged projection");
+        let intent = ModelFocusIntent::new(
+            "focus-before-next-ack",
+            acknowledged.binding(0).expect("displayed binding"),
+        );
+        let mut newer = herdr_agent(false);
+        newer["title"] = json!("Newer");
+        newer["tokens"]["title"] = json!("Newer");
+        let current = projection
+            .refresh(
+                &[newer],
+                &[json!({"workspace_id":"workspace-1","label":"repo"})],
+            )
+            .expect("newer unacknowledged projection");
+        assert_ne!(
+            current.snapshot_revision, acknowledged.snapshot_revision,
+            "test requires a distinct pending generation"
+        );
+
+        let outcome = FocusExecutor::new().execute(
+            &projection,
+            &acknowledged,
+            &intent,
+            &mut AcceptingFocusPort,
+        );
+
+        assert_eq!(
+            outcome.status,
+            FocusStatus::Accepted,
+            "a newer unacknowledged projection must not replace displayed focus ownership"
+        );
+    }
+
+    #[test]
+    fn acknowledged_codex_remains_ready_while_unrelated_generation_is_pending() {
+        let (_root, mut coordinator) =
+            unconnected_coordinator(CoordinatorConfig::default());
+        let acknowledged = coordinator
+            .projection
+            .refresh(
+                &[herdr_agent(false)],
+                &[json!({"workspace_id":"workspace-1","label":"repo"})],
+            )
+            .expect("acknowledged projection");
+        coordinator.current = Some(acknowledged.clone());
+        coordinator.acknowledged_projection = Some(PublishedProjection {
+            projection: acknowledged.clone(),
+            codex_state: BridgeStatus::Ready,
+        });
+        let mut newer = herdr_agent(false);
+        newer["title"] = json!("Pending");
+        newer["tokens"]["title"] = json!("Pending");
+        let current = coordinator
+            .projection
+            .refresh(
+                &[newer],
+                &[json!({"workspace_id":"workspace-1","label":"repo"})],
+            )
+            .expect("pending projection");
+        coordinator.current = Some(current.clone());
+        coordinator.pending_publication = Some(PendingPublication {
+            request_sequence: 19,
+            published: PublishedProjection {
+                projection: current,
+                codex_state: BridgeStatus::Ready,
+            },
+            ack_deadline: Instant::now() + DEFAULT_SNAPSHOT_ACK_TIMEOUT,
+        });
+        install_current_codex(&mut coordinator);
+        let _ = coordinator.lifecycle.handle(LifecycleCommand::Start);
+
+        assert_eq!(
+            coordinator.status().codex_state,
+            BridgeStatus::Ready,
+            "Codex status belongs to the ACKed displayed view, not an unrelated pending Herdr generation"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn successful_current_codex_collection_clears_unavailable_error() {
+        let (_root, mut coordinator) =
+            unconnected_coordinator(CoordinatorConfig::default());
+        install_current_codex(&mut coordinator);
+        coordinator.codex_last_error = Some(SafeCode::CodexUnavailable);
+
+        coordinator.collect_codex_and_publish().await;
+
+        assert_eq!(
+            coordinator.codex_last_error, None,
+            "a current collection must clear CodexUnavailable"
+        );
+    }
+
+    #[tokio::test]
+    async fn ordinary_ack_republication_churn_retains_actionable_focus_evidence() {
+        let (_root, mut coordinator) =
+            unconnected_coordinator(CoordinatorConfig::default());
+        let intent = ModelFocusIntent::new(
+            "rejected-focus",
+            Binding {
+                host_epoch: "host-test".to_owned(),
+                snapshot_revision: 11,
+                slot: 0,
+                entry_id: "pane-1".to_owned(),
+                identity: Identity {
+                    pane_id: "pane-1".to_owned(),
+                    terminal_id: "term-pane-1".to_owned(),
+                    agent_session: None,
+                    source_revision: 1,
+                    workspace_id: String::new(),
+                    tab_id: String::new(),
+                },
+            },
+        );
+        coordinator.record_focus_outcome(&intent, false);
+
+        for _ in 0..(STATUS_HISTORY_LIMIT + 4) {
+            coordinator.pending_publication = Some(pending_publication());
+            coordinator
+                .handle_usb_event(Ok(Some(UsbEvent::SnapshotAck(exact_ack()))))
+                .await
+                .expect("exact repeated ACK");
+        }
+
+        assert!(
+            coordinator
+                .operational_events
+                .as_slice()
+                .iter()
+                .any(|event| event.code == SafeCode::FocusRejected),
+            "unchanged ACK/Codex states must not evict actionable focus evidence"
+        );
+    }
+
     #[tokio::test]
     async fn invalidation_before_an_exact_ack_still_establishes_link_readiness() {
         let (_root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
@@ -1565,18 +1818,15 @@ mod tests {
     async fn acknowledged_unavailable_codex_payload_remains_non_ready_evidence() {
         let (_root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
         let mut pending = pending_publication();
-        pending.codex_displayable = false;
+        pending.published.codex_state = BridgeStatus::Unavailable;
+        let expected = pending.published.clone();
         coordinator.pending_publication = Some(pending);
-
         coordinator
             .handle_usb_event(Ok(Some(UsbEvent::SnapshotAck(exact_ack()))))
             .await
             .expect("exact ACK handling");
 
-        assert_eq!(
-            coordinator.acknowledged_projection,
-            Some(("host-test".to_owned(), 11, false))
-        );
+        assert_eq!(coordinator.acknowledged_projection, Some(expected));
         assert_eq!(coordinator.codex_last_error, Some(SafeCode::CodexUnavailable));
         assert!(coordinator
             .operational_events

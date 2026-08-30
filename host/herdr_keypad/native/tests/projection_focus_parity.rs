@@ -199,7 +199,8 @@ impl HerdrPort for Spy {
 
 fn focus_case(name: &str, spy: Spy, projection: &InboxProjection, intent: &FocusIntent) {
     let mut spy = spy;
-    let result = FocusExecutor::new().execute(projection, intent, &mut spy);
+    let acknowledged = projection.current.as_ref().expect("committed projection");
+    let result = FocusExecutor::new().execute(projection, acknowledged, intent, &mut spy);
     let expected = fixture(name)["expected"].clone();
     let calls = spy.calls.iter().map(|(method, target)| json!({"method": method, "target": target})).collect::<Vec<_>>();
     assert_eq!(Value::Array(calls), expected["calls"], "{name}");

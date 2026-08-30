@@ -120,7 +120,7 @@ async fn authorize_focus(label: &str, listed_agent: Value, focused_agent: Value)
     ));
 
     let mut projection = InboxProjection::new("epoch").expect("projection");
-    projection
+    let acknowledged = projection
         .refresh(
             std::slice::from_ref(&listed_agent),
             &[json!({"workspace_id": "workspace-1", "label": "repo"})],
@@ -134,7 +134,7 @@ async fn authorize_focus(label: &str, listed_agent: Value, focused_agent: Value)
 
     let outcome = tokio::task::block_in_place(|| {
         let mut port = ClientFocusPort { client: &mut client };
-        FocusExecutor::new().execute(&projection, &intent, &mut port)
+        FocusExecutor::new().execute(&projection, &acknowledged, &intent, &mut port)
     });
     let result = FocusExecutor::new().result(intent, &outcome);
     server.await.expect("server task");
