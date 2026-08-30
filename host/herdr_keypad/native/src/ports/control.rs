@@ -5,13 +5,13 @@
 //! is running.  Every frame is admitted against the fixed 16 KiB cap before
 //! JSON deserialization.
 
-use super::status::StatusSnapshot;
+use super::status::{reject_duplicate_keys, StatusSnapshot};
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::path::{Path, PathBuf};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 pub const CONTROL_PROTOCOL_VERSION: u8 = 1;
@@ -146,6 +146,9 @@ impl ControlRequest {
         if bytes.len() > CONTROL_PAYLOAD_LIMIT {
             return Err(ControlError::new(ControlErrorCode::OversizedPayload));
         }
+        if reject_duplicate_keys(bytes) {
+            return Err(ControlError::new(ControlErrorCode::InvalidPayload));
+        }
         let request: Self = serde_json::from_slice(bytes)
             .map_err(|_| ControlError::new(ControlErrorCode::InvalidPayload))?;
         validate_request(&request)?;
@@ -162,7 +165,7 @@ fn validate_request(request: &ControlRequest) -> Result<(), ControlError> {
             || identity.len() > 25
             || !identity
                 .bytes()
-                .all(|byte| byte.is_ascii_hexdigit() || matches!(byte, b'_' | b'-'))
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
         {
             return Err(ControlError::new(ControlErrorCode::InvalidPayload));
         }
@@ -195,11 +198,12 @@ impl ControlReply {
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, ControlError> {
+        validate_reply(self)?;
         let mut bytes = serde_json::to_vec(self).map_err(|_| ControlError::new(ControlErrorCode::InvalidPayload))?;
+        bytes.push(b'\n');
         if bytes.len() > CONTROL_PAYLOAD_LIMIT {
             return Err(ControlError::new(ControlErrorCode::OversizedPayload));
         }
-        bytes.push(b'\n');
         Ok(bytes)
     }
 
@@ -207,7 +211,13 @@ impl ControlReply {
         if bytes.len() > CONTROL_PAYLOAD_LIMIT {
             return Err(ControlError::new(ControlErrorCode::OversizedPayload));
         }
-        serde_json::from_slice(bytes).map_err(|_| ControlError::new(ControlErrorCode::InvalidPayload))
+        if reject_duplicate_keys(bytes) {
+            return Err(ControlError::new(ControlErrorCode::InvalidPayload));
+        }
+        let reply: Self = serde_json::from_slice(bytes)
+            .map_err(|_| ControlError::new(ControlErrorCode::InvalidPayload))?;
+        validate_reply(&reply)?;
+        Ok(reply)
     }
 
     pub fn state(&self) -> super::status::BridgeStatus {
@@ -227,6 +237,39 @@ impl ControlReply {
             _ => None,
         }
     }
+}
+
+fn validate_reply(reply: &ControlReply) -> Result<(), ControlError> {
+    let safe_identity = |value: &str| {
+        !value.is_empty()
+            && value.len() <= 25
+            && value
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    };
+    match reply {
+        ControlReply::Active { version, config_identity }
+        | ControlReply::Restarted { version, config_identity } => {
+            if version.len() > 32 || !version.is_ascii() || !safe_identity(config_identity) {
+                return Err(ControlError::new(ControlErrorCode::InvalidPayload));
+            }
+        }
+        ControlReply::RestartRequired { active_config_identity, requested_config_identity } => {
+            if !safe_identity(active_config_identity) || !safe_identity(requested_config_identity) {
+                return Err(ControlError::new(ControlErrorCode::InvalidPayload));
+            }
+        }
+        ControlReply::Status(snapshot) => snapshot
+            .validate()
+            .map_err(|_| ControlError::new(ControlErrorCode::InvalidPayload))?,
+        ControlReply::Rejected { code } => {
+            if code.is_empty() || code.len() > 32 || !code.is_ascii() || !code.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_') {
+                return Err(ControlError::new(ControlErrorCode::InvalidPayload));
+            }
+        }
+        ControlReply::Stopped | ControlReply::Accepted => {}
+    }
+    Ok(())
 }
 
 /// The lock is held for the lifetime of the owner.  Its path is intentionally
@@ -274,13 +317,6 @@ impl AuthorityLock {
     }
 }
 
-impl Drop for AuthorityLock {
-    fn drop(&mut self) {
-        let _ = self.file.unlock();
-        let _ = remove_stale_endpoint(&self.socket_path);
-    }
-}
-
 pub struct ControlEndpoint {
     listener: UnixListener,
     path: PathBuf,
@@ -307,7 +343,8 @@ impl ControlEndpoint {
         if !peer_is_same_user(&stream, &self.state_dir) {
             return Err(ControlError::new(ControlErrorCode::UnauthorizedPeer));
         }
-        let mut reader = BufReader::new(stream);
+        let reader = BufReader::new(stream);
+        let mut reader = reader.take((CONTROL_PAYLOAD_LIMIT + 1) as u64);
         let mut line = Vec::new();
         reader
             .read_until(b'\n', &mut line)

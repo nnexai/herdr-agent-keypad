@@ -11,7 +11,7 @@ mod lifecycle;
 #[path = "../src/ports/control.rs"]
 mod control;
 
-use config::{EffectiveConfig, PairingBinding, StartupConfig};
+use config::StartupConfig;
 use control::{AuthorityLock, ControlReply, ControlRequest, CONTROL_PAYLOAD_LIMIT};
 use lifecycle::{LifecycleCommand, LifecycleOwner, RuntimePaths};
 use logging::{SafeLogger, TraceConfig};
@@ -118,7 +118,7 @@ fn lifecycle_suspend_invalidates_sessions_until_fresh_resume() {
 }
 
 #[test]
-fn control_lock_cleans_stale_endpoint_only_after_authority_is_owned() {
+fn lifecycle_control_lock_cleans_stale_endpoint_only_after_authority_is_owned() {
     let root = temp_dir("lock");
     let state = root.join("state");
     fs::create_dir_all(&state).expect("state");
@@ -132,7 +132,7 @@ fn control_lock_cleans_stale_endpoint_only_after_authority_is_owned() {
 }
 
 #[test]
-fn control_protocol_is_versioned_bounded_and_rejects_oversize_before_parse() {
+fn lifecycle_control_protocol_is_versioned_bounded_and_rejects_oversize_before_parse() {
     let request = ControlRequest::status();
     let bytes = request.encode().expect("encode");
     assert!(bytes.len() <= CONTROL_PAYLOAD_LIMIT);
@@ -140,10 +140,11 @@ fn control_protocol_is_versioned_bounded_and_rejects_oversize_before_parse() {
     let oversized = vec![b' '; CONTROL_PAYLOAD_LIMIT + 1];
     assert!(ControlRequest::decode(&oversized).is_err());
     assert!(ControlReply::active("v", "cfg").encode().expect("reply").len() <= CONTROL_PAYLOAD_LIMIT);
+    assert!(ControlRequest::decode(br#"{"request":"status","version":1,"version":1}"#).is_err());
 }
 
 #[test]
-fn malformed_settings_and_binding_fail_closed_without_rewriting_files() {
+fn lifecycle_config_malformed_settings_and_binding_fail_closed_without_rewriting_files() {
     let root = temp_dir("invalid");
     let config_dir = root.join("config");
     fs::create_dir_all(&config_dir).expect("config");
@@ -162,7 +163,7 @@ fn malformed_settings_and_binding_fail_closed_without_rewriting_files() {
 }
 
 #[test]
-fn status_is_read_only_bounded_and_has_at_most_32_safe_transitions() {
+fn status_logging_resource_status_is_read_only_bounded_and_has_at_most_32_safe_transitions() {
     let mut ring = TransitionRing::default();
     for index in 0..80 {
         ring.push(SafeCode::ReconnectAttempt, index);
@@ -178,7 +179,7 @@ fn status_is_read_only_bounded_and_has_at_most_32_safe_transitions() {
 }
 
 #[test]
-fn status_serialization_allows_only_safe_codes_and_no_private_values() {
+fn status_logging_resource_status_serialization_allows_only_safe_codes_and_no_private_values() {
     let mut snapshot = StatusSnapshot::stopped("cfg123");
     snapshot.last_error = Some(SafeCode::HerdrUnavailable);
     snapshot.transitions.push(status::Transition::new(SafeCode::ConfigInvalid, 4));
@@ -192,7 +193,7 @@ fn status_serialization_allows_only_safe_codes_and_no_private_values() {
 }
 
 #[test]
-fn logging_is_default_off_and_enabled_logging_is_structured_safe_stderr_only() {
+fn status_logging_resource_logging_is_default_off_and_enabled_logging_is_structured_safe_stderr_only() {
     let disabled = SafeLogger::new(TraceConfig::default());
     assert!(!disabled.enabled());
     assert!(disabled.serialize(SafeCode::BridgeStarted, 10).is_none());
@@ -208,7 +209,7 @@ fn logging_is_default_off_and_enabled_logging_is_structured_safe_stderr_only() {
 }
 
 #[test]
-fn healthy_idle_metrics_have_no_source_polling_or_fixed_rate_wakeup() {
+fn status_logging_resource_healthy_idle_metrics_have_no_source_polling_or_fixed_rate_wakeup() {
     let metrics = lifecycle::ResourceMetrics::idle();
     assert_eq!(metrics.source_polls, 0);
     assert_eq!(metrics.timer_fires, 0);
