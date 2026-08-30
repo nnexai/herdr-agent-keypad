@@ -31,6 +31,7 @@ const DEFAULT_RECONNECT_MAX: Duration = Duration::from_secs(8);
 const EVENT_WAIT: Duration = Duration::from_secs(24 * 60 * 60);
 const CONTROL_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 const FOCUS_QUEUE_LIMIT: usize = 16;
+const UNAVAILABLE_DIAGNOSTIC: &str = "UNAVAL";
 
 /// Integration timing knobs.  All values are bounded and deadlines are created
 /// only for recovery/freshness work; a healthy event stream has no ticker.
@@ -463,11 +464,11 @@ impl RuntimeCoordinator {
             codex_status: codex_view.source_state.clone(),
             sync_age: "AGE N/A".to_owned(),
             codex_age: codex_view.observation_age.clone(),
-            firmware_version: "UNKNOWN".to_owned(),
+            firmware_version: UNAVAILABLE_DIAGNOSTIC.to_owned(),
             protocol_version: v2::PROTOCOL_VERSION,
             bridge_version: env!("CARGO_PKG_VERSION").to_owned(),
-            device_suffix: "NONE".to_owned(),
-            session_suffix: "NONE".to_owned(),
+            device_suffix: UNAVAILABLE_DIAGNOSTIC.to_owned(),
+            session_suffix: UNAVAILABLE_DIAGNOSTIC.to_owned(),
             revision_suffix: format!("{:06X}", snapshot.snapshot_revision),
             error_code: codex_view.error_code.clone(),
         };
@@ -744,5 +745,10 @@ mod tests {
         let config = CoordinatorConfig::default();
         assert!(config.validate().is_ok());
         assert!(config.reconnect_max <= DEFAULT_RECONNECT_MAX);
+    }
+
+    #[test]
+    fn unavailable_diagnostics_match_python_and_device_admission_sentinel() {
+        assert_eq!(UNAVAILABLE_DIAGNOSTIC, "UNAVAL");
     }
 }
