@@ -495,7 +495,11 @@ impl UsbPort {
     }
 
     pub async fn poll(&mut self) -> Result<Option<UsbEvent>, UsbError> {
-        let frame = self.receive_v2().await?;
+        let frame = match self.receive_v2().await {
+            Ok(frame) => frame,
+            Err(UsbError::Timeout) => return Ok(None),
+            Err(error) => return Err(error),
+        };
         if frame.frame_type == "focus_intent" {
             return Ok(Some(UsbEvent::FocusIntent(FocusIntent {
                 payload: frame.payload,
@@ -545,6 +549,7 @@ impl UsbPort {
     async fn receive_v2(&mut self) -> Result<WireFrame, UsbError> {
         let line = match self.read_line_owned().await {
             Ok(line) => line,
+            Err(UsbError::Timeout) => return Err(UsbError::Timeout),
             Err(error) => {
                 self.reset_link();
                 return Err(error);

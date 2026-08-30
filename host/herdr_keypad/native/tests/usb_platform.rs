@@ -53,6 +53,8 @@ enum HelloMode {
     StaleSequence,
     FocusBeforeAck,
     FocusUntilResultThenAck,
+    CloseAfterHello,
+    MalformedAfterHello,
 }
 
 fn exact_candidate(endpoint: &str) -> DeviceCandidate {
@@ -99,6 +101,13 @@ async fn fake_device(stream: DuplexStream, mode: HelloMode) {
         json!({"accepted":true,"device_id":device_id,"firmware":"phase1-bringup","protocol":1}),
     );
     let _ = write_json(&mut write_half, hello_ack).await;
+    if matches!(mode, HelloMode::CloseAfterHello) {
+        return;
+    }
+    if matches!(mode, HelloMode::MalformedAfterHello) {
+        let _ = write_half.write_all(b"not-json\n").await;
+        return;
+    }
     if !matches!(mode, HelloMode::Matching | HelloMode::FocusBeforeAck | HelloMode::FocusUntilResultThenAck) {
         return;
     }
@@ -149,7 +158,10 @@ async fn fake_device(stream: DuplexStream, mode: HelloMode) {
     let _ = write_json(&mut write_half, ack).await;
 }
 
-fn make_split_focus_platform(endpoint: &str) -> (FakePlatform, tokio::task::JoinHandle<()>) {
+fn make_split_focus_platform(
+    endpoint: &str,
+    split_delay: Duration,
+) -> (FakePlatform, tokio::task::JoinHandle<()>) {
     let (host, device) = tokio::io::duplex(16 * 1024);
     let platform = FakePlatform {
         candidates: vec![exact_candidate(endpoint)],
@@ -201,7 +213,7 @@ fn make_split_focus_platform(endpoint: &str) -> (FakePlatform, tokio::task::Join
             .write_all(&encoded[..split])
             .await
             .expect("focus prefix");
-        tokio::time::sleep(Duration::from_millis(75)).await;
+        tokio::time::sleep(split_delay).await;
         write_half
             .write_all(&encoded[split..])
             .await
@@ -437,7 +449,10 @@ async fn snapshot_publication_does_not_starve_focus_while_ack_is_pending() {
 #[tokio::test]
 async fn cancelled_poll_preserves_a_split_focus_frame_for_resume() {
     let (_directory, binding) = binding_path("binding.json");
-    let (platform, server) = make_split_focus_platform("/dev/serial/by-id/usb-herdr");
+    let (platform, server) = make_split_focus_platform(
+        "/dev/serial/by-id/usb-herdr",
+        Duration::from_millis(75),
+    );
     let mut port =
         UsbPort::new(Box::new(platform), binding).with_timeout(Duration::from_millis(250));
     assert!(matches!(
@@ -459,6 +474,77 @@ async fn cancelled_poll_preserves_a_split_focus_frame_for_resume() {
     assert!(matches!(resumed, UsbEvent::FocusIntent(_)));
     assert!(port.connected(), "cancellation must not reset the authorized session");
     server.await.expect("split fake device");
+}
+
+#[tokio::test]
+async fn idle_poll_timeout_preserves_connected_session_and_partial_frame() {
+    let (_directory, binding) = binding_path("binding.json");
+    let (platform, server) = make_split_focus_platform(
+        "/dev/serial/by-id/usb-herdr",
+        Duration::from_millis(40),
+    );
+    let mut port =
+        UsbPort::new(Box::new(platform), binding).with_timeout(Duration::from_millis(25));
+    assert!(matches!(
+        port.connect().await.unwrap(),
+        UsbEvent::Connected { .. }
+    ));
+    let session_before = port.session_identity().map(|(boot, session)| {
+        (boot.to_owned(), session.to_owned())
+    });
+
+    assert_eq!(
+        port.poll().await,
+        Ok(None),
+        "an internal idle read deadline is not a link failure or an event"
+    );
+    assert!(port.connected(), "idle timeout must retain link authority");
+    assert_eq!(
+        port.session_identity().map(|(boot, session)| {
+            (boot.to_owned(), session.to_owned())
+        }),
+        session_before,
+        "idle timeout must retain the authorized session"
+    );
+
+    let resumed = port
+        .poll()
+        .await
+        .expect("resumed poll must retain the prefix")
+        .expect("split focus event");
+    assert!(matches!(resumed, UsbEvent::FocusIntent(_)));
+    assert!(port.connected());
+    server.await.expect("split fake device");
+}
+
+#[tokio::test]
+async fn real_eof_and_protocol_failures_reset_the_connected_session() {
+    for (name, mode, expected) in [
+        ("eof-binding.json", HelloMode::CloseAfterHello, UsbError::Io),
+        (
+            "protocol-binding.json",
+            HelloMode::MalformedAfterHello,
+            UsbError::Protocol,
+        ),
+    ] {
+        let (_directory, binding) = binding_path(name);
+        let (platform, server) =
+            make_platform(mode, "/dev/serial/by-id/usb-herdr");
+        let mut port = UsbPort::new(Box::new(platform), binding)
+            .with_timeout(Duration::from_millis(250));
+        assert!(matches!(
+            port.connect().await.unwrap(),
+            UsbEvent::Connected { .. }
+        ));
+
+        assert_eq!(port.poll().await, Err(expected));
+        assert!(
+            !port.connected(),
+            "real read and protocol failures must discard session authority"
+        );
+        assert_eq!(port.session_identity(), None);
+        server.await.expect("failure fake device");
+    }
 }
 #[tokio::test]
 async fn same_boot_id_reconnects_with_fresh_host_session_and_rejects_old_frames() {

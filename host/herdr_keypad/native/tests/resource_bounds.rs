@@ -1,6 +1,7 @@
 use herdr_keypad_native::core::orchestrator::{CoordinatorConfig, FOCUS_QUEUE_CAPACITY};
 use herdr_keypad_native::ports::control::CONTROL_PAYLOAD_LIMIT;
 use herdr_keypad_native::ports::lifecycle::ResourceMetrics;
+use herdr_keypad_native::ports::usb::DEVICE_LINE_LIMIT;
 use herdr_keypad_native::protocol::v2::{self, ProtocolSession};
 use serde_json::json;
 use std::fs;
@@ -15,6 +16,7 @@ fn queue_payload_and_timer_limits_are_closed_and_validated() {
     assert!(config.reconnect_initial <= config.reconnect_max);
     assert!(config.reconnect_max <= Duration::from_secs(8));
     assert!(FOCUS_QUEUE_CAPACITY <= v2::SESSION_CAPACITY);
+    assert_eq!(DEVICE_LINE_LIMIT, v2::MAX_LINE_BYTES);
     assert!(CONTROL_PAYLOAD_LIMIT <= 16 * 1024);
     assert!(ResourceMetrics::idle().source_polls == 0);
     assert!(ResourceMetrics::idle().timer_fires == 0);
