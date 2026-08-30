@@ -20,6 +20,12 @@
 //! only by a boundary event, device frame, or cancellation; it has no fixed-rate
 //! polling loop.
 
+pub mod core;
+pub mod platform;
+pub mod ports;
+pub mod protocol;
+extern crate self as herdr_keypad_native;
+
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
