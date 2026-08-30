@@ -218,6 +218,22 @@ async fn absent_auth_is_auth_required_and_secrets_never_cross_result_boundary() 
 }
 
 #[tokio::test]
+async fn active_enterprise_cloud_host_context_is_inherited_without_host_override() {
+    let (mut collector, operations) = collector_with(vec![
+        Ok(handshake("1.0.81", 3)),
+        Ok(auth("https://enterprise.example", "enterprise-user")),
+        Ok(quota(current_snapshot())),
+    ]);
+    let result = collector.collect_async().await;
+    assert_eq!(result.view.source_state, CopilotSourceState::Current);
+    assert_eq!(
+        *operations.lock().expect("operations"),
+        ["connect", "account.getCurrentAuth", "account.getQuota", "shutdown"]
+    );
+    assert!(redaction_passes(&result.as_evidence()));
+}
+
+#[tokio::test]
 async fn active_account_change_discards_prior_baseline_before_new_values() {
     let clock = Arc::new(Mutex::new(Duration::ZERO));
     let (transport, _) = FakeTransport::new(vec![]);
@@ -274,4 +290,41 @@ fn production_operation_allowlist_has_no_model_session_prompt_or_rest_path() {
     for operation in allowed {
         assert!(!["session.create", "session.send", "prompt", "/usage", "acp/usage", "rest"].contains(&operation));
     }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_authenticated_copilot_reports_current_ai_credits_without_model_call() {
+    let executable = std::env::var("COPILOT_LIVE_EXECUTABLE").unwrap_or_else(|_| "copilot".to_owned());
+    let mut collector = CopilotCollector::try_new(executable, Duration::from_secs(15)).expect("collector");
+    let result = collector.collect_async().await;
+    let view = &result.view;
+    assert_eq!(view.provider, "github_copilot");
+    assert_eq!(view.source_state, CopilotSourceState::Current, "{:?}", view.failure_reason);
+    assert_eq!(view.failure_reason, CopilotFailureReason::None);
+    assert!(view.used_credits.is_some());
+    assert!(view.included_credits.is_some() || view.unlimited);
+    assert!(view.reset_text.starts_with("RESET "));
+    assert_eq!(
+        result.handshake,
+        vec![("protocol".to_owned(), "3".to_owned()), ("cli".to_owned(), "1.0.81".to_owned())]
+    );
+    assert_eq!(
+        result.operations.iter().map(|operation| operation.name.as_str()).collect::<Vec<_>>(),
+        ["connect", "account.getCurrentAuth", "account.getQuota", "shutdown"]
+    );
+    assert!(redaction_passes(&result.as_evidence()));
+    println!(
+        "{}",
+        serde_json::to_string(&json!({
+            "provider": view.provider,
+            "source_state": view.source_state.as_str(),
+            "used_credits": view.used_credits.is_some(),
+            "included_credits": view.included_credits.is_some(),
+            "unlimited": view.unlimited,
+            "reset_available": view.reset_text != "RESET N/A",
+            "failure_reason": view.failure_reason.as_str(),
+        }))
+        .expect("safe live evidence")
+    );
 }
