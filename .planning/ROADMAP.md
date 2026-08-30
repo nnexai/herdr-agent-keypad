@@ -383,14 +383,14 @@ Plans:
   7. Linux and macOS installation and lifecycle behavior are documented and exercised: ordinary-user startup, exact keypad discovery/reconnect, Herdr and Codex child-process/socket failure recovery, clean shutdown, single-instance enforcement, configuration/state placement, and removal of the Python launcher from the supported production path.
   8. Focused native tests and end-to-end smoke checks compare Rust against the frozen Python contract with malformed/oversized frames, duplicate messages, stale identities, reconnects, missing optional Codex fields, unavailable push events, and sustained idle/traffic resource measurements; the final release artifacts are reproducible, versioned, and free of development-only dependencies.
 
-**Plans:** 10 plans
+**Plans:** 2/10 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 04-01-PLAN.md - Prove one production-quality Herdr-to-device-to-exact-focus Rust tracer and freeze shared interfaces.
-- [ ] 04-02-PLAN.md - Freeze deterministic Python-oracle parity fixtures with two-root byte comparison, lineage, closure, and privacy checks.
+- [x] 04-01-PLAN.md - Prove one production-quality Herdr-to-device-to-exact-focus Rust tracer and freeze shared interfaces.
+- [x] 04-02-PLAN.md - Freeze deterministic Python-oracle parity fixtures with two-root byte comparison, lineage, closure, and privacy checks.
 
 **Wave 2** *(requires Waves 1 plans; no files overlap within this wave)*
 
@@ -448,6 +448,5 @@ Plans:
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
 | 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
-| 4. Production Rust Host Bridge | 0/10 | Planned | - |
+| 4. Production Rust Host Bridge | 2/10 | In Progress|  |
 | 5. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
-

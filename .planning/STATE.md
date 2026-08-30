@@ -1,18 +1,18 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-current_phase: 03.2
-current_phase_name: Focus-Then-Hold USB Keyboard
-status: phase_complete
+current_phase: 04
+current_phase_name: Production Rust Host Bridge
+status: executing
 stopped_at: Phase 04 context gathered
-last_updated: "2026-08-29T21:35:58.122Z"
-last_activity: 2026-08-29
-last_activity_desc: Reordered remaining work so the Production Rust Host Bridge is Phase 4 before actual-device acceptance
-state_head: 688056b545de9fcf8e0887a51f85c7659f93a78f
+last_updated: "2026-08-30T00:39:21.450Z"
+last_activity: 2026-08-30
+last_activity_desc: Phase 04 execution started
+state_head: f132cb9f5b77b9a90e161b7fd01389e70b98c493
 progress:
   total_phases: 9
   completed_phases: 5
-  total_plans: 53
+  total_plans: 63
   completed_plans: 53
 milestone_name: milestone
 ---
@@ -24,7 +24,7 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 03.2
 current_phase_name: Focus-Then-Hold USB Keyboard
-status: Ready to execute
+status: Executing Phase 04
 stopped_at: Completed 03-08-PLAN.md
 last_updated: "2026-08-21T01:20:00Z"
 last_activity: 2026-08-21
@@ -43,14 +43,14 @@ progress:[██████████] 100%
 See: .planning/PROJECT.md (updated 2026-08-20)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 03.2 — Focus-Then-Hold USB Keyboard
+**Current focus:** Phase 04 — Production Rust Host Bridge
 
 ## Current Position
 
-Phase: 03.2 (Focus-Then-Hold USB Keyboard) — COMPLETE
-Plan: 09 of 10 — Complete
-Status: Phase complete; prior Phase 5 gate remains valid only for its recorded deployment and requires refresh for the changed binary
-Last activity: 2026-08-22 — Quick-tap focus regression resolved on exact device; production bridge restored
+Phase: 04 (Production Rust Host Bridge) — EXECUTING
+Plan: 1 of 10
+Status: Executing Phase 04
+Last activity: 2026-08-30 — Phase 04 execution started
 
 Progress: [██████████] 100%
 
