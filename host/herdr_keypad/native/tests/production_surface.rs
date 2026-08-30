@@ -122,6 +122,10 @@ fn production_binary_start_status_stop_owns_control_socket_for_authority_lifetim
         status["device_state"], "device_unavailable",
         "a running authority without an exact USB snapshot ACK must not report device ready"
     );
+    assert_eq!(
+        status["herdr_state"], "herdr_unavailable",
+        "a running authority without a successful complete Herdr snapshot must not report Herdr running"
+    );
     let bounded_states = [
         "stopped",
         "running",

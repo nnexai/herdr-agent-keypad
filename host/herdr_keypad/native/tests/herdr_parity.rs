@@ -33,10 +33,10 @@ async fn serve_complete(path: PathBuf, requests: Arc<Mutex<Vec<Value>>>) {
         requests.lock().expect("request lock").push(request.clone());
         let id = request["id"].clone();
         let response = match request["method"].as_str().expect("method") {
-            "session.snapshot" => json!({"jsonrpc":"2.0", "id":id, "result":{"snapshot":{"version":"0.8.2"}}}),
-            "agent.list" => json!({"jsonrpc":"2.0", "id":id, "result":{"agents":[{"pane_id":"pane-1"}]}}),
-            "workspace.list" => json!({"jsonrpc":"2.0", "id":id, "result":{"workspaces":[{"workspace_id":"workspace-1"}]}}),
-            "agent.focus" => json!({"jsonrpc":"2.0", "id":id, "result":{"agent":{"focused":true,"terminal_id":"terminal-1","agent_session":"session-1"}}}),
+            "session.snapshot" => json!({"id":id, "result":{"snapshot":{"version":"0.8.2"}}}),
+            "agent.list" => json!({"id":id, "result":{"agents":[{"pane_id":"pane-1"}]}}),
+            "workspace.list" => json!({"id":id, "result":{"workspaces":[{"workspace_id":"workspace-1"}]}}),
+            "agent.focus" => json!({"id":id, "result":{"agent":{"focused":true,"terminal_id":"terminal-1","agent_session":"session-1"}}}),
             method => panic!("unexpected Herdr method: {method}"),
         };
         let mut bytes = serde_json::to_vec(&response).expect("response JSON");
@@ -70,6 +70,7 @@ async fn complete_reads_correlate_ids_and_focus_is_the_only_write() {
         vec!["session.snapshot", "agent.list", "workspace.list", "agent.focus"]
     );
     assert_eq!(requests[3]["params"], json!({"target":"pane-1"}));
+    assert!(requests.iter().all(|request| request["id"].is_string()));
     assert!(requests.windows(2).all(|pair| pair[0]["id"] != pair[1]["id"]));
     let _ = std::fs::remove_file(path);
 }
@@ -110,7 +111,8 @@ async fn correlated_subscribe_ack_admits_only_typed_invalidation_events() {
         let (mut stream, request) = accept_request(&listener).await;
         assert_eq!(request["method"], "events.subscribe");
         let id = request["id"].clone();
-        let ack = json!({"jsonrpc":"2.0","id":id,"result":{"subscribed":true}});
+        assert!(request["id"].is_string());
+        let ack = json!({"id":id,"result":{"subscribed":true}});
         let mut bytes = serde_json::to_vec(&ack).expect("ack JSON");
         bytes.push(b'\n');
         bytes.extend_from_slice(b"{\"event\":\"pane.updated\",\"data\":{\"pane_id\":\"private\"}}\n");

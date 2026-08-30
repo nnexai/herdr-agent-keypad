@@ -171,6 +171,11 @@ impl RuntimeCoordinator {
             } else {
                 BridgeStatus::DeviceUnavailable
             };
+            status.herdr_state = if self.herdr_healthy && self.current.is_some() {
+                BridgeStatus::Running
+            } else {
+                BridgeStatus::HerdrUnavailable
+            };
             status.codex_state = match self.codex.view().source_state.as_str() {
                 "current" => BridgeStatus::Ready,
                 "stale" => BridgeStatus::Stale,

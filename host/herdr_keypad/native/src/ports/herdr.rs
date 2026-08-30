@@ -150,10 +150,10 @@ impl HerdrClient {
 
     async fn request_value(&mut self, method: &str, params: Value) -> Result<Value, HerdrError> {
         Self::validate_method(method)?;
-        let id = self.request_id();
+        let id = self.request_id().to_string();
         let mut request = serde_json::to_vec(&json!({
             "jsonrpc": "2.0",
-            "id": id,
+            "id": id.clone(),
             "method": method,
             "params": params,
         }))
@@ -188,10 +188,13 @@ impl HerdrClient {
         let object = response
             .as_object()
             .ok_or_else(|| HerdrError::new(HerdrErrorCode::InvalidShape))?;
-        if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        if object
+            .get("jsonrpc")
+            .is_some_and(|version| version.as_str() != Some("2.0"))
+        {
             return Err(HerdrError::new(HerdrErrorCode::InvalidShape));
         }
-        if object.get("id").and_then(Value::as_u64) != Some(id) {
+        if object.get("id").and_then(Value::as_str) != Some(id.as_str()) {
             return Err(HerdrError::new(HerdrErrorCode::Unrelated));
         }
         if object.contains_key("result") && object.contains_key("error") {
@@ -320,7 +323,7 @@ pub struct HerdrEventStream {
     writer: Option<OwnedWriteHalf>,
     read_buffer: Vec<u8>,
     next_id: u64,
-    request_id: Option<u64>,
+    request_id: Option<String>,
     mode: HerdrStreamMode,
     reason: Option<HerdrErrorCode>,
 }
@@ -370,9 +373,9 @@ impl HerdrEventStream {
         self.reason.map(HerdrErrorCode::as_str)
     }
 
-    fn next_request_id(&mut self) -> u64 {
+    fn next_request_id(&mut self) -> String {
         self.next_id = self.next_id.saturating_add(1).max(1);
-        self.next_id
+        self.next_id.to_string()
     }
 
     fn fallback(&mut self, reason: HerdrErrorCode) {
@@ -405,6 +408,7 @@ impl HerdrEventStream {
         self.reason = None;
         let path = self.client.socket_path.clone();
         let request_id = self.next_request_id();
+        let wire_request_id = request_id.clone();
         let subscriptions = self.subscriptions.clone();
         let result = tokio::time::timeout(deadline, async move {
             let stream = UnixStream::connect(path)
@@ -413,7 +417,7 @@ impl HerdrEventStream {
             let (mut reader, mut writer) = stream.into_split();
             let mut request = serde_json::to_vec(&json!({
                 "jsonrpc": "2.0",
-                "id": request_id,
+                "id": wire_request_id,
                 "method": "events.subscribe",
                 "params": {"subscriptions": subscriptions},
             }))
@@ -458,8 +462,10 @@ impl HerdrEventStream {
                 return Err(HerdrError::new(HerdrErrorCode::InvalidShape));
             }
         };
-        if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0")
-            || object.get("id").and_then(Value::as_u64) != Some(request_id)
+        if object
+            .get("jsonrpc")
+            .is_some_and(|version| version.as_str() != Some("2.0"))
+            || object.get("id").and_then(Value::as_str) != Some(request_id.as_str())
         {
             self.fallback(HerdrErrorCode::Unrelated);
             return Err(HerdrError::new(HerdrErrorCode::Unrelated));
