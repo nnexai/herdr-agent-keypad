@@ -1,0 +1,264 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "accepted": true,
+        "dispatch": false,
+        "reason": "ok"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"1fe9bc6b1f0778f6\",\"payload\":{\"agents\":[{\"age\":\"4h\",\"agent_session\":null,\"discriminator\":\"fixture\",\"entry_id\":\"w19:p1\",\"pane_id\":\"w19:p1\",\"since\":\"7m\",\"slot\":0,\"source_revision\":1,\"state\":\"working\",\"terminal_id\":\"term_6593907102c45d\",\"title\":\"Phase2\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":1,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":2,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"}],\"codex\":{\"error_code\":\"\",\"observation_age\":\"AGE N/A\",\"primary\":null,\"reached_limit\":null,\"reset_text\":\"RESET N/A\",\"secondary\":null,\"source_state\":\"unavailable\"},\"diagnostics\":{\"bridge_version\":\"0.1.0\",\"codex_age\":\"AGE N/A\",\"codex_status\":\"unavailable\",\"device_suffix\":\"UNAVAL\",\"error_code\":\"\",\"firmware_version\":\"UNAVAL\",\"herdr_status\":\"current\",\"link_status\":\"offline\",\"protocol_version\":2,\"revision_suffix\":\"UNAVAL\",\"session_suffix\":\"UNAVAL\",\"sync_age\":\"AGE N/A\"},\"host_epoch\":\"epoch-a\",\"snapshot_revision\":1,\"source_status\":\"current\"},\"reply_to\":null,\"seq\":1,\"session_id\":\"session-a\",\"type\":\"agent_snapshot\",\"v\":2}\n",
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.accepted.agent_snapshot",
+      "sha256": "01504f1586fb9aba0a985a0d9f47a0e74a257528952ea53044662c10bb207526"
+    },
+    {
+      "expected": {
+        "accepted": true,
+        "dispatch": false,
+        "reason": "ok"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"ce02aee76a4fa0d6\",\"payload\":{\"accepted\":true,\"host_epoch\":\"epoch-a\",\"reason\":\"complete\",\"snapshot_revision\":1,\"source_status\":\"current\"},\"reply_to\":null,\"seq\":2,\"session_id\":\"session-a\",\"type\":\"snapshot_ack\",\"v\":2}\n",
+        "type": "snapshot_ack"
+      },
+      "name": "protocol.accepted.snapshot_ack",
+      "sha256": "b2e93a5ba157a732c8d34ff5b69cc431bbe9a352591ec8930dc580d0bf1802db"
+    },
+    {
+      "expected": {
+        "accepted": true,
+        "dispatch": false,
+        "reason": "ok"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"63947b996f25eed3\",\"payload\":{\"action_id\":\"action-a\",\"agent_session\":null,\"entry_id\":\"w19:p1\",\"host_epoch\":\"epoch-a\",\"pane_id\":\"w19:p1\",\"slot\":0,\"snapshot_revision\":1,\"source_revision\":1,\"terminal_id\":\"term_6593907102c45d\"},\"reply_to\":null,\"seq\":3,\"session_id\":\"session-a\",\"type\":\"focus_intent\",\"v\":2}\n",
+        "type": "focus_intent"
+      },
+      "name": "protocol.accepted.focus_intent",
+      "sha256": "17f0f8f377f88da38f47d7d67fdeb502a075fc1ce6245d49d52d79eeb9786d8d"
+    },
+    {
+      "expected": {
+        "accepted": true,
+        "dispatch": false,
+        "reason": "ok"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"b3d99033a9f540e7\",\"payload\":{\"action_id\":\"action-a\",\"agent_session\":null,\"entry_id\":\"w19:p1\",\"focused\":true,\"host_epoch\":\"epoch-a\",\"outcome\":\"accepted\",\"pane_id\":\"w19:p1\",\"slot\":0,\"snapshot_revision\":1,\"source_revision\":1,\"terminal_id\":\"term_6593907102c45d\"},\"reply_to\":null,\"seq\":4,\"session_id\":\"session-a\",\"type\":\"focus_result\",\"v\":2}\n",
+        "type": "focus_result"
+      },
+      "name": "protocol.accepted.focus_result",
+      "sha256": "5d9bd58684dbb73e6e6924ad90c544a751eeb861fae8f956a71bb5e56b450b0e"
+    },
+    {
+      "expected": {
+        "accepted": false,
+        "dispatch": false,
+        "reason": "unknown_field"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"1fe9bc6b1f0778f6\",\"payload\":{\"agents\":[{\"age\":\"4h\",\"agent_session\":null,\"discriminator\":\"fixture\",\"entry_id\":\"w19:p1\",\"pane_id\":\"w19:p1\",\"since\":\"7m\",\"slot\":0,\"source_revision\":1,\"state\":\"working\",\"terminal_id\":\"term_6593907102c45d\",\"title\":\"Phase2\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":1,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":2,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"}],\"codex\":{\"error_code\":\"\",\"observation_age\":\"AGE N/A\",\"primary\":null,\"reached_limit\":null,\"reset_text\":\"RESET N/A\",\"secondary\":null,\"source_state\":\"unavailable\"},\"diagnostics\":{\"bridge_version\":\"0.1.0\",\"codex_age\":\"AGE N/A\",\"codex_status\":\"unavailable\",\"device_suffix\":\"UNAVAL\",\"error_code\":\"\",\"firmware_version\":\"UNAVAL\",\"herdr_status\":\"current\",\"link_status\":\"offline\",\"protocol_version\":2,\"revision_suffix\":\"UNAVAL\",\"session_suffix\":\"UNAVAL\",\"sync_age\":\"AGE N/A\"},\"host_epoch\":\"epoch-a\",\"snapshot_revision\":1,\"source_status\":\"current\"},\"reply_to\":null,\"seq\":1,\"session_id\":\"session-a\",\"type\":\"agent_snapshot\",\"unexpected\":true,\"v\":2}\n",
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.rejected.unknown-field",
+      "sha256": "03b40c5e55259eb747f3887fa8e4b7142b86338cca4973c63bfd2bfe46b72e15"
+    },
+    {
+      "expected": {
+        "accepted": false,
+        "dispatch": false,
+        "reason": "digest_mismatch"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"0000000000000000\",\"payload\":{\"agents\":[{\"age\":\"4h\",\"agent_session\":null,\"discriminator\":\"fixture\",\"entry_id\":\"w19:p1\",\"pane_id\":\"w19:p1\",\"since\":\"7m\",\"slot\":0,\"source_revision\":1,\"state\":\"working\",\"terminal_id\":\"term_6593907102c45d\",\"title\":\"Phase2\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":1,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":2,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"}],\"codex\":{\"error_code\":\"\",\"observation_age\":\"AGE N/A\",\"primary\":null,\"reached_limit\":null,\"reset_text\":\"RESET N/A\",\"secondary\":null,\"source_state\":\"unavailable\"},\"diagnostics\":{\"bridge_version\":\"0.1.0\",\"codex_age\":\"AGE N/A\",\"codex_status\":\"unavailable\",\"device_suffix\":\"UNAVAL\",\"error_code\":\"\",\"firmware_version\":\"UNAVAL\",\"herdr_status\":\"current\",\"link_status\":\"offline\",\"protocol_version\":2,\"revision_suffix\":\"UNAVAL\",\"session_suffix\":\"UNAVAL\",\"sync_age\":\"AGE N/A\"},\"host_epoch\":\"epoch-a\",\"snapshot_revision\":1,\"source_status\":\"current\"},\"reply_to\":null,\"seq\":1,\"session_id\":\"session-a\",\"type\":\"agent_snapshot\",\"v\":2}\n",
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.rejected.canonical-digest",
+      "sha256": "d6f459d3284d190486d21ba06eb5ddc940c53faf8df5c4b4758aa5801faef80a"
+    },
+    {
+      "expected": {
+        "accepted": false,
+        "dispatch": false,
+        "reason": "duplicate_key"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"1fe9bc6b1f0778f6\",\"payload\":{\"agents\":[{\"age\":\"4h\",\"agent_session\":null,\"discriminator\":\"fixture\",\"entry_id\":\"w19:p1\",\"pane_id\":\"w19:p1\",\"since\":\"7m\",\"slot\":0,\"source_revision\":1,\"state\":\"working\",\"terminal_id\":\"term_6593907102c45d\",\"title\":\"Phase2\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":1,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":2,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"}],\"codex\":{\"error_code\":\"\",\"observation_age\":\"AGE N/A\",\"primary\":null,\"reached_limit\":null,\"reset_text\":\"RESET N/A\",\"secondary\":null,\"source_state\":\"unavailable\"},\"diagnostics\":{\"bridge_version\":\"0.1.0\",\"codex_age\":\"AGE N/A\",\"codex_status\":\"unavailable\",\"device_suffix\":\"UNAVAL\",\"error_code\":\"\",\"firmware_version\":\"UNAVAL\",\"herdr_status\":\"current\",\"link_status\":\"offline\",\"protocol_version\":2,\"revision_suffix\":\"UNAVAL\",\"session_suffix\":\"UNAVAL\",\"sync_age\":\"AGE N/A\"},\"host_epoch\":\"epoch-a\",\"snapshot_revision\":1,\"source_status\":\"current\"},\"reply_to\":null,\"seq\":1,\"session_id\":\"session-a\",\"type\":\"agent_snapshot\",\"v\":2,\"v\":2}\n",
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.rejected.duplicate-key",
+      "sha256": "29bc842fd5c9d20b5037657eb83de51a78c4c33ba6703ef5434c3e1c6c10c772"
+    },
+    {
+      "expected": {
+        "accepted": false,
+        "dispatch": false,
+        "reason": "unknown_type"
+      },
+      "input": {
+        "candidate": "hold_intent",
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"1fe9bc6b1f0778f6\",\"payload\":{\"agents\":[{\"age\":\"4h\",\"agent_session\":null,\"discriminator\":\"fixture\",\"entry_id\":\"w19:p1\",\"pane_id\":\"w19:p1\",\"since\":\"7m\",\"slot\":0,\"source_revision\":1,\"state\":\"working\",\"terminal_id\":\"term_6593907102c45d\",\"title\":\"Phase2\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":1,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":2,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"}],\"codex\":{\"error_code\":\"\",\"observation_age\":\"AGE N/A\",\"primary\":null,\"reached_limit\":null,\"reset_text\":\"RESET N/A\",\"secondary\":null,\"source_state\":\"unavailable\"},\"diagnostics\":{\"bridge_version\":\"0.1.0\",\"codex_age\":\"AGE N/A\",\"codex_status\":\"unavailable\",\"device_suffix\":\"UNAVAL\",\"error_code\":\"\",\"firmware_version\":\"UNAVAL\",\"herdr_status\":\"current\",\"link_status\":\"offline\",\"protocol_version\":2,\"revision_suffix\":\"UNAVAL\",\"session_suffix\":\"UNAVAL\",\"sync_age\":\"AGE N/A\"},\"host_epoch\":\"epoch-a\",\"snapshot_revision\":1,\"source_status\":\"current\"},\"reply_to\":null,\"seq\":1,\"session_id\":\"session-a\",\"type\":\"hold_intent\",\"v\":2}\n",
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.rejected.protocol-expansion",
+      "sha256": "9d51bf92631c48599629a9dd706e39d28cbbe7acd956e6c2f6f77eb134442ee0"
+    },
+    {
+      "expected": {
+        "accepted": false,
+        "dispatch": false,
+        "reason": "invalid_json"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":{\"a\":0}}}}}}}}}\n",
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.rejected.nesting",
+      "sha256": "9d7a28fb201cf75a279da9421ad2be41236015bc1a0e585a3a569d8a0e80d3fa"
+    },
+    {
+      "expected": {
+        "accepted": false,
+        "dispatch": false,
+        "reason": "line_too_long"
+      },
+      "input": {
+        "kind": "classify",
+        "line_bytes": 4097,
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.rejected.4096-plus-lf",
+      "sha256": "8e638fda75decd24078c35338ba27c5c83ae3e5b9f63a13e11b175368d957edb"
+    },
+    {
+      "expected": {
+        "accepted": true,
+        "dispatch": false,
+        "reason": "ok"
+      },
+      "input": {
+        "kind": "classify",
+        "line_bytes": 4096,
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.accepted.exact-4096-boundary",
+      "sha256": "566075169146290476a69d7e153f279a47c11ae4febd1136d6602de7ebcc6cdd"
+    },
+    {
+      "expected": {
+        "accepted": true,
+        "dispatch": false,
+        "reason": "ok"
+      },
+      "input": {
+        "kind": "classify",
+        "line": "{\"boot_id\":\"boot-a\",\"digest\":\"2ea8b6e005ea7af9\",\"payload\":{\"agents\":[{\"age\":\"4h\",\"agent_session\":null,\"discriminator\":\"fixture\",\"entry_id\":\"w19:p1\",\"pane_id\":\"w19:p1\",\"since\":\"7m\",\"slot\":0,\"source_revision\":1,\"state\":\"working\",\"terminal_id\":\"term_6593907102c45d\",\"title\":\"Phase2\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":1,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"},{\"age\":\"\",\"agent_session\":null,\"discriminator\":\"EMPTY\",\"entry_id\":\"\",\"pane_id\":\"\",\"since\":\"\",\"slot\":2,\"source_revision\":0,\"state\":\"empty\",\"terminal_id\":\"\",\"title\":\"NO AGENT\"}],\"codex\":{\"error_code\":\"\",\"observation_age\":\"AGE 0M\",\"primary\":0,\"reached_limit\":false,\"reset_text\":\"RESET N/A\",\"secondary\":null,\"source_state\":\"current\"},\"diagnostics\":{\"bridge_version\":\"0.1.0\",\"codex_age\":\"AGE 0M\",\"codex_status\":\"current\",\"device_suffix\":\"UNAVAL\",\"error_code\":\"\",\"firmware_version\":\"UNAVAL\",\"herdr_status\":\"current\",\"link_status\":\"offline\",\"protocol_version\":2,\"revision_suffix\":\"UNAVAL\",\"session_suffix\":\"UNAVAL\",\"sync_age\":\"AGE N/A\"},\"host_epoch\":\"epoch-a\",\"snapshot_revision\":1,\"source_status\":\"current\"},\"reply_to\":null,\"seq\":5,\"session_id\":\"session-a\",\"type\":\"agent_snapshot\",\"v\":2}\n",
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.accepted.null-versus-zero",
+      "sha256": "395d6a8371b1ed46e6803b215692eae75cca746369f2c09a48f1c9e4952be494"
+    },
+    {
+      "expected": {
+        "duplicate": "duplicate",
+        "first": "ok",
+        "out_of_order": "duplicate",
+        "second": "ok"
+      },
+      "input": {
+        "kind": "session",
+        "sequence": [
+          1,
+          1,
+          2,
+          1
+        ],
+        "type": "focus_intent"
+      },
+      "name": "protocol.session-duplicate-and-sequence",
+      "sha256": "9c50cf40f80634262a7c3a5ae04f9faa072f754b3343641e30e675f68671c1c8"
+    },
+    {
+      "expected": {
+        "reason": "session_mismatch"
+      },
+      "input": {
+        "kind": "session",
+        "type": "agent_snapshot"
+      },
+      "name": "protocol.rejected.session-mismatch",
+      "sha256": "33bf8fb27b9b8f96bf5e1067a384c5fbfdaf27427eeef4b17822dc3f59c9c208"
+    }
+  ],
+  "family": "protocol",
+  "fixture_sha256": "2932b2011de5ef781fe4520819993db38926ecd36925d8edefdc0894e5f9321c",
+  "schema_version": 1,
+  "sources": [
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/bridge.py",
+      "sha256": "b4cd6b8fe5bdd3cdfb32f31793e02e7424ffe2ca4ef03762b9c202f74902fc01"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/projection.py",
+      "sha256": "390b37bd4b5ce56577890611dbde4182453ff23728f7c3220fe0132fd3095bbc"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/focus.py",
+      "sha256": "faf48b234d1d5e0b552f92e8eb327766bfc452d002af4a3fc68779b4c96cbea3"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/codex.py",
+      "sha256": "ca2715e9e6ab88171c76974bde7e9058b4c9e2c05ba1295ded520afd597803a6"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_protocol.py",
+      "sha256": "56521aa93f53157a8f70ceda648f9844c069c55288cc94ecfa834b64b428da92"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_projection.py",
+      "sha256": "eb74a619bc067ae479ff511c7d5d1787d158df8ba9678e9abee1741477c4ba2d"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_focus.py",
+      "sha256": "b749163c23873dde7025b4dbb3930cf557286b17bf4a37c9278f42bac48e4674"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_codex.py",
+      "sha256": "13839ba699d7c954211992d0cb47164680c4ef7396b4b433f2f5aecfc0e91e06"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_integration.py",
+      "sha256": "734624bc9e7f3df3b09d2bbb2b5f252fd669d2e26bf76a50b6d9a0571b9f8bb5"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "protocol/schema/v2.json",
+      "sha256": "e06e7664c4ff41531b4b7c857f404b48d8f4192485291f845262b61b2a7d8f27"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "protocol/fixtures/v2-golden.json",
+      "sha256": "d7982bf989d7aca5d95a48d0b69effc98336fed22a3ae31494dea3a4400110c2"
+    }
+  ]
+}
