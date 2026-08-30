@@ -44,6 +44,23 @@ const DEPENDENCY_TOOL: &str = "otool -L";
 const DEPENDENCY_LIBRARIES: &str = "[\"libc.so.6\", \"ld-linux-x86-64.so.2\"]";
 #[cfg(target_os = "macos")]
 const DEPENDENCY_LIBRARIES: &str = "[\"/usr/lib/libSystem.B.dylib\"]";
+
+#[cfg(target_os = "linux")]
+fn copy_test_binary(destination: &Path) {
+    fs::copy(TEST_BINARY, destination).expect("copy native test executable");
+}
+
+#[cfg(target_os = "macos")]
+fn copy_test_binary(destination: &Path) {
+    let status = Command::new("lipo")
+        .arg(TEST_BINARY)
+        .args(["-thin", "arm64", "-output"])
+        .arg(destination)
+        .status()
+        .expect("lipo available for release tests");
+    assert!(status.success(), "thin native test executable");
+}
+
 struct BundleFixture {
     root: PathBuf,
     binary_hash: String,
@@ -55,7 +72,7 @@ impl BundleFixture {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!("herdr-keypad-release-bundle-{id}"));
         fs::create_dir_all(root.join("bin")).expect("create bundle fixture");
-        fs::copy(TEST_BINARY, root.join("bin/herdr-keypad")).expect("copy native test executable");
+        copy_test_binary(&root.join("bin/herdr-keypad"));
         fs::copy(
             Path::new(PLUGIN_ROOT).join("herdr-plugin.toml"),
             root.join("herdr-plugin.toml"),
@@ -150,7 +167,7 @@ fn assert_rejected(output: std::process::Output, expected: &str) {
 }
 
 #[test]
-fn valid_linux_bundle_passes_closed_policy() {
+fn valid_bundle_passes_closed_policy() {
     let fixture = BundleFixture::new();
     let output = fixture.verify(TEST_TARGET);
     assert!(
@@ -252,7 +269,7 @@ fn lifecycle_document_is_reopened_and_privacy_checked() {
 }
 
 #[test]
-fn valid_linux_tar_archive_passes_closed_policy() {
+fn valid_tar_archive_passes_closed_policy() {
     let fixture = BundleFixture::new();
     let archive = std::env::temp_dir().join("herdr-keypad-release-bundle.tar.gz");
     let status = Command::new("tar")
