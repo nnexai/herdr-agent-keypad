@@ -32,14 +32,14 @@ impl BundleFixture {
         )
         .expect("copy plugin manifest");
         fs::copy(LIFECYCLE, root.join("LIFECYCLE.md")).expect("copy lifecycle document");
-
         let binary_hash = sha256(&root.join("bin/herdr-keypad"));
         let binary_size = fs::metadata(root.join("bin/herdr-keypad"))
             .expect("binary metadata")
             .len();
+        let lifecycle_hash = sha256(&root.join("LIFECYCLE.md"));
         fs::write(
             root.join("release-manifest.json"),
-            release_manifest(&binary_hash, binary_size),
+            release_manifest(&binary_hash, binary_size, &lifecycle_hash),
         )
         .expect("write release manifest");
         Self {
@@ -79,9 +79,9 @@ fn sha256(path: &Path) -> String {
         .to_owned()
 }
 
-fn release_manifest(binary_hash: &str, binary_size: u64) -> String {
+fn release_manifest(binary_hash: &str, binary_size: u64, lifecycle_hash: &str) -> String {
     format!(
-        r#"{{
+        r#"{{ 
   "schema_version": 1,
   "plugin": {{"id": "herdr-keypad", "version": "0.1.0"}},
   "bridge": {{"version": "0.1.0"}},
@@ -95,6 +95,7 @@ fn release_manifest(binary_hash: &str, binary_size: u64) -> String {
     ]
   }},
   "cargo_lock": {{"sha256": "{LOCK_HASH}"}},
+  "lifecycle": {{"path": "LIFECYCLE.md", "sha256": "{lifecycle_hash}"}},
   "binary": {{"path": "bin/herdr-keypad", "sha256": "{binary_hash}", "size": {binary_size}}},
   "reproducibility": {{"status": "passed", "hash_a": "{binary_hash}", "hash_b": "{binary_hash}", "equal": true}},
   "dependencies": {{"tool": "ldd", "status": "passed", "libraries": ["libc.so.6", "ld-linux-x86-64.so.2"]}},
@@ -198,8 +199,11 @@ fn unknown_manifest_fields_are_rejected_by_closed_schema() {
     let fixture = BundleFixture::new();
     let manifest_path = fixture.root.join("release-manifest.json");
     let manifest = fs::read_to_string(&manifest_path).expect("manifest");
-    fs::write(&manifest_path, manifest.replace("{\n  \"schema_version\"", "{\n  \"unexpected\": true,\n  \"schema_version\""))
-        .expect("add unknown field");
+    fs::write(
+        &manifest_path,
+        manifest.replacen("\"schema_version\"", "\"unexpected\": true,\n  \"schema_version\"", 1),
+    )
+    .expect("add unknown field");
     assert_rejected(fixture.verify("x86_64-unknown-linux-gnu"), "schema");
 }
 

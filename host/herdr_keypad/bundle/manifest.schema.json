@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://herdr.dev/schemas/herdr-keypad-release-manifest-v1.json",
+  "title": "Herdr Keypad unsigned native release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "plugin",
+    "bridge",
+    "target",
+    "compiler",
+    "source",
+    "cargo_lock",
+    "lifecycle",
+    "binary",
+    "reproducibility",
+    "dependencies",
+    "tests",
+    "signing",
+    "notarization"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "plugin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": {"const": "herdr-keypad"},
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
+    "bridge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version"],
+      "properties": {
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["triple", "os", "arch"],
+      "properties": {
+        "triple": {"enum": ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin"]},
+        "os": {"enum": ["linux", "macos"]},
+        "arch": {"enum": ["x86_64", "arm64"]}
+      }
+    },
+    "compiler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["toolchain", "rustc", "cargo"],
+      "properties": {
+        "toolchain": {"type": "string", "minLength": 1, "maxLength": 128},
+        "rustc": {"type": "string", "minLength": 1, "maxLength": 256},
+        "cargo": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "archives"],
+      "properties": {
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "archives": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["root", "sha256"],
+            "properties": {
+              "root": {"enum": ["source-a", "source-b"]},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    },
+    "cargo_lock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256"],
+      "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"const": "LIFECYCLE.md"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "size"],
+      "properties": {
+        "path": {"const": "bin/herdr-keypad"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "size": {"type": "integer", "minimum": 1}
+      }
+    },
+    "reproducibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "hash_a", "hash_b", "equal"],
+      "properties": {
+        "status": {"const": "passed"},
+        "hash_a": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "hash_b": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "equal": {"const": true}
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "status", "libraries"],
+      "properties": {
+        "tool": {"enum": ["ldd", "otool -L"]},
+        "status": {"const": "passed"},
+        "libraries": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 256}
+        }
+      }
+    },
+    "tests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "command"],
+      "properties": {
+        "status": {"const": "passed"},
+        "command": {"type": "string", "minLength": 1, "maxLength": 512}
+      }
+    },
+    "signing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {
+        "status": {"enum": ["not-run", "passed"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "notarization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason"],
+      "properties": {
+        "status": {"enum": ["not-run", "passed"]},
+        "reason": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    }
+  }
+}
