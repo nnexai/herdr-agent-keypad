@@ -1,26 +1,25 @@
 ---
-status: verifying
+status: resolved
 trigger: "User reports live physical focus switching still does not work and Codex limits show unavailable while native status reports ready. This is ground truth: runtime is not stable or production-ready."
 created: 2026-08-30T12:29:01Z
-updated: 2026-08-30T13:42:12Z
+updated: 2026-08-30T14:19:49Z
 ---
 
 ## Current Focus
 
 reasoning_checkpoint:
-  hypothesis: "FocusExecutor uses the mutable live AgentInfo revision as an authorization fence and never proves that the device-echoed identity exactly matches the ACKed displayed entry; therefore normal same-agent revision churn is rejected while a forged displayed revision reaches the live port."
+  hypothesis: "The configured per-poll read deadline causes false link loss because read_line_with_timeout returns UsbError::Timeout and receive_v2 resets the authorized stream for every error without distinguishing an idle deadline from transport failure."
   confirming_evidence:
-    - "RED displayed revision 410778 with live revision 410910, unchanged pane/terminal/workspace/tab/session, returned SourceRevisionChanged instead of Accepted."
-    - "RED forged displayed source_revision returned SourceRevisionChanged only after Spy recorded agent.list, proving the ACKed-entry echo fence is absent."
-    - "Direct live `herdr agent focus w17:p1` succeeded while AgentInfo revision advanced 410778 to 410910 with state_change_seq 151 and pane/terminal/workspace/tab/structured session unchanged."
-  falsification_test: "The hypothesis is wrong if removing revision from live revalidation still rejects the same stable identity, or if exact binding-to-ACKed-entry comparison cannot reject a forged revision before any port call."
-  fix_rationale: "Use Identity::displayed_echo_exact for the displayed binding versus ACKed entry, where revision is immutable integrity data; use Identity::live_exact for the later live AgentInfo, where revision is mutable but all stable identity/session fields remain fenced."
-  blind_spots: "No firmware, probe, menu, encoder, key, or synthetic focus stimulus was used during validation or deployment; one bounded physical agent-key verification remains."
+    - "Focused RED returned Err(Timeout) instead of Ok(None) after a valid connected session received only the prefix of a bounded v2 frame."
+    - "The same code path calls reset_link before returning, while live status recorded four device_unavailable transitions followed by three re-ACKs without user stimulus."
+  falsification_test: "The hypothesis is wrong if classifying only UsbError::Timeout as an empty poll does not preserve session identity and the partial prefix through a later complete focus frame."
+  fix_rationale: "Handle the idle deadline at UsbPort::poll, the semantic boundary that can represent no event; leave receive_v2's fail-closed reset behavior unchanged for EOF/I/O, malformed protocol, session mismatch, and replay errors."
+  blind_spots: "The focused duplex tests model Tokio cancellation and timing but not the deployed kernel serial driver; Main owns release deployment and live idle observation."
   candidate_causes:
-    - "code/state: duplicated manual FocusExecutor comparison assigns source_revision to the wrong validation phase and omits the displayed echo check."
-    - "data: Herdr AgentInfo revision churns independently of stable agent identity and state_change_seq."
-  and_gate: "yes — the false rejection requires a valid displayed binding plus later revision churn; the forged-echo defect is independently present and closes the integrity side of the same seam."
-next_action: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, another key, firmware, or probe; report whether focus changed."
+    - "code: receive_v2 unconditionally resets the link for UsbError::Timeout as well as real read and protocol failures."
+    - "environment/data: the connected CDC stream can legitimately be silent longer than the host poll timeout or carry a partial bounded frame across it."
+  and_gate: "yes — ordinary idle/split input and the all-errors-reset classification jointly produce the false reconnect."
+next_action: "Resolved: physical agent-key focus succeeded; bounded runtime status recorded focus_accepted with device ready, Herdr running, and Codex ready."
 
 
 ## Symptoms
@@ -148,6 +147,55 @@ started: after deployment of host ACK/readiness fixes
   found: "The only post-deploy status action, plugin-log-73, succeeded with state=stale, device_state=ready, herdr_state=running, codex_state=ready, reconnect_attempt=0, backoff_ms=0, last_error=null. Its transitions are bridge_started@0, codex_connected@1, snapshot_acknowledged@2, codex_unavailable@3, codex_connected@4; no focus outcome exists. No firmware, probe, menu, encoder, key, or synthetic focus stimulus was used."
   implication: "Startup and the pre-gesture state are live without claiming focus success. The checkpoint stays active, unarchived, and unresolved pending exactly one ordinary agent-key press."
 
+- timestamp: 2026-08-30T13:47:12Z
+  checked: deployed read-only status after the revision-fence release, supplied as live ground truth
+  found: "Without user stimulus, the bounded transition history recorded four device_unavailable transitions and three subsequent snapshot_acknowledged transitions."
+  implication: "The deployed native bridge repeatedly discarded a live USB authority and re-established it during idle operation; this is transport churn independent of the still-pending physical focus gesture."
+- timestamp: 2026-08-30T13:47:12Z
+  checked: UsbPort poll/read error ownership and coordinator recovery ownership
+  found: "read_line_with_timeout maps an elapsed per-read deadline to UsbError::Timeout; receive_v2 resets the link for every read error; RuntimeCoordinator maps every UsbPort error to mark_usb_unavailable. The coordinator separately owns pending publication ack_deadline and marks the link unavailable when that deadline expires."
+  implication: "The idle deadline is misclassified at the USB read boundary. It must become an empty poll without weakening the independent snapshot ACK recovery deadline or any real read/parse/session error fence."
+
+- timestamp: 2026-08-30T13:48:06Z
+  checked: "cargo test --locked --test usb_platform idle_poll_timeout_preserves_connected_session_and_partial_frame -- --exact"
+  found: "RED: 0 passed, 1 failed, 20 filtered out; poll returned Err(Timeout) instead of Ok(None) after consuming a valid partial v2 frame prefix."
+  implication: "The exact live failure mechanism is deterministic at the production UsbPort seam, and the regression oracle covers no event, retained connection/session authority, and resumed partial-frame parsing."
+
+- timestamp: 2026-08-30T13:50:23Z
+  checked: focused idle USB RED-to-GREEN at the production port seam
+  found: "The exact RED command changed from 0 passed/1 failed/20 filtered with Err(Timeout) to 1 passed/0 failed/21 filtered after the two-branch timeout classification. The complete usb_platform suite passed 22/22."
+  implication: "A connected idle deadline now yields no event, retains the exact boot/session identity, and preserves a partial bounded frame until its suffix completes."
+- timestamp: 2026-08-30T13:50:23Z
+  checked: held-out real transport/protocol failure fence
+  found: "real_eof_and_protocol_failures_reset_the_connected_session passed 1/1 (21 filtered), exercising both post-hello EOF -> UsbError::Io and malformed wire bytes -> UsbError::Protocol; both discard connection and session authority."
+  implication: "The timeout exception is narrow: EOF, I/O, parsing, session, and sequencing failures still use receive_v2's existing fail-closed reset path."
+- timestamp: 2026-08-30T13:50:23Z
+  checked: coordinator ACK recovery and bounded-resource fences
+  found: "sent_publication_without_ack_reconnects_within_the_bounded_deadline passed 1/1 (24 filtered), proving a 40 ms pending ACK deadline closes and opens a second stream within 500 ms. resource_bounds passed 5/5, including DEVICE_LINE_LIMIT == protocol MAX_LINE_BYTES."
+  implication: "Idle read timeouts no longer reconnect, while the independent pending-publication ACK deadline still forces bounded recovery and ingress memory remains capped at the existing protocol line limit."
+
+- timestamp: 2026-08-30T13:56:46Z
+  checked: final idle-timeout diff review, focused locked validation, full locked native suite, and atomic source/test commit
+  found: "Focused cases passed: idle timeout 1/1, EOF/protocol reset 1/1, complete usb_platform 22/22, pending-ACK deadline 1/1, and resource_bounds 5/5. Full cargo test --locked passed 131 tests across 15 suites with 1 ignored. The three idle-timeout source/test files were committed atomically as 5b1e16a."
+  implication: "Idle becomes an empty poll without weakening EOF/protocol reset, the independent ACK deadline, or bounded ingress; the integrated source and complete locked suite are GREEN."
+- timestamp: 2026-08-30T13:56:46Z
+  checked: clean locked release, byte-identical installed-plugin staging, and exactly one Herdr-managed restart
+  found: "cargo clean followed by cargo build --locked --release succeeded. target/release/herdr-keypad-native and /home/nnex/.local/share/herdr/plugins/herdr-keypad/bin/herdr-keypad both have SHA-256 745358cae6312159a546290fc8c0e2d6a8e5411ee2e22f3359e4844f8c1fab76, and cmp reported exact identity. Herdr action plugin-log-75 is the sole valid restart dispatch for this deployment; an earlier malformed option attempt exited 2 before action dispatch. Old native PID 1606469 exited and sole new native PID 1669509 runs the staged bin/herdr-keypad restart authority."
+  implication: "Exactly one managed authority replacement activated the tested idle-timeout release bytes."
+- timestamp: 2026-08-30T13:56:46Z
+  checked: post-restart production authority, serial ownership, and Python absence
+  found: "PID 1669509 alone owns /dev/ttyACM0 through FD 9; fuser reports only 1669509. The python.*herdr[_-]keypad and herdr[_-]keypad.*python process scan returned no rows."
+  implication: "The deployed Rust runtime is the sole host and serial authority; no Python keypad bridge is active."
+- timestamp: 2026-08-30T13:56:46Z
+  checked: bounded live idle interval followed by exactly one read-only status action
+  found: "After restart, no status, firmware, probe, menu, encoder, key, focus, or other device stimulus occurred during a measured 10.004538258-second interval, greater than three 3-second polls. The sole post-deploy status action, plugin-log-76, succeeded with state=stale, device_state=ready, herdr_state=running, codex_state=ready, reconnect_attempt=0, backoff_ms=0, and last_error=null. Its exact transitions are bridge_started@0, codex_connected@1, snapshot_acknowledged@2, codex_unavailable@3, codex_connected@4."
+  implication: "No device_unavailable transition and no repeated snapshot_acknowledged/re-ACK churn occurred through the idle observation. The active checkpoint remains unarchived and unresolved; it is now safe to request exactly one ordinary agent-key press for final physical focus verification."
+
+- timestamp: 2026-08-30T14:19:49Z
+  checked: final physical keypad focus verification and bounded post-gesture runtime status
+  found: "The user reported that the deployed keypad focus action works. The sole bounded follow-up status, plugin-log-77, reported device_state=ready, herdr_state=running, codex_state=ready, reconnect_attempt=0, backoff_ms=0, last_error=null, and retained focus_accepted transitions."
+  implication: "The physical key-to-exact-Herdr-focus path and current Codex presentation are verified on deployed PID 1669509. The debug session is resolved."
+
 ## Resolution
 
 root_cause:
@@ -156,6 +204,7 @@ root_cause:
   - "A successful current Codex collection assigned Some(CodexUnavailable) instead of clearing it."
   - "Every exact ACK and every Codex republication appended transitions even when no state changed. Alternating snapshot_acknowledged/codex_connected events could evict the actionable focus_rejected evidence from the fixed 32-entry ring."
   - "FocusExecutor applied source_revision to the later live AgentInfo comparison even though Herdr increments revision for the same stable agent identity, and it did not compare the device-echoed source_revision with the exact ACKed displayed entry before reading live state."
+  - "UsbPort::receive_v2 reset the authorized stream for every read error, including the expected per-poll UsbError::Timeout produced by an idle but connected CDC stream. RuntimeCoordinator then correctly treated that returned error as device_unavailable, causing the observed reconnect/re-ACK churn."
 fix:
   - "PendingPublication now owns PublishedProjection: the full exact ProjectionSnapshot plus the displayed Codex BridgeStatus derived from the serialized payload. Only a matching accepted ACK installs it as acknowledged_projection."
   - "FocusExecutor now requires an explicit acknowledged ProjectionSnapshot. RuntimeCoordinator authorizes epoch/revision/slot/entry/pane/terminal/session/source-revision against that displayed view, then performs the existing complete live read and selection-only agent.focus acknowledgement checks."
@@ -164,6 +213,7 @@ fix:
   - "Current Codex collection clears CodexUnavailable. Collector transitions and ACK/display transitions are emitted only when their corresponding state changes; repeated ACK/republication churn no longer consumes the bounded ring."
   - "Identity::displayed_echo_exact validates pane, terminal, structured session, and source_revision against the ACKed displayed entry before any Herdr port call. Live revalidation uses that full displayed identity with Identity::live_exact, preserving pane/terminal/workspace/tab/session fences while intentionally excluding mutable revision."
   - "SourceRevisionChanged now identifies only a forged/stale device echo that disagrees with the ACKed displayed source_revision; normal live AgentInfo revision churn no longer produces it."
+  - "UsbPort::receive_v2 now leaves the link and persistent ingress buffer intact only for UsbError::Timeout; UsbPort::poll classifies that one condition as Ok(None). All other read, parse, session, and sequence errors retain the existing reset-and-error path."
 state_invariants:
   - "current is the latest successfully completed Herdr projection, or explicit stale/offline/unavailable truth after a real failure; ordinary invalidation alone never changes or publishes it."
   - "pending_publication is the one exact serialized view awaiting ACK; later changes set publication_dirty without changing pending ownership."
@@ -172,6 +222,7 @@ state_invariants:
   - "focus remains selection-only and fail-closed across device session, host epoch, revision, slot, entry, pane, terminal, agent session, source revision, live disappearance/reuse, malformed response, timeout, offline, and unsuccessful focused acknowledgement."
   - "transition memory remains bounded at 32 SafeCode-only entries, but ordinary unchanged ACK/republication cadence does not overwrite actionable focus evidence."
   - "source_revision is immutable at the displayed echo boundary and mutable at the later live AgentInfo boundary; pane_id, terminal_id, workspace_id, tab_id, and structured agent_session remain stable fences during live revalidation."
+  - "A connected idle read deadline is an empty poll, not a disconnect; partial bytes remain bounded by DEVICE_LINE_LIMIT and survive both internal idle deadlines and caller cancellation. Pending snapshot ACK expiry remains coordinator-owned and fail-closed."
 verification:
   oracle_type: specified
   red:
@@ -182,6 +233,7 @@ verification:
     - "ordinary_ack_republication_churn_retains_actionable_focus_evidence: FocusRejected absent after unchanged churn"
     - "displayed_binding_allows_live_revision_churn_for_same_stable_identity: SourceRevisionChanged != Accepted"
     - "forged_source_revision_is_rejected_before_live_read_or_focus: agent.list was called before rejection"
+    - "idle_poll_timeout_preserves_connected_session_and_partial_frame: Err(Timeout) != Ok(None); 0 passed, 1 failed, 20 filtered"
   green:
     - "cargo test --lib core::orchestrator::tests — 19 passed"
     - "cargo test --test production_surface — 7 passed"
@@ -196,34 +248,49 @@ verification:
     - "cargo test --test herdr_parity different_structured_session_remains_rejected — 1 passed"
     - "cargo test --test herdr_parity already_focused_structured_session_is_authorized — 1 passed"
     - "cargo test --test herdr_parity complete_reads_correlate_ids_and_focus_is_the_only_write — 1 passed"
-  guardrail_verdict: "accepted for the deterministic revision-fence behavior, held-out stable identity/session/selection-only contracts, clean locked release deployment, and sole-authority startup; physical focus verification remains pending"
-  live_disposition: "PID 1606469 runs source commit 8c3f26a from the byte-identical staged revision-fence release. No firmware, probe, menu, encoder, key, or synthetic focus stimulus occurred; this checkpoint remains active and unresolved."
-  next_gesture: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, another key, firmware, or probe; report whether focus changed."
+    - "cargo test --locked --test usb_platform idle_poll_timeout_preserves_connected_session_and_partial_frame -- --exact — 1 passed, 21 filtered"
+    - "cargo test --locked --test usb_platform real_eof_and_protocol_failures_reset_the_connected_session -- --exact — 1 passed, 21 filtered"
+    - "cargo test --locked --test usb_platform — 22 passed"
+    - "cargo test --locked --lib sent_publication_without_ack_reconnects_within_the_bounded_deadline — 1 passed, 24 filtered"
+    - "cargo test --locked --test resource_bounds — 5 passed"
+  guardrail_verdict: "accepted: exact RED-to-GREEN coverage, complete USB platform and identity-fence coverage, full locked suite, byte-identical deployment, live idle stability, and successful physical keypad focus."
+  live_disposition: "PID 1669509 runs source commit 5b1e16a from the byte-identical staged release. Physical agent-key focus succeeded; plugin-log-77 retained focus_accepted with device ready, Herdr running, Codex ready, zero reconnect/backoff, and no last error."
+  next_gesture: "none"
 deployment:
-  source_commit: "8c3f26a"
-  native_tests: "focused 35 passed; full cargo test --locked 129 passed across 15 suites, 1 ignored"
-  build_stage_sha256: "c9754ff8db93d8a6f345d6837a623cac35ea173d71ab85e73857ed05cdab0046"
+  source_commit: "5b1e16a"
+  native_tests: "focused 1 idle timeout + 1 EOF/protocol reset + 22 usb_platform + 1 pending-ACK deadline + 5 resource bounds; full cargo test --locked 131 passed across 15 suites, 1 ignored"
+  build_stage_sha256: "745358cae6312159a546290fc8c0e2d6a8e5411ee2e22f3359e4844f8c1fab76"
   restart_count: 1
-  restart_log: "plugin-log-72"
-  old_pid: 1502977
-  new_pid: 1606469
+  restart_log: "plugin-log-75"
+  old_pid: 1606469
+  new_pid: 1669509
   serial_fd: "9 -> /dev/ttyACM0, sole owner"
   python_runtime: "absent"
-  post_deploy_status: "plugin-log-73: stale/ready/running/ready, reconnect_attempt=0, backoff_ms=0, last_error=null"
-  transitions: "bridge_started@0, codex_connected@1, snapshot_acknowledged@2, codex_unavailable@3, codex_connected@4; no focus outcome"
-  disposition: "awaiting_human_verify; active checkpoint retained in place, unarchived and unresolved"
-  human_verification: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, another key, firmware, or probe; report whether focus changed."
-  pending_revision_fence: "deployed from source commit 8c3f26a as the tested byte-identical locked release"
-  controlled_next_step: "Exactly one bounded agent-key human verification; no retry or other device stimulus before reporting the result"
+  idle_observation: "10.004538258 seconds with no status or device stimulus before the sole read-only status"
+  post_deploy_status: "plugin-log-77: stale/ready/running/ready, reconnect_attempt=0, backoff_ms=0, last_error=null"
+  transitions: "bridge_started, codex_connected, snapshot_acknowledged, and retained focus_accepted outcomes; no post-fix idle reconnect churn"
+  disposition: "resolved after successful physical focus verification"
+  human_verification: "passed: the user reported that the intended keypad focus action works"
+  pending_revision_fence: "deployed together with idle-timeout source commit 5b1e16a as the tested byte-identical locked release"
+  pending_idle_usb_fix: "integrated, committed, release-built, byte-identically staged, deployed with one managed restart, and live-idle verified"
+  controlled_next_step: "none"
 files_changed:
   - host/herdr_keypad/native/src/core/orchestrator.rs
   - host/herdr_keypad/native/src/core/focus.rs
   - host/herdr_keypad/native/tests/herdr_parity.rs
   - host/herdr_keypad/native/tests/projection_focus_parity.rs
   - .planning/debug/native-ready-but-physically-unusable.md
+  - host/herdr_keypad/native/src/ports/usb.rs
+  - host/herdr_keypad/native/tests/usb_platform.rs
+  - host/herdr_keypad/native/tests/resource_bounds.rs
 revision_fence_files_changed:
   - host/herdr_keypad/native/src/core/model.rs
   - host/herdr_keypad/native/src/core/focus.rs
   - host/herdr_keypad/native/src/core/orchestrator.rs
   - host/herdr_keypad/native/tests/projection_focus_parity.rs
+  - .planning/debug/native-ready-but-physically-unusable.md
+idle_usb_timeout_files_changed:
+  - host/herdr_keypad/native/src/ports/usb.rs
+  - host/herdr_keypad/native/tests/usb_platform.rs
+  - host/herdr_keypad/native/tests/resource_bounds.rs
   - .planning/debug/native-ready-but-physically-unusable.md
