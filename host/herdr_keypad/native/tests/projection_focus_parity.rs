@@ -120,7 +120,7 @@ fn bounded_labels_prefer_workspace_and_never_emit_paths() {
     let mut value = row("p1", "2", 1);
     value["title"] = Value::Null;
     value["cwd"] = Value::String("/home/me/repository".into());
-    let snapshot = projection.refresh(&[value], &[workspace()]).unwrap();
+    let snapshot = projection.refresh(&[value], &[json!({"workspace_id": "workspace-1", "label": "Workspace"})]).unwrap();
     let expected = fixture("projection.bounded-title-discriminator")["expected"]["entry"].clone();
     assert_eq!(entry_view(&snapshot.entries[0]), expected);
     assert!(!snapshot.entries[0].discriminator.contains('/'));
@@ -153,7 +153,7 @@ fn raw_revision_churn_does_not_advance_material_generation() {
     assert_eq!(first.snapshot_revision, second.snapshot_revision);
     assert_eq!(second.snapshot_revision, expected["revision_only"]);
     assert_eq!(third.snapshot_revision, expected["material"]);
-    assert_eq!(second.entries[0].identity.as_ref().unwrap().source_revision, expected["source_revision"]);
+    assert_eq!(third.entries[0].identity.as_ref().unwrap().source_revision, expected["source_revision"]);
 }
 
 #[test]
@@ -169,16 +169,22 @@ fn unavailable_source_is_not_current_or_actionable() {
 struct Spy {
     rows: Vec<Value>,
     responses: Vec<Result<Value, FocusError>>,
+    read_error: Option<FocusError>,
     calls: Vec<(String, Option<String>)>,
 }
 
 impl Spy {
-    fn new(rows: Vec<Value>) -> Self { Self { rows, responses: Vec::new(), calls: Vec::new() } }
+    fn new(rows: Vec<Value>) -> Self {
+        Self { rows, responses: Vec::new(), read_error: None, calls: Vec::new() }
+    }
 }
 
 impl HerdrPort for Spy {
     fn complete_read(&mut self) -> Result<Vec<Value>, FocusError> {
         self.calls.push(("agent.list".into(), None));
+        if let Some(error) = self.read_error.take() {
+            return Err(error);
+        }
         Ok(self.rows.clone())
     }
 
@@ -196,7 +202,7 @@ fn focus_case(name: &str, spy: Spy, projection: &InboxProjection, intent: &Focus
     let result = FocusExecutor::new().execute(projection, intent, &mut spy);
     let expected = fixture(name)["expected"].clone();
     let calls = spy.calls.iter().map(|(method, target)| json!({"method": method, "target": target})).collect::<Vec<_>>();
-    assert_eq!(calls, expected["calls"], "{name}");
+    assert_eq!(Value::Array(calls), expected["calls"], "{name}");
     assert_eq!(result.status.as_str(), expected["status"], "{name}");
     assert_eq!(result.success(), expected["success"], "{name}");
 }
@@ -237,7 +243,7 @@ fn focus_policy_maps_fences_and_failures_without_other_effects() {
     focus_case("focus.rejected.vanished", Spy::new(vec![]), &fresh_projection, &FocusIntent::new("action-vanished", fresh_binding.clone()));
 
     let mut timeout = Spy::new(rows.clone());
-    timeout.responses.push(Err(FocusError::timeout("timeout")));
+    timeout.read_error = Some(FocusError::timeout("timeout"));
     focus_case("focus.rejected.timeout-uncertain", timeout, &fresh_projection, &FocusIntent::new("action-timeout", fresh_binding.clone()));
 
     let mut malformed = Spy::new(rows.clone());
@@ -245,7 +251,7 @@ fn focus_policy_maps_fences_and_failures_without_other_effects() {
     focus_case("focus.rejected.malformed-ack", malformed, &fresh_projection, &FocusIntent::new("action-malformed", fresh_binding.clone()));
 
     let mut not_found = Spy::new(rows);
-    not_found.responses.push(Err(FocusError::not_found("agent_not_found")));
+    not_found.read_error = Some(FocusError::not_found("agent_not_found"));
     focus_case("focus.rejected.agent-not-found", not_found, &fresh_projection, &FocusIntent::new("action-not-found", fresh_binding));
 }
 
