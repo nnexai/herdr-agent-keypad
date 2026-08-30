@@ -14,7 +14,7 @@ use crate::ports::control::{ControlEndpoint, ControlReply, ControlRequest};
 use crate::ports::herdr::{HerdrClient, HerdrError, HerdrEventStream};
 use crate::ports::lifecycle::{LifecycleCommand, LifecycleOwner, ResourceMetrics, RuntimePaths};
 use crate::ports::logging::{SafeLogger, TraceConfig};
-use crate::ports::status::{BridgeStatus, SafeCode, StatusSnapshot};
+use crate::ports::status::{BridgeStatus, SafeCode, StatusSnapshot, TransitionRing, STATUS_HISTORY_LIMIT};
 use crate::ports::usb::{UsbError, UsbEvent, UsbPort};
 use crate::protocol::v2::{self, Agent, AgentSnapshot, Codex, Diagnostics, FocusIntentPayload, FocusOutcome, FocusResultPayload, FrameType, Payload, ProtocolFrame, SourceStatus as WireSourceStatus};
 use crate::{BridgeError, Cancellation};
@@ -86,6 +86,7 @@ struct PendingPublication {
     snapshot_revision: u64,
     source_status: String,
     ack_deadline: Instant,
+    codex_displayable: bool,
 }
 
 /// One production coordinator joining every completed port.
@@ -103,6 +104,12 @@ pub struct RuntimeCoordinator {
     current: Option<ProjectionSnapshot>,
     last_payload: Option<Value>,
     pending_publication: Option<PendingPublication>,
+    acknowledged_projection: Option<(String, u64, bool)>,
+    focus_proof: Option<(String, u32)>,
+    operational_events: TransitionRing,
+    operational_sequence: u64,
+    codex_last_error: Option<SafeCode>,
+    focus_last_error: Option<SafeCode>,
     publication_dirty: bool,
     herdr_healthy: bool,
     herdr_dirty: bool,
@@ -165,6 +172,12 @@ impl RuntimeCoordinator {
             current: None,
             last_payload: None,
             pending_publication: None,
+            acknowledged_projection: None,
+            focus_proof: None,
+            operational_events: TransitionRing::default(),
+            operational_sequence: 0,
+            codex_last_error: None,
+            focus_last_error: None,
             publication_dirty: false,
             herdr_healthy: false,
             herdr_dirty: false,
@@ -208,12 +221,28 @@ impl RuntimeCoordinator {
                 (true, Some(ModelSourceStatus::Stale)) => BridgeStatus::Stale,
                 _ => BridgeStatus::HerdrUnavailable,
             };
+            let current_generation = self.current.as_ref().map(|snapshot| {
+                (snapshot.host_epoch.as_str(), u64::from(snapshot.snapshot_revision))
+            });
+            let acknowledged_codex_displayable = self
+                .acknowledged_projection
+                .as_ref()
+                .is_some_and(|(epoch, revision, displayable)| {
+                    *displayable && current_generation == Some((epoch.as_str(), *revision))
+                });
             status.codex_state = match self.codex.view().source_state.as_str() {
-                "current" => BridgeStatus::Ready,
-                "stale" => BridgeStatus::Stale,
+                "current" if acknowledged_codex_displayable => BridgeStatus::Ready,
+                "stale" if acknowledged_codex_displayable => BridgeStatus::Stale,
                 "codex_offline" => BridgeStatus::CodexUnavailable,
                 _ => BridgeStatus::Unavailable,
             };
+            let focus_path_proven = self.focus_proof.as_ref().is_some_and(|(epoch, revision)| {
+                self.current.as_ref().is_some_and(|snapshot| {
+                    snapshot.actionable()
+                        && snapshot.host_epoch == *epoch
+                        && snapshot.snapshot_revision == *revision
+                })
+            });
             status.reconnect_attempt = self.usb_reconnect_attempt;
             status.backoff_ms = self
                 .usb_due
@@ -224,13 +253,23 @@ impl RuntimeCoordinator {
                         .min(u128::from(u64::MAX)) as u64
                 })
                 .unwrap_or(0);
-            if let Some(error) = self.usb_last_error {
-                status.last_error = Some(error);
+            status.last_error = self
+                .usb_last_error
+                .or(self.focus_last_error)
+                .or(self.codex_last_error)
+                .or(status.last_error);
+            for transition in self.operational_events.as_slice() {
+                if status.transitions.len() == STATUS_HISTORY_LIMIT {
+                    status.transitions.remove(0);
+                }
+                status.transitions.push(transition);
             }
-            status.state = aggregate_runtime_state(
+            status.state = operational_runtime_state(
                 status.device_state,
                 status.herdr_state,
                 status.codex_state,
+                acknowledged_codex_displayable,
+                focus_path_proven,
             );
         }
         status
@@ -406,6 +445,19 @@ impl RuntimeCoordinator {
                 self.device_link_ready = true;
                 self.usb_reconnect_attempt = 0;
                 self.usb_last_error = None;
+                self.acknowledged_projection = Some((
+                    expected.host_epoch,
+                    expected.snapshot_revision,
+                    expected.codex_displayable,
+                ));
+                self.record_operational(SafeCode::SnapshotAcknowledged);
+                if expected.codex_displayable {
+                    self.codex_last_error = None;
+                    self.record_operational(SafeCode::CodexConnected);
+                } else {
+                    self.codex_last_error = Some(SafeCode::CodexUnavailable);
+                    self.record_operational(SafeCode::CodexUnavailable);
+                }
                 if self.publication_dirty {
                     self.publication_dirty = false;
                     self.publish_current().await;
@@ -486,8 +538,11 @@ impl RuntimeCoordinator {
         self.usb_last_error = Some(error);
         self.pending_focus.clear();
         self.pending_publication = None;
+        self.acknowledged_projection = None;
+        self.focus_proof = None;
         self.publication_dirty = false;
         self.usb.close();
+        self.record_operational(error);
         self.schedule_usb();
     }
 
@@ -495,8 +550,14 @@ impl RuntimeCoordinator {
         let result = tokio::task::block_in_place(|| self.codex.collect());
         self.codex_due = Some(Instant::now() + self.config.codex_interval);
         self.resource_metrics.timer_fires = self.resource_metrics.timer_fires.saturating_add(1);
+        if result.view.source_state == "current" {
+            self.codex_last_error = Some(SafeCode::CodexUnavailable);
+            self.record_operational(SafeCode::CodexConnected);
+        } else {
+            self.codex_last_error = Some(SafeCode::CodexUnavailable);
+            self.record_operational(SafeCode::CodexUnavailable);
+        }
         if let Some(snapshot) = self.current.as_ref() {
-            let _ = result;
             let _ = self.publish_snapshot(snapshot.clone()).await;
         }
     }
@@ -509,6 +570,15 @@ impl RuntimeCoordinator {
 
     async fn publish_snapshot(&mut self, snapshot: ProjectionSnapshot) -> Result<(), BridgeError> {
         let payload = self.payload_for(&snapshot)?;
+        let codex_displayable = payload
+            .get("codex")
+            .and_then(Value::as_object)
+            .is_some_and(|codex| {
+                codex.get("source_state").and_then(Value::as_str) == Some("current")
+                    && ["primary", "secondary"]
+                        .iter()
+                        .any(|key| codex.get(*key).is_some_and(|value| !value.is_null()))
+            });
         self.last_payload = Some(payload.clone());
         if !self.usb.connected() {
             return Ok(());
@@ -526,6 +596,7 @@ impl RuntimeCoordinator {
                     snapshot_revision: u64::from(snapshot.snapshot_revision),
                     source_status,
                     ack_deadline: Instant::now() + self.config.snapshot_ack_timeout,
+                    codex_displayable,
                 });
             }
             Err(_) => self.mark_usb_unavailable(SafeCode::DeviceUnavailable),
@@ -648,11 +719,29 @@ impl RuntimeCoordinator {
             };
             let payload = focus_payload(&intent, outcome.status, outcome.success());
             if self.usb.send_focus_result(payload).await.is_err() {
+                self.focus_proof = None;
+                self.focus_last_error = Some(SafeCode::DeviceUnavailable);
                 self.mark_usb_unavailable(SafeCode::DeviceUnavailable);
                 break;
             }
+            self.record_focus_outcome(&intent, outcome.success());
         }
         Ok(())
+    }
+
+    fn record_focus_outcome(&mut self, intent: &ModelFocusIntent, success: bool) {
+        if success {
+            self.focus_proof = Some((
+                intent.binding.host_epoch.clone(),
+                intent.binding.snapshot_revision,
+            ));
+            self.focus_last_error = None;
+            self.record_operational(SafeCode::FocusAccepted);
+        } else {
+            self.focus_proof = None;
+            self.focus_last_error = Some(SafeCode::FocusRejected);
+            self.record_operational(SafeCode::FocusRejected);
+        }
     }
 
     fn schedule_herdr(&mut self) {
@@ -671,9 +760,16 @@ impl RuntimeCoordinator {
         }
     }
 
+    fn record_operational(&mut self, code: SafeCode) {
+        self.operational_sequence = self.operational_sequence.saturating_add(1);
+        self.operational_events.push(code, self.operational_sequence);
+    }
+
     fn close_boundaries(&mut self) {
         self.pending_focus.clear();
         self.pending_publication = None;
+        self.acknowledged_projection = None;
+        self.focus_proof = None;
         self.publication_dirty = false;
         self.device_link_ready = false;
         self.usb_reconnect_attempt = 0;
@@ -720,6 +816,20 @@ fn aggregate_runtime_state(
         && codex_state == BridgeStatus::Ready
     {
         BridgeStatus::Ready
+    } else {
+        BridgeStatus::Stale
+    }
+}
+
+fn operational_runtime_state(
+    device_state: BridgeStatus,
+    herdr_state: BridgeStatus,
+    codex_state: BridgeStatus,
+    acknowledged_codex_displayable: bool,
+    focus_path_proven: bool,
+) -> BridgeStatus {
+    if acknowledged_codex_displayable && focus_path_proven {
+        aggregate_runtime_state(device_state, herdr_state, codex_state)
     } else {
         BridgeStatus::Stale
     }
@@ -980,6 +1090,7 @@ mod tests {
             snapshot_revision: 11,
             source_status: "current".to_owned(),
             ack_deadline: Instant::now() + DEFAULT_SNAPSHOT_ACK_TIMEOUT,
+            codex_displayable: true,
         }
     }
 
@@ -1450,6 +1561,30 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn acknowledged_unavailable_codex_payload_remains_non_ready_evidence() {
+        let (_root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
+        let mut pending = pending_publication();
+        pending.codex_displayable = false;
+        coordinator.pending_publication = Some(pending);
+
+        coordinator
+            .handle_usb_event(Ok(Some(UsbEvent::SnapshotAck(exact_ack()))))
+            .await
+            .expect("exact ACK handling");
+
+        assert_eq!(
+            coordinator.acknowledged_projection,
+            Some(("host-test".to_owned(), 11, false))
+        );
+        assert_eq!(coordinator.codex_last_error, Some(SafeCode::CodexUnavailable));
+        assert!(coordinator
+            .operational_events
+            .as_slice()
+            .iter()
+            .any(|event| event.code == SafeCode::CodexUnavailable));
+    }
+
     #[test]
     fn ack_timeout_recovery_surfaces_bounded_safe_status() {
         let (_root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
@@ -1668,6 +1803,80 @@ mod tests {
                 BridgeStatus::Stale
             );
         }
+    }
+    #[test]
+    fn collector_ready_cannot_override_acknowledged_unavailable_codex_projection() {
+        assert_eq!(
+            operational_runtime_state(
+                BridgeStatus::Ready,
+                BridgeStatus::Running,
+                BridgeStatus::Ready,
+                false,
+                true,
+            ),
+            BridgeStatus::Stale
+        );
+    }
+
+    #[test]
+    fn snapshot_ack_without_confirmed_successful_focus_result_is_not_ready() {
+        assert_eq!(
+            operational_runtime_state(
+                BridgeStatus::Ready,
+                BridgeStatus::Running,
+                BridgeStatus::Ready,
+                true,
+                false,
+            ),
+            BridgeStatus::Stale
+        );
+        assert_eq!(
+            operational_runtime_state(
+                BridgeStatus::Ready,
+                BridgeStatus::Running,
+                BridgeStatus::Ready,
+                true,
+                true,
+            ),
+            BridgeStatus::Ready
+        );
+    }
+
+
+    #[test]
+    fn focus_evidence_is_generation_scoped_bounded_and_fail_closed() {
+        let (_root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
+        let intent = ModelFocusIntent::new(
+            "focus-proof",
+            Binding {
+                host_epoch: "host-proof".into(),
+                snapshot_revision: 9,
+                slot: 0,
+                entry_id: "pane-proof".into(),
+                identity: Identity {
+                    pane_id: "pane-proof".into(),
+                    terminal_id: "terminal-proof".into(),
+                    agent_session: None,
+                    source_revision: 3,
+                    workspace_id: String::new(),
+                    tab_id: String::new(),
+                },
+            },
+        );
+
+        coordinator.record_focus_outcome(&intent, true);
+        assert_eq!(coordinator.focus_proof, Some(("host-proof".to_owned(), 9)));
+        assert_eq!(coordinator.focus_last_error, None);
+
+        coordinator.record_focus_outcome(&intent, false);
+        assert_eq!(coordinator.focus_proof, None);
+        assert_eq!(coordinator.focus_last_error, Some(SafeCode::FocusRejected));
+        for _ in 0..(STATUS_HISTORY_LIMIT + 4) {
+            coordinator.record_focus_outcome(&intent, false);
+        }
+        let evidence = coordinator.operational_events.as_slice();
+        assert_eq!(evidence.len(), STATUS_HISTORY_LIMIT);
+        assert!(evidence.iter().all(|event| event.code == SafeCode::FocusRejected));
     }
 
     #[test]

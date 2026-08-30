@@ -162,7 +162,7 @@ fn production_binary_start_status_stop_owns_control_socket_for_authority_lifetim
 
 #[cfg(unix)]
 #[test]
-fn production_status_reports_ready_after_codex_0151_collection() {
+fn production_status_keeps_codex_unavailable_until_displayable_payload_is_acked() {
     let root = temp_root();
     fs::create_dir_all(root.join("config")).expect("config");
     fs::create_dir_all(root.join("state")).expect("state");
@@ -195,13 +195,16 @@ fn production_status_reports_ready_after_codex_0151_collection() {
             if !output.status.success() {
                 return false;
             }
-            serde_json::from_slice::<Value>(&output.stdout)
-                .ok()
-                .and_then(|status| status["codex_state"].as_str().map(str::to_owned))
-                .as_deref()
-                == Some("ready")
+            let Ok(status) = serde_json::from_slice::<Value>(&output.stdout) else {
+                return false;
+            };
+            status["codex_state"] == "unavailable"
+                && status["state"] == "stale"
+                && status["transitions"].as_array().is_some_and(|events| {
+                    events.iter().any(|event| event["code"] == "codex_connected")
+                })
         }),
-        "status never reflected the successful Codex collection"
+        "collector success without an exact display ACK must remain non-ready with bounded source evidence"
     );
 
     let stop = lifecycle_command(&root, "stop")
