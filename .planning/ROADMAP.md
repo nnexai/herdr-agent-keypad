@@ -383,7 +383,7 @@ Plans:
   7. Linux and macOS installation and lifecycle behavior are documented and exercised: ordinary-user startup, exact keypad discovery/reconnect, Herdr and Codex child-process/socket failure recovery, clean shutdown, single-instance enforcement, configuration/state placement, and removal of the Python launcher from the supported production path.
   8. Focused native tests and end-to-end smoke checks compare Rust against the frozen Python contract with malformed/oversized frames, duplicate messages, stale identities, reconnects, missing optional Codex fields, unavailable push events, and sustained idle/traffic resource measurements; the final release artifacts are reproducible, versioned, and free of development-only dependencies.
 
-**Plans:** 2/10 plans executed
+**Plans:** 6/10 plans executed
 
 Plans:
 
@@ -394,10 +394,10 @@ Plans:
 
 **Wave 2** *(requires Waves 1 plans; no files overlap within this wave)*
 
-- [ ] 04-03-PLAN.md - Port strict protocol, authoritative projection, and exact focus into the portable core.
-- [ ] 04-04-PLAN.md - Port bounded event-driven Herdr and truthful Codex source adapters.
-- [ ] 04-05-PLAN.md - Implement exact paired USB plus Linux and macOS adapters with portable platform fixtures.
-- [ ] 04-06-PLAN.md - Implement Herdr 0.8.2 lifecycle, config, control, status, logging, and resource bounds.
+- [x] 04-03-PLAN.md - Port strict protocol, authoritative projection, and exact focus into the portable core.
+- [x] 04-04-PLAN.md - Port bounded event-driven Herdr and truthful Codex source adapters.
+- [x] 04-05-PLAN.md - Implement exact paired USB plus Linux and macOS adapters with portable platform fixtures.
+- [x] 04-06-PLAN.md - Implement Herdr 0.8.2 lifecycle, config, control, status, logging, and resource bounds.
 
 **Wave 3** *(requires all Wave 2 plans)*
 
@@ -448,5 +448,5 @@ Plans:
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
 | 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
-| 4. Production Rust Host Bridge | 2/10 | In Progress|  |
+| 4. Production Rust Host Bridge | 6/10 | In Progress|  |
 | 5. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
