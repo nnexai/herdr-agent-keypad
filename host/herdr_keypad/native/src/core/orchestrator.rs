@@ -539,16 +539,16 @@ impl RuntimeCoordinator {
     }
 }
 
-fn reconnect_sleep(deadline: Option<Instant>) -> impl std::future::Future<Output = ()> {
+fn reconnect_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
     async move {
         match deadline {
             Some(deadline) => sleep(deadline.saturating_duration_since(Instant::now())).await,
-            None => std::future::pending().await,
+            None => pending().await,
         }
     }
 }
 
-fn codex_sleep(deadline: Option<Instant>) -> impl std::future::Future<Output = ()> {
+fn codex_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
     reconnect_sleep(deadline)
 }
 
