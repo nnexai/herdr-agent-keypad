@@ -18,6 +18,7 @@ DIGEST_PATTERN = re.compile(r"^[0-9a-f]{16}$")
 PAYLOAD_KEYS: dict[str, set[str]] = {
     "hello": {"device_id", "firmware", "protocol"},
     "hello_ack": {"accepted", "device_id", "firmware", "protocol", "capabilities"},
+    "probe": {"step_id", "panel", "stimulus"},
     "probe_ack": {"accepted", "step_id"},
     "event": {"key", "direction", "kind", "step_id"},
     "error": {"code", "detail"},
@@ -258,6 +259,7 @@ def new_frame(
         "seq": seq,
         "reply_to": reply_to,
         "digest": _payload_digest(payload),
+        "payload": payload,
     }
 V2_AGENT_SNAPSHOT_FIELDS = {"host_epoch", "snapshot_revision", "source_status", "agents"}
 V2_COPILOT_FIELDS = {
@@ -370,7 +372,7 @@ def _v2_copilot(value: Any) -> None:
     for key in ("reached_limit", "usage_allowed", "overage_allowed"):
         if value[key] is not None and not isinstance(value[key], bool):
             raise ProtocolError("invalid_shape", f"copilot {key} must be null or boolean")
-    _v2_error_code(value["failure_reason"], "copilot failure_reason")
+    _v2_text(value["failure_reason"], "copilot failure_reason", 32, allow_empty=True)
     if value["failure_reason"] not in {
         "", "auth_required", "cli_missing", "cli_version_mismatch", "protocol_mismatch",
         "unsupported_host", "quota_unavailable", "billing_mode_unsupported",

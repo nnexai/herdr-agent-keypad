@@ -113,6 +113,25 @@ class V2ProtocolTests(unittest.TestCase):
             "failure_reason": "",
         }
         protocol.validate_v2_payload("agent_snapshot", snapshot)
+        unavailable_copilot = {
+            **snapshot["copilot"],
+            "source_state": "unavailable",
+            "used_credits": None,
+            "included_credits": None,
+            "used_percent": None,
+            "unlimited": False,
+            "reached_limit": None,
+            "usage_allowed": False,
+            "overage_allowed": False,
+            "failure_reason": "billing_mode_unsupported",
+        }
+        long_reason = {**snapshot, "copilot": unavailable_copilot}
+        protocol.validate_v2_payload("agent_snapshot", long_reason)
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload(
+                "agent_snapshot",
+                {**long_reason, "copilot": {**long_reason["copilot"], "failure_reason": "x" * 33}},
+            )
         with self.assertRaises(protocol.ProtocolError):
             protocol.validate_v2_payload("agent_snapshot", {
                 **snapshot,
@@ -128,6 +147,23 @@ class V2ProtocolTests(unittest.TestCase):
         protocol.validate_frame(hello)
         with self.assertRaises(protocol.ProtocolError):
             protocol.validate_frame({**hello, "payload": {**hello["payload"], "capabilities": "copilot_usage"}})
+
+    def test_v1_probe_payload_contract_is_closed(self) -> None:
+        frame = protocol.new_frame(
+            "probe",
+            "boot-a",
+            "session-a",
+            1,
+            {"step_id": "capture", "panel": 4, "stimulus": "CAPTURE:3"},
+        )
+        self.assertEqual(protocol.decode_frame(protocol.encode_frame(frame)), frame)
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_frame(
+                {
+                    **frame,
+                    "payload": {**frame["payload"], "extra": "rejected"},
+                }
+            )
 
     def test_generation_and_focus_result_are_fail_closed(self) -> None:
         projection = AgentProjection()

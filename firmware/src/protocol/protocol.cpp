@@ -556,7 +556,7 @@ RejectReason parse_v2_copilot(Cursor& cursor) {
     if (cursor.take('}')) break;
     if (!cursor.take(',')) return RejectReason::InvalidJson;
   }
-  if (mask != 0x7ffU || !reached_present || !usage_allowed_present || !overage_allowed_present) return RejectReason::InvalidShape;
+  if (mask != 0x7ffU) return RejectReason::InvalidShape;
   if (std::strcmp(source_state, "auth_required") == 0 || std::strcmp(source_state, "unavailable") == 0) {
     if (used_present || included_present || percent_present || unlimited || reached_present && reached) return RejectReason::InvalidShape;
   }

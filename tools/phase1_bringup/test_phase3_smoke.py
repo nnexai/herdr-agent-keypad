@@ -1818,6 +1818,13 @@ class QuickUsageTileTests(unittest.TestCase):
     def test_quick_usage_tile_hello_is_exact_pair_and_capability_gated(self) -> None:
         facts = validate_quick_usage_hello(self.hello(), self.binding(), "a" * 64)
         self.assertEqual(facts["capabilities"], [QUICK_USAGE_CAPABILITY])
+        nested = self.hello()
+        nested.pop("capabilities")
+        nested["hello_ack"] = {"capabilities": [QUICK_USAGE_CAPABILITY]}
+        self.assertEqual(
+            validate_quick_usage_hello(nested, self.binding(), "a" * 64)["capabilities"],
+            [QUICK_USAGE_CAPABILITY],
+        )
         for changes, message in (
             ({"device_id": "other"}, "device identity"),
             ({"firmware": "other"}, "firmware identity"),

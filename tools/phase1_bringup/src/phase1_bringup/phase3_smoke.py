@@ -5709,6 +5709,9 @@ def validate_quick_usage_hello(
     if hello.get("protocol") != binding.protocol:
         raise ValueError("quick usage protocol differs from exact pairing")
     capabilities = hello.get("capabilities")
+    hello_ack = hello.get("hello_ack")
+    if capabilities is None and isinstance(hello_ack, Mapping):
+        capabilities = hello_ack.get("capabilities")
     if not isinstance(capabilities, list) or capabilities != [QUICK_USAGE_CAPABILITY]:
         raise ValueError("quick usage capability is not advertised by hello")
     if not isinstance(hello.get("boot_id"), str) or not hello["boot_id"]:
@@ -5851,9 +5854,15 @@ def run_quick_usage_tile(args: argparse.Namespace) -> int:
     binding = PairingStore(args.binding.resolve()).load()
     if binding is None:
         raise RuntimeError(f"pairing binding missing: {args.binding}")
+    firmware_sha256 = sha256_file(firmware)
+    evidence_path = args.evidence.resolve()
+    captures_root = args.captures.resolve()
+    captures_root.mkdir(parents=True, exist_ok=True)
+    run_epoch = f"quick-usage-{time.time_ns()}"
     initial_payload = _quick_usage_snapshot()
     # Even revision selects Codex first; the selector then gives both providers
     # the same full dwell before toggling.
+    initial_payload["host_epoch"] = run_epoch
     initial_payload["snapshot_revision"] = 2
     initial_identity, initial_ack = _quick_usage_publish(
         args.binding.resolve(),
@@ -5867,11 +5876,13 @@ def run_quick_usage_tile(args: argparse.Namespace) -> int:
     snapshot_acks = [initial_ack]
     time.sleep(16.5)
     for revision, neutral in ((3, False), (4, True)):
+        variant_payload = _quick_usage_variant(revision, neutral=neutral)
+        variant_payload["host_epoch"] = run_epoch
         _variant_identity, variant_ack = _quick_usage_publish(
             args.binding.resolve(),
             binding,
             args.timeout,
-            _quick_usage_variant(revision, neutral=neutral),
+            variant_payload,
             firmware_sha256,
         )
         snapshot_acks.append(variant_ack)
@@ -5898,6 +5909,8 @@ def run_quick_usage_tile(args: argparse.Namespace) -> int:
             ],
             cwd=ROOT,
             check=True,
+            pass_fds=(9,),
+            timeout=max(10.0, args.timeout + 5.0),
         )
         capture_records.append(validate_quick_usage_capture(ppm, label))
 
