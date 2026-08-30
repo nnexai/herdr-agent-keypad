@@ -1,28 +1,27 @@
 ---
-status: awaiting_human_verify
+status: verifying
 trigger: "User reports live physical focus switching still does not work and Codex limits show unavailable while native status reports ready. This is ground truth: runtime is not stable or production-ready."
 created: 2026-08-30T12:29:01Z
-updated: 2026-08-30T13:14:53Z
+updated: 2026-08-30T13:42:12Z
 ---
 
 ## Current Focus
 
 reasoning_checkpoint:
-  hypothesis: "confirmed — RuntimeCoordinator authorized physical focus against transient InboxProjection.current instead of the exact snapshot the device ACKed and still displayed; invalidation and pending refresh therefore changed authorization ownership before display ownership changed."
+  hypothesis: "FocusExecutor uses the mutable live AgentInfo revision as an authorization fence and never proves that the device-echoed identity exactly matches the ACKed displayed entry; therefore normal same-agent revision churn is rejected while a forged displayed revision reaches the live port."
   confirming_evidence:
-    - "RED ordinary-invalidation case returned Stale instead of Accepted for the exact displayed binding; GREEN after explicit acknowledged-snapshot authorization."
-    - "RED newer-unacknowledged-generation case returned WrongRevision instead of Accepted; GREEN while all exact identity fences remained enabled."
-    - "RED ACKed-Codex case returned Unavailable instead of Ready after only an unrelated pending generation advanced; GREEN after status ownership moved to the full ACKed view."
-    - "RED current Codex collection retained CodexUnavailable and unchanged ACK/Codex churn evicted FocusRejected; both GREEN after corrected assignment and state-change-only recording."
-  falsification_test: "Any focused regression returning Stale/WrongRevision for the retained displayed view, any negative fence accepting a changed identity, or ordinary churn evicting FocusRejected would falsify the fix."
-  fix_rationale: "PendingPublication now owns the exact projection and displayed Codex state sent on the wire; only an exact accepted ACK installs that full view, and FocusExecutor requires it as its authorization snapshot while still performing a complete live identity read."
-  blind_spots: "The tested release is now deployed with sole native serial authority, but no post-deploy physical focus gesture has occurred. One human key press remains the final behavioral oracle."
+    - "RED displayed revision 410778 with live revision 410910, unchanged pane/terminal/workspace/tab/session, returned SourceRevisionChanged instead of Accepted."
+    - "RED forged displayed source_revision returned SourceRevisionChanged only after Spy recorded agent.list, proving the ACKed-entry echo fence is absent."
+    - "Direct live `herdr agent focus w17:p1` succeeded while AgentInfo revision advanced 410778 to 410910 with state_change_seq 151 and pane/terminal/workspace/tab/structured session unchanged."
+  falsification_test: "The hypothesis is wrong if removing revision from live revalidation still rejects the same stable identity, or if exact binding-to-ACKed-entry comparison cannot reject a forged revision before any port call."
+  fix_rationale: "Use Identity::displayed_echo_exact for the displayed binding versus ACKed entry, where revision is immutable integrity data; use Identity::live_exact for the later live AgentInfo, where revision is mutable but all stable identity/session fields remain fenced."
+  blind_spots: "No firmware, probe, menu, encoder, key, or synthetic focus stimulus was used during validation or deployment; one bounded physical agent-key verification remains."
   candidate_causes:
-    - "code/state: transient refreshed/invalidation projection and exact displayed projection were conflated."
-    - "environment/timing: Herdr invalidation and Codex cadence interleaved between device ACK and intent."
-    - "data/status: successful Codex collection assigned CodexUnavailable, while unchanged ACK/republication events flooded the bounded transition ring."
-  and_gate: "yes — valid displayed data plus intervening current-generation churn triggered focus rejection; independent Codex assignment and transition-recording defects explained the inconsistent status and lost evidence."
-next_action: "Human presses exactly one agent key once for the pane Herdr should focus, does not retry or use menu, encoder, another key, firmware, or probe, and reports whether focus changed; Main then performs the bounded read-only follow-up."
+    - "code/state: duplicated manual FocusExecutor comparison assigns source_revision to the wrong validation phase and omits the displayed echo check."
+    - "data: Herdr AgentInfo revision churns independently of stable agent identity and state_change_seq."
+  and_gate: "yes — the false rejection requires a valid displayed binding plus later revision churn; the forged-echo defect is independently present and closes the integrity side of the same seam."
+next_action: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, another key, firmware, or probe; report whether focus changed."
+
 
 ## Symptoms
 
@@ -114,6 +113,41 @@ started: after deployment of host ACK/readiness fixes
   found: "The only post-deploy status action, plugin-log-70, succeeded with state=stale, device_state=ready, herdr_state=running, codex_state=ready, reconnect_attempt=0, backoff_ms=0, last_error=null. Its transitions are bridge_started@0, codex_connected@1, snapshot_acknowledged@2, codex_unavailable@3, codex_connected@4; no focus outcome exists. No firmware, probe, menu, encoder, key, or synthetic focus stimulus was used."
   implication: "Startup, acknowledged display ownership, Codex recovery, and truthful pre-gesture stale state are live. The checkpoint stays active and unresolved pending exactly one ordinary agent-key press."
 
+- timestamp: 2026-08-30T13:29:59Z
+  checked: focused pre-fix revision-fence regressions
+  found: "RED lib case: 0 passed, 1 failed, SourceRevisionChanged != Accepted for displayed revision 410778 and live same-stable-identity revision 410910. RED integration case: 0 passed, 1 failed because forged displayed source_revision performed agent.list before returning SourceRevisionChanged."
+  implication: "source_revision belongs to the exact device-echo/ACKed-entry integrity fence, not the later live AgentInfo revalidation fence."
+
+- timestamp: 2026-08-30T13:34:55Z
+  checked: direct Herdr focus and live AgentInfo revision behavior
+  found: "Direct `herdr agent focus w17:p1` succeeded and focused w17. AgentInfo revision advanced 410778 to 410910 within seconds while state_change_seq remained 151 and pane_id, terminal_id, workspace_id, tab_id, and structured agent_session were unchanged."
+  implication: "Herdr revision is mutable observation metadata for the same stable agent identity; treating it as a live authorization fence deterministically rejects an otherwise valid displayed selection."
+
+- timestamp: 2026-08-30T13:34:55Z
+  checked: revision-fence GREEN and held-out identity/selection regressions
+  found: "GREEN: focused live-churn 1/1, forged displayed-echo 1/1, identity model seam 1/1; acknowledged-projection orchestrator suite 20/20; projection/focus pane-reuse suite 12/12; structured-session rejection 1/1; stable structured-session authorization 1/1; selection-only Herdr write surface 1/1."
+  implication: "The source revision is now exact only at the ACKed displayed-echo boundary. Live pane/terminal/workspace/tab/session fences, pane disappearance/reuse rejection, direct focus acknowledgement, and selection-only semantics remain intact."
+
+- timestamp: 2026-08-30T13:42:12Z
+  checked: final revision-fence diff review, focused validation, full locked native suite, and atomic source/test commit
+  found: "Focused locked suites passed 20 orchestrator + 12 projection_focus_parity + 1 structured-session rejection + 1 stable-session authorization + 1 selection-only write surface = 35 tests. Full cargo test --locked passed 129 tests across 15 suites with 1 ignored. The four revision-fence source/test files were committed atomically as 8c3f26a."
+  implication: "The mutable-revision cutover and all displayed-echo, live stable-identity/session, pane-reuse, and selection-only fences are committed and deterministically GREEN."
+
+- timestamp: 2026-08-30T13:42:12Z
+  checked: clean locked release build and byte-identical installed-plugin staging
+  found: "cargo clean followed by cargo build --locked --release succeeded. target/release/herdr-keypad-native and /home/nnex/.local/share/herdr/plugins/herdr-keypad/bin/herdr-keypad both have SHA-256 c9754ff8db93d8a6f345d6837a623cac35ea173d71ab85e73857ed05cdab0046, and cmp reported exact identity."
+  implication: "The enabled Herdr plugin contains exactly the tested revision-fence release bytes."
+
+- timestamp: 2026-08-30T13:42:12Z
+  checked: exactly one Herdr-managed restart and sole native production authority
+  found: "Herdr action plugin-log-72 is the sole valid restart dispatch for this deployment. One malformed CLI argument-order attempt exited 2 before action dispatch and caused no restart. Old native PID 1502977 exited; sole new native PID 1606469 runs the staged bin/herdr-keypad restart authority, owns FD 9 -> /dev/ttyACM0, and fuser reports only 1606469. The Python keypad-runtime process scan returned no rows."
+  implication: "Exactly one managed authority replacement activated the staged revision-fence release; it is the sole serial owner and Python remains absent."
+
+- timestamp: 2026-08-30T13:42:12Z
+  checked: single post-startup read-only status and human-verification boundary
+  found: "The only post-deploy status action, plugin-log-73, succeeded with state=stale, device_state=ready, herdr_state=running, codex_state=ready, reconnect_attempt=0, backoff_ms=0, last_error=null. Its transitions are bridge_started@0, codex_connected@1, snapshot_acknowledged@2, codex_unavailable@3, codex_connected@4; no focus outcome exists. No firmware, probe, menu, encoder, key, or synthetic focus stimulus was used."
+  implication: "Startup and the pre-gesture state are live without claiming focus success. The checkpoint stays active, unarchived, and unresolved pending exactly one ordinary agent-key press."
+
 ## Resolution
 
 root_cause:
@@ -121,12 +155,15 @@ root_cause:
   - "PendingPublication retained only epoch/revision/source plus a Codex boolean, and acknowledged state retained only a tuple. Status therefore compared ACK evidence and focus proof with transient current and the live Codex collector instead of the exact displayed generation."
   - "A successful current Codex collection assigned Some(CodexUnavailable) instead of clearing it."
   - "Every exact ACK and every Codex republication appended transitions even when no state changed. Alternating snapshot_acknowledged/codex_connected events could evict the actionable focus_rejected evidence from the fixed 32-entry ring."
+  - "FocusExecutor applied source_revision to the later live AgentInfo comparison even though Herdr increments revision for the same stable agent identity, and it did not compare the device-echoed source_revision with the exact ACKed displayed entry before reading live state."
 fix:
   - "PendingPublication now owns PublishedProjection: the full exact ProjectionSnapshot plus the displayed Codex BridgeStatus derived from the serialized payload. Only a matching accepted ACK installs it as acknowledged_projection."
   - "FocusExecutor now requires an explicit acknowledged ProjectionSnapshot. RuntimeCoordinator authorizes epoch/revision/slot/entry/pane/terminal/session/source-revision against that displayed view, then performs the existing complete live read and selection-only agent.focus acknowledgement checks."
   - "Ordinary Herdr invalidation only marks refresh dirty and coalesces. A successful complete refresh publishes only a material change; actual read/normalization failure still marks Herdr unhealthy, creates stale/offline/unavailable source truth, publishes it, and schedules recovery."
   - "Codex and focus readiness are computed from acknowledged_projection, independent of unrelated current/pending Herdr generations. Herdr health remains computed from current complete-refresh truth."
   - "Current Codex collection clears CodexUnavailable. Collector transitions and ACK/display transitions are emitted only when their corresponding state changes; repeated ACK/republication churn no longer consumes the bounded ring."
+  - "Identity::displayed_echo_exact validates pane, terminal, structured session, and source_revision against the ACKed displayed entry before any Herdr port call. Live revalidation uses that full displayed identity with Identity::live_exact, preserving pane/terminal/workspace/tab/session fences while intentionally excluding mutable revision."
+  - "SourceRevisionChanged now identifies only a forged/stale device echo that disagrees with the ACKed displayed source_revision; normal live AgentInfo revision churn no longer produces it."
 state_invariants:
   - "current is the latest successfully completed Herdr projection, or explicit stale/offline/unavailable truth after a real failure; ordinary invalidation alone never changes or publishes it."
   - "pending_publication is the one exact serialized view awaiting ACK; later changes set publication_dirty without changing pending ownership."
@@ -134,6 +171,7 @@ state_invariants:
   - "focus authorization and proof, device displayability, and Codex status share acknowledged_projection ownership; Herdr health remains an independent current-source signal."
   - "focus remains selection-only and fail-closed across device session, host epoch, revision, slot, entry, pane, terminal, agent session, source revision, live disappearance/reuse, malformed response, timeout, offline, and unsuccessful focused acknowledgement."
   - "transition memory remains bounded at 32 SafeCode-only entries, but ordinary unchanged ACK/republication cadence does not overwrite actionable focus evidence."
+  - "source_revision is immutable at the displayed echo boundary and mutable at the later live AgentInfo boundary; pane_id, terminal_id, workspace_id, tab_id, and structured agent_session remain stable fences during live revalidation."
 verification:
   oracle_type: specified
   red:
@@ -142,32 +180,50 @@ verification:
     - "acknowledged_codex_remains_ready_while_unrelated_generation_is_pending: Unavailable != Ready"
     - "successful_current_codex_collection_clears_unavailable_error: Some(CodexUnavailable) != None"
     - "ordinary_ack_republication_churn_retains_actionable_focus_evidence: FocusRejected absent after unchanged churn"
+    - "displayed_binding_allows_live_revision_churn_for_same_stable_identity: SourceRevisionChanged != Accepted"
+    - "forged_source_revision_is_rejected_before_live_read_or_focus: agent.list was called before rejection"
   green:
     - "cargo test --lib core::orchestrator::tests — 19 passed"
     - "cargo test --test production_surface — 7 passed"
     - "cargo test --test projection_focus_parity — 10 passed"
     - "cargo test --test herdr_parity different_structured_session_remains_rejected — 1 passed"
     - "cargo test --test codex_parity sparse_invalid_shapes_are_transactional_and_account_reset_discards_cache — 1 passed"
-  guardrail_verdict: "accepted for deterministic native behavior and deployed with sole native authority; awaiting one ordinary physical gesture"
-  live_disposition: "The acknowledged-view release is deployed as source commit 9e25f95 and installed SHA-256 c96d726868d97d6c62d85c5092f1f24b59134095a97884b8d7a7b213870a1d3c on native PID 1502977. Pre-gesture status is truthfully stale with device ready, Herdr running, Codex ready, and no last_error."
+    - "cargo test --lib displayed_binding_allows_live_revision_churn_for_same_stable_identity — 1 passed"
+    - "cargo test --test projection_focus_parity forged_source_revision_is_rejected_before_live_read_or_focus — 1 passed"
+    - "cargo test --test projection_focus_parity identity_comparisons_separate_displayed_echo_from_live_revalidation — 1 passed"
+    - "cargo test --lib core::orchestrator::tests — 20 passed"
+    - "cargo test --test projection_focus_parity — 12 passed"
+    - "cargo test --test herdr_parity different_structured_session_remains_rejected — 1 passed"
+    - "cargo test --test herdr_parity already_focused_structured_session_is_authorized — 1 passed"
+    - "cargo test --test herdr_parity complete_reads_correlate_ids_and_focus_is_the_only_write — 1 passed"
+  guardrail_verdict: "accepted for the deterministic revision-fence behavior, held-out stable identity/session/selection-only contracts, clean locked release deployment, and sole-authority startup; physical focus verification remains pending"
+  live_disposition: "PID 1606469 runs source commit 8c3f26a from the byte-identical staged revision-fence release. No firmware, probe, menu, encoder, key, or synthetic focus stimulus occurred; this checkpoint remains active and unresolved."
   next_gesture: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, another key, firmware, or probe; report whether focus changed."
 deployment:
-  source_commit: "9e25f95"
-  native_tests: "focused 38 passed; full cargo test --locked 126 passed across 15 suites, 1 ignored"
-  build_stage_sha256: "c96d726868d97d6c62d85c5092f1f24b59134095a97884b8d7a7b213870a1d3c"
+  source_commit: "8c3f26a"
+  native_tests: "focused 35 passed; full cargo test --locked 129 passed across 15 suites, 1 ignored"
+  build_stage_sha256: "c9754ff8db93d8a6f345d6837a623cac35ea173d71ab85e73857ed05cdab0046"
   restart_count: 1
-  restart_log: "plugin-log-69"
-  old_pid: 1399642
-  new_pid: 1502977
+  restart_log: "plugin-log-72"
+  old_pid: 1502977
+  new_pid: 1606469
   serial_fd: "9 -> /dev/ttyACM0, sole owner"
   python_runtime: "absent"
-  post_deploy_status: "plugin-log-70: stale/ready/running/ready, reconnect_attempt=0, backoff_ms=0, last_error=null"
+  post_deploy_status: "plugin-log-73: stale/ready/running/ready, reconnect_attempt=0, backoff_ms=0, last_error=null"
   transitions: "bridge_started@0, codex_connected@1, snapshot_acknowledged@2, codex_unavailable@3, codex_connected@4; no focus outcome"
-  disposition: "awaiting_human_verify; active checkpoint retained in place"
+  disposition: "awaiting_human_verify; active checkpoint retained in place, unarchived and unresolved"
   human_verification: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, another key, firmware, or probe; report whether focus changed."
+  pending_revision_fence: "deployed from source commit 8c3f26a as the tested byte-identical locked release"
+  controlled_next_step: "Exactly one bounded agent-key human verification; no retry or other device stimulus before reporting the result"
 files_changed:
   - host/herdr_keypad/native/src/core/orchestrator.rs
   - host/herdr_keypad/native/src/core/focus.rs
   - host/herdr_keypad/native/tests/herdr_parity.rs
+  - host/herdr_keypad/native/tests/projection_focus_parity.rs
+  - .planning/debug/native-ready-but-physically-unusable.md
+revision_fence_files_changed:
+  - host/herdr_keypad/native/src/core/model.rs
+  - host/herdr_keypad/native/src/core/focus.rs
+  - host/herdr_keypad/native/src/core/orchestrator.rs
   - host/herdr_keypad/native/tests/projection_focus_parity.rs
   - .planning/debug/native-ready-but-physically-unusable.md
