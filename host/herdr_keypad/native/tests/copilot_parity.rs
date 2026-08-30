@@ -123,7 +123,7 @@ async fn current_token_billing_snapshot_is_normalized_as_labelled_aic() {
     assert_eq!(result.view.overage_permitted, Some(true));
     assert_eq!(result.view.reset_text, "RESET 2026-09-01T00:00:00.000Z");
     assert_eq!(result.view.failure_reason, CopilotFailureReason::None);
-    assert_eq!(result.handshake, vec![("protocol", 3), ("cli", "1.0.81")]);
+    assert_eq!(result.handshake, vec![("protocol".to_owned(), "3".to_owned()), ("cli".to_owned(), "1.0.81".to_owned())]);
     assert_eq!(*operations.lock().expect("operations"), ["connect", "account.getCurrentAuth", "account.getQuota", "shutdown"]);
 }
 
@@ -225,7 +225,7 @@ async fn active_account_change_discards_prior_baseline_before_new_values() {
         let clock = clock.clone();
         move || *clock.lock().expect("clock")
     }).expect("collector");
-    collector.set_test_baseline(auth("https://github.com", "first"), current_snapshot());
+    collector.set_test_baseline(auth("https://github.com", "first"), quota(current_snapshot()));
     assert_eq!(collector.view().used_credits, Some(500));
     collector.account_changed(true);
     assert_eq!(collector.view().source_state, CopilotSourceState::AuthRequired);
@@ -259,7 +259,7 @@ async fn stale_age_is_bounded_and_refresh_failure_never_remains_current() {
         let clock = clock.clone();
         move || *clock.lock().expect("clock")
     }).expect("collector");
-    collector.set_test_baseline(auth("https://example.ghe.com", "enterprise-user"), current_snapshot());
+    collector.set_test_baseline(auth("https://example.ghe.com", "enterprise-user"), quota(current_snapshot()));
     *clock.lock().expect("clock") = Duration::from_secs(899);
     assert_eq!(collector.view().source_state, CopilotSourceState::Current);
     *clock.lock().expect("clock") = Duration::from_secs(901);
