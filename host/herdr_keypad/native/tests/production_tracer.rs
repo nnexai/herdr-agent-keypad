@@ -1,11 +1,11 @@
 use herdr_keypad_native::{
-    AgentInfo, BridgeEvent, BridgeEffect, BridgeError, BridgeOutcome, Coordinator, DeviceFrame,
-    FocusIntent, HerdrRequest, Snapshot, SnapshotAck, SourceStatus,
+    BridgeEvent, BridgeEffect, BridgeError, BridgeOutcome, Coordinator, DeviceFrame, FocusIntent,
+    HerdrRequest, SnapshotAck, SourceStatus,
 };
 use serde_json::json;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::{UnixListener, UnixStream};
+use tokio::net::UnixListener;
 use tokio::sync::mpsc;
 
 /// The tracer deliberately speaks the production line-oriented boundaries instead of
@@ -23,7 +23,7 @@ async fn tracer_authoritative_snapshot_ack_then_exact_focus() -> Result<(), Brid
     let (device_tx, device_rx) = mpsc::channel(8);
     let (effects_tx, mut effects_rx) = mpsc::channel(8);
     let authority = Arc::new(tokio::sync::Notify::new());
-
+    let authority_for_server = Arc::clone(&authority);
     let server = tokio::spawn(async move {
         let (stream, _) = listener.accept().await.map_err(BridgeError::io)?;
         let (read_half, mut write_half) = stream.into_split();
@@ -56,7 +56,7 @@ async fn tracer_authoritative_snapshot_ack_then_exact_focus() -> Result<(), Brid
                             "tab_id": "tab-a", "agent_session": "agent-session-a", "focused": true
                         }
                     }})).await?;
-                    authority.notify_one();
+                    authority_for_server.notify_one();
                 }
                 _ => return Err(BridgeError::protocol("unexpected Herdr method")),
             }
@@ -90,7 +90,6 @@ async fn tracer_authoritative_snapshot_ack_then_exact_focus() -> Result<(), Brid
         .send(DeviceFrame::SnapshotAck(SnapshotAck::accepted(&snapshot)))
         .await
         .map_err(|_| BridgeError::channel("device channel closed"))?;
-
     device_tx
         .send(DeviceFrame::FocusIntent(FocusIntent::from_agent(
             "action-a",
@@ -117,10 +116,36 @@ async fn tracer_authoritative_snapshot_ack_then_exact_focus() -> Result<(), Brid
 
     run.abort();
     let _ = run.await;
-    let _ = tokio::time::timeout(std::time::Duration::from_secs(1), server)
+    let server_result = tokio::time::timeout(std::time::Duration::from_secs(1), server)
         .await
-        .map_err(|_| BridgeError::protocol("Herdr server did not stop"))??;
+        .map_err(|_| BridgeError::protocol("Herdr server did not stop"))?
+        .map_err(|error| BridgeError::protocol(format!("Herdr server failed: {error}")))?;
+    server_result?;
     let _ = std::fs::remove_file(socket_path);
+    Ok(())
+}
+#[tokio::test]
+async fn tracer_herdr_authority_cancellation_clears_pending_work() -> Result<(), BridgeError> {
+    let (events_tx, events_rx) = mpsc::channel(8);
+    let (_device_tx, device_rx) = mpsc::channel(8);
+    let (effects_tx, mut effects_rx) = mpsc::channel(8);
+    let coordinator = Coordinator::new(
+        HerdrRequest::unix_socket(std::env::temp_dir().join("herdr-keypad-no-authority.sock")),
+        events_rx,
+        device_rx,
+        effects_tx,
+    )?;
+    let run = tokio::spawn(coordinator.run());
+    events_tx
+        .send(BridgeEvent::AuthorityCancelled)
+        .await
+        .map_err(|_| BridgeError::channel("cancellation channel closed"))?;
+    let result = tokio::time::timeout(std::time::Duration::from_secs(1), run)
+        .await
+        .map_err(|_| BridgeError::protocol("coordinator did not exit"))?
+        .map_err(|error| BridgeError::protocol(format!("coordinator failed: {error}")))?;
+    result?;
+    assert_eq!(effects_rx.recv().await, Some(BridgeEffect::AuthorityEnded));
     Ok(())
 }
 
