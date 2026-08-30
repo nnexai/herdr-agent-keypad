@@ -63,8 +63,8 @@ jobs:
             cargo build --release --locked --target x86_64-unknown-linux-gnu --manifest-path "$PLUGIN/native/Cargo.toml"
           )
 
-          BIN_A="$WORK/root-a/$PLUGIN/native/target/$TARGET/release/herdr-keypad-native"
-          BIN_B="$WORK/root-b/$PLUGIN/native/target/$TARGET/release/herdr-keypad-native"
+          BIN_A="$WORK/target-a/$TARGET/release/herdr-keypad-native"
+          BIN_B="$WORK/target-b/$TARGET/release/herdr-keypad-native"
           test -x "$BIN_A" && test -x "$BIN_B"
           HASH_A="$(sha256sum "$BIN_A" | cut -d ' ' -f 1)"
           HASH_B="$(sha256sum "$BIN_B" | cut -d ' ' -f 1)"
@@ -176,8 +176,8 @@ jobs:
             cargo build --release --locked --target aarch64-apple-darwin --manifest-path "$PLUGIN/native/Cargo.toml"
           )
 
-          BIN_A="$WORK/root-a/$PLUGIN/native/target/$TARGET/release/herdr-keypad-native"
-          BIN_B="$WORK/root-b/$PLUGIN/native/target/$TARGET/release/herdr-keypad-native"
+          BIN_A="$WORK/target-a/$TARGET/release/herdr-keypad-native"
+          BIN_B="$WORK/target-b/$TARGET/release/herdr-keypad-native"
           test -x "$BIN_A" && test -x "$BIN_B"
           HASH_A="$(shasum -a 256 "$BIN_A" | cut -d ' ' -f 1)"
           HASH_B="$(shasum -a 256 "$BIN_B" | cut -d ' ' -f 1)"
