@@ -293,8 +293,8 @@ RenderState copilotCaptureFixture(CaptureScene scene) {
   RenderState state = captureFixture(CaptureScene::Working);
   state.usage_provider = UsageProvider::Copilot;
   state.copilot.source_state = CopilotSourceState::Current;
-  state.copilot.used_credits = 42;
-  state.copilot.included_credits = 100;
+  state.copilot.used_credits = 625000;
+  state.copilot.included_credits = 1500000;
   state.copilot.used_percent = 42;
   state.copilot.reset_text = "RESET 2D";
   state.copilot.observation_age = "AGE 2M";

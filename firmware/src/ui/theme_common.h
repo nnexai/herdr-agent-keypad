@@ -371,12 +371,30 @@ inline void formatCopilotCredits(char* destination, size_t capacity, int32_t val
   if (destination == nullptr || capacity == 0) return;
   if (unlimited) {
     ellipsize(destination, capacity, "UNLIM");
-  } else if (value < 0) {
+    return;
+  }
+  if (value < 0) {
     ellipsize(destination, capacity, "N/A");
-  } else {
+    return;
+  }
+  if (value < 10000) {
     snprintf(destination, capacity, "%ld", static_cast<long>(value));
+    return;
+  }
+
+  const int32_t unit = value >= 1000000 ? 1000000 : 1000;
+  const char suffix = value >= 1000000 ? 'M' : 'K';
+  const int32_t whole = value / unit;
+  const int32_t tenths = ((value % unit) * 10 + unit / 2) / unit;
+  if (whole < 10 && tenths > 0 && tenths < 10) {
+    snprintf(destination, capacity, "%ld.%ld%c", static_cast<long>(whole),
+             static_cast<long>(tenths), suffix);
+  } else {
+    const int32_t rounded = (value + unit / 2) / unit;
+    snprintf(destination, capacity, "%ld%c", static_cast<long>(rounded), suffix);
   }
 }
+
 
 inline void drawCopilotRowsText(LGFX_Sprite& sprite, const CopilotRenderView& view,
                                 int32_t label_x, int32_t value_right,
@@ -402,32 +420,6 @@ inline void drawCopilotMetaText(LGFX_Sprite& sprite, const CopilotRenderView& vi
   sprite.setTextColor(copilotValueColor(view), kBackground);
   sprite.drawString(reset, centered ? centeredX(reset) : reset_x, reset_y);
   sprite.drawString(age, centered ? centeredX(age) : age_x, age_y);
-}
-inline void drawCopilotPanel(LGFX_Sprite& sprite, const CopilotRenderView& view,
-                             bool centered = false) {
-  sprite.fillScreen(kBackground);
-  sprite.fillRect(0, 0, 8, 128, kSettled);
-  sprite.setTextColor(kPrimary, kBackground);
-  sprite.drawString("COPILOT", centered ? centeredX("COPILOT") : 16, 4);
-  drawCopilotRowsText(sprite, view, centered ? 8 : 16, 120, 22, 42);
-  drawCodexTrack(sprite, 16, 32, 108, 8, view.used_percent,
-                 copilotHardLimit(view) ? kDestructive : kAccent, kSettled);
-  drawCopilotMetaText(sprite, view, 16, 70, 16, 86, centered);
-  const bool alert = view.source_state != CopilotSourceState::Current ||
-                     copilotHardLimit(view);
-  if (alert) {
-    sprite.fillRect(0, 104, 128, 24, kDestructive);
-    sprite.setTextColor(kBackground, kDestructive);
-    sprite.drawString(view.source_state == CopilotSourceState::Current
-                          ? "LIMIT" : copilotStateWord(view.source_state),
-                      centered ? centeredX(copilotStateWord(view.source_state)) : 16, 114);
-  } else {
-    sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString(view.reached_limit == 1 ? copilotLimitWord(view) : "CURRENT",
-                      centered ? centeredX(view.reached_limit == 1 ? copilotLimitWord(view)
-                                                                    : "CURRENT") : 16,
-                      114);
-  }
 }
 
 inline void drawUnavailableUsagePanel(LGFX_Sprite& sprite) {

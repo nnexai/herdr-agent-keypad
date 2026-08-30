@@ -278,7 +278,49 @@ class BeaconTheme final : public ThemeRenderer {
 
   void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
     if (state.usage_provider == UsageProvider::Copilot) {
-      drawCopilotPanel(sprite, state.copilot, true);
+      const CopilotRenderView& copilot = state.copilot;
+      sprite.fillScreen(kBackground);
+      sprite.setTextColor(kPrimary, kBackground);
+      sprite.drawString("COPILOT", centeredX("COPILOT"), 4);
+      if (copilotHardLimit(copilot)) {
+        sprite.setTextColor(kDestructive, kBackground);
+        sprite.drawString("LIMIT", 94, 4);
+      }
+
+      const bool alert =
+          copilot.source_state != CopilotSourceState::Current ||
+          copilotHardLimit(copilot);
+      const uint16_t ring_color =
+          alert ? kDestructive : kAccent;
+      drawCodexRing(sprite, 18, 34, 8, copilot.used_percent, ring_color, alert);
+      sprite.drawCircle(18, 54, 8, copilotValueColor(copilot));
+      sprite.drawLine(12, 54, 24, 54, copilotValueColor(copilot));
+      if (copilotClearsValues(copilot)) {
+        sprite.drawLine(12, 48, 24, 60, kDestructive);
+        sprite.drawLine(24, 48, 12, 60, kDestructive);
+      }
+
+      char used[16] = {};
+      char included[16] = {};
+      formatCopilotCredits(used, sizeof(used), copilotValue(copilot, true));
+      formatCopilotCredits(included, sizeof(included),
+                           copilotValue(copilot, false), copilot.unlimited);
+      sprite.setTextColor(copilotValueColor(copilot), kBackground);
+      sprite.drawString("USED", 34, 30);
+      sprite.drawString(used, rightAlignedX(used, 120), 30);
+      sprite.drawString("INCL", 34, 50);
+      sprite.drawString(included, rightAlignedX(included, 120), 50);
+      drawCopilotMetaText(sprite, copilot, 0, 70, 0, 86, true);
+
+      const char* status =
+          copilot.source_state != CopilotSourceState::Current
+              ? copilotStateWord(copilot.source_state)
+              : copilotHardLimit(copilot)
+                    ? "LIMIT"
+                    : copilot.reached_limit == 1 ? copilotLimitWord(copilot)
+                                                 : "CURRENT";
+      sprite.setTextColor(alert ? kDestructive : kMetadata, kBackground);
+      sprite.drawString(status, centeredX(status), 114);
       return;
     }
     if (state.usage_provider == UsageProvider::None) {

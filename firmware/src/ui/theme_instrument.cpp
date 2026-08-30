@@ -271,7 +271,45 @@ class InstrumentTheme final : public ThemeRenderer {
 
   void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
     if (state.usage_provider == UsageProvider::Copilot) {
-      drawCopilotPanel(sprite, state.copilot, true);
+      const CopilotRenderView& copilot = state.copilot;
+      sprite.fillScreen(kBackground);
+      const bool alert =
+          copilot.source_state != CopilotSourceState::Current ||
+          copilotHardLimit(copilot);
+      drawBezelTicks(sprite, alert ? kDestructive : kSettled);
+      sprite.setTextColor(kPrimary, kBackground);
+      sprite.drawString("COPILOT", centeredX("COPILOT"), 4);
+
+      drawCopilotRowsText(sprite, copilot, 8, 120, 22, 42);
+      const uint16_t gauge_color =
+          copilotHardLimit(copilot)
+              ? kDestructive
+              : copilot.source_state == CopilotSourceState::Current
+                    ? kAccent
+                    : kSettled;
+      drawCodexTrack(sprite, 8, 32, 112, 8, copilot.used_percent,
+                     gauge_color, kSettled);
+      sprite.fillRect(92, 31, 2, 10,
+                      copilotHardLimit(copilot) ? kDestructive : kBlocked);
+      sprite.drawLine(8, 56, 120, 56, kSettled);
+      sprite.drawLine(8, 52, 8, 60, kSettled);
+      sprite.drawLine(120, 52, 120, 60, kSettled);
+
+      if (copilot.source_state == CopilotSourceState::AuthRequired) {
+        sprite.drawLine(112, 8, 124, 20, kDestructive);
+        sprite.drawLine(124, 8, 112, 20, kDestructive);
+      }
+      drawCopilotMetaText(sprite, copilot, 0, 70, 0, 86, true);
+
+      const char* status =
+          copilot.source_state != CopilotSourceState::Current
+              ? copilotStateWord(copilot.source_state)
+              : copilotHardLimit(copilot)
+                    ? "LIMIT"
+                    : copilot.reached_limit == 1 ? copilotLimitWord(copilot)
+                                                 : "CURRENT";
+      sprite.setTextColor(alert ? kDestructive : kMetadata, kBackground);
+      sprite.drawString(status, centeredX(status), 114);
       return;
     }
     if (state.usage_provider == UsageProvider::None) {

@@ -190,7 +190,57 @@ class LedgerTheme final : public ThemeRenderer {
 
   void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
     if (state.usage_provider == UsageProvider::Copilot) {
-      drawCopilotPanel(sprite, state.copilot);
+      const CopilotRenderView& copilot = state.copilot;
+      sprite.fillScreen(kBackground);
+      const bool source_alert =
+          copilot.source_state != CopilotSourceState::Current;
+      if (source_alert) {
+        sprite.fillRect(4, 4, 120, 14, kDestructive);
+        sprite.setTextColor(kBackground, kDestructive);
+      } else {
+        sprite.setTextColor(kPrimary, kBackground);
+      }
+      sprite.drawString("COPILOT", 6, 4);
+      sprite.drawLine(4, 18, 124, 18, kSettled);
+
+      char used[16] = {};
+      char included[16] = {};
+      formatCopilotCredits(used, sizeof(used), copilotValue(copilot, true));
+      formatCopilotCredits(included, sizeof(included),
+                           copilotValue(copilot, false), copilot.unlimited);
+      const bool invert_rows = copilotHardLimit(copilot) && !source_alert;
+      if (invert_rows) {
+        sprite.fillRect(4, 20, 120, 18, kBlocked);
+        sprite.fillRect(4, 40, 120, 18, kBlocked);
+      }
+      sprite.setTextColor(invert_rows ? kBackground : copilotValueColor(copilot),
+                          invert_rows ? kBlocked : kBackground);
+      sprite.drawString("USED", 6, 30);
+      sprite.drawString(used, rightAlignedX(used, 120), 30);
+      sprite.drawString("INCL", 6, 50);
+      sprite.drawString(included, rightAlignedX(included, 120), 50);
+      sprite.drawLine(4, 38, 124, 38, kSettled);
+      sprite.drawLine(4, 58, 124, 58, kSettled);
+
+      drawCodexTrack(sprite, 4, 61, 120, 4, copilot.used_percent,
+                     copilotHardLimit(copilot) ? kDestructive : kAccent,
+                     kSettled);
+      drawCopilotMetaText(sprite, copilot, 6, 70, 6, 86);
+
+      const char* status = source_alert
+                               ? copilotStateWord(copilot.source_state)
+                               : copilotHardLimit(copilot)
+                                     ? "LIMIT"
+                                     : copilot.reached_limit == 1
+                                           ? copilotLimitWord(copilot)
+                                           : "CURRENT";
+      if (source_alert || copilotHardLimit(copilot)) {
+        sprite.fillRect(4, 102, 120, 22, kDestructive);
+        sprite.setTextColor(kBackground, kDestructive);
+      } else {
+        sprite.setTextColor(kMetadata, kBackground);
+      }
+      sprite.drawString(status, 6, 114);
       return;
     }
     if (state.usage_provider == UsageProvider::None) {
