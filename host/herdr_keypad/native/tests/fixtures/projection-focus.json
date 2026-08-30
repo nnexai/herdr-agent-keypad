@@ -1,0 +1,726 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "full": {
+          "actionable": true,
+          "entries": [
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "p1",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "p1",
+                "source_revision": 1,
+                "tab_id": "tab-p1",
+                "terminal_id": "term-p1",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 0,
+              "since": "-",
+              "slot": 0,
+              "stale": false,
+              "state": "blocked",
+              "state_change_seq": 2,
+              "title": "Title"
+            },
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "p2",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "p2",
+                "source_revision": 1,
+                "tab_id": "tab-p2",
+                "terminal_id": "term-p2",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 1,
+              "since": "-",
+              "slot": 1,
+              "stale": false,
+              "state": "finished",
+              "state_change_seq": 3,
+              "title": "Title"
+            },
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "p3",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "p3",
+                "source_revision": 1,
+                "tab_id": "tab-p3",
+                "terminal_id": "term-p3",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 2,
+              "since": "-",
+              "slot": 2,
+              "stale": false,
+              "state": "working",
+              "state_change_seq": 1,
+              "title": "Title"
+            }
+          ],
+          "host_epoch": "epoch-fixed",
+          "snapshot_revision": 1,
+          "source_status": "current"
+        },
+        "partial": {
+          "actionable": true,
+          "entries": [
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "p1",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "p1",
+                "source_revision": 1,
+                "tab_id": "tab-p1",
+                "terminal_id": "term-p1",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 0,
+              "since": "-",
+              "slot": 0,
+              "stale": false,
+              "state": "blocked",
+              "state_change_seq": 2,
+              "title": "Title"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 1,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 2,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            }
+          ],
+          "host_epoch": "epoch-fixed",
+          "snapshot_revision": 2,
+          "source_status": "current"
+        }
+      },
+      "input": {
+        "operation": "refresh",
+        "scenario": "three-rank-order-plus-empty-fill"
+      },
+      "name": "projection.order-full-and-empty-fill",
+      "sha256": "6ef70737a502085924ce823f42fff8c54cfac09e179cfc5dba25cda44598accb"
+    },
+    {
+      "expected": {
+        "first": {
+          "actionable": true,
+          "entries": [
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "new",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "new",
+                "source_revision": 1,
+                "tab_id": "tab-new",
+                "terminal_id": "term-new",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 2,
+              "since": "-",
+              "slot": 0,
+              "stale": false,
+              "state": "working",
+              "state_change_seq": 9,
+              "title": "Title"
+            },
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "old",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "old",
+                "source_revision": 1,
+                "tab_id": "tab-old",
+                "terminal_id": "term-old",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 2,
+              "since": "-",
+              "slot": 1,
+              "stale": false,
+              "state": "working",
+              "state_change_seq": 4,
+              "title": "Title"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 2,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            }
+          ],
+          "host_epoch": "epoch-fixed",
+          "snapshot_revision": 1,
+          "source_status": "current"
+        },
+        "reversed": {
+          "actionable": true,
+          "entries": [
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "new",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "new",
+                "source_revision": 1,
+                "tab_id": "tab-new",
+                "terminal_id": "term-new",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 2,
+              "since": "-",
+              "slot": 0,
+              "stale": false,
+              "state": "working",
+              "state_change_seq": 9,
+              "title": "Title"
+            },
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "old",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "old",
+                "source_revision": 1,
+                "tab_id": "tab-old",
+                "terminal_id": "term-old",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 2,
+              "since": "-",
+              "slot": 1,
+              "stale": false,
+              "state": "working",
+              "state_change_seq": 4,
+              "title": "Title"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 2,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            }
+          ],
+          "host_epoch": "epoch-fixed",
+          "snapshot_revision": 1,
+          "source_status": "current"
+        }
+      },
+      "input": {
+        "operation": "refresh",
+        "scenario": "equal-rank-newest-sequence"
+      },
+      "name": "projection.rank-tie-state-sequence",
+      "sha256": "250b93d56230e3ba9dcd1742c0be267e00646bf14daed7d3bfec843e2e1db8b1"
+    },
+    {
+      "expected": {
+        "identity": {
+          "status": "unavailable"
+        },
+        "rank": {
+          "status": "unavailable"
+        }
+      },
+      "input": {
+        "operation": "refresh",
+        "rows": [
+          "malformed-rank",
+          "malformed-identity"
+        ]
+      },
+      "name": "projection.rejected.missing-rank-and-identity",
+      "sha256": "92d7d389bcbe2afa349947103340dd85d523d57bafcee084b3a878a75689f709"
+    },
+    {
+      "expected": {
+        "entry": {
+          "age": "-",
+          "discriminator": "Workspace",
+          "entry_id": "p1",
+          "identity": {
+            "agent_session": null,
+            "pane_id": "p1",
+            "source_revision": 1,
+            "tab_id": "tab-p1",
+            "terminal_id": "term-p1",
+            "workspace_id": "workspace-1"
+          },
+          "rank": 2,
+          "since": "-",
+          "slot": 0,
+          "stale": false,
+          "state": "working",
+          "state_change_seq": 1,
+          "title": "Plugin title"
+        }
+      },
+      "input": {
+        "operation": "refresh",
+        "title": null,
+        "workspace_label": "Workspace"
+      },
+      "name": "projection.bounded-title-discriminator",
+      "sha256": "e22122be063c05b661bcd448521cf112ff80044440b10774a750f3416b04f4f8"
+    },
+    {
+      "expected": {
+        "after": {
+          "actionable": false,
+          "entries": [
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "p1",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "p1",
+                "source_revision": 1,
+                "tab_id": "tab-p1",
+                "terminal_id": "term-p1",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 2,
+              "since": "-",
+              "slot": 0,
+              "stale": true,
+              "state": "offline",
+              "state_change_seq": 1,
+              "title": "Title"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 1,
+              "stale": false,
+              "state": "offline",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 2,
+              "stale": false,
+              "state": "offline",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            }
+          ],
+          "host_epoch": "epoch-fixed",
+          "snapshot_revision": 2,
+          "source_status": "offline"
+        },
+        "before": {
+          "actionable": true,
+          "entries": [
+            {
+              "age": "-",
+              "discriminator": "repo",
+              "entry_id": "p1",
+              "identity": {
+                "agent_session": null,
+                "pane_id": "p1",
+                "source_revision": 1,
+                "tab_id": "tab-p1",
+                "terminal_id": "term-p1",
+                "workspace_id": "workspace-1"
+              },
+              "rank": 2,
+              "since": "-",
+              "slot": 0,
+              "stale": false,
+              "state": "working",
+              "state_change_seq": 1,
+              "title": "Title"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 1,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 2,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            }
+          ],
+          "host_epoch": "epoch-fixed",
+          "snapshot_revision": 1,
+          "source_status": "current"
+        },
+        "binding": null
+      },
+      "input": {
+        "operation": "invalidate",
+        "reason": "offline"
+      },
+      "name": "projection.invalidation-preserves-stale-identity",
+      "sha256": "a5f65df1ed4ec8c9a9df48892b581c705a2175fbebac2adbc902d7d237bde8b0"
+    },
+    {
+      "expected": {
+        "material": 2,
+        "material_changed": true,
+        "revision_only": 1,
+        "revision_only_same": true,
+        "source_revision": 99
+      },
+      "input": {
+        "material_sequence": 2,
+        "operation": "refresh",
+        "revision_only": 99
+      },
+      "name": "projection.material-revision-rules",
+      "sha256": "10576b9b1d2a790a45e9d6ed204c4415576f41cdacc5005e1dba3a489a4f8a27"
+    },
+    {
+      "expected": {
+        "binding": null,
+        "snapshot": {
+          "actionable": false,
+          "entries": [
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 0,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 1,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            },
+            {
+              "age": "",
+              "discriminator": "NO WORKSPACE",
+              "entry_id": "",
+              "identity": null,
+              "rank": null,
+              "since": "",
+              "slot": 2,
+              "stale": false,
+              "state": "empty",
+              "state_change_seq": 0,
+              "title": "NO AGENT"
+            }
+          ],
+          "host_epoch": "epoch-fixed",
+          "snapshot_revision": 1,
+          "source_status": "unavailable"
+        }
+      },
+      "input": {
+        "operation": "refresh",
+        "source_status": "unavailable"
+      },
+      "name": "projection.source-unavailable-is-not-empty-current",
+      "sha256": "3665720ce98739d609af30d41794647f1ff0ce9b3fc6091df6a72ff80c8fd7b9"
+    },
+    {
+      "expected": {
+        "calls": [
+          {
+            "method": "agent.list",
+            "target": null
+          },
+          {
+            "method": "agent.focus",
+            "target": "p1"
+          }
+        ],
+        "status": "accepted",
+        "success": true
+      },
+      "input": {
+        "operation": "focus",
+        "scenario": "exact identity and sole write"
+      },
+      "name": "focus.accepted.exact-identity",
+      "sha256": "a16869f5f617afa3ca2545409dca44209074a4aa31db886f9fb6e583e73d8e6f"
+    },
+    {
+      "expected": {
+        "calls": [
+          {
+            "method": "agent.list",
+            "target": null
+          },
+          {
+            "method": "agent.focus",
+            "target": "p1"
+          },
+          {
+            "method": "agent.focus",
+            "target": "p1"
+          }
+        ],
+        "status": "accepted",
+        "success": true
+      },
+      "input": {
+        "operation": "focus",
+        "scenario": "one retry"
+      },
+      "name": "focus.accepted.one-unfocused-retry",
+      "sha256": "d09c5c88410f8b3faebfacd4ca1f7ca404dfb09f2ece4f93de680d14d5f9a8a0"
+    },
+    {
+      "expected": {
+        "calls": [
+          {
+            "method": "agent.list",
+            "target": null
+          }
+        ],
+        "status": "pane_reused",
+        "success": false
+      },
+      "input": {
+        "operation": "focus",
+        "scenario": "terminal identity mismatch"
+      },
+      "name": "focus.rejected.pane-reused",
+      "sha256": "b325820f479363a7180d9b54fe9627ee43058ccba3aab7db24a5dfac3ccfbed3"
+    },
+    {
+      "expected": {
+        "calls": [],
+        "status": "stale",
+        "success": false
+      },
+      "input": {
+        "operation": "focus",
+        "scenario": "stale projection"
+      },
+      "name": "focus.rejected.stale",
+      "sha256": "466d371ccc3de3c4a3a075538fa78dee7e9833ab40dd3154299e376ba1d0c5cd"
+    },
+    {
+      "expected": {
+        "calls": [
+          {
+            "method": "agent.list",
+            "target": null
+          }
+        ],
+        "status": "vanished",
+        "success": false
+      },
+      "input": {
+        "operation": "focus",
+        "scenario": "pane vanished"
+      },
+      "name": "focus.rejected.vanished",
+      "sha256": "8e9ad95f7bd9caa839d33bdf2dfdd15755862c406fa89bc5ace5c5a11955e45c"
+    },
+    {
+      "expected": {
+        "calls": [
+          {
+            "method": "agent.list",
+            "target": null
+          }
+        ],
+        "status": "uncertain",
+        "success": false
+      },
+      "input": {
+        "operation": "focus",
+        "scenario": "request timeout"
+      },
+      "name": "focus.rejected.timeout-uncertain",
+      "sha256": "c2adace851df55ffa5a16614c0a1d3f0c05c89a18cb2a442695f1d077cd268c3"
+    },
+    {
+      "expected": {
+        "calls": [
+          {
+            "method": "agent.list",
+            "target": null
+          },
+          {
+            "method": "agent.focus",
+            "target": "p1"
+          }
+        ],
+        "status": "rejected",
+        "success": false
+      },
+      "input": {
+        "operation": "focus",
+        "scenario": "malformed acknowledgement"
+      },
+      "name": "focus.rejected.malformed-ack",
+      "sha256": "13c6a058ef898e311be021d7bb207ebd43fdcff5c6c11f67c65a53484ff5a1fb"
+    },
+    {
+      "expected": {
+        "calls": [
+          {
+            "method": "agent.list",
+            "target": null
+          }
+        ],
+        "status": "offline",
+        "success": false
+      },
+      "input": {
+        "operation": "focus",
+        "scenario": "not found write"
+      },
+      "name": "focus.rejected.agent-not-found",
+      "sha256": "f64b9c5235e7db7f4f8a51a6009bd94b8d68ea78f052c1b2bfa3719ce80572a1"
+    }
+  ],
+  "family": "projection-focus",
+  "fixture_sha256": "6ab0f20723b4ae49afc166df039a9ca554a75477a35c73a78a3ce31781d05876",
+  "schema_version": 1,
+  "sources": [
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/bridge.py",
+      "sha256": "b4cd6b8fe5bdd3cdfb32f31793e02e7424ffe2ca4ef03762b9c202f74902fc01"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/projection.py",
+      "sha256": "390b37bd4b5ce56577890611dbde4182453ff23728f7c3220fe0132fd3095bbc"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/focus.py",
+      "sha256": "faf48b234d1d5e0b552f92e8eb327766bfc452d002af4a3fc68779b4c96cbea3"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/codex.py",
+      "sha256": "ca2715e9e6ab88171c76974bde7e9058b4c9e2c05ba1295ded520afd597803a6"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_protocol.py",
+      "sha256": "56521aa93f53157a8f70ceda648f9844c069c55288cc94ecfa834b64b428da92"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_projection.py",
+      "sha256": "eb74a619bc067ae479ff511c7d5d1787d158df8ba9678e9abee1741477c4ba2d"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_focus.py",
+      "sha256": "b749163c23873dde7025b4dbb3930cf557286b17bf4a37c9278f42bac48e4674"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_codex.py",
+      "sha256": "13839ba699d7c954211992d0cb47164680c4ef7396b4b433f2f5aecfc0e91e06"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_integration.py",
+      "sha256": "734624bc9e7f3df3b09d2bbb2b5f252fd669d2e26bf76a50b6d9a0571b9f8bb5"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "protocol/schema/v2.json",
+      "sha256": "e06e7664c4ff41531b4b7c857f404b48d8f4192485291f845262b61b2a7d8f27"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "protocol/fixtures/v2-golden.json",
+      "sha256": "d7982bf989d7aca5d95a48d0b69effc98336fed22a3ae31494dea3a4400110c2"
+    }
+  ]
+}

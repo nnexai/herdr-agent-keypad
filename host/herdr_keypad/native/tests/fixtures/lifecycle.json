@@ -1,0 +1,182 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "connect_attempts": 1,
+        "focus_writes": 0,
+        "herdr_calls": [
+          "session.snapshot",
+          "agent.list",
+          "workspace.list",
+          "events.subscribe"
+        ],
+        "link_status": "current",
+        "publication_count": 1,
+        "ready": true,
+        "ready_transitions": 1,
+        "revision": 1,
+        "usb_connected": true,
+        "usb_results": 0
+      },
+      "input": {
+        "operation": "bootstrap"
+      },
+      "name": "lifecycle.ready-after-complete-snapshot-ack",
+      "sha256": "c0d92d667088372e3765729edcef79786dbced60d2d1f4fab09ca86335207326"
+    },
+    {
+      "expected": {
+        "offline": {
+          "connect_attempts": 1,
+          "focus_writes": 0,
+          "herdr_calls": [
+            "session.snapshot",
+            "agent.list",
+            "workspace.list",
+            "events.subscribe",
+            "session.snapshot",
+            "agent.list",
+            "workspace.list",
+            "events.subscribe"
+          ],
+          "link_status": "offline",
+          "publication_count": 1,
+          "ready": false,
+          "ready_transitions": 2,
+          "revision": 1,
+          "usb_connected": false,
+          "usb_results": 0
+        },
+        "recovered": {
+          "connect_attempts": 2,
+          "focus_writes": 0,
+          "herdr_calls": [
+            "session.snapshot",
+            "agent.list",
+            "workspace.list",
+            "events.subscribe",
+            "session.snapshot",
+            "agent.list",
+            "workspace.list",
+            "events.subscribe"
+          ],
+          "link_status": "current",
+          "publication_count": 2,
+          "ready": true,
+          "ready_transitions": 3,
+          "revision": 1,
+          "usb_connected": true,
+          "usb_results": 0
+        },
+        "session_replaced": true
+      },
+      "input": {
+        "initial_session": "session-1",
+        "operation": "run_once"
+      },
+      "name": "lifecycle.usb-reconnect-backoff-and-fresh-session",
+      "sha256": "d53614180b23c8d956ce4984f2ecf84f60f723c9322ee83302b0c17cba5fe086"
+    },
+    {
+      "expected": {
+        "focus_writes": 0,
+        "last_focus": null,
+        "ready": false
+      },
+      "input": {
+        "deferred_focus": "queued-before-fence",
+        "handler_result": null,
+        "operation": "disconnect"
+      },
+      "name": "lifecycle.disconnect-discards-deferred-focus",
+      "sha256": "f0ccfd37aeef06b838c683b399adb5318ea2752deb4397097f09fc0ed4de93ff"
+    },
+    {
+      "expected": {
+        "agent_reads_after": 1,
+        "agent_reads_before": 1,
+        "invalidation_count": 0,
+        "poll_calls": 1,
+        "stream_count": 1
+      },
+      "input": {
+        "operation": "run_once",
+        "stream_mode": "push"
+      },
+      "name": "lifecycle.healthy-event-stream-idle",
+      "sha256": "5e5a5c816ed215c1e3ce5a34c58f4e481839a2b22c5f617b7b14e955a3339c1b"
+    },
+    {
+      "expected": {
+        "bridge_codex_state": "auth_required",
+        "codex_state": "auth_required",
+        "ready": false
+      },
+      "input": {
+        "operation": "account_changed_then_disconnect"
+      },
+      "name": "lifecycle.independent-codex-auth-on-link-loss",
+      "sha256": "6dd12460861a6946b36066f8dff616da81c2b503a94d586f2c623f0272f37bba"
+    }
+  ],
+  "family": "lifecycle",
+  "fixture_sha256": "9e5a2aa0faac4fc193acec86e38a208487b776cf020b3303880c36c75b86c8d2",
+  "schema_version": 1,
+  "sources": [
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/bridge.py",
+      "sha256": "b4cd6b8fe5bdd3cdfb32f31793e02e7424ffe2ca4ef03762b9c202f74902fc01"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/projection.py",
+      "sha256": "390b37bd4b5ce56577890611dbde4182453ff23728f7c3220fe0132fd3095bbc"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/focus.py",
+      "sha256": "faf48b234d1d5e0b552f92e8eb327766bfc452d002af4a3fc68779b4c96cbea3"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/codex.py",
+      "sha256": "ca2715e9e6ab88171c76974bde7e9058b4c9e2c05ba1295ded520afd597803a6"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_protocol.py",
+      "sha256": "56521aa93f53157a8f70ceda648f9844c069c55288cc94ecfa834b64b428da92"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_projection.py",
+      "sha256": "eb74a619bc067ae479ff511c7d5d1787d158df8ba9678e9abee1741477c4ba2d"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_focus.py",
+      "sha256": "b749163c23873dde7025b4dbb3930cf557286b17bf4a37c9278f42bac48e4674"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_codex.py",
+      "sha256": "13839ba699d7c954211992d0cb47164680c4ef7396b4b433f2f5aecfc0e91e06"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_integration.py",
+      "sha256": "734624bc9e7f3df3b09d2bbb2b5f252fd669d2e26bf76a50b6d9a0571b9f8bb5"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "protocol/schema/v2.json",
+      "sha256": "e06e7664c4ff41531b4b7c857f404b48d8f4192485291f845262b61b2a7d8f27"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "protocol/fixtures/v2-golden.json",
+      "sha256": "d7982bf989d7aca5d95a48d0b69effc98336fed22a3ae31494dea3a4400110c2"
+    }
+  ]
+}

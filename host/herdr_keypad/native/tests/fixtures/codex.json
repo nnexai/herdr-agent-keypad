@@ -1,0 +1,341 @@
+{
+  "cases": [
+    {
+      "expected": {
+        "redaction": {
+          "bucket_manifest": {
+            "key_prefixes": [],
+            "observed_key_count": 0,
+            "present": false,
+            "selected_key": null,
+            "truncated": false
+          },
+          "rejected_field_count": 0,
+          "result": "pass"
+        },
+        "view": {
+          "error_code": "",
+          "observation_age": "AGE N/A",
+          "primary": 0,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": 57,
+          "source_state": "current"
+        }
+      },
+      "input": {
+        "operation": "normalize",
+        "shape": "full"
+      },
+      "name": "codex.current.full-baseline-zero",
+      "sha256": "88295a276312ff08bf38ffa1d31f7eb0a7194bac9ce476756519702d49f8fcb1"
+    },
+    {
+      "expected": {
+        "view": {
+          "error_code": "",
+          "observation_age": "AGE N/A",
+          "primary": null,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": 40,
+          "source_state": "current"
+        }
+      },
+      "input": {
+        "duration_minutes": 10080,
+        "operation": "normalize"
+      },
+      "name": "codex.current.weekly-window-mapping",
+      "sha256": "580c33d16570ad8484aa011b4c721cf7e4f89cafbec4db847391c23973a988b0"
+    },
+    {
+      "expected": {
+        "accepted": false,
+        "refetch_pending": true,
+        "view": {
+          "error_code": "",
+          "observation_age": "AGE N/A",
+          "primary": null,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": null,
+          "source_state": "unavailable"
+        }
+      },
+      "input": {
+        "baseline": "absent",
+        "operation": "sparse"
+      },
+      "name": "codex.unavailable.sparse-before-baseline",
+      "sha256": "1037fb9ec540fd63c5a015e062f6d7fec0e6280e1b85832d8828bf4c25e831df"
+    },
+    {
+      "expected": {
+        "accepted": true,
+        "consume_again": false,
+        "consume_refetch": true,
+        "refetch_pending": true,
+        "view": {
+          "error_code": "",
+          "observation_age": "AGE 0M",
+          "primary": 0,
+          "reached_limit": true,
+          "reset_text": "RESET N/A",
+          "secondary": null,
+          "source_state": "current"
+        }
+      },
+      "input": {
+        "baseline": "full",
+        "operation": "sparse"
+      },
+      "name": "codex.current.sparse-merge-and-refetch",
+      "sha256": "ec579ba19ea99683d640246752ad5d104640f4612edce3cf3a2809a28e83b840"
+    },
+    {
+      "expected": {
+        "cache_cleared": true,
+        "view": {
+          "error_code": "",
+          "observation_age": "AGE N/A",
+          "primary": null,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": null,
+          "source_state": "auth_required"
+        }
+      },
+      "input": {
+        "auth_required": true,
+        "operation": "account_changed"
+      },
+      "name": "codex.auth-required.account-reset",
+      "sha256": "5191068e49622571b82f024e26595e84a40fb286e3be631b9048327077b43798"
+    },
+    {
+      "expected": {
+        "view": {
+          "error_code": "",
+          "observation_age": "AGE 15M",
+          "primary": 12,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": null,
+          "source_state": "stale"
+        }
+      },
+      "input": {
+        "elapsed_seconds": 901,
+        "operation": "freshness"
+      },
+      "name": "codex.stale.after-freshness-deadline",
+      "sha256": "eb3a8b930c9355e0527704c647770286c2fb291e68e18f9e948cf178b3d4d2fe"
+    },
+    {
+      "expected": {
+        "view": {
+          "error_code": "E-2401",
+          "observation_age": "AGE N/A",
+          "primary": null,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": null,
+          "source_state": "unavailable"
+        }
+      },
+      "input": {
+        "duration_minutes": 1440,
+        "operation": "normalize"
+      },
+      "name": "codex.unavailable.unsupported-duration",
+      "sha256": "459cc86ee10e0d6ab451ec25a2b8d1856f28444266696c29cfa425640891649d"
+    },
+    {
+      "expected": {
+        "evidence": {
+          "account_observed": true,
+          "child_exit": {
+            "code": 0,
+            "signal": null,
+            "state": "terminated"
+          },
+          "deadline_ms": 3000,
+          "elapsed_ms": 0,
+          "handshake": [
+            "initialize",
+            "initialized",
+            "account/read"
+          ],
+          "rate_limits_observed": false,
+          "redaction": {
+            "bucket_manifest": {
+              "key_prefixes": [],
+              "observed_key_count": 0,
+              "present": false,
+              "selected_key": null,
+              "truncated": false
+            },
+            "rejected_field_count": 0,
+            "result": "pass"
+          }
+        },
+        "view": {
+          "error_code": "",
+          "observation_age": "AGE N/A",
+          "primary": null,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": null,
+          "source_state": "auth_required"
+        }
+      },
+      "input": {
+        "operation": "collect",
+        "scenario": "auth"
+      },
+      "name": "codex.auth-required.child-handshake",
+      "sha256": "912d5e9e9b4ca42a37c79a8f9cb1b72b94f0ff5b37428bbb88df317410539dc3"
+    },
+    {
+      "expected": {
+        "evidence": {
+          "account_observed": false,
+          "child_exit": {
+            "code": 0,
+            "signal": null,
+            "state": "terminated"
+          },
+          "deadline_ms": 3000,
+          "elapsed_ms": 0,
+          "handshake": [
+            "initialize",
+            "initialized"
+          ],
+          "rate_limits_observed": false,
+          "redaction": {
+            "bucket_manifest": {
+              "key_prefixes": [],
+              "observed_key_count": 0,
+              "present": false,
+              "selected_key": null,
+              "truncated": false
+            },
+            "rejected_field_count": 0,
+            "result": "pass"
+          }
+        },
+        "view": {
+          "error_code": "E-2405",
+          "observation_age": "AGE N/A",
+          "primary": null,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": null,
+          "source_state": "codex_offline"
+        }
+      },
+      "input": {
+        "operation": "collect",
+        "scenario": "malformed"
+      },
+      "name": "codex.codex-offline.malformed-jsonl",
+      "sha256": "bf28c3434c69dfc2249d04889eaa26b1279dad7bd93115e3d26de602686566ef"
+    },
+    {
+      "expected": {
+        "child_exit": {
+          "code": 7,
+          "signal": null,
+          "state": "exited"
+        },
+        "view": {
+          "error_code": "",
+          "observation_age": "AGE 0M",
+          "primary": 1,
+          "reached_limit": null,
+          "reset_text": "RESET N/A",
+          "secondary": null,
+          "source_state": "current"
+        }
+      },
+      "input": {
+        "operation": "collect",
+        "scenario": "already-exited"
+      },
+      "name": "codex.child-exit.nonzero-observed",
+      "sha256": "2ff0e6c0a6dd4c51af95859a1a6e91433febacdf2dc7dd8fd5650c3a6bb01c3e"
+    },
+    {
+      "expected": {
+        "redaction_passes": false
+      },
+      "input": {
+        "operation": "redaction",
+        "shape": "nested-sensitive"
+      },
+      "name": "codex.redaction.sensitive-shape-rejected",
+      "sha256": "3dba9b39cb82412f8425c717252b51d1826a68b0bee765070a99235fb6e82235"
+    }
+  ],
+  "family": "codex",
+  "fixture_sha256": "474bffd5a58ca9303338ec7c2885cffe53fd5f067bfccbce9f08abc0c5edfe93",
+  "schema_version": 1,
+  "sources": [
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/bridge.py",
+      "sha256": "b4cd6b8fe5bdd3cdfb32f31793e02e7424ffe2ca4ef03762b9c202f74902fc01"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/projection.py",
+      "sha256": "390b37bd4b5ce56577890611dbde4182453ff23728f7c3220fe0132fd3095bbc"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/focus.py",
+      "sha256": "faf48b234d1d5e0b552f92e8eb327766bfc452d002af4a3fc68779b4c96cbea3"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/src/herdr_keypad/codex.py",
+      "sha256": "ca2715e9e6ab88171c76974bde7e9058b4c9e2c05ba1295ded520afd597803a6"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_protocol.py",
+      "sha256": "56521aa93f53157a8f70ceda648f9844c069c55288cc94ecfa834b64b428da92"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_projection.py",
+      "sha256": "eb74a619bc067ae479ff511c7d5d1787d158df8ba9678e9abee1741477c4ba2d"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_focus.py",
+      "sha256": "b749163c23873dde7025b4dbb3930cf557286b17bf4a37c9278f42bac48e4674"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_codex.py",
+      "sha256": "13839ba699d7c954211992d0cb47164680c4ef7396b4b433f2f5aecfc0e91e06"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "host/herdr_keypad/tests/test_integration.py",
+      "sha256": "734624bc9e7f3df3b09d2bbb2b5f252fd669d2e26bf76a50b6d9a0571b9f8bb5"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "protocol/schema/v2.json",
+      "sha256": "e06e7664c4ff41531b4b7c857f404b48d8f4192485291f845262b61b2a7d8f27"
+    },
+    {
+      "kind": "oracle-source",
+      "path": "protocol/fixtures/v2-golden.json",
+      "sha256": "d7982bf989d7aca5d95a48d0b69effc98336fed22a3ae31494dea3a4400110c2"
+    }
+  ]
+}
