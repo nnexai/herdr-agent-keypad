@@ -322,14 +322,14 @@ pub fn bounded_uint_zero(value: &Value) -> Result<u32, ProjectionError> {
     value.as_u64().filter(|value| *value <= u64::from(u32::MAX)).map(|v| v as u32).ok_or_else(ProjectionError::unavailable)
 }
 
-pub fn opaque(value: &str, _name: &str, allow_empty: bool) -> Result<&str, ProjectionError> {
+pub fn opaque<'a>(value: &'a str, _name: &str, allow_empty: bool) -> Result<&'a str, ProjectionError> {
     if (!allow_empty && value.is_empty()) || value.len() > MAX_IDENTIFIER || !value.is_ascii() || value.bytes().any(|byte| byte < 0x21 || byte > 0x7e) {
         return Err(ProjectionError::unavailable());
     }
     Ok(value)
 }
 
-pub fn text(value: &str, _name: &str, maximum: usize, allow_empty: bool) -> Result<&str, ProjectionError> {
+pub fn text<'a>(value: &'a str, _name: &str, maximum: usize, allow_empty: bool) -> Result<&'a str, ProjectionError> {
     if (!allow_empty && value.is_empty()) || value.len() > maximum || !value.is_ascii() || value.bytes().any(|byte| byte < 0x20) {
         return Err(ProjectionError::unavailable());
     }
