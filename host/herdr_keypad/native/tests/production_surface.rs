@@ -1,8 +1,9 @@
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const PLUGIN_MANIFEST: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../herdr-plugin.toml");
 
@@ -15,6 +16,107 @@ fn temp_root() -> PathBuf {
 
 fn binary() -> &'static str {
     env!("CARGO_BIN_EXE_herdr-keypad-native")
+}
+
+struct ChildGuard(Child);
+
+impl Drop for ChildGuard {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+fn lifecycle_command(root: &Path, command: &str) -> Command {
+    let mut invocation = Command::new(binary());
+    invocation
+        .env("PATH", "")
+        .arg(command)
+        .env("HOME", root.join("home"))
+        .env("HERDR_PLUGIN_CONFIG_DIR", root.join("config"))
+        .env("HERDR_PLUGIN_STATE_DIR", root.join("state"))
+        .env("HERDR_SOCKET_PATH", root.join("herdr.sock"))
+        .env("HERDR_BIN_PATH", "/bin/true")
+        .env("HERDR_PID", "0");
+    invocation
+}
+
+fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if condition() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    condition()
+}
+
+#[test]
+fn production_binary_start_status_stop_owns_control_socket_for_authority_lifetime() {
+    let root = temp_root();
+    fs::create_dir_all(root.join("config")).expect("config");
+    fs::create_dir_all(root.join("state")).expect("state");
+    fs::create_dir_all(root.join("home/.config/herdr")).expect("home config");
+    fs::write(root.join("config/config.toml"), "logging_enabled = false\n").expect("settings");
+    fs::write(
+        root.join("home/.config/herdr/keypad-binding.json"),
+        br#"{"schema_version":1,"device_id":"kbd-123","protocol":1,"firmware":"phase1-bringup"}"#,
+    )
+    .expect("binding");
+
+    let start = lifecycle_command(&root, "start")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("start authority");
+    let mut authority = ChildGuard(start);
+    let socket = root.join("state/bridge.sock");
+    assert!(
+        wait_until(Duration::from_secs(5), || socket.exists()),
+        "successful start never created bridge.sock"
+    );
+    assert!(authority.0.try_wait().expect("authority state").is_none(), "authority exited before stop");
+
+    let status_output = lifecycle_command(&root, "status").output().expect("running status");
+    assert!(status_output.status.success(), "status failed: {}", String::from_utf8_lossy(&status_output.stderr));
+    assert!(status_output.stdout.len() <= 16 * 1024, "status exceeded the control payload bound");
+    let status: Value = serde_json::from_slice(&status_output.stdout).expect("bounded JSON status");
+    assert_eq!(status["reply"], "status");
+    assert_eq!(status["state"], "running");
+    let bounded_states = [
+        "stopped",
+        "running",
+        "ready",
+        "unavailable",
+        "device_unavailable",
+        "herdr_unavailable",
+        "codex_unavailable",
+        "stale",
+    ];
+    for field in ["device_state", "herdr_state", "codex_state"] {
+        let value = status[field].as_str().expect("source state string");
+        assert!(bounded_states.contains(&value), "unbounded {field}: {value}");
+    }
+
+    let stop_output = lifecycle_command(&root, "stop").output().expect("stop authority");
+    assert!(stop_output.status.success(), "stop failed: {}", String::from_utf8_lossy(&stop_output.stderr));
+    let stopped: Value = serde_json::from_slice(&stop_output.stdout).expect("stopped reply");
+    assert_eq!(stopped["reply"], "stopped");
+    assert!(
+        wait_until(Duration::from_secs(5), || authority.0.try_wait().expect("authority state").is_some()),
+        "authority did not exit after stop"
+    );
+    assert!(!socket.exists(), "control socket remained after authority exit");
+
+    let final_output = lifecycle_command(&root, "status").output().expect("final status");
+    assert!(final_output.status.success(), "final status failed: {}", String::from_utf8_lossy(&final_output.stderr));
+    let final_status: Value = serde_json::from_slice(&final_output.stdout).expect("final stopped status");
+    assert_eq!(final_status["reply"], "status");
+    assert_eq!(final_status["state"], "stopped");
+
+    fs::remove_dir_all(root).expect("cleanup");
 }
 
 #[test]

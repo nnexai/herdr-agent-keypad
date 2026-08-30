@@ -117,8 +117,8 @@ fn lifecycle_suspend_invalidates_sessions_until_fresh_resume() {
     fs::remove_dir_all(root).expect("cleanup");
 }
 
-#[test]
-fn lifecycle_control_lock_cleans_stale_endpoint_only_after_authority_is_owned() {
+#[tokio::test]
+async fn lifecycle_control_lock_cleans_stale_endpoint_only_after_authority_is_owned() {
     let root = temp_dir("lock");
     let state = root.join("state");
     fs::create_dir_all(&state).expect("state");
@@ -127,7 +127,12 @@ fn lifecycle_control_lock_cleans_stale_endpoint_only_after_authority_is_owned() 
     let authority = AuthorityLock::acquire(&state).expect("authority");
     assert!(!socket.exists(), "stale endpoint is removed after lock acquisition");
     assert!(AuthorityLock::acquire(&state).is_err(), "lock, not endpoint, proves authority");
+    let endpoint = authority.bind_control().await.expect("control endpoint");
+    assert_eq!(endpoint.path(), socket);
+    assert!(socket.exists(), "authority binds its control endpoint");
     drop(authority);
+    assert!(!socket.exists(), "authority drop invalidates its control endpoint");
+    drop(endpoint);
     fs::remove_dir_all(root).expect("cleanup");
 }
 

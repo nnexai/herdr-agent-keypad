@@ -37,7 +37,7 @@ pub enum ControlErrorCode {
 }
 
 impl ControlError {
-    fn new(code: ControlErrorCode) -> Self {
+    pub(crate) fn new(code: ControlErrorCode) -> Self {
         Self { code }
     }
 
@@ -317,6 +317,14 @@ impl AuthorityLock {
     }
 }
 
+impl Drop for AuthorityLock {
+    fn drop(&mut self) {
+        // Remove the transport while the exclusive lock still proves that this
+        // process is the only authority allowed to touch the endpoint path.
+        let _ = fs::remove_file(&self.socket_path);
+    }
+}
+
 pub struct ControlEndpoint {
     listener: UnixListener,
     path: PathBuf,
@@ -339,8 +347,8 @@ impl ControlEndpoint {
         }
     }
 
-    pub async fn receive_request(&self, stream: UnixStream) -> Result<ControlRequest, ControlError> {
-        if !peer_is_same_user(&stream, &self.state_dir) {
+    pub async fn receive_request(&self, stream: &mut UnixStream) -> Result<ControlRequest, ControlError> {
+        if !peer_is_same_user(stream, &self.state_dir) {
             return Err(ControlError::new(ControlErrorCode::UnauthorizedPeer));
         }
         let reader = BufReader::new(stream);

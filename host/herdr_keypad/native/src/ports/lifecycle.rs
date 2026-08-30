@@ -5,7 +5,9 @@
 //! boundary ends. Explicit control actions are the only recovery path.
 
 use super::config::{EffectiveConfig, StartupConfig};
-use super::control::{AuthorityLock, ControlError, ControlReply};
+use super::control::{
+    AuthorityLock, ControlEndpoint, ControlError, ControlErrorCode, ControlReply, ControlRequest,
+};
 use super::status::{BridgeStatus, SafeCode, StatusSnapshot, TransitionRing};
 use std::path::{Path, PathBuf};
 
@@ -122,6 +124,43 @@ impl LifecycleOwner {
             owner.transitions.push(code, 0);
         }
         Ok(owner)
+    }
+
+    pub async fn bind_control(&self) -> Result<ControlEndpoint, LifecycleError> {
+        let authority = self
+            .lock
+            .as_ref()
+            .ok_or_else(|| ControlError::new(ControlErrorCode::BindFailed))?;
+        authority.bind_control().await
+    }
+
+    pub fn handle_control(&mut self, request: ControlRequest) -> ControlReply {
+        match request {
+            ControlRequest::Start { config_identity, .. } => {
+                if config_identity == self.effective.identity() {
+                    self.handle(LifecycleCommand::Start)
+                } else {
+                    ControlReply::RestartRequired {
+                        active_config_identity: self.effective.identity().to_owned(),
+                        requested_config_identity: config_identity,
+                    }
+                }
+            }
+            ControlRequest::Restart { config_identity, .. } => {
+                if config_identity == self.effective.identity() {
+                    self.handle(LifecycleCommand::Restart)
+                } else {
+                    ControlReply::RestartRequired {
+                        active_config_identity: self.effective.identity().to_owned(),
+                        requested_config_identity: config_identity,
+                    }
+                }
+            }
+            ControlRequest::Stop { .. } => self.handle(LifecycleCommand::Stop),
+            ControlRequest::Status { .. } => self.handle(LifecycleCommand::Status),
+            ControlRequest::Repair { .. } => self.handle(LifecycleCommand::Repair),
+            ControlRequest::RepairPair { .. } => self.handle(LifecycleCommand::RepairPair),
+        }
     }
 
     pub fn handle(&mut self, command: LifecycleCommand) -> ControlReply {
