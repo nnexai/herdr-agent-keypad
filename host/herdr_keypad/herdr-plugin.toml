@@ -2,12 +2,52 @@ id = "herdr-keypad"
 name = "herdr-keypad"
 version = "0.1.0"
 description = "Exact installed inbox projection and focus-only USB keypad bridge."
-min_herdr_version = "0.8.0"
-platforms = ["linux"]
+min_herdr_version = "0.8.2"
+platforms = ["linux", "macos"]
 
 [[startup]]
-command = ["/bin/sh", "scripts/ensure-bridge.sh"]
+platforms = ["linux", "macos"]
+command = ["bin/herdr-keypad", "startup"]
 
-[[events]]
-on = "pane.agent_detected"
-command = ["/bin/sh", "scripts/ensure-bridge.sh"]
+[[actions]]
+id = "start"
+title = "Start keypad bridge"
+description = "Start the bundled native keypad bridge, or report the active instance."
+platforms = ["linux", "macos"]
+command = ["bin/herdr-keypad", "start"]
+
+[[actions]]
+id = "stop"
+title = "Stop keypad bridge"
+description = "Explicitly stop the bundled native keypad bridge."
+platforms = ["linux", "macos"]
+command = ["bin/herdr-keypad", "stop"]
+
+[[actions]]
+id = "restart"
+title = "Restart keypad bridge"
+description = "Replace the keypad bridge authority and apply validated configuration."
+platforms = ["linux", "macos"]
+command = ["bin/herdr-keypad", "restart"]
+
+[[actions]]
+id = "status"
+title = "Keypad bridge status (read-only)"
+description = "Read-only bounded keypad bridge status; never mutates bridge, pairing, source, focus, or device ownership."
+contexts = ["global"]
+platforms = ["linux", "macos"]
+command = ["bin/herdr-keypad", "status"]
+
+[[actions]]
+id = "repair"
+title = "Repair keypad bridge"
+description = "Validate and repair the existing keypad bridge configuration."
+platforms = ["linux", "macos"]
+command = ["bin/herdr-keypad", "repair"]
+
+[[actions]]
+id = "re-pair"
+title = "Re-pair keypad"
+description = "Explicitly re-pair the keypad through the native bridge."
+platforms = ["linux", "macos"]
+command = ["bin/herdr-keypad", "re-pair"]
