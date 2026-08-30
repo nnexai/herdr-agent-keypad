@@ -117,7 +117,7 @@ fn production_binary_start_status_stop_owns_control_socket_for_authority_lifetim
     assert!(status_output.stdout.len() <= 16 * 1024, "status exceeded the control payload bound");
     let status: Value = serde_json::from_slice(&status_output.stdout).expect("bounded JSON status");
     assert_eq!(status["reply"], "status");
-    assert_eq!(status["state"], "running");
+    assert_eq!(status["state"], "stale");
     assert_eq!(
         status["device_state"], "device_unavailable",
         "a running authority without an exact USB snapshot ACK must not report device ready"

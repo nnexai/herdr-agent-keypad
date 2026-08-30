@@ -52,6 +52,7 @@ enum HelloMode {
     WrongSession,
     StaleSequence,
     FocusBeforeAck,
+    FocusUntilResultThenAck,
 }
 
 fn exact_candidate(endpoint: &str) -> DeviceCandidate {
@@ -98,17 +99,38 @@ async fn fake_device(stream: DuplexStream, mode: HelloMode) {
         json!({"accepted":true,"device_id":device_id,"firmware":"phase1-bringup","protocol":1}),
     );
     let _ = write_json(&mut write_half, hello_ack).await;
-    if !matches!(mode, HelloMode::Matching | HelloMode::FocusBeforeAck) {
+    if !matches!(mode, HelloMode::Matching | HelloMode::FocusBeforeAck | HelloMode::FocusUntilResultThenAck) {
         return;
     }
     let Ok(Some(snapshot_line)) = lines.next_line().await else { return };
     let Ok(snapshot): Result<Value, _> = serde_json::from_str(&snapshot_line) else { return };
     let snapshot_payload = snapshot.get("payload").cloned().unwrap_or_default();
-    if matches!(mode, HelloMode::FocusBeforeAck) {
-        let intent = frame(2, "focus_intent", boot_id, session, 2, None, json!({"action_id":"queued"}));
+    if matches!(mode, HelloMode::FocusBeforeAck | HelloMode::FocusUntilResultThenAck) {
+        let intent = frame(
+            2,
+            "focus_intent",
+            boot_id,
+            session,
+            2,
+            None,
+            json!({"action_id":"queued"}),
+        );
         let _ = write_json(&mut write_half, intent).await;
     }
-    let sequence = if matches!(mode, HelloMode::FocusBeforeAck) { 3 } else { 2 };
+    if matches!(mode, HelloMode::FocusUntilResultThenAck) {
+        let Ok(Some(result_line)) = lines.next_line().await else {
+            return;
+        };
+        let Ok(result): Result<Value, _> = serde_json::from_str(&result_line) else {
+            return;
+        };
+        assert_eq!(result.get("type").and_then(Value::as_str), Some("focus_result"));
+    }
+    let sequence = if matches!(mode, HelloMode::FocusBeforeAck | HelloMode::FocusUntilResultThenAck) {
+        3
+    } else {
+        2
+    };
     let ack = frame(
         2,
         "snapshot_ack",
@@ -125,6 +147,67 @@ async fn fake_device(stream: DuplexStream, mode: HelloMode) {
         }),
     );
     let _ = write_json(&mut write_half, ack).await;
+}
+
+fn make_split_focus_platform(endpoint: &str) -> (FakePlatform, tokio::task::JoinHandle<()>) {
+    let (host, device) = tokio::io::duplex(16 * 1024);
+    let platform = FakePlatform {
+        candidates: vec![exact_candidate(endpoint)],
+        streams: Arc::new(Mutex::new(VecDeque::from([host]))),
+    };
+    let server = tokio::spawn(async move {
+        let (read_half, mut write_half) = tokio::io::split(device);
+        let mut lines = BufReader::new(read_half).lines();
+        let hello_line = lines
+            .next_line()
+            .await
+            .expect("hello read")
+            .expect("hello line");
+        let hello: Value = serde_json::from_str(&hello_line).expect("hello JSON");
+        let session = hello["session_id"].as_str().expect("session").to_owned();
+        write_json(
+            &mut write_half,
+            frame(
+                1,
+                "hello_ack",
+                "device-boot-1",
+                &session,
+                1,
+                Some(1),
+                json!({
+                    "accepted":true,
+                    "device_id":"paired-device",
+                    "firmware":"phase1-bringup",
+                    "protocol":1
+                }),
+            ),
+        )
+        .await
+        .expect("hello ACK");
+
+        let focus = frame(
+            2,
+            "focus_intent",
+            "device-boot-1",
+            &session,
+            2,
+            None,
+            json!({"action_id":"split"}),
+        );
+        let mut encoded = serde_json::to_vec(&focus).expect("focus JSON");
+        encoded.push(b'\n');
+        let split = encoded.len() / 2;
+        write_half
+            .write_all(&encoded[..split])
+            .await
+            .expect("focus prefix");
+        tokio::time::sleep(Duration::from_millis(75)).await;
+        write_half
+            .write_all(&encoded[split..])
+            .await
+            .expect("focus suffix");
+    });
+    (platform, server)
 }
 async fn fake_device_reconnect(stream: DuplexStream, old_session: String) {
     let (read_half, mut write_half) = tokio::io::split(stream);
@@ -289,21 +372,93 @@ fn linux_transient_enumeration_resolves_one_exact_stable_by_id_alias() {
 }
 
 #[tokio::test]
-async fn exact_hello_then_snapshot_ack_gates_readiness_and_close_clears_focus() {
+async fn exact_hello_then_snapshot_ack_preserves_focus_and_reply_fences() {
     let (_directory, binding) = binding_path("binding.json");
-    let (platform, server) = make_platform(HelloMode::FocusBeforeAck, "/dev/serial/by-id/usb-herdr");
-    let mut port = UsbPort::new(Box::new(platform), binding).with_timeout(Duration::from_millis(250));
-    assert!(matches!(port.connect().await.unwrap(), UsbEvent::Connected { .. }));
-    assert!(!port.ready());
-    let ack = port.publish_snapshot(json!({"host_epoch":"epoch","snapshot_revision":1,"source_status":"empty"})).await.unwrap();
+    let (platform, server) =
+        make_platform(HelloMode::FocusBeforeAck, "/dev/serial/by-id/usb-herdr");
+    let mut port =
+        UsbPort::new(Box::new(platform), binding).with_timeout(Duration::from_millis(250));
+    assert!(matches!(
+        port.connect().await.unwrap(),
+        UsbEvent::Connected { .. }
+    ));
+    let request = port
+        .send_snapshot(json!({"host_epoch":"epoch","snapshot_revision":1,"source_status":"empty"}))
+        .await
+        .unwrap();
+    assert!(matches!(
+        port.poll().await.unwrap(),
+        Some(UsbEvent::FocusIntent(_))
+    ));
+    let Some(UsbEvent::SnapshotAck(ack)) = port.poll().await.unwrap() else {
+        panic!("snapshot ACK missing");
+    };
     assert!(ack.accepted);
-    assert!(port.ready());
-    assert_eq!(port.pending_focus_count(), 1);
+    assert_eq!(ack.reply_to, request);
     port.close();
     assert!(!port.connected());
-    assert!(!port.ready());
-    assert_eq!(port.pending_focus_count(), 0);
     server.await.unwrap();
+}
+
+#[tokio::test]
+async fn snapshot_publication_does_not_starve_focus_while_ack_is_pending() {
+    let (_directory, binding) = binding_path("binding.json");
+    let (platform, server) =
+        make_platform(HelloMode::FocusUntilResultThenAck, "/dev/serial/by-id/usb-herdr");
+    let mut port =
+        UsbPort::new(Box::new(platform), binding).with_timeout(Duration::from_millis(250));
+    assert!(matches!(
+        port.connect().await.unwrap(),
+        UsbEvent::Connected { .. }
+    ));
+
+    tokio::time::timeout(
+        Duration::from_millis(50),
+        port.send_snapshot(json!({
+            "host_epoch":"epoch",
+            "snapshot_revision":1,
+            "source_status":"current"
+        })),
+    )
+    .await
+    .expect("snapshot send waited for its ACK and monopolized event-loop ingress")
+    .expect("snapshot send");
+
+    let focus = port.poll().await.expect("focus poll").expect("focus event");
+    assert!(matches!(focus, UsbEvent::FocusIntent(_)));
+    port.send_focus_result(json!({"action_id":"queued","outcome":"accepted"}))
+        .await
+        .expect("focus result send");
+    let ack = port.poll().await.expect("ACK poll").expect("ACK event");
+    assert!(matches!(ack, UsbEvent::SnapshotAck(_)));
+    server.await.expect("fake device");
+}
+
+#[tokio::test]
+async fn cancelled_poll_preserves_a_split_focus_frame_for_resume() {
+    let (_directory, binding) = binding_path("binding.json");
+    let (platform, server) = make_split_focus_platform("/dev/serial/by-id/usb-herdr");
+    let mut port =
+        UsbPort::new(Box::new(platform), binding).with_timeout(Duration::from_millis(250));
+    assert!(matches!(
+        port.connect().await.unwrap(),
+        UsbEvent::Connected { .. }
+    ));
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(25), port.poll())
+            .await
+            .is_err(),
+        "the first poll should be interrupted after consuming only the frame prefix"
+    );
+    let resumed = port
+        .poll()
+        .await
+        .expect("resumed poll must retain the prefix")
+        .expect("split focus event");
+    assert!(matches!(resumed, UsbEvent::FocusIntent(_)));
+    assert!(port.connected(), "cancellation must not reset the authorized session");
+    server.await.expect("split fake device");
 }
 #[tokio::test]
 async fn same_boot_id_reconnects_with_fresh_host_session_and_rejects_old_frames() {
@@ -332,12 +487,15 @@ async fn same_boot_id_reconnects_with_fresh_host_session_and_rejects_old_frames(
     assert_eq!(second_boot, first_boot);
     assert_ne!(new_session, old_session);
 
-    let ack = port
-        .publish_snapshot(json!({"host_epoch":"reconnect-epoch","snapshot_revision":2,"source_status":"empty"}))
+    let request = port
+        .send_snapshot(json!({"host_epoch":"reconnect-epoch","snapshot_revision":2,"source_status":"empty"}))
         .await
         .unwrap();
+    let Some(UsbEvent::SnapshotAck(ack)) = port.poll().await.unwrap() else {
+        panic!("reconnect snapshot ACK missing");
+    };
     assert!(ack.accepted);
-    assert!(port.ready());
+    assert_eq!(ack.reply_to, request);
     assert_eq!(port.poll().await.unwrap_err(), UsbError::SessionMismatch);
     assert!(!port.connected());
     second_server.await.unwrap();

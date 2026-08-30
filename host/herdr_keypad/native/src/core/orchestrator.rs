@@ -30,7 +30,7 @@ const DEFAULT_RECONNECT_INITIAL: Duration = Duration::from_millis(500);
 const DEFAULT_RECONNECT_MAX: Duration = Duration::from_secs(8);
 const EVENT_WAIT: Duration = Duration::from_secs(24 * 60 * 60);
 const CONTROL_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
-const FOCUS_QUEUE_LIMIT: usize = 16;
+pub const FOCUS_QUEUE_CAPACITY: usize = 16;
 const UNAVAILABLE_DIAGNOSTIC: &str = "UNAVAL";
 
 /// Integration timing knobs.  All values are bounded and deadlines are created
@@ -39,6 +39,7 @@ const UNAVAILABLE_DIAGNOSTIC: &str = "UNAVAL";
 pub struct CoordinatorConfig {
     pub herdr_timeout: Duration,
     pub codex_deadline: Duration,
+    pub codex_interval: Duration,
     pub reconnect_initial: Duration,
     pub reconnect_max: Duration,
 }
@@ -48,6 +49,7 @@ impl Default for CoordinatorConfig {
         Self {
             herdr_timeout: DEFAULT_HERDR_TIMEOUT,
             codex_deadline: DEFAULT_CODEX_DEADLINE,
+            codex_interval: FULL_POLL_INTERVAL,
             reconnect_initial: DEFAULT_RECONNECT_INITIAL,
             reconnect_max: DEFAULT_RECONNECT_MAX,
         }
@@ -60,6 +62,8 @@ impl CoordinatorConfig {
             || self.herdr_timeout > Duration::from_secs(120)
             || self.codex_deadline.is_zero()
             || self.codex_deadline > Duration::from_secs(120)
+            || self.codex_interval.is_zero()
+            || self.codex_interval > FULL_POLL_INTERVAL
             || self.reconnect_initial.is_zero()
             || self.reconnect_initial > self.reconnect_max
             || self.reconnect_max > DEFAULT_RECONNECT_MAX
@@ -68,6 +72,14 @@ impl CoordinatorConfig {
         }
         Ok(self)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingPublication {
+    request_sequence: u64,
+    host_epoch: String,
+    snapshot_revision: u64,
+    source_status: String,
 }
 
 /// One production coordinator joining every completed port.
@@ -84,6 +96,8 @@ pub struct RuntimeCoordinator {
     pending_focus: VecDeque<ModelFocusIntent>,
     current: Option<ProjectionSnapshot>,
     last_payload: Option<Value>,
+    pending_publication: Option<PendingPublication>,
+    publication_dirty: bool,
     herdr_healthy: bool,
     herdr_dirty: bool,
     herdr_delay: Duration,
@@ -139,9 +153,11 @@ impl RuntimeCoordinator {
             logger: SafeLogger::new(TraceConfig { enabled: logging_enabled }),
             config,
             cancellation: Cancellation::new(),
-            pending_focus: VecDeque::with_capacity(FOCUS_QUEUE_LIMIT),
+            pending_focus: VecDeque::with_capacity(FOCUS_QUEUE_CAPACITY),
             current: None,
             last_payload: None,
+            pending_publication: None,
+            publication_dirty: false,
             herdr_healthy: false,
             herdr_dirty: false,
             herdr_delay: config.reconnect_initial,
@@ -183,6 +199,11 @@ impl RuntimeCoordinator {
                 "codex_offline" => BridgeStatus::CodexUnavailable,
                 _ => BridgeStatus::Unavailable,
             };
+            status.state = aggregate_runtime_state(
+                status.device_state,
+                status.herdr_state,
+                status.codex_state,
+            );
         }
         status
     }
@@ -334,7 +355,27 @@ impl RuntimeCoordinator {
                 self.publish_current().await;
             }
             Ok(Some(UsbEvent::SnapshotAck(ack))) => {
-                self.device_ready = ack.accepted;
+                let Some(expected) = self.pending_publication.take() else {
+                    self.mark_usb_unavailable();
+                    return Ok(());
+                };
+                let accepted = ack.accepted
+                    && ack.reply_to == expected.request_sequence
+                    && ack.host_epoch == expected.host_epoch
+                    && ack.snapshot_revision == expected.snapshot_revision
+                    && ack.source_status == expected.source_status;
+                if !accepted {
+                    self.mark_usb_unavailable();
+                    return Ok(());
+                }
+                self.publication_count = self.publication_count.saturating_add(1);
+                self.resource_metrics.wakes = self.resource_metrics.wakes.saturating_add(1);
+                if self.publication_dirty {
+                    self.publication_dirty = false;
+                    self.publish_current().await;
+                } else {
+                    self.device_ready = true;
+                }
             }
             Ok(Some(UsbEvent::FocusIntent(intent))) => {
                 self.accept_focus_payload(intent.payload, intent.sequence)?;
@@ -405,13 +446,15 @@ impl RuntimeCoordinator {
     fn mark_usb_unavailable(&mut self) {
         self.device_ready = false;
         self.pending_focus.clear();
+        self.pending_publication = None;
+        self.publication_dirty = false;
         self.usb.close();
         self.schedule_usb();
     }
 
     async fn collect_codex_and_publish(&mut self) {
         let result = tokio::task::block_in_place(|| self.codex.collect());
-        self.codex_due = Some(Instant::now() + FULL_POLL_INTERVAL);
+        self.codex_due = Some(Instant::now() + self.config.codex_interval);
         self.resource_metrics.timer_fires = self.resource_metrics.timer_fires.saturating_add(1);
         if let Some(snapshot) = self.current.as_ref() {
             let _ = result;
@@ -431,17 +474,19 @@ impl RuntimeCoordinator {
         if !self.usb.connected() {
             return Ok(());
         }
-        match self.usb.publish_snapshot(payload).await {
-            Ok(ack) => {
-                self.device_ready = ack.accepted
-                    && ack.host_epoch == snapshot.host_epoch
-                    && ack.snapshot_revision == u64::from(snapshot.snapshot_revision)
-                    && ack.source_status == snapshot.source_status.as_str();
-                if self.device_ready {
-                    self.publication_count = self.publication_count.saturating_add(1);
-                    self.resource_metrics.wakes = self.resource_metrics.wakes.saturating_add(1);
-                    self.drain_focus().await?;
-                }
+        if self.pending_publication.is_some() {
+            self.publication_dirty = true;
+            return Ok(());
+        }
+        let source_status = snapshot.source_status.as_str().to_owned();
+        match self.usb.send_snapshot(payload).await {
+            Ok(request_sequence) => {
+                self.pending_publication = Some(PendingPublication {
+                    request_sequence,
+                    host_epoch: snapshot.host_epoch,
+                    snapshot_revision: u64::from(snapshot.snapshot_revision),
+                    source_status,
+                });
             }
             Err(_) => self.mark_usb_unavailable(),
         }
@@ -538,7 +583,7 @@ impl RuntimeCoordinator {
             identity,
         };
         let intent = ModelFocusIntent::new(typed.action_id, binding).with_device_session(session_id.to_owned());
-        if self.pending_focus.len() >= FOCUS_QUEUE_LIMIT {
+        if self.pending_focus.len() >= FOCUS_QUEUE_CAPACITY {
             self.pending_focus.pop_front();
         }
         if !self.pending_focus.iter().any(|pending| pending.action_id == intent.action_id) {
@@ -588,6 +633,8 @@ impl RuntimeCoordinator {
 
     fn close_boundaries(&mut self) {
         self.pending_focus.clear();
+        self.pending_publication = None;
+        self.publication_dirty = false;
         self.device_ready = false;
         self.herdr_events.close();
         self.usb.close();
@@ -619,6 +666,21 @@ fn reconnect_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
 
 fn codex_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
     reconnect_sleep(deadline)
+}
+
+fn aggregate_runtime_state(
+    device_state: BridgeStatus,
+    herdr_state: BridgeStatus,
+    codex_state: BridgeStatus,
+) -> BridgeStatus {
+    if device_state == BridgeStatus::Ready
+        && herdr_state == BridgeStatus::Running
+        && codex_state == BridgeStatus::Ready
+    {
+        BridgeStatus::Ready
+    } else {
+        BridgeStatus::Stale
+    }
 }
 
 fn wire_source_status(status: ModelSourceStatus) -> WireSourceStatus {
@@ -739,6 +801,500 @@ fn map_focus_error(error: HerdrError) -> FocusError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ports::codex::{
+        ChildExit, CodexChildError, CodexProcess, CodexProcessFactory,
+    };
+    use crate::ports::usb::{
+        DeviceCandidate, PlatformSerial, SerialConnection, UsbError, EXPECTED_CDC_INTERFACE,
+        EXPECTED_PID, EXPECTED_SERIAL, EXPECTED_VID,
+    };
+    use serde_json::json;
+    use std::collections::VecDeque;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc, Mutex,
+    };
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, DuplexStream};
+    use tokio::net::UnixListener;
+
+    struct TestRoot(std::path::PathBuf);
+
+    impl TestRoot {
+        fn new() -> Self {
+            let suffix = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "herdr-keypad-coordinator-{}-{suffix}",
+                std::process::id()
+            ));
+            std::fs::create_dir(&path).expect("test root");
+            Self(path)
+        }
+    }
+
+    impl Drop for TestRoot {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[derive(Clone)]
+    struct FakePlatform {
+        streams: Arc<Mutex<VecDeque<DuplexStream>>>,
+    }
+
+    impl PlatformSerial for FakePlatform {
+        fn enumerate(&self) -> Result<Vec<DeviceCandidate>, UsbError> {
+            Ok(vec![DeviceCandidate {
+                device: "/dev/serial/by-id/usb-herdr-test".to_owned(),
+                vid: Some(EXPECTED_VID),
+                pid: Some(EXPECTED_PID),
+                serial_number: Some(EXPECTED_SERIAL.to_owned()),
+                location: Some("1-1:1.1".to_owned()),
+                manufacturer: Some("Espressif".to_owned()),
+                product: Some("TinyUSB CDC".to_owned()),
+                interface: Some(EXPECTED_CDC_INTERFACE.to_owned()),
+                stable: true,
+            }])
+        }
+
+        fn open(&self, _: &DeviceCandidate) -> Result<SerialConnection, UsbError> {
+            self.streams
+                .lock()
+                .expect("stream queue")
+                .pop_front()
+                .map(|stream| Box::new(stream) as SerialConnection)
+                .ok_or(UsbError::OpenFailed)
+        }
+    }
+
+    struct RepeatingCodexFactory {
+        spawns: Arc<AtomicUsize>,
+    }
+
+    impl CodexProcessFactory for RepeatingCodexFactory {
+        fn spawn(&self, _: &[String]) -> Result<Box<dyn CodexProcess>, CodexChildError> {
+            self.spawns.fetch_add(1, Ordering::SeqCst);
+            Ok(Box::new(FakeCodexProcess {
+                lines: VecDeque::from([
+                    json!({"id":1,"result":{"ok":true}}),
+                    json!({"id":2,"result":{"account":{"type":"chatgpt"}}}),
+                    json!({
+                        "id":3,
+                        "result":{
+                            "rateLimits":{
+                                "primary":{"usedPercent":10},
+                                "secondary":{"usedPercent":20}
+                            }
+                        }
+                    }),
+                ]),
+                stopped: false,
+            }))
+        }
+    }
+
+    struct FakeCodexProcess {
+        lines: VecDeque<Value>,
+        stopped: bool,
+    }
+
+    impl CodexProcess for FakeCodexProcess {
+        fn send_line(&mut self, _: &[u8]) -> Result<(), CodexChildError> {
+            Ok(())
+        }
+
+        fn read_line(&mut self, _: Duration) -> Result<Vec<u8>, CodexChildError> {
+            self.lines
+                .pop_front()
+                .map(|value| serde_json::to_vec(&value).expect("Codex response JSON"))
+                .ok_or(CodexChildError { code: "E-2403" })
+        }
+
+        fn try_wait(&mut self) -> Result<Option<ChildExit>, CodexChildError> {
+            Ok(self.stopped.then(|| {
+                ChildExit::new("exited", Some(0), None).expect("valid child exit")
+            }))
+        }
+
+        fn terminate(&mut self) -> Result<(), CodexChildError> {
+            self.stopped = true;
+            Ok(())
+        }
+
+        fn kill(&mut self) -> Result<(), CodexChildError> {
+            self.stopped = true;
+            Ok(())
+        }
+
+        fn wait(&mut self, _: Duration) -> Result<Option<ChildExit>, CodexChildError> {
+            self.stopped = true;
+            Ok(Some(
+                ChildExit::new("exited", Some(0), None).expect("valid child exit"),
+            ))
+        }
+    }
+
+    fn herdr_agent(focused: bool) -> Value {
+        json!({
+            "pane_id":"pane-1",
+            "terminal_id":"term-pane-1",
+            "workspace_id":"workspace-1",
+            "tab_id":"tab-pane-1",
+            "agent_status":"working",
+            "focused":focused,
+            "revision":1,
+            "state_change_seq":1,
+            "cwd":"repo",
+            "title":"Runtime",
+            "tokens":{"rank":"0","title":"Runtime"},
+            "agent":"agent",
+            "agent_session":null
+        })
+    }
+
+    async fn serve_herdr(listener: UnixListener) {
+        while let Ok((stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let (read_half, mut write_half) = stream.into_split();
+                let mut lines = BufReader::new(read_half).lines();
+                let Ok(Some(line)) = lines.next_line().await else {
+                    return;
+                };
+                let Ok(request): Result<Value, _> = serde_json::from_str(&line) else {
+                    return;
+                };
+                let method = request["method"].as_str().unwrap_or_default();
+                let result = match method {
+                    "events.subscribe" => json!({"accepted":true}),
+                    "session.snapshot" => json!({"snapshot":{"revision":1}}),
+                    "agent.list" => json!({"agents":[herdr_agent(false)]}),
+                    "workspace.list" => {
+                        json!({"workspaces":[{"workspace_id":"workspace-1","label":"repo"}]})
+                    }
+                    "agent.focus" => json!({"agent":herdr_agent(true)}),
+                    _ => return,
+                };
+                let mut response = serde_json::to_vec(&json!({
+                    "jsonrpc":"2.0",
+                    "id":request["id"],
+                    "result":result
+                }))
+                .expect("Herdr response JSON");
+                response.push(b'\n');
+                if write_half.write_all(&response).await.is_err() {
+                    return;
+                }
+                if method == "events.subscribe" {
+                    pending::<()>().await;
+                }
+            });
+        }
+    }
+
+    fn test_digest(payload: &Value) -> String {
+        fn canonical(value: &Value, output: &mut Vec<u8>) {
+            match value {
+                Value::Null => output.extend_from_slice(b"null"),
+                Value::Bool(value) => {
+                    output.extend_from_slice(if *value { b"true" } else { b"false" })
+                }
+                Value::Number(value) => output.extend_from_slice(value.to_string().as_bytes()),
+                Value::String(value) => output.extend_from_slice(
+                    serde_json::to_string(value).expect("string JSON").as_bytes(),
+                ),
+                Value::Array(values) => {
+                    output.push(b'[');
+                    for (index, value) in values.iter().enumerate() {
+                        if index > 0 {
+                            output.push(b',');
+                        }
+                        canonical(value, output);
+                    }
+                    output.push(b']');
+                }
+                Value::Object(values) => {
+                    output.push(b'{');
+                    let mut keys: Vec<_> = values.keys().collect();
+                    keys.sort();
+                    for (index, key) in keys.into_iter().enumerate() {
+                        if index > 0 {
+                            output.push(b',');
+                        }
+                        output.extend_from_slice(
+                            serde_json::to_string(key).expect("key JSON").as_bytes(),
+                        );
+                        output.push(b':');
+                        canonical(&values[key], output);
+                    }
+                    output.push(b'}');
+                }
+            }
+        }
+        let mut bytes = Vec::new();
+        canonical(payload, &mut bytes);
+        let mut digest = 0xcbf29ce484222325u64;
+        for byte in bytes {
+            digest ^= u64::from(byte);
+            digest = digest.wrapping_mul(0x100000001b3);
+        }
+        format!("{digest:016x}")
+    }
+
+    fn test_frame(
+        frame_type: &str,
+        session_id: &str,
+        sequence: u64,
+        reply_to: Option<u64>,
+        payload: Value,
+    ) -> Value {
+        json!({
+            "v":2,
+            "type":frame_type,
+            "boot_id":"device-boot-1",
+            "session_id":session_id,
+            "seq":sequence,
+            "reply_to":reply_to,
+            "digest":test_digest(&payload),
+            "payload":payload
+        })
+    }
+
+    async fn write_test_frame(
+        writer: &mut (impl tokio::io::AsyncWrite + Unpin),
+        frame: Value,
+    ) {
+        let mut bytes = serde_json::to_vec(&frame).expect("device frame JSON");
+        bytes.push(b'\n');
+        writer.write_all(&bytes).await.expect("device frame write");
+    }
+
+    async fn serve_device(
+        stream: DuplexStream,
+        snapshots: Arc<AtomicUsize>,
+        focus_results: Arc<AtomicUsize>,
+    ) {
+        let (read_half, mut write_half) = tokio::io::split(stream);
+        let mut lines = BufReader::new(read_half).lines();
+        let hello_line = lines
+            .next_line()
+            .await
+            .expect("hello read")
+            .expect("hello line");
+        let hello: Value = serde_json::from_str(&hello_line).expect("hello JSON");
+        let session = hello["session_id"].as_str().expect("session").to_owned();
+        let mut sequence = 1_u64;
+        let hello_payload = json!({
+            "accepted":true,
+            "device_id":"paired-device",
+            "firmware":"phase1-bringup",
+            "protocol":1
+        });
+        let mut hello_ack = serde_json::to_vec(&json!({
+            "v":1,
+            "type":"hello_ack",
+            "boot_id":"device-boot-1",
+            "session_id":session,
+            "seq":sequence,
+            "reply_to":1,
+            "digest":test_digest(&hello_payload),
+            "payload":hello_payload
+        }))
+        .expect("hello ACK JSON");
+        hello_ack.push(b'\n');
+        write_half
+            .write_all(&hello_ack)
+            .await
+            .expect("hello ACK write");
+
+        let mut focus_sent = false;
+        while let Ok(Some(line)) = lines.next_line().await {
+            let frame: Value = serde_json::from_str(&line).expect("host frame JSON");
+            match frame["type"].as_str() {
+                Some("agent_snapshot") => {
+                    snapshots.fetch_add(1, Ordering::SeqCst);
+                    let payload = frame["payload"].clone();
+                    sequence += 1;
+                    write_test_frame(
+                        &mut write_half,
+                        test_frame(
+                            "snapshot_ack",
+                            &session,
+                            sequence,
+                            frame["seq"].as_u64(),
+                            json!({
+                                "accepted":true,
+                                "host_epoch":payload["host_epoch"],
+                                "snapshot_revision":payload["snapshot_revision"],
+                                "source_status":payload["source_status"],
+                                "reason":"committed"
+                            }),
+                        ),
+                    )
+                    .await;
+                    if !focus_sent
+                        && payload["codex"]["source_state"].as_str() == Some("current")
+                    {
+                        focus_sent = true;
+                        let agent = &payload["agents"][0];
+                        sequence += 1;
+                        write_test_frame(
+                            &mut write_half,
+                            test_frame(
+                                "focus_intent",
+                                &session,
+                                sequence,
+                                None,
+                                json!({
+                                    "action_id":"focus-1",
+                                    "host_epoch":payload["host_epoch"],
+                                    "snapshot_revision":payload["snapshot_revision"],
+                                    "slot":agent["slot"],
+                                    "entry_id":agent["entry_id"],
+                                    "pane_id":agent["pane_id"],
+                                    "terminal_id":agent["terminal_id"],
+                                    "agent_session":agent["agent_session"],
+                                    "source_revision":agent["source_revision"]
+                                }),
+                            ),
+                        )
+                        .await;
+                    }
+                }
+                Some("focus_result") => {
+                    assert_eq!(frame["payload"]["outcome"], "accepted");
+                    assert_eq!(frame["payload"]["focused"], true);
+                    focus_results.fetch_add(1, Ordering::SeqCst);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn production_coordinator_advances_codex_cadence_and_focus_together() {
+        let root = TestRoot::new();
+        let config_dir = root.0.join("config");
+        let state_dir = root.0.join("state");
+        std::fs::create_dir(&config_dir).expect("config directory");
+        std::fs::create_dir(&state_dir).expect("state directory");
+        let binding = root.0.join("binding.json");
+        std::fs::write(
+            &binding,
+            br#"{"schema_version":1,"device_id":"paired-device","protocol":1,"firmware":"phase1-bringup"}"#,
+        )
+        .expect("binding");
+
+        let herdr_socket = root.0.join("herdr.sock");
+        let listener = UnixListener::bind(&herdr_socket).expect("Herdr listener");
+        let herdr_task = tokio::spawn(serve_herdr(listener));
+
+        let (host_stream, device_stream) = tokio::io::duplex(64 * 1024);
+        let platform = FakePlatform {
+            streams: Arc::new(Mutex::new(VecDeque::from([host_stream]))),
+        };
+        let snapshots = Arc::new(AtomicUsize::new(0));
+        let focus_results = Arc::new(AtomicUsize::new(0));
+        let device_task = tokio::spawn(serve_device(
+            device_stream,
+            snapshots.clone(),
+            focus_results.clone(),
+        ));
+
+        let startup = StartupConfig::load(&config_dir, &binding);
+        let paths = RuntimePaths::new(
+            &config_dir,
+            &state_dir,
+            &herdr_socket,
+            root.0.join("herdr"),
+            std::process::id(),
+        );
+        let config = CoordinatorConfig {
+            herdr_timeout: Duration::from_millis(250),
+            codex_deadline: Duration::from_millis(250),
+            codex_interval: Duration::from_millis(40),
+            reconnect_initial: Duration::from_millis(100),
+            reconnect_max: Duration::from_millis(200),
+        };
+        let mut coordinator = RuntimeCoordinator::with_config(
+            paths,
+            startup,
+            &binding,
+            Box::new(platform),
+            config,
+        )
+        .expect("coordinator");
+        let codex_spawns = Arc::new(AtomicUsize::new(0));
+        coordinator.codex = CodexCollector::with_factory(
+            "codex",
+            Duration::from_millis(250),
+            Arc::new(RepeatingCodexFactory {
+                spawns: codex_spawns.clone(),
+            }),
+        )
+        .expect("Codex collector");
+        let cancellation = coordinator.cancellation();
+        let runtime = tokio::spawn(coordinator.run());
+
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if codex_spawns.load(Ordering::SeqCst) >= 2
+                    && snapshots.load(Ordering::SeqCst) >= 3
+                    && focus_results.load(Ordering::SeqCst) >= 1
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("Codex cadence and focus result did not progress together");
+
+        cancellation.cancel();
+        tokio::time::timeout(Duration::from_secs(1), runtime)
+            .await
+            .expect("runtime cancellation")
+            .expect("runtime task")
+            .expect("runtime result");
+        herdr_task.abort();
+        device_task.abort();
+    }
+
+    #[test]
+    fn readiness_is_false_when_any_required_live_path_is_stalled() {
+        assert_eq!(
+            aggregate_runtime_state(
+                BridgeStatus::Ready,
+                BridgeStatus::Running,
+                BridgeStatus::Ready,
+            ),
+            BridgeStatus::Ready
+        );
+        for states in [
+            (
+                BridgeStatus::DeviceUnavailable,
+                BridgeStatus::Running,
+                BridgeStatus::Ready,
+            ),
+            (
+                BridgeStatus::Ready,
+                BridgeStatus::HerdrUnavailable,
+                BridgeStatus::Ready,
+            ),
+            (
+                BridgeStatus::Ready,
+                BridgeStatus::Running,
+                BridgeStatus::Stale,
+            ),
+        ] {
+            assert_eq!(
+                aggregate_runtime_state(states.0, states.1, states.2),
+                BridgeStatus::Stale
+            );
+        }
+    }
 
     #[test]
     fn default_config_has_bounded_explicit_deadlines() {

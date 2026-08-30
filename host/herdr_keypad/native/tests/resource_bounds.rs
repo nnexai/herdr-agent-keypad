@@ -1,8 +1,7 @@
-use herdr_keypad_native::core::orchestrator::CoordinatorConfig;
+use herdr_keypad_native::core::orchestrator::{CoordinatorConfig, FOCUS_QUEUE_CAPACITY};
 use herdr_keypad_native::ports::control::CONTROL_PAYLOAD_LIMIT;
 use herdr_keypad_native::ports::lifecycle::ResourceMetrics;
 use herdr_keypad_native::protocol::v2::{self, ProtocolSession};
-use herdr_keypad_native::ports::usb::PENDING_FOCUS_CAPACITY;
 use serde_json::json;
 use std::fs;
 use std::time::{Duration, Instant};
@@ -14,7 +13,7 @@ fn queue_payload_and_timer_limits_are_closed_and_validated() {
     assert!(config.validate().is_ok());
     assert!(config.reconnect_initial <= config.reconnect_max);
     assert!(config.reconnect_max <= Duration::from_secs(8));
-    assert!(PENDING_FOCUS_CAPACITY <= v2::SESSION_CAPACITY);
+    assert!(FOCUS_QUEUE_CAPACITY <= v2::SESSION_CAPACITY);
     assert!(CONTROL_PAYLOAD_LIMIT <= 16 * 1024);
     assert!(ResourceMetrics::idle().source_polls == 0);
     assert!(ResourceMetrics::idle().timer_fires == 0);
@@ -52,11 +51,11 @@ fn sustained_bounded_traffic_has_no_replay_and_records_measured_resource_sample(
         .unwrap()["input"]["line"]
         .as_str()
         .unwrap();
-    let mut session = ProtocolSession::new("boot-a", "session-a", PENDING_FOCUS_CAPACITY).expect("session");
+    let mut session = ProtocolSession::new("boot-a", "session-a", FOCUS_QUEUE_CAPACITY).expect("session");
     let started = Instant::now();
     let mut accepted = 0usize;
     let mut duplicate = 0usize;
-    for sequence in 1..=PENDING_FOCUS_CAPACITY as u32 {
+    for sequence in 1..=FOCUS_QUEUE_CAPACITY as u32 {
         let mut frame: serde_json::Value = serde_json::from_str(line).expect("valid focus fixture");
         frame["seq"] = json!(sequence);
         let mut bytes = serde_json::to_vec(&frame).expect("frame JSON");
@@ -66,10 +65,10 @@ fn sustained_bounded_traffic_has_no_replay_and_records_measured_resource_sample(
         assert_eq!(session.accept(&bytes).reason, "duplicate");
         duplicate += 1;
     }
-    assert_eq!(accepted, PENDING_FOCUS_CAPACITY);
-    assert_eq!(duplicate, PENDING_FOCUS_CAPACITY);
-    assert_eq!(session.pending_count(), PENDING_FOCUS_CAPACITY);
-    assert!(session.pending_count() <= PENDING_FOCUS_CAPACITY);
+    assert_eq!(accepted, FOCUS_QUEUE_CAPACITY);
+    assert_eq!(duplicate, FOCUS_QUEUE_CAPACITY);
+    assert_eq!(session.pending_count(), FOCUS_QUEUE_CAPACITY);
+    assert!(session.pending_count() <= FOCUS_QUEUE_CAPACITY);
     let elapsed = started.elapsed();
 
     let metrics = ResourceMetrics {
@@ -77,12 +76,12 @@ fn sustained_bounded_traffic_has_no_replay_and_records_measured_resource_sample(
         source_polls: 0,
         timer_fires: 0,
         queue_high_water: session.pending_count(),
-        history_size: PENDING_FOCUS_CAPACITY,
+        history_size: FOCUS_QUEUE_CAPACITY,
         max_payload: line.len() + 1,
     };
     assert_eq!(metrics.source_polls, 0, "healthy event traffic must not poll sources");
     assert_eq!(metrics.timer_fires, 0, "traffic does not invent timer wakeups");
-    assert!(metrics.queue_high_water <= PENDING_FOCUS_CAPACITY);
+    assert!(metrics.queue_high_water <= FOCUS_QUEUE_CAPACITY);
     assert!(metrics.history_size <= 32);
     assert!(metrics.max_payload <= v2::MAX_LINE_BYTES);
     println!(
@@ -106,7 +105,7 @@ fn independent_recovery_resets_authority_and_discards_old_work() {
         .unwrap()["input"]["line"]
         .as_str()
         .unwrap();
-    let mut session = ProtocolSession::new("boot-old", "session-old", PENDING_FOCUS_CAPACITY).expect("old session");
+    let mut session = ProtocolSession::new("boot-old", "session-old", FOCUS_QUEUE_CAPACITY).expect("old session");
     let mut frame: serde_json::Value = serde_json::from_str(line).expect("valid frame");
     frame["boot_id"] = json!("boot-old");
     frame["session_id"] = json!("session-old");

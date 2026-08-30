@@ -8,7 +8,6 @@
 
 use serde_json::{json, Map, Value};
 use serde::de::{DeserializeSeed, Error as DeError, MapAccess, SeqAccess, Visitor};
-use std::collections::VecDeque;
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -22,7 +21,6 @@ pub const EXPECTED_CDC_INTERFACE: &str = "01";
 pub const APPLICATION_PROTOCOL: u64 = 1;
 pub const DEVICE_PROTOCOL: u64 = 2;
 pub const DEVICE_LINE_LIMIT: usize = 4_096;
-pub const PENDING_FOCUS_CAPACITY: usize = 16;
 
 /// A normalized descriptor snapshot.  `device` is a platform endpoint only;
 /// it is never used as the pairing authority.
@@ -158,8 +156,6 @@ pub enum UsbError {
     FirmwareMismatch,
     SessionMismatch,
     OutOfOrder,
-    SnapshotRejected,
-    QueueFull,
     Suspended,
 }
 
@@ -182,8 +178,6 @@ impl UsbError {
             Self::FirmwareMismatch => "firmware_mismatch",
             Self::SessionMismatch => "session_mismatch",
             Self::OutOfOrder => "out_of_order",
-            Self::SnapshotRejected => "snapshot_rejected",
-            Self::QueueFull => "queue_full",
             Self::Suspended => "suspended",
         }
     }
@@ -336,6 +330,7 @@ pub trait PlatformSerial: Send + Sync {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SnapshotAck {
+    pub reply_to: u64,
     pub accepted: bool,
     pub host_epoch: String,
     pub snapshot_revision: u64,
@@ -364,19 +359,18 @@ struct Session {
     session_id: String,
     next_sequence: u64,
     last_received_sequence: u64,
-    ready: bool,
 }
 
-/// One exact paired CDC stream.  A dropped/closed stream clears every pending
-/// intent and all readiness/session authority; no keyboard/HID operation exists.
+/// One exact paired CDC stream. A dropped or closed stream clears all partial
+/// ingress bytes and session authority; no keyboard/HID operation exists.
 pub struct UsbPort {
     platform: Box<dyn PlatformSerial>,
     binding_path: PathBuf,
     timeout: Duration,
     reader: Option<BufReader<SerialConnection>>,
+    read_buffer: Vec<u8>,
     binding: Option<PairingBinding>,
     session: Option<Session>,
-    pending_focus: VecDeque<FocusIntent>,
 }
 
 impl UsbPort {
@@ -386,9 +380,9 @@ impl UsbPort {
             binding_path: binding_path.into(),
             timeout: Duration::from_secs(3),
             reader: None,
+            read_buffer: Vec::with_capacity(DEVICE_LINE_LIMIT),
             binding: None,
             session: None,
-            pending_focus: VecDeque::with_capacity(PENDING_FOCUS_CAPACITY),
         }
     }
 
@@ -396,10 +390,7 @@ impl UsbPort {
         self.timeout = timeout;
         self
     }
-
     pub fn connected(&self) -> bool { self.session.is_some() && self.reader.is_some() }
-    pub fn ready(&self) -> bool { self.session.as_ref().is_some_and(|session| session.ready) }
-    pub fn pending_focus_count(&self) -> usize { self.pending_focus.len() }
     pub fn candidate(&self) -> Option<&DeviceCandidate> { self.session.as_ref().map(|session| &session.candidate) }
     pub fn session_identity(&self) -> Option<(&str, &str)> {
         self.session.as_ref().map(|session| (session.device_boot_id.as_str(), session.session_id.as_str()))
@@ -461,8 +452,9 @@ impl UsbPort {
         let hello_payload = json!({"device_id":"host","firmware":"phase1-host","protocol":APPLICATION_PROTOCOL});
         let hello = wire_frame(APPLICATION_PROTOCOL, "hello", &host_boot, &host_session, 1, None, hello_payload)?;
         write_frame(reader, &hello).await?;
+        let mut read_buffer = Vec::with_capacity(DEVICE_LINE_LIMIT);
         loop {
-            let line = read_line_with_timeout(reader, self.timeout).await?;
+            let line = read_line_with_timeout(reader, &mut read_buffer, self.timeout).await?;
             let frame = parse_wire(&line, APPLICATION_PROTOCOL)?;
             if frame.boot_id.is_empty() || frame.session_id != host_session || frame.sequence == 0 {
                 return Err(UsbError::SessionMismatch);
@@ -490,39 +482,12 @@ impl UsbPort {
                 session_id: host_session,
                 next_sequence: 1,
                 last_received_sequence: frame.sequence,
-                ready: false,
             });
         }
     }
 
-    pub async fn publish_snapshot(&mut self, payload: Value) -> Result<SnapshotAck, UsbError> {
-        let request = self.send_v2("agent_snapshot", payload.clone()).await?;
-        loop {
-            let frame = self.receive_v2(true).await?;
-            if frame.frame_type == "focus_intent" {
-                self.enqueue_focus(frame)?;
-                continue;
-            }
-            if frame.frame_type != "snapshot_ack" || frame.reply_to != Some(request) {
-                continue;
-            }
-            let ack = snapshot_ack(&frame.payload)?;
-            let expected = payload.as_object().ok_or(UsbError::Protocol)?;
-            if ack.host_epoch != expected.get("host_epoch").and_then(Value::as_str).unwrap_or("")
-                || ack.snapshot_revision != expected.get("snapshot_revision").and_then(Value::as_u64).unwrap_or(0)
-                || ack.source_status != expected.get("source_status").and_then(Value::as_str).unwrap_or("")
-            {
-                self.reset_link();
-                return Err(UsbError::SessionMismatch);
-            }
-            if let Some(session) = self.session.as_mut() {
-                session.ready = ack.accepted;
-            }
-            if !ack.accepted {
-                return Err(UsbError::SnapshotRejected);
-            }
-            return Ok(ack);
-        }
+    pub async fn send_snapshot(&mut self, payload: Value) -> Result<u64, UsbError> {
+        self.send_v2("agent_snapshot", payload).await
     }
 
     pub async fn send_focus_result(&mut self, payload: Value) -> Result<(), UsbError> {
@@ -530,15 +495,19 @@ impl UsbPort {
     }
 
     pub async fn poll(&mut self) -> Result<Option<UsbEvent>, UsbError> {
-        if let Some(intent) = self.pending_focus.pop_front() {
-            return Ok(Some(UsbEvent::FocusIntent(intent)));
-        }
-        let frame = self.receive_v2(true).await?;
+        let frame = self.receive_v2().await?;
         if frame.frame_type == "focus_intent" {
-            return Ok(Some(UsbEvent::FocusIntent(FocusIntent { payload: frame.payload, sequence: frame.sequence })));
+            return Ok(Some(UsbEvent::FocusIntent(FocusIntent {
+                payload: frame.payload,
+                sequence: frame.sequence,
+            })));
         }
         if frame.frame_type == "snapshot_ack" {
-            return Ok(Some(UsbEvent::SnapshotAck(snapshot_ack(&frame.payload)?)));
+            let reply_to = frame.reply_to.ok_or(UsbError::Protocol)?;
+            return Ok(Some(UsbEvent::SnapshotAck(snapshot_ack(
+                &frame.payload,
+                reply_to,
+            )?)));
         }
         Ok(None)
     }
@@ -548,8 +517,8 @@ impl UsbPort {
     fn reset_link(&mut self) {
         self.session = None;
         self.reader = None;
+        self.read_buffer.clear();
         self.binding = None;
-        self.pending_focus.clear();
     }
 
     async fn send_v2(&mut self, frame_type: &str, payload: Value) -> Result<u64, UsbError> {
@@ -573,7 +542,7 @@ impl UsbPort {
         Ok(sequence)
     }
 
-    async fn receive_v2(&mut self, enqueue: bool) -> Result<WireFrame, UsbError> {
+    async fn receive_v2(&mut self) -> Result<WireFrame, UsbError> {
         let line = match self.read_line_owned().await {
             Ok(line) => line,
             Err(error) => {
@@ -606,25 +575,13 @@ impl UsbPort {
         if let Some(session) = self.session.as_mut() {
             session.last_received_sequence = frame.sequence;
         }
-        if enqueue && frame.frame_type == "focus_intent" && self.pending_focus.len() >= PENDING_FOCUS_CAPACITY {
-            self.reset_link();
-            return Err(UsbError::QueueFull);
-        }
         Ok(frame)
     }
 
-    fn enqueue_focus(&mut self, frame: WireFrame) -> Result<(), UsbError> {
-        if self.pending_focus.len() >= PENDING_FOCUS_CAPACITY {
-            self.reset_link();
-            return Err(UsbError::QueueFull);
-        }
-        self.pending_focus.push_back(FocusIntent { payload: frame.payload, sequence: frame.sequence });
-        Ok(())
-    }
 
     async fn read_line_owned(&mut self) -> Result<Vec<u8>, UsbError> {
         let reader = self.reader.as_mut().ok_or(UsbError::Closed)?;
-        read_line_with_timeout(reader, self.timeout).await
+        read_line_with_timeout(reader, &mut self.read_buffer, self.timeout).await
     }
 
 
@@ -733,18 +690,17 @@ fn canonical_json(value: &Value, output: &mut Vec<u8>) {
         }
     }
 }
-
-fn snapshot_ack(value: &Value) -> Result<SnapshotAck, UsbError> {
+fn snapshot_ack(value: &Value, reply_to: u64) -> Result<SnapshotAck, UsbError> {
     let object = value.as_object().ok_or(UsbError::Protocol)?;
     let accepted = object.get("accepted").and_then(Value::as_bool).ok_or(UsbError::Protocol)?;
     let host_epoch = object.get("host_epoch").and_then(Value::as_str).ok_or(UsbError::Protocol)?;
     let snapshot_revision = object.get("snapshot_revision").and_then(Value::as_u64).ok_or(UsbError::Protocol)?;
     let source_status = object.get("source_status").and_then(Value::as_str).ok_or(UsbError::Protocol)?;
     let reason = object.get("reason").and_then(Value::as_str).ok_or(UsbError::Protocol)?;
-    if host_epoch.is_empty() || snapshot_revision == 0 || source_status.is_empty() || reason.is_empty() {
+    if reply_to == 0 || host_epoch.is_empty() || snapshot_revision == 0 || source_status.is_empty() || reason.is_empty() {
         return Err(UsbError::Protocol);
     }
-    Ok(SnapshotAck { accepted, host_epoch: host_epoch.to_string(), snapshot_revision, source_status: source_status.to_string(), reason: reason.to_string() })
+    Ok(SnapshotAck { reply_to, accepted, host_epoch: host_epoch.to_string(), snapshot_revision, source_status: source_status.to_string(), reason: reason.to_string() })
 }
 
 async fn write_frame(reader: &mut BufReader<SerialConnection>, value: &Value) -> Result<(), UsbError> {
@@ -759,8 +715,12 @@ async fn write_frame(reader: &mut BufReader<SerialConnection>, value: &Value) ->
         .map_err(|_| UsbError::Io)
 }
 
-async fn read_line_with_timeout<R: AsyncBufRead + Unpin>(reader: &mut R, timeout: Duration) -> Result<Vec<u8>, UsbError> {
-    tokio::time::timeout(timeout, read_bounded_line(reader))
+async fn read_line_with_timeout<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    buffer: &mut Vec<u8>,
+    timeout: Duration,
+) -> Result<Vec<u8>, UsbError> {
+    tokio::time::timeout(timeout, read_bounded_line(reader, buffer))
         .await
         .map_err(|_| UsbError::Timeout)?
         .map_err(|error| {
@@ -768,8 +728,10 @@ async fn read_line_with_timeout<R: AsyncBufRead + Unpin>(reader: &mut R, timeout
         })
 }
 
-async fn read_bounded_line<R: AsyncBufRead + Unpin>(reader: &mut R) -> io::Result<Vec<u8>> {
-    let mut line = Vec::with_capacity(DEVICE_LINE_LIMIT);
+async fn read_bounded_line<R: AsyncBufRead + Unpin>(
+    reader: &mut R,
+    line: &mut Vec<u8>,
+) -> io::Result<Vec<u8>> {
     loop {
         let mut byte = [0u8; 1];
         let count = reader.read(&mut byte).await?;
@@ -781,7 +743,10 @@ async fn read_bounded_line<R: AsyncBufRead + Unpin>(reader: &mut R) -> io::Resul
         }
         line.push(byte[0]);
         if byte[0] == b'\n' {
-            return Ok(line);
+            return Ok(std::mem::replace(
+                line,
+                Vec::with_capacity(DEVICE_LINE_LIMIT),
+            ));
         }
     }
 }
