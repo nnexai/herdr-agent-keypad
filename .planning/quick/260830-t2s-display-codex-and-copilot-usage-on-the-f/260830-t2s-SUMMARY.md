@@ -130,15 +130,15 @@ No plan metadata commit was made: this quick-task contract explicitly forbids co
 - Selected-usb firmware was rebuilt and uploaded after the hello-digest and nullable-Copilot parser fixes; flash verification hashes passed.
 - Fresh exact-device hello after upload: `/dev/ttyACM0`, VID/PID `0x303a/0x1001`, USB serial `8C:BF:EA:0D:CB:FC`, device ID `0000fccb0deabf8c`, firmware `phase1-bringup`, protocol `1`, capability `copilot_usage`.
 - Guarded `quick-usage-tile` finalization with the supported interactive Y/N path: **exit 0**, three snapshot ACKs accepted, both labelled 128x128 captures validated at 32,768 RGB565 bytes, and evidence checksum sidecar regenerated with `status: pass` and all four confirmed sightings set to `Y`.
-- Current native plugin release was built with `cargo build --release --locked` (binary SHA-256 `7d04558a29cb6bd554bf29cdc4a67dde3b62b038d595e498f3d5921c5be0c749`), passed `release_bundle` (10 tests), staged via `herdr plugin link`, and activated by managed stop plus explicit Herdr restart. The linked root is `/tmp/herdr-keypad-current-713bef4`.
-- Post-activation read-only status (`plugin-log-80` before finalization and a fresh status after restart) is schema version 2 with `state: stale`, `device_state: ready`, `herdr_state: running`, `codex_state: ready`, and `copilot_usage.source_state: current`; live values are `github_copilot`, `used_credits: 1500`, `included_credits: 1500`, `used_percent: 100`, `reached_limit: true`, reset timestamp present, and empty failure reason. Human confirmed the live panel-4 Copilot frame shows these real 1500/1500 values and alternates with Codex.
+- Current native plugin release was built with `cargo build --release --locked` (binary SHA-256 `7d04558a29cb6bd554bf29cdc4a67dde3b62b038d595e498f3d5921c5be0c749`), passed `release_bundle` (10 tests), staged via `herdr plugin link`, and activated by managed stop plus explicit Herdr restart. The durable linked root is `/home/nnex/.local/share/herdr/plugins/herdr-keypad`.
+- Post-durable-activation read-only status (`plugin-log-90`) is schema version 2 with `state: stale`, `device_state: ready`, `herdr_state: running`, `codex_state: ready`, and `copilot_usage.source_state: current`; live values are `github_copilot`, `used_credits: 1500`, `included_credits: 1500`, `used_percent: 100`, `reached_limit: true`, reset timestamp present, and empty failure reason. Human confirmed the live panel-4 Copilot frame shows these real 1500/1500 values and alternates with Codex.
 ## Issues Encountered
 
 The plan references `host/herdr_keypad/scripts/ensure-bridge.sh`, but that wrapper is absent from this checkout. The repository's native release path was used instead:
 
 - Built `cargo build --release --locked` from `host/herdr_keypad/native`.
 - Verified `cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test release_bundle`: 10 passed.
-- Staged `herdr-plugin.toml`, `LIFECYCLE.md`, and the current binary in `/tmp/herdr-keypad-current-713bef4`.
+- Staged `herdr-plugin.toml`, `LIFECYCLE.md`, and the current binary in the durable root `/home/nnex/.local/share/herdr/plugins/herdr-keypad`.
 - Activated the staged bundle with `herdr plugin link`, then managed `stop` and explicit `herdr plugin action invoke restart --plugin herdr-keypad`.
 - Preserved the validated config/state paths and identity (`config_identity: c8c4a35718a5a4245a6f613b6`).
 
@@ -205,7 +205,7 @@ Using the supported interactive smoke finalization path, the exact device eviden
 
 ## Next Phase Readiness
 
-Complete. The protocol, host publication path, firmware selector/renderers, regression coverage, selected-usb build/upload, exact paired captures, finalized evidence, and live native-plugin activation are verified. The current linked plugin is active at `/tmp/herdr-keypad-current-713bef4`; status is device-ready with current live Copilot values. No follow-up gate remains for this quick task.
+Complete. The protocol, host publication path, firmware selector/renderers, regression coverage, selected-usb build/upload, exact paired captures, finalized evidence, and live native-plugin activation are verified. The current linked plugin is active at `/home/nnex/.local/share/herdr/plugins/herdr-keypad`; status is device-ready with current live Copilot values. No follow-up gate remains for this quick task.
 
 
 ## Self-Check: PASSED
@@ -213,7 +213,7 @@ Complete. The protocol, host publication path, firmware selector/renderers, regr
 - Summary file exists at the required quick-task path.
 - Commits `d5bb3b4`, `64e1adf`, `9b3c567`, `4e53771`, and `713bef4` resolve in git history.
 - Final evidence and checksum sidecar exist; final evidence reports `status: pass` and four `Y` sightings.
-- Active linked plugin binary matches the rebuilt release SHA-256 `7d04558a29cb6bd554bf29cdc4a67dde3b62b038d595e498f3d5921c5be0c749`.
+- Active durable linked plugin binary matches the rebuilt release SHA-256 `7d04558a29cb6bd554bf29cdc4a67dde3b62b038d595e498f3d5921c5be0c749`.
 - No generated PPM/RGB565/evidence, PLAN, STATE, or ROADMAP file was committed.
 
 ---
