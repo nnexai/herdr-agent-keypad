@@ -125,6 +125,46 @@ async fn fake_device(stream: DuplexStream, mode: HelloMode) {
     );
     let _ = write_json(&mut write_half, ack).await;
 }
+async fn fake_device_reconnect(stream: DuplexStream, old_session: String) {
+    let (read_half, mut write_half) = tokio::io::split(stream);
+    let mut lines = BufReader::new(read_half).lines();
+    let Ok(Some(hello_line)) = lines.next_line().await else { return };
+    let Ok(hello): Result<Value, _> = serde_json::from_str(&hello_line) else { return };
+    let session = hello.get("session_id").and_then(Value::as_str).unwrap_or("session");
+    assert_ne!(session, old_session);
+    let boot_id = "device-boot-1";
+    let hello_ack = frame(
+        1,
+        "hello_ack",
+        boot_id,
+        session,
+        1,
+        Some(1),
+        json!({"accepted":true,"device_id":"paired-device","firmware":"phase1-bringup","protocol":1}),
+    );
+    let _ = write_json(&mut write_half, hello_ack).await;
+    let Ok(Some(snapshot_line)) = lines.next_line().await else { return };
+    let Ok(snapshot): Result<Value, _> = serde_json::from_str(&snapshot_line) else { return };
+    let snapshot_payload = snapshot.get("payload").cloned().unwrap_or_default();
+    let ack = frame(
+        2,
+        "snapshot_ack",
+        boot_id,
+        session,
+        2,
+        snapshot.get("seq").and_then(Value::as_u64),
+        json!({
+            "accepted":true,
+            "host_epoch":snapshot_payload.get("host_epoch").and_then(Value::as_str).unwrap_or("epoch"),
+            "snapshot_revision":snapshot_payload.get("snapshot_revision").and_then(Value::as_u64).unwrap_or(1),
+            "source_status":snapshot_payload.get("source_status").and_then(Value::as_str).unwrap_or("empty"),
+            "reason":"committed"
+        }),
+    );
+    let _ = write_json(&mut write_half, ack).await;
+    let stale = frame(2, "focus_intent", boot_id, &old_session, 3, None, json!({"action_id":"stale"}));
+    let _ = write_json(&mut write_half, stale).await;
+}
 
 async fn write_json(writer: &mut (impl tokio::io::AsyncWrite + Unpin), value: Value) -> std::io::Result<()> {
     let mut line = serde_json::to_vec(&value).expect("fake frame JSON");
@@ -227,6 +267,44 @@ async fn exact_hello_then_snapshot_ack_gates_readiness_and_close_clears_focus() 
     assert_eq!(port.pending_focus_count(), 0);
     server.await.unwrap();
 }
+#[tokio::test]
+async fn same_boot_id_reconnects_with_fresh_host_session_and_rejects_old_frames() {
+    let (_directory, binding) = binding_path("binding.json");
+    let (first_host, first_device) = tokio::io::duplex(16 * 1024);
+    let (second_host, second_device) = tokio::io::duplex(16 * 1024);
+    let platform = FakePlatform {
+        candidates: vec![exact_candidate("/dev/serial/by-id/usb-herdr")],
+        streams: Arc::new(Mutex::new(VecDeque::from([first_host, second_host]))),
+    };
+    let first_server = tokio::spawn(async move { fake_device(first_device, HelloMode::Matching).await });
+    let mut port = UsbPort::new(Box::new(platform), binding).with_timeout(Duration::from_millis(250));
+
+    let (first_boot, old_session) = match port.connect().await.unwrap() {
+        UsbEvent::Connected { boot_id, session_id, .. } => (boot_id, session_id),
+        event => panic!("unexpected first event: {event:?}"),
+    };
+    port.close();
+    first_server.await.unwrap();
+
+    let second_server = tokio::spawn(fake_device_reconnect(second_device, old_session.clone()));
+    let (second_boot, new_session) = match port.connect().await.unwrap() {
+        UsbEvent::Connected { boot_id, session_id, .. } => (boot_id, session_id),
+        event => panic!("unexpected reconnect event: {event:?}"),
+    };
+    assert_eq!(second_boot, first_boot);
+    assert_ne!(new_session, old_session);
+
+    let ack = port
+        .publish_snapshot(json!({"host_epoch":"reconnect-epoch","snapshot_revision":2,"source_status":"empty"}))
+        .await
+        .unwrap();
+    assert!(ack.accepted);
+    assert!(port.ready());
+    assert_eq!(port.poll().await.unwrap_err(), UsbError::SessionMismatch);
+    assert!(!port.connected());
+    second_server.await.unwrap();
+}
+
 
 #[tokio::test]
 async fn malformed_binding_is_unchanged_and_prevents_any_candidate_open() {
