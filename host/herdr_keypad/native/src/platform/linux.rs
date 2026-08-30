@@ -6,6 +6,7 @@
 
 use crate::ports::usb::{canonical_interface, canonical_serial, endpoint_is_stable, DeviceCandidate, PlatformSerial, SerialConnection, UsbError, EXPECTED_CDC_INTERFACE, EXPECTED_PID, EXPECTED_SERIAL, EXPECTED_VID};
 use serialport::{SerialPortInfo, SerialPortType};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio_serial::SerialPortBuilderExt;
 
@@ -39,22 +40,64 @@ pub fn normalize_metadata(metadata: LinuxPortMetadata) -> DeviceCandidate {
 /// Return all normalized USB descriptors.  Non-USB serial functions are
 /// omitted; exact descriptor and application identity checks remain in UsbPort.
 pub fn normalize_serial_ports(ports: &[SerialPortInfo]) -> Vec<DeviceCandidate> {
+    normalize_serial_ports_in(ports, Path::new("/dev/serial/by-id"))
+}
+
+pub(crate) fn normalize_serial_ports_in(ports: &[SerialPortInfo], by_id: &Path) -> Vec<DeviceCandidate> {
     ports
         .iter()
         .filter_map(|port| match &port.port_type {
-            SerialPortType::UsbPort(usb) => Some(normalize_metadata(LinuxPortMetadata {
-                device: port.port_name.clone(),
-                vid: Some(usb.vid),
-                pid: Some(usb.pid),
-                serial_number: usb.serial_number.clone(),
-                location: None,
-                manufacturer: usb.manufacturer.clone(),
-                product: usb.product.clone(),
-                interface: discover_interface_number(&port.port_name),
-            })),
+            SerialPortType::UsbPort(usb) => {
+                let stable = resolve_stable_endpoint_in(Path::new(&port.port_name), by_id);
+                let device = stable.as_ref().and_then(|path| path.to_str()).unwrap_or(&port.port_name);
+                let interface = discover_interface_number(&port.port_name)
+                    .or_else(|| stable.as_deref().and_then(interface_from_by_id));
+                let mut candidate = normalize_metadata(LinuxPortMetadata {
+                    device: device.to_owned(),
+                    vid: Some(usb.vid),
+                    pid: Some(usb.pid),
+                    serial_number: usb.serial_number.clone(),
+                    location: None,
+                    manufacturer: usb.manufacturer.clone(),
+                    product: usb.product.clone(),
+                    interface,
+                });
+                candidate.stable |= stable.is_some();
+                Some(candidate)
+            }
             _ => None,
         })
+        .filter(DeviceCandidate::admissible)
         .collect()
+}
+
+pub(crate) fn resolve_stable_endpoint_in(device: &Path, by_id: &Path) -> Option<PathBuf> {
+    let target = std::fs::canonicalize(device).ok()?;
+    let entries = std::fs::read_dir(by_id).ok()?;
+    let mut matched = None;
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !name.ends_with("-if01") || !entry.file_type().is_ok_and(|kind| kind.is_symlink()) {
+            continue;
+        }
+        if std::fs::canonicalize(&path).ok().as_ref() != Some(&target) {
+            continue;
+        }
+        if matched.is_some() {
+            return None;
+        }
+        matched = Some(path);
+    }
+    matched
+}
+
+fn interface_from_by_id(path: &Path) -> Option<String> {
+    let name = path.file_name()?.to_str()?;
+    name.strip_suffix("-if01").map(|_| EXPECTED_CDC_INTERFACE.to_owned())
 }
 
 /// `serialport` exposes USB VID/PID/serial fields but not the composite

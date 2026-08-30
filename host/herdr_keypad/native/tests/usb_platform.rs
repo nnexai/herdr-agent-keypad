@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use serialport::{SerialPortInfo, SerialPortType, UsbPortInfo};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
 use std::path::Path;
@@ -248,6 +249,43 @@ fn linux_exact_descriptor_filter_rejects_lookalikes_wrong_interface_and_transien
     let candidates = linux::LinuxPlatform::new().enumerate_metadata(records);
     assert_eq!(candidates.len(), 1);
     assert_eq!(candidates[0].device, "/dev/serial/by-id/usb-herdr");
+}
+
+#[cfg(unix)]
+#[test]
+fn linux_transient_enumeration_resolves_one_exact_stable_by_id_alias() {
+    use std::os::unix::fs::symlink;
+
+    let suffix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("herdr-keypad-by-id-{}-{suffix}", std::process::id()));
+    let _directory = TestDir(root.clone());
+    let by_id = root.join("by-id");
+    std::fs::create_dir_all(&by_id).expect("by-id fixture");
+    let transient = root.join("ttyACM0");
+    std::fs::write(&transient, []).expect("transient tty fixture");
+    let stable = by_id.join("usb-Espressif_exact-if01");
+    symlink("../ttyACM0", &stable).expect("stable alias fixture");
+    let port = SerialPortInfo {
+        port_name: transient.to_string_lossy().into_owned(),
+        port_type: SerialPortType::UsbPort(UsbPortInfo {
+            vid: EXPECTED_VID,
+            pid: EXPECTED_PID,
+            serial_number: Some(EXPECTED_SERIAL.to_owned()),
+            manufacturer: Some("Espressif".to_owned()),
+            product: Some("TinyUSB CDC".to_owned()),
+        }),
+    };
+
+    let candidates = linux::normalize_serial_ports_in(&[port.clone()], &by_id);
+    assert_eq!(candidates.len(), 1);
+    assert_eq!(candidates[0].device, stable.to_string_lossy());
+    assert!(candidates[0].admissible());
+
+    symlink("../ttyACM0", by_id.join("usb-Espressif_duplicate-if01")).expect("duplicate alias fixture");
+    assert!(linux::normalize_serial_ports_in(&[port], &by_id).is_empty());
 }
 
 #[tokio::test]

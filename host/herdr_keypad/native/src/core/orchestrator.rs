@@ -166,6 +166,11 @@ impl RuntimeCoordinator {
     pub fn status(&self) -> StatusSnapshot {
         let mut status = self.lifecycle.status();
         if status.state != BridgeStatus::Stopped {
+            status.device_state = if self.usb.connected() && self.device_ready {
+                BridgeStatus::Ready
+            } else {
+                BridgeStatus::DeviceUnavailable
+            };
             status.codex_state = match self.codex.view().source_state.as_str() {
                 "current" => BridgeStatus::Ready,
                 "stale" => BridgeStatus::Stale,
