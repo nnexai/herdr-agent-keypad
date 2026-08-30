@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 Phase: 5 — Independent Recovery and Actual-Device Acceptance
 Plan: Not started
 Status: Planning
-Last activity: 2026-08-30 - Completed quick task 260830-t2s: Alternating Codex and Copilot hardware usage tile
+Last activity: 2026-08-31 - Completed quick task 260831-0hp: Theme and fit Copilot usage presentation
 
 Progress: [██████████] 100% (63/63 existing plans; 8/9 phases complete)
 
@@ -244,6 +244,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 | [260822-abq — Align OMP agent routing with Codex definitions](./quick/260822-abq-align-omp-agents-markdown-definitions-wi/) | 2026-08-22 | complete — `1d09810` |
 | [260830-rfd - Add Copilot AI-credit usage and monthly limits](./quick/260830-rfd-implement-copilot-usage-support-alongsid/) | 2026-08-30 | complete - `7c5ea32` |
 | [260830-t2s - Alternate Codex and Copilot on panel 4](./quick/260830-t2s-display-codex-and-copilot-usage-on-the-f/) | 2026-08-30 | complete - `713bef4` |
+| [260831-0hp - Theme and fit Copilot usage presentation](./quick/260831-0hp-fix-ui-presentation-of-copilot-usage-to-/) | 2026-08-31 | complete - `c41b764` |
 
 ## Session Continuity
 
