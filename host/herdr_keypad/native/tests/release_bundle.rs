@@ -50,9 +50,13 @@ impl BundleFixture {
     }
 
     fn verify(&self, target: &str) -> std::process::Output {
+        self.verify_path(&self.root, target)
+    }
+
+    fn verify_path(&self, bundle: &Path, target: &str) -> std::process::Output {
         Command::new("python3")
             .args([VERIFIER, "--bundle"])
-            .arg(&self.root)
+            .arg(bundle)
             .args(["--target", target, "--schema", SCHEMA])
             .output()
             .expect("run bundle verifier")
@@ -215,6 +219,33 @@ fn lifecycle_document_is_reopened_and_privacy_checked() {
     fs::write(&lifecycle_path, lifecycle.replace("HERDR_PLUGIN_ROOT", "/home/secret"))
         .expect("corrupt lifecycle");
     assert_rejected(fixture.verify("x86_64-unknown-linux-gnu"), "lifecycle");
+}
+
+#[test]
+fn valid_linux_tar_archive_passes_closed_policy() {
+    let fixture = BundleFixture::new();
+    let archive = std::env::temp_dir().join("herdr-keypad-release-bundle.tar.gz");
+    let status = Command::new("tar")
+        .args(["-czf"])
+        .arg(&archive)
+        .args([
+            "-C",
+            fixture.root.to_str().expect("fixture path is UTF-8"),
+            "herdr-plugin.toml",
+            "LIFECYCLE.md",
+            "bin/herdr-keypad",
+            "release-manifest.json",
+        ])
+        .status()
+        .expect("tar available for release tests");
+    assert!(status.success(), "tar archive creation failed");
+    let output = fixture.verify_path(&archive, "x86_64-unknown-linux-gnu");
+    let _ = fs::remove_file(&archive);
+    assert!(
+        output.status.success(),
+        "valid tar bundle rejected: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]
