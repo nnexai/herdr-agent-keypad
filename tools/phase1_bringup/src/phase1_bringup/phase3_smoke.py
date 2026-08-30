@@ -13,6 +13,7 @@ import selectors
 import struct
 import subprocess
 import signal
+import sys
 import tempfile
 import threading
 import time
@@ -5628,9 +5629,329 @@ def validate_evidence(
     return 0
 
 
+QUICK_USAGE_KIND = "quick-usage-tile-device-evidence"
+QUICK_USAGE_CAPABILITY = "copilot_usage"
+QUICK_USAGE_CAPTURE_BYTES = 128 * 128 * 2
+QUICK_USAGE_PPM_BYTES = 128 * 128 * 3
+QUICK_USAGE_SIGHTINGS = (
+    "provider-cadence",
+    "stale-retained-values",
+    "neutral-unavailable",
+    "direct-keys-and-usage-key",
+)
+
+
+def _quick_usage_snapshot() -> dict[str, Any]:
+    """Build one bounded, three-slot snapshot for exact-device qualification."""
+    from herdr_keypad.bridge import AgentEntry, CodexView, Identity, Snapshot
+
+    entries = tuple(
+        AgentEntry(
+            slot,
+            f"quick:p{slot + 1}",
+            f"QUICK KEY {slot + 1}",
+            "CONTROLLED",
+            "NOW",
+            "0S",
+            "working",
+            Identity(
+                f"quick:p{slot + 1}",
+                f"quick-term-{slot + 1}",
+                f"quick-session-{slot + 1}",
+                1,
+            ),
+        )
+        for slot in range(3)
+    )
+    snapshot = Snapshot(
+        "quick-usage-tile",
+        1,
+        "current",
+        entries,
+        CodexView(
+            source_state="current",
+            primary=42,
+            secondary=55,
+            reset_text="RESET 2H",
+            observation_age="AGE 0M",
+            reached_limit=False,
+        ),
+    )
+    payload = snapshot.as_payload()
+    payload["copilot"] = {
+        "source_state": "current",
+        "used_credits": 42,
+        "included_credits": 100,
+        "used_percent": 42,
+        "reset_text": "RESET 2D",
+        "observation_age": "AGE 0M",
+        "unlimited": False,
+        "reached_limit": False,
+        "usage_allowed": True,
+        "overage_allowed": False,
+        "failure_reason": "",
+    }
+    return payload
+
+
+def validate_quick_usage_hello(
+    hello: Mapping[str, Any],
+    binding: Any,
+    firmware_sha256: str,
+) -> dict[str, Any]:
+    """Validate the fresh exact-pair hello before any snapshot publication."""
+    if not isinstance(hello, Mapping):
+        raise ValueError("quick usage hello is not an object")
+    if hello.get("device_id") != binding.device_id:
+        raise ValueError("quick usage device identity differs from exact pairing")
+    if hello.get("firmware") != binding.firmware:
+        raise ValueError("quick usage firmware identity differs from exact pairing")
+    if hello.get("protocol") != binding.protocol:
+        raise ValueError("quick usage protocol differs from exact pairing")
+    capabilities = hello.get("capabilities")
+    if not isinstance(capabilities, list) or capabilities != [QUICK_USAGE_CAPABILITY]:
+        raise ValueError("quick usage capability is not advertised by hello")
+    if not isinstance(hello.get("boot_id"), str) or not hello["boot_id"]:
+        raise ValueError("quick usage boot identity is missing")
+    if not isinstance(hello.get("session_id"), str) or not hello["session_id"]:
+        raise ValueError("quick usage session identity is missing")
+    return {
+        "device_id": hello["device_id"],
+        "firmware": hello["firmware"],
+        "protocol": hello["protocol"],
+        "boot_id": hello["boot_id"],
+        "session_id": hello["session_id"],
+        "capabilities": [QUICK_USAGE_CAPABILITY],
+        "firmware_sha256": firmware_sha256,
+    }
+
+
+def validate_quick_usage_capture(path: Path, label: str) -> dict[str, Any]:
+    """Reopen a capture and its RGB565 sidecar without accepting partial data."""
+    if label not in {"codex-current", "copilot-current"}:
+        raise ValueError("quick usage capture label is not closed")
+    ppm = path.resolve()
+    raw = ppm.with_suffix(ppm.suffix + ".rgb565")
+    if not ppm.is_file() or not raw.is_file():
+        raise ValueError(f"quick usage capture is incomplete: {label}")
+    payload = raw.read_bytes()
+    if len(payload) != QUICK_USAGE_CAPTURE_BYTES:
+        raise ValueError(f"quick usage RGB565 length mismatch: {label}")
+    ppm_payload = ppm.read_bytes()
+    if len(ppm_payload) != len(PPM_HEADER) + QUICK_USAGE_PPM_BYTES:
+        raise ValueError(f"quick usage PPM length mismatch: {label}")
+    if not ppm_payload.startswith(PPM_HEADER):
+        raise ValueError(f"quick usage PPM header mismatch: {label}")
+    return {
+        "label": label,
+        "ppm_path": relative(ppm),
+        "ppm_sha256": sha256_file(ppm),
+        "rgb565_path": relative(raw),
+        "rgb565_sha256": sha256_file(raw),
+        "rgb565_bytes": len(payload),
+    }
+
+
+def validate_quick_usage_sightings(sightings: Mapping[str, str]) -> str:
+    if set(sightings) != set(QUICK_USAGE_SIGHTINGS):
+        raise ValueError("quick usage physical sightings are incomplete")
+    if any(value not in {"Y", "N", "PENDING"} for value in sightings.values()):
+        raise ValueError("quick usage physical sightings must be Y, N, or PENDING")
+    return "pass" if all(value == "Y" for value in sightings.values()) else "pending"
+
+
+def _quick_usage_prompt() -> dict[str, str]:
+    sightings: dict[str, str] = {}
+    prompts = {
+        "provider-cadence": "CODEX -> COPILOT -> CODEX alternated twice at equal 8-second dwell with no blank flash",
+        "stale-retained-values": "COPILOT STALE retained muted values remained readable after Codex became unavailable",
+        "neutral-unavailable": "Dual unavailable/auth state showed neutral USAGE / UNAVAILABLE with no capacity numbers",
+        "direct-keys-and-usage-key": "Keys 1-3 focused their exact displayed agents and the panel-4 key remained inert",
+    }
+    for key in QUICK_USAGE_SIGHTINGS:
+        answer = input(f"{prompts[key]} [Y/N]: ").strip().upper()
+        if answer not in {"Y", "N"}:
+            raise ValueError("quick usage physical sighting must be answered Y or N")
+        sightings[key] = answer
+    return sightings
+
+
+def _quick_usage_variant(revision: int, *, neutral: bool) -> dict[str, Any]:
+    payload = _quick_usage_snapshot()
+    payload["snapshot_revision"] = revision
+    codex = payload["codex"]
+    codex.update(
+        {
+            "source_state": "unavailable",
+            "primary": None,
+            "secondary": None,
+            "reset_text": "RESET N/A",
+            "reached_limit": None,
+            "error_code": "E-2401",
+        }
+    )
+    payload["diagnostics"]["codex_status"] = "unavailable"
+    if neutral:
+        payload["copilot"].update(
+            {
+                "source_state": "unavailable",
+                "used_credits": None,
+                "included_credits": None,
+                "used_percent": None,
+                "reset_text": "RESET N/A",
+                "observation_age": "AGE N/A",
+                "reached_limit": None,
+                "usage_allowed": False,
+                "overage_allowed": False,
+                "failure_reason": "quota_unavailable",
+            }
+        )
+    else:
+        payload["copilot"].update(
+            {"source_state": "stale", "observation_age": "AGE 18M"}
+        )
+    return payload
+
+
+def _quick_usage_publish(
+    binding_path: Path,
+    binding: Any,
+    timeout: float,
+    payload: Mapping[str, Any],
+    firmware_sha256: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    from herdr_keypad.usb import UsbDeviceSession
+
+    session = UsbDeviceSession(binding_path, timeout=timeout)
+    try:
+        connected = session.connect()
+        hello = connected.get("hello", connected)
+        identity = validate_quick_usage_hello(hello, binding, firmware_sha256)
+        ack = session.publish_snapshot(payload)
+        if (
+            ack.get("accepted") is not True
+            or ack.get("host_epoch") != payload["host_epoch"]
+            or ack.get("snapshot_revision") != payload["snapshot_revision"]
+        ):
+            raise RuntimeError("quick usage snapshot was not exactly acknowledged")
+        return identity, {
+            "accepted": True,
+            "host_epoch": ack["host_epoch"],
+            "snapshot_revision": ack["snapshot_revision"],
+        }
+    finally:
+        session.close()
+
+
+def run_quick_usage_tile(args: argparse.Namespace) -> int:
+    require_inherited_bridge_lock()
+    firmware = args.firmware.resolve()
+    if not firmware.is_file():
+        raise RuntimeError(f"selected-usb firmware is missing: {firmware}")
+    binding = PairingStore(args.binding.resolve()).load()
+    if binding is None:
+        raise RuntimeError(f"pairing binding missing: {args.binding}")
+    initial_payload = _quick_usage_snapshot()
+    # Even revision selects Codex first; the selector then gives both providers
+    # the same full dwell before toggling.
+    initial_payload["snapshot_revision"] = 2
+    initial_identity, initial_ack = _quick_usage_publish(
+        args.binding.resolve(),
+        binding,
+        args.timeout,
+        initial_payload,
+        firmware_sha256,
+    )
+    identity = dict(initial_identity)
+    identity["snapshot_ack"] = initial_ack
+    snapshot_acks = [initial_ack]
+    time.sleep(16.5)
+    for revision, neutral in ((3, False), (4, True)):
+        _variant_identity, variant_ack = _quick_usage_publish(
+            args.binding.resolve(),
+            binding,
+            args.timeout,
+            _quick_usage_variant(revision, neutral=neutral),
+            firmware_sha256,
+        )
+        snapshot_acks.append(variant_ack)
+        if not neutral:
+            time.sleep(1.5)
+
+    capture_script = ROOT / "tools/capture_panel.py"
+    capture_records: list[dict[str, Any]] = []
+    for label in ("codex-current", "copilot-current"):
+        ppm = captures_root / f"{label}.ppm"
+        scene = label
+        subprocess.run(
+            [
+                sys.executable,
+                str(capture_script),
+                "3",
+                str(ppm),
+                "--binding",
+                str(args.binding.resolve()),
+                "--theme",
+                "signal-edge",
+                "--scene",
+                scene,
+            ],
+            cwd=ROOT,
+            check=True,
+        )
+        capture_records.append(validate_quick_usage_capture(ppm, label))
+
+    sightings = (
+        {key: "PENDING" for key in QUICK_USAGE_SIGHTINGS}
+        if args.noninteractive
+        else _quick_usage_prompt()
+    )
+    status = validate_quick_usage_sightings(sightings)
+    evidence = {
+        "schema_version": 1,
+        "kind": QUICK_USAGE_KIND,
+        "status": status,
+        "device": identity,
+        "snapshot_acks": snapshot_acks,
+        "schedule": {
+            "provider_period_us": 8_000_000,
+            "sequence": ["CODEX", "COPILOT", "CODEX"],
+        },
+        "focus_slots": [0, 1, 2],
+        "usage_key_inert": True,
+        "captures": capture_records,
+        "physical_sightings": sightings,
+    }
+    write_json(evidence_path, evidence, checksum=True)
+    print(f"wrote {status} quick usage evidence to {evidence_path}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
+    quick = subparsers.add_parser(
+        "quick-usage-tile",
+        help="publish and capture the bounded Copilot/Codex panel-4 fixture",
+    )
+    quick.add_argument("--binding", type=Path, required=True)
+    quick.add_argument(
+        "--firmware",
+        type=Path,
+        default=ROOT / ".pio/build/selected-usb/firmware.bin",
+    )
+    quick.add_argument(
+        "--evidence",
+        type=Path,
+        default=ROOT / "artifacts/quick/260830-t2s/usage-tile-device-evidence.json",
+    )
+    quick.add_argument(
+        "--captures",
+        type=Path,
+        default=ROOT / "artifacts/quick/260830-t2s",
+    )
+    quick.add_argument("--timeout", type=float, default=5.0)
+    quick.add_argument("--noninteractive", action="store_true")
     capture = subparsers.add_parser("capture")
     capture.add_argument("--binding", type=Path, required=True)
     capture.add_argument("--firmware", type=Path, required=True)
@@ -5772,6 +6093,8 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("--require-current-deployment", action="store_true")
     validate.add_argument("--require-fresh-bridge-publication", action="store_true")
     args = parser.parse_args(argv)
+    if args.command == "quick-usage-tile":
+        return run_quick_usage_tile(args)
     if args.command == "phase31-profile":
         return run_phase31_profile(args)
     if args.command == "phase31-lock":

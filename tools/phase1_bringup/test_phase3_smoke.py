@@ -10,6 +10,16 @@ from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
 from phase1_bringup.phase3_smoke import (
+    PPM_HEADER,
+    QUICK_USAGE_CAPABILITY,
+    QUICK_USAGE_CAPTURE_BYTES,
+    QUICK_USAGE_PPM_BYTES,
+    QUICK_USAGE_SIGHTINGS,
+    _quick_usage_variant,
+    _quick_usage_snapshot,
+    validate_quick_usage_capture,
+    validate_quick_usage_hello,
+    validate_quick_usage_sightings,
     FINAL_EDGE_ASSUMPTIONS,
     HUMAN_ROWS,
     PHASE32_DEVICE_ROW_IDS,
@@ -1786,6 +1796,89 @@ class Phase32PhysicalGateTests(unittest.TestCase):
                 self._evidence(),
                 {"status": "pass", "defects": []},
             )
+
+class QuickUsageTileTests(unittest.TestCase):
+    @staticmethod
+    def binding() -> SimpleNamespace:
+        return SimpleNamespace(device_id="device-1", firmware="firmware-1", protocol=1)
+
+    @staticmethod
+    def hello(**changes: object) -> dict[str, object]:
+        hello: dict[str, object] = {
+            "device_id": "device-1",
+            "firmware": "firmware-1",
+            "protocol": 1,
+            "boot_id": "boot-1",
+            "session_id": "session-1",
+            "capabilities": [QUICK_USAGE_CAPABILITY],
+        }
+        hello.update(changes)
+        return hello
+
+    def test_quick_usage_tile_hello_is_exact_pair_and_capability_gated(self) -> None:
+        facts = validate_quick_usage_hello(self.hello(), self.binding(), "a" * 64)
+        self.assertEqual(facts["capabilities"], [QUICK_USAGE_CAPABILITY])
+        for changes, message in (
+            ({"device_id": "other"}, "device identity"),
+            ({"firmware": "other"}, "firmware identity"),
+            ({"protocol": 2}, "protocol"),
+            ({"capabilities": []}, "capability"),
+            ({"capabilities": ["unknown"]}, "capability"),
+            ({"boot_id": ""}, "boot identity"),
+            ({"session_id": ""}, "session identity"),
+        ):
+            with self.assertRaisesRegex(ValueError, message):
+                validate_quick_usage_hello(self.hello(**changes), self.binding(), "a" * 64)
+
+    def test_quick_usage_tile_snapshot_has_three_identities_and_bounded_copilot(self) -> None:
+        payload = _quick_usage_snapshot()
+        self.assertEqual(len(payload["agents"]), 3)
+        self.assertEqual(payload["copilot"]["source_state"], "current")
+        self.assertEqual(payload["copilot"]["used_credits"], 42)
+        self.assertEqual(payload["copilot"]["included_credits"], 100)
+        self.assertEqual(payload["copilot"]["failure_reason"], "")
+
+    def test_quick_usage_tile_drives_stale_then_neutral_variants(self) -> None:
+        stale = _quick_usage_variant(2, neutral=False)
+        self.assertEqual(stale["codex"]["source_state"], "unavailable")
+        self.assertEqual(stale["codex"]["error_code"], "E-2401")
+        self.assertEqual(stale["copilot"]["source_state"], "stale")
+        self.assertEqual(stale["copilot"]["used_credits"], 42)
+        neutral = _quick_usage_variant(3, neutral=True)
+        self.assertEqual(neutral["copilot"]["source_state"], "unavailable")
+        self.assertIsNone(neutral["copilot"]["used_credits"])
+        self.assertEqual(neutral["copilot"]["failure_reason"], "quota_unavailable")
+
+    def test_quick_usage_tile_capture_validation_rejects_length_and_header(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            ppm = Path(directory) / "copilot-current.ppm"
+            raw = ppm.with_suffix(".ppm.rgb565")
+            ppm.write_bytes(PPM_HEADER + b"x" * QUICK_USAGE_PPM_BYTES)
+            raw.write_bytes(b"x" * QUICK_USAGE_CAPTURE_BYTES)
+            record = validate_quick_usage_capture(ppm, "copilot-current")
+            self.assertEqual(record["rgb565_bytes"], QUICK_USAGE_CAPTURE_BYTES)
+            raw.write_bytes(b"x")
+            with self.assertRaisesRegex(ValueError, "length"):
+                validate_quick_usage_capture(ppm, "copilot-current")
+            raw.write_bytes(b"x" * QUICK_USAGE_CAPTURE_BYTES)
+            ppm.write_bytes(b"not-ppm" + b"x" * (len(PPM_HEADER) + QUICK_USAGE_PPM_BYTES - len("not-ppm")))
+            with self.assertRaisesRegex(ValueError, "header"):
+                validate_quick_usage_capture(ppm, "copilot-current")
+
+    def test_quick_usage_tile_sightings_require_all_closed_answers(self) -> None:
+        pending = {key: "PENDING" for key in QUICK_USAGE_SIGHTINGS}
+        self.assertEqual(validate_quick_usage_sightings(pending), "pending")
+        self.assertEqual(
+            validate_quick_usage_sightings({key: "Y" for key in QUICK_USAGE_SIGHTINGS}),
+            "pass",
+        )
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            validate_quick_usage_sightings({})
+        invalid = dict(pending)
+        invalid[QUICK_USAGE_SIGHTINGS[0]] = "MAYBE"
+        with self.assertRaisesRegex(ValueError, "Y, N"):
+            validate_quick_usage_sightings(invalid)
+
 
 if __name__ == "__main__":
     unittest.main()
