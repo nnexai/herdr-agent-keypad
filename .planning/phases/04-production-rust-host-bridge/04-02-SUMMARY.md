@@ -17,11 +17,11 @@ provides:
 affects: [rust-host-bridge, differential-parity, protocol, projection, focus, codex, lifecycle]
 
 # Actuals (#2632)
-# 109018 changed-file bytes / 4, rounded up; task commits plus this summary commit.
+# 109212 changed-file bytes / 4, rounded up; task commits plus this summary and post-merge fix.
 actuals:
-  tokens: 27255
+  tokens: 27303
   tasks: 2
-  commits: 4
+  commits: 5
 
 # Tech tracking
 tech-stack:
@@ -47,6 +47,7 @@ key-decisions:
   - "Keep Rust validation fixture-only and exporter-independent; production Rust has no Python executable or module dependency."
   - "Use stable public Python module behavior and normalized descriptors rather than serializing Python objects, upstream payloads, prompts, transcripts, or raw errors."
   - "Use an exact sha2 0.10.8 temporary validator dependency because the available Rust/Cargo 1.82 toolchain cannot compile the researched sha2 0.11/edition-2024 dependency chain; production dependency ownership remains with Plan 01."
+  - "Encode finalized SHA-256 bytes explicitly instead of relying on LowerHex, keeping the validator compatible with production sha2 0.11."
 
 patterns-established:
   - "Every case carries a stable name, normalized input, observable expected output, and canonical case hash."
@@ -63,6 +64,9 @@ coverage:
     verification:
       - kind: unit
         ref: "cargo test --manifest-path host/herdr_keypad/native/Cargo.toml --test python_oracle_fixture synthetic_"
+        status: pass
+      - kind: integration
+        ref: "cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test production_tracer --test python_oracle_fixture"
         status: pass
     human_judgment: false
   - id: D2
@@ -119,6 +123,7 @@ Each task was committed atomically:
    - `5336f48` — `feat(04-02): validate oracle fixture lineage and privacy` (GREEN)
 2. **Task 2: Export and prove deterministic Python behavioral traces**
    - `3214dd7` — `feat(04-02): freeze deterministic Python behavioral traces`
+   - `2253d56` — `fix(04-02): support sha2 0.11 digest encoding` (post-merge compatibility correction)
 
 **Plan metadata:** This worktree intentionally does not update shared `STATE.md` or `ROADMAP.md`; the phase orchestrator owns those files.
 
@@ -149,12 +154,21 @@ Each task was committed atomically:
 - **Verification:** Rust synthetic validator and both isolated exporter roots passed.
 - **Committed in:** `5336f48` (validator implementation; temporary compatibility files were not committed).
 
-**Total deviations:** 1 compatibility adjustment; no production dependency or architecture change.
-**Impact on plan:** None on delivered behavior. Plan 01 remains the sole owner of production Cargo manifest and lockfile integration.
+**2. [Rule 1 - Bug] Encode finalized SHA-256 bytes for production sha2 0.11**
+- **Found during:** Post-merge production tracer/oracle reproducer
+- **Issue:** The merged validator used `format!("{:x}", hasher.finalize())`, but the pinned production `sha2` 0.11 digest output does not implement `LowerHex`.
+- **Fix:** Iterate the finalized digest bytes into a fixed-capacity lowercase hexadecimal string without adding dependencies or changing the production manifest.
+- **Files modified:** `host/herdr_keypad/native/tests/python_oracle_fixture.rs`
+- **Verification:** `cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test production_tracer --test python_oracle_fixture` passed all five tests.
+- **Committed in:** `2253d56`
+
+**Total deviations:** 2 (one temporary compatibility adjustment and one post-merge bug fix); no production dependency or architecture change.
+**Impact on plan:** The digest output remains canonical and behaviorally unchanged; the validator now builds with the production sha2 0.11 lockfile. Plan 01 remains the sole owner of production Cargo manifest and lockfile integration.
 
 ## Issues Encountered
 
-- No unresolved implementation issues. The focused Python command ran 37 tests successfully, and the exporter determinism proof ran the Rust validator successfully against both temporary roots.
+- The first merged validator build exposed a sha2 0.11 API compatibility issue in digest formatting. Explicit byte iteration resolved it while preserving the same lowercase SHA-256 text.
+- The focused Python command ran 37 tests successfully, and the exporter determinism proof plus the locked production tracer/oracle reproducer passed.
 
 ## User Setup Required
 
@@ -174,5 +188,5 @@ None - no external service configuration required.
 ## Self-Check: PASSED
 
 - All six planned implementation/test/fixture paths and this SUMMARY.md exist.
-- Commits `218a79f`, `5336f48`, and `3214dd7` resolve to committed objects.
+- Commits `218a79f`, `5336f48`, `3214dd7`, `cdfeda3`, and `2253d56` resolve to committed objects.
 - No temporary Cargo manifest, lockfile, target directory, or generated Python cache remains in the worktree.
