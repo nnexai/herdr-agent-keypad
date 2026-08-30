@@ -388,27 +388,18 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: herdr-keypad-linux-x86_64-${{ github.sha }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
           path: ${{ runner.temp }}/phase04-input/linux
 
       - name: Download macOS native evidence for this run and commit
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: herdr-keypad-macos-arm64-${{ github.sha }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
           path: ${{ runner.temp }}/phase04-input/macos
 
       - name: Download Linux contract evidence for this run and commit
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: herdr-keypad-phase04-contract-${{ github.sha }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
           path: ${{ runner.temp }}/phase04-input/contract
 
       - name: Collect and verify hash-linked evidence
