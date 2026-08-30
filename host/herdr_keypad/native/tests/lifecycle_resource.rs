@@ -34,7 +34,7 @@ fn binding_file(root: &Path) -> PathBuf {
     let path = root.join("keypad-binding.json");
     fs::write(
         &path,
-        br#"{"schema_version":1,"device_id":"kbd-123","protocol":1,"firmware":"phase1-bringup"}",
+        br#"{"schema_version":1,"device_id":"kbd-123","protocol":1,"firmware":"phase1-bringup"}"#,
     )
     .expect("binding");
     path
@@ -68,13 +68,14 @@ fn lifecycle_control_matching_start_is_idempotent_and_changed_config_requires_re
         active_config_identity: startup.effective.identity().to_owned(),
         requested_config_identity: owner.requested_identity_for_test(true),
     });
+    let changed_identity = owner.requested_identity_for_test(true);
     assert_eq!(owner.handle(LifecycleCommand::Restart), ControlReply::Restarted {
         version: env!("CARGO_PKG_VERSION").to_owned(),
-        config_identity: startup.effective.identity().to_owned(),
+        config_identity: changed_identity,
     });
 
     owner.handle(LifecycleCommand::Stop);
-    assert_eq!(owner.handle(LifecycleCommand::Status).state, BridgeStatus::Stopped);
+    assert_eq!(owner.status().state, BridgeStatus::Stopped);
     fs::remove_dir_all(root).expect("cleanup");
 }
 
@@ -90,10 +91,10 @@ fn lifecycle_exits_on_herdr_boundary_and_never_restarts_after_crash() {
     let mut owner = LifecycleOwner::new(paths, startup.effective).expect("owner");
     assert_eq!(owner.handle(LifecycleCommand::Start).state(), BridgeStatus::Running);
     owner.on_herdr_exit();
-    assert_eq!(owner.handle(LifecycleCommand::Status).state, BridgeStatus::Stopped);
+    assert_eq!(owner.status().state, BridgeStatus::Stopped);
     assert!(!owner.automatic_recovery(), "Herdr v0.8.2 supplies no supervisor");
     owner.on_process_crash();
-    assert_eq!(owner.handle(LifecycleCommand::Status).state, BridgeStatus::Stopped);
+    assert_eq!(owner.status().state, BridgeStatus::Stopped);
     fs::remove_dir_all(root).expect("cleanup");
 }
 
@@ -103,7 +104,6 @@ fn lifecycle_suspend_invalidates_sessions_until_fresh_resume() {
     let binding = binding_file(&root);
     let config_dir = root.join("config");
     let state_dir = root.join("state");
-    fs::create_dir_all(&config_dir).expect("config");
     let startup = StartupConfig::load(&config_dir, &binding);
     let paths = RuntimePaths::new(&config_dir, &state_dir, "/tmp/herdr.sock", "/bin/herdr", 7);
     let mut owner = LifecycleOwner::new(paths, startup.effective).expect("owner");
