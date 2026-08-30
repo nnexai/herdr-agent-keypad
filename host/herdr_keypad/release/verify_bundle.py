@@ -566,7 +566,10 @@ def _inspect_binary(path: Path, target: str) -> tuple[str, list[str]]:
         fail("target: executable is not arm64 Mach-O")
     _run_tool(["otool", "-hv", str(path)], "otool -hv")
     dependencies = _run_tool(["otool", "-L", str(path)], "otool -L")
-    return "otool -L", [line.strip() for line in dependencies.splitlines() if line.strip()]
+    libraries = [line.strip() for line in dependencies.splitlines() if line.strip()]
+    if libraries and libraries[0].endswith(":"):
+        libraries = libraries[1:]
+    return "otool -L", libraries
 
 
 def _verify_bundle(bundle: Path, expected_target: str, schema_path: Path, expected_revision: str | None = None) -> None:
