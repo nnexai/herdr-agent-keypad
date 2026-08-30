@@ -277,6 +277,14 @@ class BeaconTheme final : public ThemeRenderer {
   }
 
   void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
+    if (state.usage_provider == UsageProvider::Copilot) {
+      drawCopilotPanel(sprite, state.copilot, true);
+      return;
+    }
+    if (state.usage_provider == UsageProvider::None) {
+      drawUnavailableUsagePanel(sprite);
+      return;
+    }
     const CodexRenderView& codex = state.codex;
     sprite.fillScreen(kBackground);
     sprite.setTextColor(kPrimary, kBackground);

@@ -484,6 +484,8 @@ void dispatchAdmission(const phase1::protocol::Result &admission) {
     reply["device_id"] = deviceId;
     reply["firmware"] = "phase1-bringup";
     reply["protocol"] = 1;
+    JsonArray capabilities = reply["capabilities"].to<JsonArray>();
+    capabilities.add("copilot_usage");
     sendFrame("hello_ack", admission.frame.sequence, reply.as<JsonObjectConst>());
     completeAdmission();
     return;
@@ -884,7 +886,7 @@ void loop() {
     const AnimationScheduler::Level rendered_level =
         agentProjection.animation().level();
     const uint32_t tick_started = micros();
-    agentProjection.tick(board, now);
+    agentProjection.tick(board, now, menuController.open());
     const uint32_t tick_finished = micros();
     const uint32_t tick_cost = tick_finished - tick_started;
     const bool frame_observed =

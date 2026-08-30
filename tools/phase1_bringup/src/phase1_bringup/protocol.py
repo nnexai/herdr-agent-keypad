@@ -17,8 +17,7 @@ DIGEST_PATTERN = re.compile(r"^[0-9a-f]{16}$")
 
 PAYLOAD_KEYS: dict[str, set[str]] = {
     "hello": {"device_id", "firmware", "protocol"},
-    "hello_ack": {"accepted", "device_id", "firmware", "protocol"},
-    "probe": {"panel", "step_id", "stimulus"},
+    "hello_ack": {"accepted", "device_id", "firmware", "protocol", "capabilities"},
     "probe_ack": {"accepted", "step_id"},
     "event": {"key", "direction", "kind", "step_id"},
     "error": {"code", "detail"},
@@ -140,7 +139,11 @@ def validate_frame(frame: Any) -> dict[str, Any]:
     payload = frame["payload"]
     if not isinstance(payload, dict):
         raise ProtocolError("invalid_payload", "payload must be an object")
-    if frame_type != "event" and set(payload) != PAYLOAD_KEYS[frame_type]:
+    if frame_type == "hello_ack":
+        base_keys = PAYLOAD_KEYS[frame_type] - {"capabilities"}
+        if set(payload) not in (base_keys, PAYLOAD_KEYS[frame_type]):
+            raise ProtocolError("unknown_field" if set(payload) - PAYLOAD_KEYS[frame_type] else "invalid_shape", f"{frame_type} payload is closed")
+    elif frame_type != "event" and set(payload) != PAYLOAD_KEYS[frame_type]:
         raise ProtocolError("invalid_shape", f"{frame_type} payload is closed")
     elif frame_type == "event" and not {"kind", "step_id"}.issubset(payload):
         raise ProtocolError("invalid_shape", "event payload requires kind and step_id")
@@ -154,8 +157,13 @@ def validate_frame(frame: Any) -> dict[str, Any]:
             raise ProtocolError("invalid_shape", "hello_ack accepted must be boolean")
         _require_string(payload["device_id"], "device_id")
         _require_ascii_text(payload["firmware"], "firmware", 64)
+        if "capabilities" in payload:
+            capabilities = payload["capabilities"]
+            if not isinstance(capabilities, list) or len(capabilities) > 8:
+                raise ProtocolError("invalid_shape", "hello_ack capabilities must be a bounded list")
+            if any(not isinstance(capability, str) or not (1 <= len(capability) <= 32) or not capability.isascii() for capability in capabilities):
+                raise ProtocolError("invalid_shape", "hello_ack capabilities must be bounded ASCII strings")
     elif frame_type == "probe":
-        _require_string(payload["step_id"], "step_id")
         if not _is_int(payload["panel"]) or not 1 <= payload["panel"] <= 4:
             raise ProtocolError("invalid_shape", "probe panel must be one through four")
         _require_ascii_text(payload["stimulus"], "probe stimulus", 64)
@@ -250,16 +258,20 @@ def new_frame(
         "seq": seq,
         "reply_to": reply_to,
         "digest": _payload_digest(payload),
-        "payload": payload,
     }
+V2_AGENT_SNAPSHOT_FIELDS = {"host_epoch", "snapshot_revision", "source_status", "agents"}
+V2_COPILOT_FIELDS = {
+    "source_state", "used_credits", "included_credits", "used_percent",
+    "reset_text", "observation_age", "unlimited", "reached_limit",
+    "usage_allowed", "overage_allowed", "failure_reason",
+}
+V2_CODEX_FIELDS = {"source_state", "primary", "secondary", "reset_text", "observation_age", "reached_limit", "error_code"}
 V2_PROTOCOL_VERSION = 2
 V2_FRAME_TYPES = {"agent_snapshot", "snapshot_ack", "focus_intent", "focus_result"}
 V2_SOURCE_STATUSES = {"current", "empty", "stale", "unavailable", "offline"}
 V2_CODEX_STATES = {"current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"}
 V2_LINK_STATES = {"current", "offline"}
 V2_OUTCOMES = {"accepted", "rejected", "stale_target", "not_found", "herdr_offline", "timeout", "uncertain", "vanished", "failed"}
-V2_AGENT_SNAPSHOT_FIELDS = {"host_epoch", "snapshot_revision", "source_status", "agents"}
-V2_CODEX_FIELDS = {"source_state", "primary", "secondary", "reset_text", "observation_age", "reached_limit", "error_code"}
 V2_DIAGNOSTIC_FIELDS = {
     "link_status", "herdr_status", "codex_status", "sync_age", "codex_age",
     "firmware_version", "protocol_version", "bridge_version",
@@ -338,6 +350,44 @@ def _v2_codex(value: Any) -> None:
         raise ProtocolError("invalid_shape", "bucket-unavailable Codex state cannot claim capacity")
 
 
+def _v2_count(value: Any, name: str) -> None:
+    if value is not None and (not _is_int(value) or not 0 <= value <= 1_000_000_000):
+        raise ProtocolError("invalid_shape", f"{name} must be null or a bounded count")
+
+
+def _v2_copilot(value: Any) -> None:
+    if not isinstance(value, dict) or set(value) != V2_COPILOT_FIELDS:
+        raise ProtocolError("unknown_field", "copilot view is closed")
+    states = {"current", "stale", "auth_required", "unavailable"}
+    _v2_status(value["source_state"], "copilot source_state", states)
+    _v2_count(value["used_credits"], "copilot used_credits")
+    _v2_count(value["included_credits"], "copilot included_credits")
+    _v2_percent(value["used_percent"], "copilot used_percent")
+    _v2_text(value["reset_text"], "copilot reset_text", 32)
+    _v2_text(value["observation_age"], "copilot observation_age", 16)
+    if not isinstance(value["unlimited"], bool):
+        raise ProtocolError("invalid_shape", "copilot unlimited must be boolean")
+    for key in ("reached_limit", "usage_allowed", "overage_allowed"):
+        if value[key] is not None and not isinstance(value[key], bool):
+            raise ProtocolError("invalid_shape", f"copilot {key} must be null or boolean")
+    _v2_error_code(value["failure_reason"], "copilot failure_reason")
+    if value["failure_reason"] not in {
+        "", "auth_required", "cli_missing", "cli_version_mismatch", "protocol_mismatch",
+        "unsupported_host", "quota_unavailable", "billing_mode_unsupported",
+        "malformed_quota", "timeout", "transport_unavailable",
+    }:
+        raise ProtocolError("invalid_shape", "copilot failure_reason is not allowlisted")
+    if value["source_state"] in {"auth_required", "unavailable"} and (
+        value["used_credits"] is not None or value["included_credits"] is not None
+        or value["used_percent"] is not None or value["unlimited"]
+        or value["reached_limit"] is not None
+    ):
+        raise ProtocolError("invalid_shape", "unavailable Copilot state cannot claim capacity")
+    if value["unlimited"] and value["included_credits"] is not None:
+        raise ProtocolError("invalid_shape", "unlimited Copilot state cannot claim an included denominator")
+    if value["source_state"] == "current" and value["failure_reason"]:
+        raise ProtocolError("invalid_shape", "current Copilot state cannot carry a failure reason")
+
 def _v2_diagnostics(value: Any) -> None:
     if not isinstance(value, dict) or set(value) != V2_DIAGNOSTIC_FIELDS:
         raise ProtocolError("unknown_field", "diagnostics view is closed")
@@ -368,11 +418,10 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
         raise ProtocolError("invalid_payload", "v2 payload must be an object")
     allowed = expected[frame_type]
     if frame_type == "agent_snapshot":
-        extended = V2_AGENT_SNAPSHOT_FIELDS | {"codex", "diagnostics"}
-        if set(payload) != extended:
-            raise ProtocolError("unknown_field" if set(payload) - extended else "invalid_shape", "v2 payload is closed")
-    elif set(payload) != allowed:
-        raise ProtocolError("unknown_field" if not set(payload).issubset(allowed) else "invalid_shape", "v2 payload is closed")
+        required = V2_AGENT_SNAPSHOT_FIELDS | {"codex", "diagnostics"}
+        allowed = required | {"copilot"}
+        if set(payload) not in (required, allowed):
+            raise ProtocolError("unknown_field" if set(payload) - allowed else "invalid_shape", "v2 payload is closed")
     _v2_opaque(payload["host_epoch"], "host_epoch")
     _v2_uint(payload["snapshot_revision"], "snapshot_revision")
     if frame_type in {"agent_snapshot", "snapshot_ack"}:
@@ -402,9 +451,10 @@ def validate_v2_payload(frame_type: str, payload: Any) -> dict[str, Any]:
             _v2_identity(agent, empty=empty)
         if seen != {0, 1, 2}:
             raise ProtocolError("invalid_shape", "agent slots must be 0, 1, and 2")
-        if set(payload) == V2_AGENT_SNAPSHOT_FIELDS | {"codex", "diagnostics"}:
-            _v2_codex(payload["codex"])
-            _v2_diagnostics(payload["diagnostics"])
+        _v2_codex(payload["codex"])
+        _v2_diagnostics(payload["diagnostics"])
+        if "copilot" in payload:
+            _v2_copilot(payload["copilot"])
     elif frame_type == "snapshot_ack":
         if not isinstance(payload["accepted"], bool):
             raise ProtocolError("invalid_shape", "snapshot_ack accepted must be boolean")

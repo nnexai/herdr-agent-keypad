@@ -223,6 +223,38 @@ class SignalEdgeTheme final : public ThemeRenderer {
   }
 
   void composePanel4(LGFX_Sprite& sprite, const RenderState& state) override {
+    if (state.usage_provider == UsageProvider::Copilot) {
+      const CopilotRenderView& copilot = state.copilot;
+      sprite.fillScreen(kBackground);
+      sprite.fillRect(0, 0, 8, 128, kSettled);
+      sprite.setTextColor(kPrimary, kBackground);
+      sprite.drawString("COPILOT", 16, 4);
+      drawCopilotRowsText(sprite, copilot, 16, 120, 22, 42);
+      drawCodexTrack(sprite, 16, 32, 108, 8, copilot.used_percent,
+                     copilotHasLimit(copilot) ? kDestructive : kAccent, kSettled);
+      drawCopilotMetaText(sprite, copilot, 16, 70, 16, 86);
+      const bool alert = copilot.source_state != CopilotSourceState::Current ||
+                         copilotHasLimit(copilot);
+      if (alert) {
+        sprite.fillRect(0, 104, 128, 24, kDestructive);
+        sprite.setTextColor(kBackground, kDestructive);
+        sprite.drawString(copilot.source_state == CopilotSourceState::Current
+                              ? "LIMIT" : copilotStateWord(copilot.source_state),
+                          16, 114);
+      } else {
+        sprite.setTextColor(kMetadata, kBackground);
+        sprite.drawString("CURRENT", 16, 114);
+      }
+      return;
+    }
+    if (state.usage_provider == UsageProvider::None) {
+      sprite.fillScreen(kBackground);
+      sprite.setTextColor(kPrimary, kBackground);
+      sprite.drawString("USAGE", centeredX("USAGE"), 42);
+      sprite.setTextColor(kDestructive, kBackground);
+      sprite.drawString("UNAVAILABLE", centeredX("UNAVAILABLE"), 66);
+      return;
+    }
     const CodexRenderView& codex = state.codex;
     sprite.fillScreen(kBackground);
     sprite.fillRect(0, 0, 8, 128, kSettled);

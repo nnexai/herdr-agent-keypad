@@ -28,6 +28,14 @@ enum class CodexSourceState : uint8_t {
   Unavailable = 0, Current, Stale, AuthRequired, CodexOffline, HostOffline,
 };
 
+enum class CopilotSourceState : uint8_t {
+  Unavailable = 0, Current, Stale, AuthRequired,
+};
+
+enum class UsageProvider : uint8_t {
+  None = 0, Codex, Copilot,
+};
+
 struct CodexRenderView {
   CodexSourceState source_state = CodexSourceState::Unavailable;
   int16_t primary = -1;
@@ -36,6 +44,20 @@ struct CodexRenderView {
   const char* observation_age = "AGE N/A";
   int8_t reached_limit = -1;
   const char* error_code = "";
+};
+
+struct CopilotRenderView {
+  CopilotSourceState source_state = CopilotSourceState::Unavailable;
+  int32_t used_credits = -1;
+  int32_t included_credits = -1;
+  int16_t used_percent = -1;
+  const char* reset_text = "RESET N/A";
+  const char* observation_age = "AGE N/A";
+  bool unlimited = false;
+  int8_t reached_limit = -1;
+  int8_t usage_allowed = -1;
+  int8_t overage_allowed = -1;
+  const char* failure_reason = "";
 };
 
 struct DiagnosticsRenderView {
@@ -81,6 +103,8 @@ struct RenderState {
     bool hold_active_owner = false;
   };
   CodexRenderView codex;
+  CopilotRenderView copilot;
+  UsageProvider usage_provider = UsageProvider::None;
   DiagnosticsRenderView diagnostics;
 
   Slot slots[kSlotCount];

@@ -12,6 +12,7 @@ constexpr const char* kSourceStatuses[] = {"current", "empty", "stale", "unavail
 constexpr const char* kStates[] = {"empty", "working", "idle", "blocked", "finished", "settled", "unknown"};
 constexpr const char* kLinkStates[] = {"current", "offline"};
 constexpr const char* kCodexStates[] = {"current", "stale", "unavailable", "auth_required", "codex_offline", "host_offline"};
+constexpr const char* kCopilotStates[] = {"current", "stale", "auth_required", "unavailable"};
 constexpr uint16_t kBackground = 0x0862;  // #0B0F14
 bool validErrorCode(const char* value) {
   if (value == nullptr || value[0] == '\0') return value != nullptr;
@@ -447,9 +448,37 @@ AgentProjection::TileState AgentProjection::parseState(const char* state) const 
   if (strcmp(state, "settled") == 0) return TileState::Settled;
   return strcmp(state, "unknown") == 0 ? TileState::Unknown : TileState::Unknown;
 }
+bool AgentProjection::codexEligible(const Generation& generation) const {
+  if (strcmp(generation.codex_source_state, "auth_required") == 0 ||
+      strcmp(generation.codex_source_state, "unavailable") == 0) {
+    return false;
+  }
+  return generation.codex_primary >= 0 || generation.codex_secondary >= 0;
+}
+
+bool AgentProjection::copilotEligible(const Generation& generation) const {
+  if (!generation.has_copilot || strcmp(generation.copilot_source_state, "current") != 0 &&
+      strcmp(generation.copilot_source_state, "stale") != 0) {
+    return false;
+  }
+  return generation.copilot_used_credits >= 0 || generation.copilot_included_credits >= 0 ||
+         generation.copilot_used_percent >= 0 || generation.copilot_unlimited;
+}
+
+UsageProvider AgentProjection::chooseUsageProvider(const Generation& generation) const {
+  const bool codex = codexEligible(generation);
+  const bool copilot = copilotEligible(generation);
+  if (codex && copilot) {
+    if (usage_provider_initialized_) return usage_provider_;
+    return (generation.snapshot_revision & 1U) != 0 ? UsageProvider::Copilot : UsageProvider::Codex;
+  }
+  if (copilot) return UsageProvider::Copilot;
+  if (codex) return UsageProvider::Codex;
+  return UsageProvider::None;
+}
 
 bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
-  staged_codex_only_ = false;
+  staged_usage_only_ = false;
   const char* epoch = payload["host_epoch"].as<const char*>();
   const char* source_status = payload["source_status"].as<const char*>();
   const uint32_t revision = payload["snapshot_revision"].as<uint32_t>();
@@ -513,6 +542,89 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
     staged_valid_ = false;
     return false;
   }
+  const JsonVariantConst copilot_value = payload["copilot"];
+  if (!copilot_value.isNull()) {
+    JsonObjectConst copilot = copilot_value.as<JsonObjectConst>();
+    if (copilot.isNull()) {
+      staged_valid_ = false;
+      return false;
+    }
+    const char* copilot_state = copilot["source_state"].as<const char*>();
+    const char* copilot_failure = copilot["failure_reason"].as<const char*>();
+    if (!copilot_state || !listed(copilot_state, kCopilotStates, sizeof(kCopilotStates) / sizeof(kCopilotStates[0])) ||
+        !copyBounded(candidate.copilot_source_state, sizeof(candidate.copilot_source_state), copilot_state, false) ||
+        !copyBounded(candidate.copilot_reset_text, sizeof(candidate.copilot_reset_text), copilot["reset_text"].as<const char*>(), false) ||
+        !copyBounded(candidate.copilot_observation_age, sizeof(candidate.copilot_observation_age), copilot["observation_age"].as<const char*>(), false) ||
+        !copilot_failure || !copyBounded(candidate.copilot_failure_reason, sizeof(candidate.copilot_failure_reason), copilot_failure, true)) {
+      staged_valid_ = false;
+      return false;
+    }
+    static constexpr const char* kFailureReasons[] = {
+        "", "auth_required", "cli_missing", "cli_version_mismatch",
+        "protocol_mismatch", "unsupported_host", "quota_unavailable",
+        "billing_mode_unsupported", "malformed_quota", "timeout",
+        "transport_unavailable"};
+    if (!listed(candidate.copilot_failure_reason, kFailureReasons,
+                sizeof(kFailureReasons) / sizeof(kFailureReasons[0]))) {
+      staged_valid_ = false;
+      return false;
+    }
+    auto readCount = [&](const char* key, int32_t& output) {
+      JsonVariantConst value = copilot[key];
+      if (value.isNull()) {
+        output = -1;
+        return true;
+      }
+      if (!value.is<int>() || value.is<bool>()) return false;
+      const int32_t number = value.as<int32_t>();
+      if (number < 0 || number > 1000000000L) return false;
+      output = number;
+      return true;
+    };
+    if (!readCount("used_credits", candidate.copilot_used_credits) ||
+        !readCount("included_credits", candidate.copilot_included_credits)) {
+      staged_valid_ = false;
+      return false;
+    }
+    JsonVariantConst percent = copilot["used_percent"];
+    if (percent.isNull()) candidate.copilot_used_percent = -1;
+    else {
+      if (!percent.is<int>() || percent.is<bool>() || percent.as<int>() < 0 || percent.as<int>() > 100) {
+        staged_valid_ = false;
+        return false;
+      }
+      candidate.copilot_used_percent = percent.as<int16_t>();
+    }
+    if (!copilot["unlimited"].is<bool>()) {
+      staged_valid_ = false;
+      return false;
+    }
+    candidate.copilot_unlimited = copilot["unlimited"].as<bool>();
+    auto readFlag = [&](const char* key, int8_t& output) {
+      JsonVariantConst value = copilot[key];
+      if (value.isNull()) {
+        output = -1;
+        return true;
+      }
+      if (!value.is<bool>()) return false;
+      output = value.as<bool>() ? 1 : 0;
+      return true;
+    };
+    if (!readFlag("reached_limit", candidate.copilot_reached_limit) ||
+        !readFlag("usage_allowed", candidate.copilot_usage_allowed) ||
+        !readFlag("overage_allowed", candidate.copilot_overage_allowed) ||
+        (candidate.copilot_unlimited && candidate.copilot_included_credits >= 0) ||
+        ((strcmp(candidate.copilot_source_state, "auth_required") == 0 ||
+          strcmp(candidate.copilot_source_state, "unavailable") == 0) &&
+         (candidate.copilot_used_credits >= 0 || candidate.copilot_included_credits >= 0 ||
+          candidate.copilot_used_percent >= 0 || candidate.copilot_unlimited ||
+          candidate.copilot_reached_limit >= 0))) {
+      staged_valid_ = false;
+      return false;
+    }
+    candidate.has_copilot = true;
+  }
+
 
   const char* link_status = diagnostics["link_status"].as<const char*>();
   const char* herdr_status = diagnostics["herdr_status"].as<const char*>();
@@ -595,7 +707,7 @@ bool AgentProjection::stageSnapshot(JsonObjectConst payload) {
       staged_valid_ = false;
       return false;
     }
-    staged_codex_only_ = true;
+    staged_usage_only_ = true;
   }
   staged_ = candidate;
   staged_valid_ = true;
@@ -638,9 +750,18 @@ bool AgentProjection::commitSnapshot() {
   transition_after_commit_ = false;
   committed_generation_ = staged_;
   const uint32_t event_started_us = micros();
+  const UsageProvider previous_provider = usage_provider_;
+  const bool previous_provider_initialized = usage_provider_initialized_;
+  usage_provider_ = chooseUsageProvider(committed_generation_);
+  usage_provider_initialized_ = usage_provider_ != UsageProvider::None;
+  if (!usage_provider_initialized_) {
+    usage_deadline_us_ = 0;
+  } else if (!previous_provider_initialized || usage_provider_ != previous_provider) {
+    usage_deadline_us_ = event_started_us + kUsageProviderPeriodUs;
+  }
   beginSemanticEvent(event_started_us);
   staged_valid_ = false;
-  staged_codex_only_ = false;
+  staged_usage_only_ = false;
   const bool urgent = strcmp(committed_generation_.source_status, "current") != 0;
   if (urgent || !animate) {
     animation_.interruptTransition(committed_generation_.snapshot_revision);
@@ -672,20 +793,29 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_
                                      const MenuState& menu) {
   if (!staged_valid_ || !ensureComposition()) return false;
   transition_after_commit_ = committed_;
-  if (staged_codex_only_) {
+  if (staged_usage_only_) {
     Display* display = board.displayAt(3);
     if (display == nullptr) {
       staged_valid_ = false;
-      staged_codex_only_ = false;
+      staged_usage_only_ = false;
       return false;
     }
     const bool animate = transition_after_commit_;
     transition_after_commit_ = false;
     committed_generation_ = staged_;
     const uint32_t event_started_us = micros();
+    const UsageProvider previous_provider = usage_provider_;
+    const bool previous_provider_initialized = usage_provider_initialized_;
+    usage_provider_ = chooseUsageProvider(committed_generation_);
+    usage_provider_initialized_ = usage_provider_ != UsageProvider::None;
+    if (!usage_provider_initialized_) {
+      usage_deadline_us_ = 0;
+    } else if (!previous_provider_initialized || usage_provider_ != previous_provider) {
+      usage_deadline_us_ = event_started_us + kUsageProviderPeriodUs;
+    }
     beginSemanticEvent(event_started_us);
     staged_valid_ = false;
-    staged_codex_only_ = false;
+    staged_usage_only_ = false;
     if (animate && strcmp(committed_generation_.source_status, "current") == 0) {
       animation_.beginTransition(committed_generation_.snapshot_revision, event_started_us);
     } else {
@@ -694,12 +824,8 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_
     if (menu.open) {
       renderMenu(board, panel4_theme, menu);
     } else {
-      theme().composePanel4(g_composition, renderState(micros()));
-      g_composition.pushSprite(display, 0, 0);
+      renderPanel4(board, panel4_theme, false, micros());
     }
-#ifdef ARDUINO
-    board.update(micros());
-#endif
     return true;
   }
   // Per-panel direct-cut reveal (R-2): panels flip old-complete -> new-complete
@@ -717,7 +843,27 @@ bool AgentProjection::commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_
       return false;
     }
   }
-  return commitSnapshot();
+  if (!commitSnapshot()) return false;
+  if (menu.open) {
+    renderMenu(board, panel4_theme, menu);
+    return true;
+  }
+  return renderPanel4(board, panel4_theme, false, micros());
+}
+
+bool AgentProjection::renderPanel4(BoardAdapter& board, ThemeRenderer& renderer,
+                                   bool menu_open, uint32_t now_us) {
+  Display* display = board.displayAt(3);
+  if (display == nullptr || !ensureComposition()) return false;
+  if (menu_open) {
+    return false;
+  }
+  renderer.composePanel4(g_composition, renderState(now_us));
+  g_composition.pushSprite(display, 0, 0);
+#ifdef ARDUINO
+  board.update(micros());
+#endif
+  return true;
 }
 
 bool AgentProjection::renderSync(BoardAdapter& board) const {
@@ -804,6 +950,21 @@ bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
   state.codex.observation_age = generation.codex_observation_age;
   state.codex.reached_limit = generation.codex_reached_limit;
   state.codex.error_code = generation.codex_error_code;
+  state.copilot.source_state = strcmp(generation.copilot_source_state, "current") == 0 ? CopilotSourceState::Current :
+                               strcmp(generation.copilot_source_state, "stale") == 0 ? CopilotSourceState::Stale :
+                               strcmp(generation.copilot_source_state, "auth_required") == 0 ? CopilotSourceState::AuthRequired :
+                               CopilotSourceState::Unavailable;
+  state.copilot.used_credits = generation.copilot_used_credits;
+  state.copilot.included_credits = generation.copilot_included_credits;
+  state.copilot.used_percent = generation.copilot_used_percent;
+  state.copilot.reset_text = generation.copilot_reset_text;
+  state.copilot.observation_age = generation.copilot_observation_age;
+  state.copilot.unlimited = generation.copilot_unlimited;
+  state.copilot.reached_limit = generation.copilot_reached_limit;
+  state.copilot.usage_allowed = generation.copilot_usage_allowed;
+  state.copilot.overage_allowed = generation.copilot_overage_allowed;
+  state.copilot.failure_reason = generation.copilot_failure_reason;
+  state.usage_provider = usage_provider_;
   state.diagnostics.link_status = generation.diagnostics_link_status;
   state.diagnostics.herdr_status = generation.diagnostics_herdr_status;
   state.diagnostics.codex_status = generation.diagnostics_codex_status;
@@ -827,7 +988,7 @@ bool AgentProjection::renderTileAt(BoardAdapter& board, ThemeRenderer& renderer,
   return true;
 }
 
-void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
+void AgentProjection::tick(BoardAdapter& board, uint32_t now_us, bool menu_open) {
   animation_.beginFrameWindow();
   if (!committed_ || syncing_) return;
 
@@ -862,6 +1023,22 @@ void AgentProjection::tick(BoardAdapter& board, uint32_t now_us) {
       feedback_dirty = true;
     }
   }
+  if (menu_open) {
+    usage_deadline_us_ = now_us + kUsageProviderPeriodUs;
+    return;
+  }
+  const bool both_usage_providers = codexEligible(committed_generation_) &&
+                                    copilotEligible(committed_generation_);
+  if (both_usage_providers && usage_provider_initialized_ &&
+      elapsed(now_us, usage_deadline_us_)) {
+    usage_provider_ = usage_provider_ == UsageProvider::Codex
+                          ? UsageProvider::Copilot
+                          : UsageProvider::Codex;
+    usage_deadline_us_ = now_us + kUsageProviderPeriodUs;
+    renderPanel4(board, theme(), false, now_us);
+    return;
+  }
+
 
   // Urgent source truth and immediate feedback always win over motion.
   if (feedback_dirty || strcmp(committed_generation_.source_status, "current") != 0) return;
@@ -1029,7 +1206,21 @@ RenderState AgentProjection::renderState(uint32_t now_us) const {
   state.codex.observation_age = committed_generation_.codex_observation_age;
   state.codex.reached_limit = committed_generation_.codex_reached_limit;
   state.codex.error_code = committed_generation_.codex_error_code;
-  state.diagnostics.link_status = committed_generation_.diagnostics_link_status;
+  state.copilot.source_state = strcmp(committed_generation_.copilot_source_state, "current") == 0 ? CopilotSourceState::Current :
+                               strcmp(committed_generation_.copilot_source_state, "stale") == 0 ? CopilotSourceState::Stale :
+                               strcmp(committed_generation_.copilot_source_state, "auth_required") == 0 ? CopilotSourceState::AuthRequired :
+                               CopilotSourceState::Unavailable;
+  state.copilot.used_credits = committed_generation_.copilot_used_credits;
+  state.copilot.included_credits = committed_generation_.copilot_included_credits;
+  state.copilot.used_percent = committed_generation_.copilot_used_percent;
+  state.copilot.reset_text = committed_generation_.copilot_reset_text;
+  state.copilot.observation_age = committed_generation_.copilot_observation_age;
+  state.copilot.unlimited = committed_generation_.copilot_unlimited;
+  state.copilot.reached_limit = committed_generation_.copilot_reached_limit;
+  state.copilot.usage_allowed = committed_generation_.copilot_usage_allowed;
+  state.copilot.overage_allowed = committed_generation_.copilot_overage_allowed;
+  state.copilot.failure_reason = committed_generation_.copilot_failure_reason;
+  state.usage_provider = usage_provider_;
   state.diagnostics.herdr_status = committed_generation_.diagnostics_herdr_status;
   state.diagnostics.codex_status = committed_generation_.diagnostics_codex_status;
   state.diagnostics.sync_age = committed_generation_.diagnostics_sync_age;

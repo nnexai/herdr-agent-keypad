@@ -359,6 +359,7 @@ struct Session {
     session_id: String,
     next_sequence: u64,
     last_received_sequence: u64,
+    supports_copilot_usage: bool,
 }
 
 /// One exact paired CDC stream. A dropped or closed stream clears all partial
@@ -389,6 +390,9 @@ impl UsbPort {
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
         self
+    }
+    pub fn supports_copilot_usage(&self) -> bool {
+        self.session.as_ref().is_some_and(|session| session.supports_copilot_usage)
     }
     pub fn connected(&self) -> bool { self.session.is_some() && self.reader.is_some() }
     pub fn candidate(&self) -> Option<&DeviceCandidate> { self.session.as_ref().map(|session| &session.candidate) }
@@ -476,12 +480,19 @@ impl UsbPort {
             if firmware != binding.firmware {
                 return Err(UsbError::FirmwareMismatch);
             }
+            let supports_copilot_usage = matches!(
+                payload.get("capabilities"),
+                Some(Value::Array(capabilities))
+                    if capabilities.len() == 1
+                        && capabilities[0].as_str() == Some("copilot_usage")
+            );
             return Ok(Session {
                 candidate: DeviceCandidate::exact("", EXPECTED_SERIAL, EXPECTED_CDC_INTERFACE),
                 device_boot_id: frame.boot_id,
                 session_id: host_session,
                 next_sequence: 1,
                 last_received_sequence: frame.sequence,
+                supports_copilot_usage,
             });
         }
     }
@@ -622,7 +633,9 @@ fn parse_wire(line: &[u8], expected_version: u64) -> Result<WireFrame, UsbError>
     if line.is_empty() || line.len() > DEVICE_LINE_LIMIT || !line.ends_with(&[b'\n']) {
         return Err(UsbError::Protocol);
     }
-    let value: Value = serde_json::from_slice(&line[..line.len() - 1]).map_err(|_| UsbError::Protocol)?;
+    let mut deserializer = serde_json::Deserializer::from_slice(&line[..line.len() - 1]);
+    let value = StrictJson.deserialize(&mut deserializer).map_err(|_| UsbError::Protocol)?;
+    deserializer.end().map_err(|_| UsbError::Protocol)?;
     let object = value.as_object().ok_or(UsbError::Protocol)?;
     const FIELDS: [&str; 8] = ["v", "type", "boot_id", "session_id", "seq", "reply_to", "digest", "payload"];
     if object.len() != FIELDS.len() || FIELDS.iter().any(|field| !object.contains_key(*field)) {

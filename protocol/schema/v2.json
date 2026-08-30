@@ -66,6 +66,7 @@
         "source_status": {"type": "string", "enum": ["current", "empty", "stale", "unavailable", "offline"]},
         "agents": {"type": "array", "prefixItems": [{"$ref": "#/$defs/agent"}, {"$ref": "#/$defs/agent"}, {"$ref": "#/$defs/agent"}], "items": false, "minItems": 3, "maxItems": 3},
         "codex": {"$ref": "#/$defs/codex"},
+        "copilot": {"$ref": "#/$defs/copilot"},
         "diagnostics": {"$ref": "#/$defs/diagnostics"}
       }
     },
@@ -80,6 +81,23 @@
         "observation_age": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
         "reached_limit": {"type": ["boolean", "null"]},
         "error_code": {"type": "string", "maxLength": 16, "pattern": "^(|E-24(0[0-9]|10))$"}
+      }
+    },
+    "copilot": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_state", "used_credits", "included_credits", "used_percent", "reset_text", "observation_age", "unlimited", "reached_limit", "usage_allowed", "overage_allowed", "failure_reason"],
+      "properties": {
+        "source_state": {"type": "string", "enum": ["current", "stale", "auth_required", "unavailable"]},
+        "used_credits": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000000},
+        "included_credits": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000000},
+        "used_percent": {"type": ["integer", "null"], "minimum": 0, "maximum": 100},
+        "reset_text": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[\\u0000-\\u007F]*$"},
+        "observation_age": {"type": "string", "minLength": 1, "maxLength": 16, "pattern": "^[\\u0000-\\u007F]*$"},
+        "unlimited": {"type": "boolean"},
+        "reached_limit": {"type": ["boolean", "null"]},
+        "usage_allowed": {"type": ["boolean", "null"]},
+        "overage_allowed": {"type": ["boolean", "null"]},
+        "failure_reason": {"type": "string", "maxLength": 32, "pattern": "^(|auth_required|cli_missing|cli_version_mismatch|protocol_mismatch|unsupported_host|quota_unavailable|billing_mode_unsupported|malformed_quota|timeout|transport_unavailable)$"}
       }
     },
     "diagnostics": {

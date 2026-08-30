@@ -17,7 +17,7 @@ use crate::ports::lifecycle::{LifecycleCommand, LifecycleOwner, ResourceMetrics,
 use crate::ports::logging::{SafeLogger, TraceConfig};
 use crate::ports::status::{BridgeStatus, CopilotUsageStatus, SafeCode, StatusSnapshot, TransitionRing, STATUS_HISTORY_LIMIT};
 use crate::ports::usb::{UsbError, UsbEvent, UsbPort};
-use crate::protocol::v2::{self, Agent, AgentSnapshot, Codex, Diagnostics, FocusIntentPayload, FocusOutcome, FocusResultPayload, FrameType, Payload, ProtocolFrame, SourceStatus as WireSourceStatus};
+use crate::protocol::v2::{self, Agent, AgentSnapshot, Codex, CopilotUsage, Diagnostics, FocusIntentPayload, FocusOutcome, FocusResultPayload, FrameType, Payload, ProtocolFrame, SourceStatus as WireSourceStatus};
 use crate::{BridgeError, Cancellation};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
@@ -718,6 +718,7 @@ impl RuntimeCoordinator {
                 reached_limit: codex_view.reached_limit,
                 error_code: codex_view.error_code,
             },
+            copilot: self.usb.supports_copilot_usage().then(|| wire_copilot(&self.copilot.view())),
             diagnostics,
         };
         let frame = ProtocolFrame::new(
@@ -918,6 +919,23 @@ fn copilot_status(view: &crate::ports::copilot::CopilotView) -> CopilotUsageStat
         observation_age: view.observation_age.clone(),
         unlimited: view.unlimited,
         reached_limit: view.reached_limit,
+        failure_reason: view.failure_reason.as_str().to_owned(),
+    }
+}
+fn wire_copilot(view: &crate::ports::copilot::CopilotView) -> CopilotUsage {
+    CopilotUsage {
+        source_state: view.source_state.as_str().to_owned(),
+        used_credits: view.used_credits,
+        included_credits: view.included_credits,
+        used_percent: view.used_percent,
+        reset_text: view.reset_text.clone(),
+        observation_age: view.observation_age.clone(),
+        unlimited: view.unlimited,
+        reached_limit: view.reached_limit,
+        usage_allowed: view.usage_allowed_with_exhausted_quota,
+        overage_allowed: view
+            .overage_allowed_with_exhausted_quota
+            .or(view.overage_permitted),
         failure_reason: view.failure_reason.as_str().to_owned(),
     }
 }

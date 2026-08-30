@@ -37,7 +37,16 @@
     "hello_ack": {
       "type": "object", "additionalProperties": false,
       "required": ["accepted", "device_id", "firmware", "protocol"],
-      "properties": {"accepted": {"type": "boolean"}, "device_id": {"$ref": "#/$defs/identifier"}, "firmware": {"$ref": "#/$defs/ascii_text_64"}, "protocol": {"type": "integer", "const": 1}}
+      "properties": {
+        "accepted": {"type": "boolean"},
+        "device_id": {"$ref": "#/$defs/identifier"},
+        "firmware": {"$ref": "#/$defs/ascii_text_64"},
+        "protocol": {"type": "integer", "const": 1},
+        "capabilities": {
+          "type": "array", "maxItems": 8, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": "^[\\u0000-\\u007F]+$"}
+        }
+      }
     },
     "probe": {
       "type": "object", "additionalProperties": false,

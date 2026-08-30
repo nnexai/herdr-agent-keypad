@@ -330,6 +330,103 @@ inline void drawCodexLimitHeader(LGFX_Sprite& sprite, const CodexRenderView& vie
   sprite.setTextColor(kDestructive, kBackground);
   sprite.drawString("LIMIT", x, y);
 }
+inline const char* copilotStateWord(CopilotSourceState state) {
+  switch (state) {
+    case CopilotSourceState::Current: return "CURRENT";
+    case CopilotSourceState::Stale: return "STALE";
+    case CopilotSourceState::AuthRequired: return "AUTH REQUIRED";
+    case CopilotSourceState::Unavailable:
+    default: return "UNAVAILABLE";
+  }
+}
+
+inline bool copilotClearsValues(const CopilotRenderView& view) {
+  return view.source_state == CopilotSourceState::AuthRequired ||
+         view.source_state == CopilotSourceState::Unavailable;
+}
+
+inline bool copilotHasLimit(const CopilotRenderView& view) {
+  return view.reached_limit == 1;
+}
+
+inline int32_t copilotValue(const CopilotRenderView& view, bool used) {
+  if (copilotClearsValues(view)) return -1;
+  return used ? view.used_credits : view.included_credits;
+}
+
+inline uint16_t copilotValueColor(const CopilotRenderView& view) {
+  return view.source_state == CopilotSourceState::Current ? kMetadata : kSettled;
+}
+
+inline void formatCopilotCredits(char* destination, size_t capacity, int32_t value,
+                                 bool unlimited = false) {
+  if (destination == nullptr || capacity == 0) return;
+  if (unlimited) {
+    ellipsize(destination, capacity, "UNLIM");
+  } else if (value < 0) {
+    ellipsize(destination, capacity, "N/A");
+  } else {
+    snprintf(destination, capacity, "%ld", static_cast<long>(value));
+  }
+}
+
+inline void drawCopilotRowsText(LGFX_Sprite& sprite, const CopilotRenderView& view,
+                                int32_t label_x, int32_t value_right,
+                                int32_t used_y, int32_t included_y) {
+  char used[16] = {};
+  char included[16] = {};
+  formatCopilotCredits(used, sizeof(used), copilotValue(view, true));
+  formatCopilotCredits(included, sizeof(included), copilotValue(view, false), view.unlimited);
+  sprite.setTextColor(copilotValueColor(view), kBackground);
+  sprite.drawString("USED", label_x, used_y);
+  sprite.drawString(used, rightAlignedX(used, value_right), used_y);
+  sprite.drawString("INCL", label_x, included_y);
+  sprite.drawString(included, rightAlignedX(included, value_right), included_y);
+}
+
+inline void drawCopilotMetaText(LGFX_Sprite& sprite, const CopilotRenderView& view,
+                                int32_t reset_x, int32_t reset_y, int32_t age_x,
+                                int32_t age_y, bool centered = false) {
+  char reset[19] = {};
+  char age[19] = {};
+  formatCodexText(reset, sizeof(reset), copilotClearsValues(view) ? nullptr : view.reset_text, "RESET N/A");
+  formatCodexText(age, sizeof(age), view.observation_age, "AGE N/A");
+  sprite.setTextColor(copilotValueColor(view), kBackground);
+  sprite.drawString(reset, centered ? centeredX(reset) : reset_x, reset_y);
+  sprite.drawString(age, centered ? centeredX(age) : age_x, age_y);
+}
+inline void drawCopilotPanel(LGFX_Sprite& sprite, const CopilotRenderView& view,
+                             bool centered = false) {
+  sprite.fillScreen(kBackground);
+  sprite.fillRect(0, 0, 8, 128, kSettled);
+  sprite.setTextColor(kPrimary, kBackground);
+  sprite.drawString("COPILOT", centered ? centeredX("COPILOT") : 16, 4);
+  drawCopilotRowsText(sprite, view, centered ? 8 : 16, 120, 22, 42);
+  drawCodexTrack(sprite, 16, 32, 108, 8, view.used_percent,
+                 copilotHasLimit(view) ? kDestructive : kAccent, kSettled);
+  drawCopilotMetaText(sprite, view, 16, 70, 16, 86, centered);
+  const bool alert = view.source_state != CopilotSourceState::Current ||
+                     copilotHasLimit(view);
+  if (alert) {
+    sprite.fillRect(0, 104, 128, 24, kDestructive);
+    sprite.setTextColor(kBackground, kDestructive);
+    sprite.drawString(view.source_state == CopilotSourceState::Current
+                          ? "LIMIT" : copilotStateWord(view.source_state),
+                      centered ? centeredX(copilotStateWord(view.source_state)) : 16, 114);
+  } else {
+    sprite.setTextColor(kMetadata, kBackground);
+    sprite.drawString("CURRENT", centered ? centeredX("CURRENT") : 16, 114);
+  }
+}
+
+inline void drawUnavailableUsagePanel(LGFX_Sprite& sprite) {
+  sprite.fillScreen(kBackground);
+  sprite.setTextColor(kPrimary, kBackground);
+  sprite.drawString("USAGE", centeredX("USAGE"), 42);
+  sprite.setTextColor(kDestructive, kBackground);
+  sprite.drawString("UNAVAILABLE", centeredX("UNAVAILABLE"), 66);
+}
+
 
 enum class MenuVisual : uint8_t {
   SignalEdge = 0,

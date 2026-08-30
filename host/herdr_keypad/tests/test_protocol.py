@@ -18,7 +18,7 @@ class V2ProtocolTests(unittest.TestCase):
         # Phase 03.2 reset diagnosis extends the canonical v1 metrics contract
         # with bounded current-boot and retained prior-boot HID facts. Keep the
         # hash bound so no unreviewed telemetry shape can replace it silently.
-        self.assertEqual(hashlib.sha256(schema.read_bytes()).hexdigest(), "3dab7336d2c54a93a7593b3f38583ecb4e58b89af05314579b7c33630297fec2")
+        self.assertEqual(hashlib.sha256(schema.read_bytes()).hexdigest(), "b685c742bcd048c7e3ab17a71d0f1667f86965e6e666c0f18bb9739a28f02be9")
         self.assertEqual(hashlib.sha256(fixture.read_bytes()).hexdigest(), "9633d4a2fa47267bb39cece549c92ac2fe6949ceef1570bb2cd05b1920967c52")
 
     def test_v2_golden_vectors_have_host_results(self) -> None:
@@ -97,6 +97,38 @@ class V2ProtocolTests(unittest.TestCase):
             protocol.validate_v2_payload("agent_snapshot", {**snapshot, "diagnostics": {**snapshot["diagnostics"], "protocol_version": "2"}})
         with self.assertRaises(protocol.ProtocolError):
             protocol.validate_v2_payload("agent_snapshot", {**snapshot, "diagnostics": {**snapshot["diagnostics"], "device_suffix": "é"}})
+    def test_optional_copilot_usage_and_capability_contract(self) -> None:
+        snapshot = make_snapshot(host_epoch="epoch-a").as_payload()
+        snapshot["copilot"] = {
+            "source_state": "current",
+            "used_credits": 42,
+            "included_credits": 100,
+            "used_percent": 42,
+            "reset_text": "RESET 2D",
+            "observation_age": "AGE 1M",
+            "unlimited": False,
+            "reached_limit": False,
+            "usage_allowed": True,
+            "overage_allowed": False,
+            "failure_reason": "",
+        }
+        protocol.validate_v2_payload("agent_snapshot", snapshot)
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_v2_payload("agent_snapshot", {
+                **snapshot,
+                "copilot": {**snapshot["copilot"], "source_state": "auth_required", "used_credits": 1},
+            })
+        hello = {
+            "v": 1, "type": "hello_ack", "boot_id": "boot-a", "session_id": "session-a",
+            "seq": 1, "reply_to": None, "digest": "0000000000000000",
+            "payload": {"accepted": True, "device_id": "device-a", "firmware": "fw",
+                        "protocol": 1, "capabilities": ["copilot_usage"]},
+        }
+        hello["digest"] = protocol._payload_digest(hello["payload"])
+        protocol.validate_frame(hello)
+        with self.assertRaises(protocol.ProtocolError):
+            protocol.validate_frame({**hello, "payload": {**hello["payload"], "capabilities": "copilot_usage"}})
+
     def test_generation_and_focus_result_are_fail_closed(self) -> None:
         projection = AgentProjection()
         projection.stage(make_snapshot(host_epoch="epoch-a"))

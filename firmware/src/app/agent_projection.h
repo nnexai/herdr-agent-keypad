@@ -71,6 +71,7 @@ class AgentProjection final {
   static constexpr uint32_t kPendingDeadlineUs = 3000000UL;
   static constexpr uint32_t kPendingStepUs = 300000UL;
   static constexpr uint32_t kFeedbackHoldUs = 2000000UL;
+  static constexpr uint32_t kUsageProviderPeriodUs = 8000000UL;
   // Success feedback is deliberately shorter than the failure family (D-15).
   static constexpr uint32_t kSuccessHoldUs = 800000UL;
   using Feedback = TileFeedback;
@@ -90,6 +91,7 @@ class AgentProjection final {
   ThemeRenderer& theme() const;
   RenderState renderState(uint32_t now_us) const;
   AnimationScheduler& animation() { return animation_; }
+  UsageProvider usageProvider() const { return usage_provider_; }
   const AnimationScheduler& animation() const { return animation_; }
 
   // The FrameCodec has already bounded and parsed the admitted payload.  All
@@ -99,7 +101,7 @@ class AgentProjection final {
   bool commitSnapshot(BoardAdapter& board);
   bool commitSnapshot(BoardAdapter& board, ThemeRenderer& panel4_theme,
                       const MenuState& menu);
-  void tick(BoardAdapter& board, uint32_t now_us);
+  void tick(BoardAdapter& board, uint32_t now_us, bool menu_open = false);
   void renderMenu(BoardAdapter& board, ThemeRenderer& theme, const MenuState& menu) const;
   // Recompose every committed agent tile after a confirmed theme change.
   // The candidate is installed only after all complete frames flush.
@@ -163,6 +165,18 @@ class AgentProjection final {
     char codex_observation_age[17] = "AGE N/A";
     int8_t codex_reached_limit = -1;
     char codex_error_code[17] = {};
+    bool has_copilot = false;
+    char copilot_source_state[20] = "unavailable";
+    int32_t copilot_used_credits = -1;
+    int32_t copilot_included_credits = -1;
+    int16_t copilot_used_percent = -1;
+    char copilot_reset_text[33] = "RESET N/A";
+    char copilot_observation_age[17] = "AGE N/A";
+    bool copilot_unlimited = false;
+    int8_t copilot_reached_limit = -1;
+    int8_t copilot_usage_allowed = -1;
+    int8_t copilot_overage_allowed = -1;
+    char copilot_failure_reason[33] = {};
     char diagnostics_link_status[16] = "offline";
     char diagnostics_herdr_status[16] = "unavailable";
     char diagnostics_codex_status[20] = "unavailable";
@@ -196,6 +210,11 @@ class AgentProjection final {
   bool renderTile(BoardAdapter& board, ThemeRenderer& theme,
                   const Generation& generation, uint8_t slot,
                   const Tile& tile, Feedback feedback) const;
+  bool codexEligible(const Generation& generation) const;
+  bool copilotEligible(const Generation& generation) const;
+  UsageProvider chooseUsageProvider(const Generation& generation) const;
+  bool renderPanel4(BoardAdapter& board, ThemeRenderer& renderer, bool menu_open,
+                    uint32_t now_us);
   bool renderTileAt(BoardAdapter& board, ThemeRenderer& theme,
                     const Generation& generation, uint8_t slot,
                     const Tile& tile, Feedback feedback, uint32_t now_us) const;
@@ -213,9 +232,12 @@ class AgentProjection final {
   uint32_t pending_step_[kSlotCount]{};
   uint32_t feedback_until_[kSlotCount]{};
   bool staged_valid_ = false;
-  bool staged_codex_only_ = false;
+  bool staged_usage_only_ = false;
   bool committed_ = false;
   bool syncing_ = true;
+  UsageProvider usage_provider_ = UsageProvider::None;
+  bool usage_provider_initialized_ = false;
+  uint32_t usage_deadline_us_ = 0;
   uint32_t next_action_ = 1;
   ThemeRenderer* theme_ = nullptr;
   const HoldController* hold_controller_ = nullptr;

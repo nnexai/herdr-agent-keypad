@@ -21,8 +21,11 @@ pub const SLOT_COUNT: usize = 3;
 const ENVELOPE_FIELDS: &[&str] = &[
     "v", "type", "boot_id", "session_id", "seq", "reply_to", "digest", "payload",
 ];
-const SNAPSHOT_FIELDS: &[&str] = &[
+const SNAPSHOT_REQUIRED_FIELDS: &[&str] = &[
     "host_epoch", "snapshot_revision", "source_status", "agents", "codex", "diagnostics",
+];
+const SNAPSHOT_FIELDS: &[&str] = &[
+    "host_epoch", "snapshot_revision", "source_status", "agents", "codex", "copilot", "diagnostics",
 ];
 const AGENT_FIELDS: &[&str] = &[
     "slot", "entry_id", "title", "discriminator", "since", "age", "state", "pane_id",
@@ -31,6 +34,11 @@ const AGENT_FIELDS: &[&str] = &[
 const CODEX_FIELDS: &[&str] = &[
     "source_state", "primary", "secondary", "reset_text", "observation_age", "reached_limit",
     "error_code",
+];
+const COPILOT_FIELDS: &[&str] = &[
+    "source_state", "used_credits", "included_credits", "used_percent", "reset_text",
+    "observation_age", "unlimited", "reached_limit", "usage_allowed", "overage_allowed",
+    "failure_reason",
 ];
 const DIAGNOSTICS_FIELDS: &[&str] = &[
     "link_status", "herdr_status", "codex_status", "sync_age", "codex_age", "firmware_version",
@@ -287,12 +295,81 @@ impl Diagnostics {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct CopilotUsage {
+    pub source_state: String,
+    pub used_credits: Option<u64>,
+    pub included_credits: Option<u64>,
+    pub used_percent: Option<u8>,
+    pub reset_text: String,
+    pub observation_age: String,
+    pub unlimited: bool,
+    pub reached_limit: Option<bool>,
+    pub usage_allowed: Option<bool>,
+    pub overage_allowed: Option<bool>,
+    pub failure_reason: String,
+}
+
+impl CopilotUsage {
+    fn validate(&self) -> Result<(), ProtocolError> {
+        check_status(
+            &self.source_state,
+            "copilot source_state",
+            &["current", "stale", "auth_required", "unavailable"],
+        )?;
+        check_count(self.used_credits, "copilot used_credits")?;
+        check_count(self.included_credits, "copilot included_credits")?;
+        check_percent(self.used_percent, "copilot used_percent")?;
+        check_text(&self.reset_text, "copilot reset_text", 32, false)?;
+        check_text(&self.observation_age, "copilot observation_age", 16, false)?;
+        check_text(&self.failure_reason, "copilot failure_reason", 32, true)?;
+        if self.failure_reason != ""
+            && ![
+                "auth_required", "cli_missing", "cli_version_mismatch", "protocol_mismatch",
+                "unsupported_host", "quota_unavailable", "billing_mode_unsupported",
+                "malformed_quota", "timeout", "transport_unavailable",
+            ]
+            .contains(&self.failure_reason.as_str())
+        {
+            return Err(ProtocolError::new("invalid_shape", "copilot failure_reason is not allowlisted"));
+        }
+        if matches!(self.source_state.as_str(), "auth_required" | "unavailable")
+            && (self.used_credits.is_some()
+                || self.included_credits.is_some()
+                || self.used_percent.is_some()
+                || self.unlimited
+                || self.reached_limit.is_some())
+        {
+            return Err(ProtocolError::new(
+                "invalid_shape",
+                "unavailable Copilot state cannot claim capacity",
+            ));
+        }
+        if self.unlimited && self.included_credits.is_some() {
+            return Err(ProtocolError::new(
+                "invalid_shape",
+                "unlimited Copilot state cannot claim an included denominator",
+            ));
+        }
+        if self.source_state == "current" && self.failure_reason != "" {
+            return Err(ProtocolError::new(
+                "invalid_shape",
+                "current Copilot state cannot carry a failure reason",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AgentSnapshot {
     pub host_epoch: String,
     pub snapshot_revision: u32,
     pub source_status: SourceStatus,
     pub agents: [Agent; SLOT_COUNT],
     pub codex: Codex,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub copilot: Option<CopilotUsage>,
     pub diagnostics: Diagnostics,
 }
 
@@ -313,6 +390,9 @@ impl AgentSnapshot {
             return Err(ProtocolError::new("invalid_shape", "agent slots must be 0, 1, and 2"));
         }
         self.codex.validate()?;
+        if let Some(copilot) = &self.copilot {
+            copilot.validate()?;
+        }
         self.diagnostics.validate()
     }
 }
@@ -675,7 +755,7 @@ fn decode_payload(frame_type: FrameType, value: &Value) -> Result<Payload, Proto
         .ok_or_else(|| ProtocolError::new("invalid_payload", "v2 payload must be an object"))?;
     let payload = match frame_type {
         FrameType::AgentSnapshot => {
-            check_fields(object, SNAPSHOT_FIELDS, false)?;
+            check_fields_optional(object, SNAPSHOT_REQUIRED_FIELDS, SNAPSHOT_FIELDS)?;
             validate_snapshot_nested(value)?;
             let snapshot: AgentSnapshot = deserialize(object, value)?;
             Payload::AgentSnapshot(snapshot)
@@ -723,6 +803,12 @@ fn validate_snapshot_nested(value: &Value) -> Result<(), ProtocolError> {
         .and_then(Value::as_object)
         .ok_or_else(|| ProtocolError::new("unknown_field", "codex view is closed"))?;
     check_fields(codex, CODEX_FIELDS, true)?;
+    if let Some(copilot) = object.get("copilot") {
+        let copilot = copilot
+            .as_object()
+            .ok_or_else(|| ProtocolError::new("unknown_field", "copilot view is closed"))?;
+        check_fields(copilot, COPILOT_FIELDS, true)?;
+    }
     let diagnostics = object
         .get("diagnostics")
         .and_then(Value::as_object)
@@ -735,6 +821,22 @@ fn deserialize<T: for<'de> Deserialize<'de>>(object: &Map<String, Value>, value:
     serde_json::from_value(value.clone()).map_err(|_| ProtocolError::new("invalid_shape", "v2 payload has an invalid shape"))
 }
 
+fn check_fields_optional(
+    object: &Map<String, Value>,
+    required: &[&str],
+    allowed: &[&str],
+) -> Result<(), ProtocolError> {
+    let actual: BTreeSet<&str> = object.keys().map(String::as_str).collect();
+    let allowed: BTreeSet<&str> = allowed.iter().copied().collect();
+    if actual.difference(&allowed).next().is_some() {
+        return Err(ProtocolError::new("unknown_field", "object is closed"));
+    }
+    let required: BTreeSet<&str> = required.iter().copied().collect();
+    if required.difference(&actual).next().is_some() {
+        return Err(ProtocolError::new("invalid_shape", "object is missing required fields"));
+    }
+    Ok(())
+}
 fn check_fields(object: &Map<String, Value>, expected: &[&str], nested_always_unknown: bool) -> Result<(), ProtocolError> {
     let expected: BTreeSet<&str> = expected.iter().copied().collect();
     let actual: BTreeSet<&str> = object.keys().map(String::as_str).collect();
@@ -799,6 +901,13 @@ fn check_percent(value: Option<u8>, name: &str) -> Result<(), ProtocolError> {
     }
 }
 
+fn check_count(value: Option<u64>, name: &str) -> Result<(), ProtocolError> {
+    if value.is_some_and(|value| value > 1_000_000_000) {
+        Err(ProtocolError::new("invalid_shape", format!("{name} must be null or an integer count")))
+    } else {
+        Ok(())
+    }
+}
 fn check_status(value: &str, name: &str, allowed: &[&str]) -> Result<(), ProtocolError> {
     if allowed.contains(&value) {
         Ok(())

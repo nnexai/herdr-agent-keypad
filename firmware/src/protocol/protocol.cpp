@@ -213,6 +213,7 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
     else if (std::strcmp(key, "sent") == 0) bit = 1U << 24;
     else if (std::strcmp(key, "watchdog_reset") == 0) bit = 1U << 25;
     else if (std::strcmp(key, "direction") == 0) bit = 1U << 27;
+    else if (std::strcmp(key, "capabilities") == 0) bit = 1U << 28;
     else if (std::strcmp(key, "request") == 0) bit = 1U << 26;
     else return RejectReason::InvalidShape;
     if ((mask & bit) != 0) return RejectReason::DuplicateKey;
@@ -259,6 +260,22 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
       char value[kMaxPayloadStringBytes + 1];
       if (!payload_value_string(cursor, value, sizeof(value)) ||
           (std::strcmp(value, "proof") != 0 && std::strcmp(value, "reset") != 0)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 28)) {
+      if (!cursor.take('[')) return RejectReason::InvalidShape;
+      uint8_t count = 0;
+      cursor.ws();
+      if (!cursor.take(']')) {
+        while (true) {
+          char capability[33] = {};
+          if (!cursor.string(capability, sizeof(capability)) || std::strlen(capability) == 0) {
+            return RejectReason::InvalidShape;
+          }
+          if (++count > 8) return RejectReason::InvalidShape;
+          cursor.ws();
+          if (cursor.take(']')) break;
+          if (!cursor.take(',')) return RejectReason::InvalidJson;
+        }
+      }
     } else if (bit >= (1U << 11) && bit <= (1U << 25)) {
       uint32_t value = 0;
       if (!cursor.uint32(value)) return RejectReason::InvalidShape;
@@ -271,10 +288,12 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
     if (!cursor.take(',')) return RejectReason::InvalidJson;
   }
 
-  const char* type = frame.type;
   uint32_t expected = 0;
+  const char* type = frame.type;
   if (std::strcmp(type, "hello") == 0) expected = (1U << 1) | (1U << 2) | (1U << 3);
-  else if (std::strcmp(type, "hello_ack") == 0) expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 3);
+  else if (std::strcmp(type, "hello_ack") == 0) {
+    expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 3);
+  }
   else if (std::strcmp(type, "probe") == 0) expected = (1U << 4) | (1U << 5) | (1U << 6);
   else if (std::strcmp(type, "probe_ack") == 0) expected = (1U << 0) | (1U << 5);
   else if (std::strcmp(type, "event") == 0) {
@@ -285,8 +304,12 @@ RejectReason parse_payload(Cursor& cursor, Frame& frame, const char* payload_sta
   else if (std::strcmp(type, "error") == 0) expected = (1U << 9) | (1U << 10);
   else if (std::strcmp(type, "metrics") == 0) expected = (1U << 26);
   else if (std::strcmp(type, "metrics_ack") == 0) expected = (1U << 11) | (1U << 12) | (1U << 13) | (1U << 14) | (1U << 15) | (1U << 16) | (1U << 17) | (1U << 18) | (1U << 19) | (1U << 20) | (1U << 21) | (1U << 22) | (1U << 23) | (1U << 24) | (1U << 25);
-  else return RejectReason::UnknownType;
-  if (mask != expected || payload_end == nullptr) return RejectReason::InvalidShape;
+  if (std::strcmp(type, "hello_ack") == 0) {
+    if (mask != expected && mask != (expected | (1U << 28))) return RejectReason::InvalidShape;
+  } else if (mask != expected || payload_end == nullptr) {
+    return RejectReason::InvalidShape;
+  }
+  if (payload_end == nullptr) return RejectReason::InvalidShape;
   frame.payload_length = static_cast<std::size_t>(payload_end - payload_start);
   if (!copy_text(frame.payload_text, sizeof(frame.payload_text), payload_start, frame.payload_length)) return RejectReason::LineTooLong;
   return RejectReason::Ok;
@@ -432,6 +455,115 @@ RejectReason parse_v2_codex(Cursor& cursor) {
   return RejectReason::Ok;
 }
 
+bool valid_copilot_state(const char* value) {
+  return std::strcmp(value, "current") == 0 || std::strcmp(value, "stale") == 0 ||
+         std::strcmp(value, "auth_required") == 0 || std::strcmp(value, "unavailable") == 0;
+}
+
+bool valid_copilot_reason(const char* value) {
+  static constexpr const char* kReasons[] = {
+      "", "auth_required", "cli_missing", "cli_version_mismatch",
+      "protocol_mismatch", "unsupported_host", "quota_unavailable",
+      "billing_mode_unsupported", "malformed_quota", "timeout",
+      "transport_unavailable"};
+  for (const char* reason : kReasons) if (std::strcmp(value, reason) == 0) return true;
+  return false;
+}
+
+RejectReason parse_v2_copilot(Cursor& cursor) {
+  if (!cursor.take('{')) return RejectReason::InvalidShape;
+  uint32_t mask = 0;
+  uint32_t used = 0;
+  uint32_t included = 0;
+  uint32_t percent = 0;
+  bool used_present = false;
+  bool included_present = false;
+  bool percent_present = false;
+  bool unlimited = false;
+  bool reached = false;
+  bool usage_allowed = false;
+  bool overage_allowed = false;
+  bool reached_present = false;
+  bool usage_allowed_present = false;
+  bool overage_allowed_present = false;
+  char source_state[20] = {};
+  char reset_text[33] = {};
+  char observation_age[17] = {};
+  char failure_reason[33] = {};
+  while (true) {
+    cursor.ws();
+    if (cursor.take('}')) break;
+    char key[32] = {};
+    if (!cursor.string(key, sizeof(key)) || !cursor.take(':')) return RejectReason::InvalidJson;
+    uint32_t bit = 0;
+    if (std::strcmp(key, "source_state") == 0) bit = 1U << 0;
+    else if (std::strcmp(key, "used_credits") == 0) bit = 1U << 1;
+    else if (std::strcmp(key, "included_credits") == 0) bit = 1U << 2;
+    else if (std::strcmp(key, "used_percent") == 0) bit = 1U << 3;
+    else if (std::strcmp(key, "reset_text") == 0) bit = 1U << 4;
+    else if (std::strcmp(key, "observation_age") == 0) bit = 1U << 5;
+    else if (std::strcmp(key, "unlimited") == 0) bit = 1U << 6;
+    else if (std::strcmp(key, "reached_limit") == 0) bit = 1U << 7;
+    else if (std::strcmp(key, "usage_allowed") == 0) bit = 1U << 8;
+    else if (std::strcmp(key, "overage_allowed") == 0) bit = 1U << 9;
+    else if (std::strcmp(key, "failure_reason") == 0) bit = 1U << 10;
+    else return RejectReason::UnknownField;
+    if ((mask & bit) != 0) return RejectReason::DuplicateKey;
+    mask |= bit;
+    if (bit == (1U << 0)) {
+      if (!cursor.string(source_state, sizeof(source_state)) || !valid_copilot_state(source_state)) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 1) || bit == (1U << 2)) {
+      bool& present = bit == (1U << 1) ? used_present : included_present;
+      uint32_t& value = bit == (1U << 1) ? used : included;
+      present = true;
+      cursor.ws();
+      if (cursor.p < cursor.end && *cursor.p == 'n') {
+        if (!cursor.null_value()) return RejectReason::InvalidShape;
+        present = false;
+      } else if (!cursor.uint32(value) || value > 1000000000UL) {
+        return RejectReason::InvalidShape;
+      }
+    } else if (bit == (1U << 3)) {
+      percent_present = true;
+      cursor.ws();
+      if (cursor.p < cursor.end && *cursor.p == 'n') {
+        if (!cursor.null_value()) return RejectReason::InvalidShape;
+        percent_present = false;
+      } else if (!cursor.uint32(percent) || percent > 100) {
+        return RejectReason::InvalidShape;
+      }
+    } else if (bit == (1U << 4)) {
+      if (!cursor.string(reset_text, sizeof(reset_text)) || std::strlen(reset_text) == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 5)) {
+      if (!cursor.string(observation_age, sizeof(observation_age)) || std::strlen(observation_age) == 0) return RejectReason::InvalidShape;
+    } else if (bit == (1U << 6)) {
+      if (!cursor.boolean(unlimited)) return RejectReason::InvalidShape;
+    } else if (bit >= (1U << 7) && bit <= (1U << 9)) {
+      bool* value = bit == (1U << 7) ? &reached : bit == (1U << 8) ? &usage_allowed : &overage_allowed;
+      bool* present = bit == (1U << 7) ? &reached_present : bit == (1U << 8) ? &usage_allowed_present : &overage_allowed_present;
+      *present = true;
+      cursor.ws();
+      if (cursor.p < cursor.end && *cursor.p == 'n') {
+        if (!cursor.null_value()) return RejectReason::InvalidShape;
+        *present = false;
+      } else if (!cursor.boolean(*value)) {
+        return RejectReason::InvalidShape;
+      }
+    } else if (!cursor.string(failure_reason, sizeof(failure_reason)) || !valid_copilot_reason(failure_reason)) {
+      return RejectReason::InvalidShape;
+    }
+    cursor.ws();
+    if (cursor.take('}')) break;
+    if (!cursor.take(',')) return RejectReason::InvalidJson;
+  }
+  if (mask != 0x7ffU || !reached_present || !usage_allowed_present || !overage_allowed_present) return RejectReason::InvalidShape;
+  if (std::strcmp(source_state, "auth_required") == 0 || std::strcmp(source_state, "unavailable") == 0) {
+    if (used_present || included_present || percent_present || unlimited || reached_present && reached) return RejectReason::InvalidShape;
+  }
+  if (unlimited && included_present) return RejectReason::InvalidShape;
+  return RejectReason::Ok;
+}
+
 RejectReason parse_v2_diagnostics(Cursor& cursor) {
   if (!cursor.take('{')) return RejectReason::InvalidShape;
   uint32_t mask = 0;
@@ -563,20 +695,23 @@ RejectReason parse_v2_agent(Cursor& cursor) {
   }
   if (mask != 0x7ffU) return RejectReason::InvalidShape;
   const bool empty = std::strcmp(state, "empty") == 0;
-  if (!valid_opaque(entry_id, empty) || !valid_opaque(pane_id, empty) || !valid_opaque(terminal_id, empty) ||
-      (!empty && source_revision == 0) || (empty && source_revision != 0)) return RejectReason::InvalidIdentifier;
+  if (!valid_opaque(entry_id, empty) || !valid_opaque(pane_id, empty) ||
+      !valid_opaque(terminal_id, empty) ||
+      (!empty && source_revision == 0) || (empty && source_revision != 0)) {
+    return RejectReason::InvalidIdentifier;
+  }
   return RejectReason::Ok;
 }
-
 RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_start) {
   if (!cursor.take('{')) return RejectReason::InvalidPayload;
+  bool accepted = false;
+  bool focused = false;
   uint32_t mask = 0;
   uint32_t snapshot_revision = 0;
   uint32_t slot = 0;
   uint32_t source_revision = 0;
-  bool accepted = false;
-  bool focused = false;
   bool has_codex = false;
+  bool has_copilot = false;
   bool has_diagnostics = false;
   char host_epoch[kMaxIdentifierBytes + 1] = {};
   char source_status[16] = {};
@@ -610,6 +745,7 @@ RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_
     else if (std::strcmp(key, "focused") == 0) bit = 1U << 14;
     else if (std::strcmp(key, "codex") == 0) bit = 1U << 15;
     else if (std::strcmp(key, "diagnostics") == 0) bit = 1U << 16;
+    else if (std::strcmp(key, "copilot") == 0) bit = 1U << 17;
     else return RejectReason::UnknownField;
     if ((mask & bit) != 0) return RejectReason::DuplicateKey;
     mask |= bit;
@@ -639,6 +775,10 @@ RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_
       const RejectReason diagnostics_reason = parse_v2_diagnostics(cursor);
       if (diagnostics_reason != RejectReason::Ok) return diagnostics_reason;
       has_diagnostics = true;
+    } else if (bit == (1U << 17)) {
+      const RejectReason copilot_reason = parse_v2_copilot(cursor);
+      if (copilot_reason != RejectReason::Ok) return copilot_reason;
+      has_copilot = true;
     } else if (bit == (1U << 4)) {
       if (!cursor.boolean(accepted)) return RejectReason::InvalidShape;
     } else if (bit == (1U << 5)) {
@@ -670,7 +810,9 @@ RejectReason parse_v2_payload(Cursor& cursor, Frame& frame, const char* payload_
   if (std::strcmp(frame.type, "agent_snapshot") == 0) {
     expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 3);
     if (has_codex != has_diagnostics) return RejectReason::InvalidShape;
+    if (has_copilot && !has_codex) return RejectReason::InvalidShape;
     if (has_codex) expected |= (1U << 15) | (1U << 16);
+    if (has_copilot) expected |= (1U << 17);
   } else if (std::strcmp(frame.type, "snapshot_ack") == 0) expected = (1U << 0) | (1U << 1) | (1U << 2) | (1U << 4) | (1U << 5);
   else if (std::strcmp(frame.type, "focus_intent") == 0) expected = (1U << 0) | (1U << 1) | (1U << 6) | (1U << 8) | (1U << 9) | (1U << 10) | (1U << 11) | (1U << 12) | (1U << 13);
   else if (std::strcmp(frame.type, "focus_result") == 0) expected = (1U << 0) | (1U << 1) | (1U << 6) | (1U << 7) | (1U << 8) | (1U << 9) | (1U << 10) | (1U << 11) | (1U << 12) | (1U << 13) | (1U << 14);
