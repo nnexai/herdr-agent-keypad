@@ -1,19 +1,17 @@
 ---
 phase: 04-production-rust-host-bridge
-verified: 2026-08-30T07:18:46Z
-status: gaps_found
-score: 38/39 must-haves verified
+verified: 2026-08-30T07:28:56Z
+status: passed
+score: 38/38 must-haves verified
 behavior_unverified: 0
 overrides_applied: 0
-gaps:
-  - truth: "A runnable end-to-end Herdr-to-device-to-exact-focus tracer remains available at host/herdr_keypad/native/tests/production_tracer.rs and drives the shared production coordinator."
-    status: failed
-    reason: "The Plan 04-01 must-have artifact and its key link are absent. The current native test directory has no production_tracer.rs, and cargo test consequently exercises no named tracer target. 04-REVIEW.md confirms the tracer was removed as obsolete during follow-up cleanup, but no accepted verification override updates this still-current Plan must-have."
-    artifacts:
-      - path: host/herdr_keypad/native/tests/production_tracer.rs
-        issue: "Missing; verify.artifacts reports File not found."
-    missing:
-      - "Restore a maintained public-boundary tracer at the declared path, or record an explicit accepted override that maps this must-have to the replacement black-box/public-boundary tests."
+re_verification:
+  previous_status: gaps_found
+  previous_score: 38/39
+  gaps_closed:
+    - "Runnable end-to-end Herdr-to-device-to-exact-focus proof is superseded by the accepted WR-01 maintained composed proof."
+  gaps_remaining: []
+  regressions: []
 decision_coverage:
   honored: 23
   total: 23
@@ -24,9 +22,9 @@ decision_coverage:
 
 **Phase Goal:** As a keypad user, I want the production host bridge to preserve the Python bridge's inbox projection, exact focus, truthful Codex capacity, freshness/error states, reconnect behavior, and authorized focus-then-hold workflow as one efficient native Rust executable installed on Linux, with a portable macOS adapter and deterministic cross-target release automation ready for a later hosted release.
 
-**Verified:** 2026-08-30T07:18:46Z  
-**Status:** gaps_found  
-**Re-verification:** No — initial verification
+**Verified:** 2026-08-30T07:28:56Z  
+**Status:** passed  
+**Re-verification:** Yes — after WR-01 clean-cutover authority amendment
 
 ## Goal Achievement
 
@@ -42,9 +40,9 @@ decision_coverage:
 | 6 | Production launch exposes no developer/test/runtime leakage and retains bounded redacted diagnostics. | ✓ VERIFIED | `production_surface` validates Python-free status with empty `PATH`, closed commands, and source/environment boundaries; `lifecycle_resource` validates default-off safe stderr logs and bounded read-only status. |
 | 7 | Linux installation has native startup/status/restart/single-authority/config-state/removal-of-Python coverage; physical recovery remains Phase 5. | ✓ VERIFIED | `production_surface` process tests passed. Recorded deployment evidence in 04-10-SUMMARY identifies a ready/running installed native process, same-config process replacement, preserved read-only binding, and no legacy Python bridge; this report makes no device claim. |
 | 8 | Differential, malformed-input, lifecycle/resource/platform/bundle/release-contract checks are automated without a hosted/macOS/signing/publication claim. | ✓ VERIFIED | Locked suite ran 101 tests; deterministic oracle, collector (8 tests), bundle workflow contract, and release build all exited 0. |
-| 9 | Plan 04-01's runnable end-to-end Herdr-to-device-to-exact-focus tracer is present and wired through the shared coordinator. | ✗ FAILED | `host/herdr_keypad/native/tests/production_tracer.rs` is absent. `verify.artifacts` reports it missing and its declared key link cannot be verified. 04-REVIEW.md:91-93 confirms its intentional removal, but no override exists. |
+| 9 | The maintained composed proof directly covers Herdr invalidation/read, committed projection, matching snapshot-ACK actionability, exact focus, sole `agent.focus`, and Herdr-owned lifecycle. | ✓ VERIFIED | Accepted 04-01 WR-01 amendment names `RuntimeCoordinator` plus `black_box_parity` (8), `projection_focus_parity` (10), `herdr_parity` (4), `usb_platform` (17), and `production_surface` (6). The re-verification command ran these five suites: 45 passed, 0 failed. |
 
-**Score:** 38/39 must-haves verified (0 present-but-behavior-unverified)
+**Score:** 38/38 must-haves verified (0 present-but-behavior-unverified)
 
 ## Required Artifacts
 
@@ -52,17 +50,17 @@ decision_coverage:
 |---|---|---|---|
 | `native/src/{lib,protocol/v2,core/{projection,focus,orchestrator},ports/{herdr,codex,usb,control,status},platform/{linux,macos},main}.rs` | Portable core, strict protocol, exact focus, event-driven sources, bounded lifecycle, and platform adapters | ✓ VERIFIED | 17 substantive native modules compiled in the locked test/build commands and are exercised by the named integration suites. |
 | `host/herdr_keypad/tests/export_rust_oracle.py` and `native/tests/fixtures/*.json` | Deterministic, redacted Python behavioral oracle | ✓ VERIFIED | Two independently generated roots byte-matched; both passed Rust fixture validation; 37 focused Python tests passed. |
-| `host/herdr_keypad/native/tests/production_tracer.rs` | Original public end-to-end tracer | ✗ MISSING | Declared by 04-01; absent from the checked-out source tree. |
+| `host/herdr_keypad/native/src/core/orchestrator.rs` plus `native/tests/{black_box_parity,projection_focus_parity,herdr_parity,usb_platform,production_surface}.rs` | Accepted WR-01 maintained composed proof replacing the obsolete bootstrap tracer | ✓ VERIFIED | The current 04-01 authority explicitly supersedes `production_tracer.rs`; all five substantive paths exist and the focused maintained suite passed 45 tests. |
 | `host/herdr_keypad/native/tests/{black_box_parity,resource_bounds,production_surface,usb_platform,lifecycle_resource}.rs` | Parity, recovery, resource, surface, lifecycle, and platform evidence | ✓ VERIFIED | Present, substantive, and run by `cargo test --locked` (101 passing tests total). |
 | Plugin/lifecycle/bundle/release artifacts | Native launch, lifecycle procedure, closed bundle/release schemas and collectors | ✓ VERIFIED | `plugin_cutover` and `release_bundle` passed; both Python workflow/aggregation contract checkers passed. |
 
-Artifact scan against all ten plan frontmatters: **28/29 present and substantive**; the only missing artifact is the obsolete-but-still-declared `production_tracer.rs`.
+Artifact scan against the **current** all-ten-plan authority: **33/33 present and substantive**. The historical `production_tracer.rs` is explicitly superseded by the accepted WR-01 composed proof and is not a current artifact requirement.
 
 ## Key Link Verification
 
 | From | To | Via | Status | Details |
 |---|---|---|---|---|
-| `production_tracer.rs` | native public coordinator | Real socket/device tracer | ✗ NOT_WIRED | Source artifact is absent. |
+| `RuntimeCoordinator` | Herdr/projection/USB/focus ports | Maintained composed proof | ✓ WIRED | Current 04-01 key links enumerate `main.rs → RuntimeCoordinator`, `RuntimeCoordinator → Herdr`, `→ USB`, and `→ projection`; the 45-test focused suite directly exercises the named public contracts. |
 | `main.rs` | `lib.rs` / `RuntimeCoordinator` | Thin native process entrypoint | ✓ WIRED | `main.rs` imports native contracts and constructs/runs `RuntimeCoordinator`; process-surface tests exercised the binary. |
 | Projection | Focus | Current immutable binding | ✓ WIRED | `projection_focus_parity` proves committed current bindings, exact revalidation, one retry, and no other effects. |
 | Herdr/Codex ports | Core model/projection | Typed invalidations, complete reads, normalized observations | ✓ WIRED | `herdr_parity`, `codex_parity`, and `black_box_parity` exercise public boundary outputs. |
@@ -90,7 +88,7 @@ No dynamic production render/transport value traced to a static fallback, empty 
 | Python oracle determinism and frozen behavioral suite | `PYTHONPATH=host/herdr_keypad/src:tools/phase1_bringup/src python host/herdr_keypad/tests/export_rust_oracle.py --verify-determinism --rust-manifest host/herdr_keypad/native/Cargo.toml && python -m unittest …` | Two roots byte-identical; Rust fixture validation passed twice; 37 tests passed | ✓ PASS |
 | Future release aggregation machinery | `python -m unittest host.herdr_keypad.release.test_collect_phase4_evidence && python host/herdr_keypad/release/collect_phase4_evidence.py --workflow .github/workflows/native-release.yml --check-aggregation-contract` | 8 tests passed; aggregation contract verified | ✓ PASS |
 | Target workflow/bundle policy | `python host/herdr_keypad/release/verify_bundle.py --workflow .github/workflows/native-release.yml --check-workflow-contract` | Workflow contract verified | ✓ PASS |
-| Original Plan 04-01 tracer | `cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test production_tracer` | Not runnable: declared test source is absent | ✗ FAIL |
+| WR-01 maintained composed proof | `cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test black_box_parity --test projection_focus_parity --test herdr_parity --test usb_platform --test production_surface -- --test-threads=1` | 45 passed, 0 failed (5 suites) | ✓ PASS |
 
 ## Probe Execution
 
@@ -130,18 +128,18 @@ Disabled-test scan found no disabled requirement test. The `pending` matches in 
 
 ## Decision Coverage
 
-All **23/23** trackable decisions from `04-CONTEXT.md` are honored by shipped artifacts (`check.decision-coverage-verify`). This is advisory and does not override the missing plan artifact.
+All **23/23** trackable decisions from `04-CONTEXT.md` are honored by shipped artifacts (`check.decision-coverage-verify`).
 
 ## Human Verification
 
 N/A — this is an infrastructure/foundation migration phase. Every current Phase 4 acceptance claim is programmatically covered or is explicitly recorded deployment evidence. Physical device acceptance, actual-device reconnect, and hosted release execution remain Phase 5/later-release scope and are not invented as UAT here.
 
-## Gaps Summary
+## Verification Conclusion
 
-The native implementation, required RUST-01 through RUST-08 behavior, local release/bundle machinery, and documented installed-Linux deployment evidence have direct automated support. However, Phase 04's current Plan 04-01 frontmatter still requires `host/herdr_keypad/native/tests/production_tracer.rs` and its public-coordinator link. That source file was later removed deliberately as obsolete, as documented by the review, but the planning authority was not amended and no accepted override exists.
+The former tracer gap is closed. Commit `ee3fe41` amended Plan 04-01 and its SUMMARY with accepted WR-01 clean-cutover supersession authority: the obsolete root coordinator and coupled tracer must remain deleted, while maintained `RuntimeCoordinator` composition and five named public-boundary suites are the current proof. The verifier inspected that amendment and ran its exact focused command successfully (45 tests).
 
-This is a single blocking verification-artifact gap: the phase cannot receive `passed` until the maintained replacement is explicitly accepted through an override/plan amendment or a compatible tracer is restored and run. Hosted GitHub execution, macOS native execution, signing/notarization, publication, upload, and physical-device acceptance are **not** gaps: ROADMAP.md and REQUIREMENTS.md explicitly park them for later scope.
+All current Phase 4 must-haves and RUST-01 through RUST-08 have direct evidence. Hosted GitHub execution, macOS native execution, signing/notarization, publication, upload, and physical-device acceptance are explicitly parked by current planning authority and are not gaps.
 
 ---
-_Verified: 2026-08-30T07:18:46Z_  
+_Verified: 2026-08-30T07:28:56Z_  
 _Verifier: the agent (gsd-verifier)_
