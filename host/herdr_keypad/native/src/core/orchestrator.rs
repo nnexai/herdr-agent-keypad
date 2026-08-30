@@ -10,11 +10,11 @@ use super::model::{Binding, FocusIntent as ModelFocusIntent, FocusStatus, Identi
 use super::projection::InboxProjection;
 use crate::ports::codex::{CodexCollector, FULL_POLL_INTERVAL};
 use crate::ports::config::StartupConfig;
-use crate::ports::control::{ControlEndpoint, ControlRequest};
+use crate::ports::control::{ControlEndpoint, ControlReply, ControlRequest};
 use crate::ports::herdr::{HerdrClient, HerdrError, HerdrEventStream};
 use crate::ports::lifecycle::{LifecycleCommand, LifecycleOwner, ResourceMetrics, RuntimePaths};
 use crate::ports::logging::{SafeLogger, TraceConfig};
-use crate::ports::status::StatusSnapshot;
+use crate::ports::status::{BridgeStatus, StatusSnapshot};
 use crate::ports::usb::{UsbError, UsbEvent, UsbPort};
 use crate::protocol::v2::{self, Agent, AgentSnapshot, Codex, Diagnostics, FocusIntentPayload, FocusOutcome, FocusResultPayload, FrameType, Payload, ProtocolFrame, SourceStatus as WireSourceStatus};
 use crate::{BridgeError, Cancellation};
@@ -164,7 +164,16 @@ impl RuntimeCoordinator {
     }
 
     pub fn status(&self) -> StatusSnapshot {
-        self.lifecycle.status()
+        let mut status = self.lifecycle.status();
+        if status.state != BridgeStatus::Stopped {
+            status.codex_state = match self.codex.view().source_state.as_str() {
+                "current" => BridgeStatus::Ready,
+                "stale" => BridgeStatus::Stale,
+                "codex_offline" => BridgeStatus::CodexUnavailable,
+                _ => BridgeStatus::Unavailable,
+            };
+        }
+        status
     }
 
     pub fn resource_metrics(&self) -> ResourceMetrics {
@@ -219,7 +228,10 @@ impl RuntimeCoordinator {
                     };
                     let stopping = matches!(&request, ControlRequest::Stop { .. });
                     let restarting = matches!(&request, ControlRequest::Restart { .. });
-                    let reply = self.lifecycle.handle_control(request);
+                    let reply = match request {
+                        ControlRequest::Status { .. } => ControlReply::Status(self.status()),
+                        request => self.lifecycle.handle_control(request),
+                    };
                     ControlEndpoint::send_reply(&mut stream, &reply)
                         .await
                         .map_err(|error| BridgeError::protocol(format!("control reply: {error:?}")))?;

@@ -41,6 +41,39 @@ fn lifecycle_command(root: &Path, command: &str) -> Command {
     invocation
 }
 
+#[cfg(unix)]
+fn install_codex_0151_fixture(root: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let bin = root.join("bin");
+    fs::create_dir_all(&bin).expect("fixture bin");
+    let codex = bin.join("codex");
+    fs::write(
+        &codex,
+        r#"#!/bin/sh
+while IFS= read -r line; do
+    case "$line" in
+        *'"method":"initialize"'*)
+            printf '%s\n' '{"id":1,"result":{"serverInfo":{"name":"codex","version":"0.151.0"}}}'
+            ;;
+        *'"method":"account/read"'*)
+            printf '%s\n' '{"method":"account/updated","params":{"authMode":"chatgpt"}}'
+            printf '%s\n' '{"id":2,"result":{"account":{"type":"chatgpt"},"requiresOpenaiAuth":true}}'
+            ;;
+        *'"method":"account/rateLimits/read"'*)
+            printf '%s\n' '{"id":3,"result":{"rateLimits":{"primary":{"usedPercent":15,"windowDurationMins":300,"resetsAt":null},"secondary":null,"credits":null,"individualLimit":null,"limitId":null,"limitName":null,"planType":null,"rateLimitReachedType":null,"spendControlReached":null},"rateLimitsByLimitId":{},"rateLimitResetCredits":null}}'
+            ;;
+    esac
+done
+"#,
+    )
+    .expect("fixture executable");
+    let mut permissions = fs::metadata(&codex).expect("fixture metadata").permissions();
+    permissions.set_mode(0o755);
+    fs::set_permissions(&codex, permissions).expect("fixture permissions");
+    bin
+}
+
 fn wait_until(timeout: Duration, mut condition: impl FnMut() -> bool) -> bool {
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
@@ -116,6 +149,62 @@ fn production_binary_start_status_stop_owns_control_socket_for_authority_lifetim
     assert_eq!(final_status["reply"], "status");
     assert_eq!(final_status["state"], "stopped");
 
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[cfg(unix)]
+#[test]
+fn production_status_reports_ready_after_codex_0151_collection() {
+    let root = temp_root();
+    fs::create_dir_all(root.join("config")).expect("config");
+    fs::create_dir_all(root.join("state")).expect("state");
+    fs::create_dir_all(root.join("home/.config/herdr")).expect("home config");
+    fs::write(root.join("config/config.toml"), "logging_enabled = false\n").expect("settings");
+    fs::write(
+        root.join("home/.config/herdr/keypad-binding.json"),
+        br#"{"schema_version":1,"device_id":"kbd-123","protocol":1,"firmware":"phase1-bringup"}"#,
+    )
+    .expect("binding");
+    let fixture_path = install_codex_0151_fixture(&root);
+
+    let start = lifecycle_command(&root, "start")
+        .env("PATH", &fixture_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("start authority");
+    let mut authority = ChildGuard(start);
+    let socket = root.join("state/bridge.sock");
+    assert!(
+        wait_until(Duration::from_secs(5), || socket.exists()),
+        "successful start never created bridge.sock"
+    );
+    assert!(
+        wait_until(Duration::from_secs(12), || {
+            let output = lifecycle_command(&root, "status").env("PATH", &fixture_path).output();
+            let Ok(output) = output else { return false };
+            if !output.status.success() {
+                return false;
+            }
+            serde_json::from_slice::<Value>(&output.stdout)
+                .ok()
+                .and_then(|status| status["codex_state"].as_str().map(str::to_owned))
+                .as_deref()
+                == Some("ready")
+        }),
+        "status never reflected the successful Codex collection"
+    );
+
+    let stop = lifecycle_command(&root, "stop")
+        .env("PATH", &fixture_path)
+        .output()
+        .expect("stop authority");
+    assert!(stop.status.success());
+    assert!(
+        wait_until(Duration::from_secs(5), || authority.0.try_wait().expect("authority state").is_some()),
+        "authority did not exit after stop"
+    );
     fs::remove_dir_all(root).expect("cleanup");
 }
 #[cfg(unix)]

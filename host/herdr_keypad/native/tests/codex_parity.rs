@@ -271,6 +271,52 @@ fn collect_handshake_is_exact_bounded_and_raw_child_data_is_absent() {
 }
 
 #[test]
+fn collect_accepts_codex_0151_account_shape_and_interleaved_notification() {
+    let process = FakeProcess::from_values(vec![
+        json!({"id":1,"result":{"serverInfo":{"name":"codex","version":"0.151.0"}}}),
+        json!({"method":"account/updated","params":{"authMode":"chatgpt"}}),
+        json!({
+            "id":2,
+            "result":{
+                "account":{"type":"chatgpt"},
+                "requiresOpenaiAuth":true
+            }
+        }),
+        json!({
+            "id":3,
+            "result":{
+                "rateLimits":{
+                    "primary":{"usedPercent":15,"windowDurationMins":300,"resetsAt":null},
+                    "secondary":null,
+                    "credits":null,
+                    "individualLimit":null,
+                    "limitId":null,
+                    "limitName":null,
+                    "planType":null,
+                    "rateLimitReachedType":null,
+                    "spendControlReached":null
+                },
+                "rateLimitsByLimitId":{},
+                "rateLimitResetCredits":null
+            }
+        }),
+    ]);
+    let (mut collector, _) = collector_with(process);
+    let result = collector.collect();
+
+    assert_eq!(result.view.source_state, "current");
+    assert_eq!(result.view.primary, Some(15));
+    assert_eq!(result.view.secondary, None);
+    assert_eq!(
+        result.handshake,
+        vec!["initialize", "initialized", "account/read", "account/rateLimits/read"]
+    );
+    assert!(result.account_observed);
+    assert!(result.rate_limits_observed);
+    assert!(redaction_passes(&result.as_evidence()));
+}
+
+#[test]
 fn collect_distinguishes_auth_malformed_line_bound_and_already_exited() {
     let auth = FakeProcess::from_values(vec![
         json!({"id":1,"result":{}}),
@@ -316,4 +362,29 @@ fn redaction_and_child_exit_shapes_are_closed() {
     assert!(ChildExit::new("exited", None, Some(9)).is_none());
     let manifest = BucketManifest::default();
     assert!(!manifest.present);
+}
+
+#[test]
+#[ignore = "requires an installed authenticated Codex app-server"]
+fn live_installed_codex_reports_only_safe_normalized_state() {
+    let executable = std::env::var("CODEX_LIVE_EXECUTABLE").unwrap_or_else(|_| "codex".to_owned());
+    let mut collector =
+        CodexCollector::try_new(executable, Duration::from_secs(15)).expect("live collector");
+    let result = collector.collect();
+    let safe = json!({
+        "view": result.view.as_payload(),
+        "evidence": result.as_evidence(),
+    });
+
+    assert!(redaction_passes(&safe));
+    println!("{}", serde_json::to_string(&safe).expect("safe diagnostic JSON"));
+    assert_eq!(result.view.source_state, "current");
+    assert!(
+        result.view.primary.is_some() || result.view.secondary.is_some(),
+        "authenticated rate-limit response supplied no normalized window"
+    );
+    assert_eq!(
+        result.handshake,
+        vec!["initialize", "initialized", "account/read", "account/rateLimits/read"]
+    );
 }
