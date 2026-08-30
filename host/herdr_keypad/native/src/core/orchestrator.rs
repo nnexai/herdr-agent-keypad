@@ -19,7 +19,7 @@ use crate::protocol::v2::{self, Agent, AgentSnapshot, Codex, Diagnostics, FocusI
 use crate::{BridgeError, Cancellation};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
-use std::future::Future;
+use std::future::{pending, ready, Future};
 use std::time::Duration;
 use tokio::time::{sleep, Instant};
 
@@ -69,7 +69,6 @@ impl CoordinatorConfig {
 
 /// One production coordinator joining every completed port.
 pub struct RuntimeCoordinator {
-    paths: RuntimePaths,
     lifecycle: LifecycleOwner,
     herdr: HerdrClient,
     herdr_events: HerdrEventStream,
@@ -83,6 +82,7 @@ pub struct RuntimeCoordinator {
     current: Option<ProjectionSnapshot>,
     last_payload: Option<Value>,
     herdr_healthy: bool,
+    herdr_dirty: bool,
     herdr_delay: Duration,
     herdr_due: Option<Instant>,
     usb_delay: Duration,
@@ -120,26 +120,27 @@ impl RuntimeCoordinator {
         let herdr_events = HerdrEventStream::new(herdr.clone());
         let codex = CodexCollector::try_new("codex", config.codex_deadline)
             .map_err(|error| BridgeError::invalid_input(error))?;
+        let logging_enabled = startup.effective.logging_enabled;
         let lifecycle = LifecycleOwner::from_startup(paths.clone(), startup)
             .map_err(|error| BridgeError::protocol(format!("lifecycle authority: {error:?}")))?;
         let host_epoch = format!("host-{}", std::process::id());
         let projection = InboxProjection::new(host_epoch)
             .map_err(|error| BridgeError::invalid_input(error.to_string()))?;
         Ok(Self {
-            paths,
             lifecycle,
             herdr,
             herdr_events,
             codex,
             usb: UsbPort::new(platform, binding_path),
             projection,
-            logger: SafeLogger::new(TraceConfig { enabled: false }),
+            logger: SafeLogger::new(TraceConfig { enabled: logging_enabled }),
             config,
             cancellation: Cancellation::new(),
             pending_focus: VecDeque::with_capacity(FOCUS_QUEUE_LIMIT),
             current: None,
             last_payload: None,
             herdr_healthy: false,
+            herdr_dirty: false,
             herdr_delay: config.reconnect_initial,
             herdr_due: None,
             usb_delay: config.reconnect_initial,
@@ -184,6 +185,7 @@ impl RuntimeCoordinator {
     /// boundaries are closed.  Reconnects and freshness are explicit deadlines,
     /// never a fixed-rate source poll.
     pub async fn run(mut self) -> Result<(), BridgeError> {
+        let _trace = self.logger.install_stderr();
         let _ = self.lifecycle.handle(LifecycleCommand::Start);
         self.try_connect_herdr().await;
         self.try_connect_usb().await;
@@ -194,18 +196,24 @@ impl RuntimeCoordinator {
                     self.shutdown(false);
                     return Ok(());
                 }
+                _ = async {
+                    if self.herdr_dirty { ready(()) } else { pending().await }
+                } => {
+                    self.herdr_dirty = false;
+                    self.refresh_herdr().await;
+                }
                 event = async {
                     if self.herdr_events.active() {
                         self.herdr_events.next_event(EVENT_WAIT).await
                     } else {
-                        std::future::pending().await
+                        pending().await
                     }
                 } => self.handle_herdr_event(event).await?,
                 frame = async {
                     if self.usb.connected() {
                         self.usb.poll().await
                     } else {
-                        std::future::pending().await
+                        pending().await
                     }
                 } => self.handle_usb_event(frame).await?,
                 _ = reconnect_sleep(self.herdr_due) => {
@@ -230,8 +238,10 @@ impl RuntimeCoordinator {
                 self.event_count = self.event_count.saturating_add(1);
                 self.resource_metrics.wakes = self.resource_metrics.wakes.saturating_add(1);
                 self.projection.invalidate("stale");
+                self.herdr_dirty = true;
                 self.device_ready = false;
                 self.publish_current().await;
+                self.device_ready = false;
             }
             Ok(Some(crate::BridgeEvent::HerdrAuthorityEnded)) | Ok(Some(crate::BridgeEvent::AuthorityCancelled)) => {
                 self.shutdown(true);
@@ -240,7 +250,9 @@ impl RuntimeCoordinator {
             Ok(Some(crate::BridgeEvent::HerdrUnavailable)) | Err(_) => {
                 self.mark_herdr_unavailable("offline").await;
             }
-            Ok(Some(crate::BridgeEvent::DeviceDisconnected)) | Ok(Some(crate::BridgeEvent::DeviceConnected { .. })) | Ok(None) => {}
+            Ok(Some(crate::BridgeEvent::DeviceDisconnected))
+            | Ok(Some(crate::BridgeEvent::DeviceConnected { .. }))
+            | Ok(None) => {}
         }
         Ok(())
     }
