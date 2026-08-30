@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "exact_descriptor",
+      "records": [
+        {"vendor_id": 12346, "product_id": 4097, "serial_number": "8CBFEA0DCBFC", "interface": "if01", "location": "IOUSBInterface-01"}
+      ],
+      "expected_codes": ["exact"]
+    },
+    {
+      "name": "wrong_composite_interface",
+      "records": [
+        {"vendor_id": 12346, "product_id": 4097, "serial_number": "8CBFEA0DCBFC", "interface": "if00", "location": "IOUSBInterface-00"}
+      ],
+      "expected_codes": ["wrong_interface"]
+    },
+    {
+      "name": "lookalike_serial",
+      "records": [
+        {"vendor_id": 12346, "product_id": 4097, "serial_number": "8CBFEA0DCBFD", "interface": "if01", "location": "IOUSBInterface-01"}
+      ],
+      "expected_codes": ["lookalike"]
+    },
+    {
+      "name": "ambiguous_exact_services",
+      "records": [
+        {"vendor_id": 12346, "product_id": 4097, "serial_number": "8CBFEA0DCBFC", "interface": "if01", "location": "service-a"},
+        {"vendor_id": 12346, "product_id": 4097, "serial_number": "8CBFEA0DCBFC", "interface": "if01", "location": "service-b"}
+      ],
+      "expected_codes": ["ambiguous", "ambiguous"]
+    },
+    {
+      "name": "permission_denied",
+      "records": [
+        {"vendor_id": 12346, "product_id": 4097, "serial_number": "8CBFEA0DCBFC", "interface": "if01", "location": "IOUSBInterface-01", "permission": "denied"}
+      ],
+      "expected_codes": ["permission_denied"]
+    },
+    {
+      "name": "disconnect",
+      "records": [
+        {"vendor_id": 12346, "product_id": 4097, "serial_number": "8CBFEA0DCBFC", "interface": "if01", "location": "IOUSBInterface-01", "state": "disconnected"}
+      ],
+      "expected_codes": ["disconnected"]
+    }
+  ]
+}
