@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 Phase: 5 — Independent Recovery and Actual-Device Acceptance
 Plan: Not started
 Status: Planning
-Last activity: 2026-08-30 — Phase 04 complete, transitioned to Phase 5
+Last activity: 2026-08-30 - Completed quick task 260830-rfd: Copilot AI-credit usage and monthly limits
 
 Progress: [██████████] 100% (63/63 existing plans; 8/9 phases complete)
 
@@ -242,6 +242,7 @@ None yet.
 | Archive two design-study HTML pages in `.planning/research/` | 2026-08-17 | complete |
 | [260820-sp6 — Fix bridge automatic recovery after USB CDC communication reset](./quick/260820-sp6-fix-bridge-automatic-recovery-after-usb-/) | 2026-08-20 | complete — `db5c880` |
 | [260822-abq — Align OMP agent routing with Codex definitions](./quick/260822-abq-align-omp-agents-markdown-definitions-wi/) | 2026-08-22 | complete — `1d09810` |
+| [260830-rfd - Add Copilot AI-credit usage and monthly limits](./quick/260830-rfd-implement-copilot-usage-support-alongsid/) | 2026-08-30 | complete - `7c5ea32` |
 
 ## Session Continuity
 
