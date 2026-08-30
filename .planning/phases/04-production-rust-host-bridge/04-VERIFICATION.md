@@ -1,6 +1,6 @@
 ---
 phase: 04-production-rust-host-bridge
-verified: 2026-08-30T07:37:04Z
+verified: 2026-08-30T07:54:31Z
 status: passed
 score: 38/38 must-haves verified
 behavior_unverified: 0
@@ -22,7 +22,7 @@ decision_coverage:
 
 **Phase Goal:** As a keypad user, I want the production host bridge to preserve the Python bridge's inbox projection, exact focus, truthful Codex capacity, freshness/error states, reconnect behavior, and authorized focus-then-hold workflow as one efficient native Rust executable installed on Linux, with a portable macOS adapter and deterministic cross-target release automation ready for a later hosted release.
 
-**Verified:** 2026-08-30T07:37:04Z  
+**Verified:** 2026-08-30T07:54:31Z  
 **Status:** passed  
 **Re-verification:** Yes — after WR-01 clean-cutover authority amendment
 
@@ -32,13 +32,13 @@ decision_coverage:
 
 | # | Truth | Status | Evidence |
 |---|---|---|---|
-| 1 | Black-box Rust behavior preserves projection/order, exact focus, focus-only authority, source health, Codex windows, diagnostics, recovery, and the existing HID-authorized workflow. | ✓ VERIFIED | `black_box_parity` (8 tests), `projection_focus_parity` (10), `codex_parity` (8), `herdr_parity` (4), and `production_surface` (6) passed in the locked suite; Python oracle determinism and 37 focused Python tests also passed. |
+| 1 | Black-box Rust behavior preserves projection/order, exact focus, focus-only authority, source health, Codex windows, diagnostics, recovery, and the existing HID-authorized workflow. | ✓ VERIFIED | `black_box_parity` (8 tests), `projection_focus_parity` (10), `herdr_parity` (4), and current `codex_parity` (9 active tests) cover parity and source state; the Codex 0.151 normalized-current/status regression and `production_surface` passed in the focused post-merge run. Python oracle determinism and 37 focused Python tests also passed. |
 | 2 | The closed v2 four-message protocol retains bounds, fresh-session/ACK fences, identity-bound focus, and no arbitrary Herdr/HID action surface. | ✓ VERIFIED | `protocol_parity` (4), `usb_platform` (17), and `projection_focus_parity` cover malformed/oversized/duplicate/session inputs, ACK readiness, old-session rejection, and no keyboard/generic-action variant. |
 | 3 | Core policy is portable; Linux/macOS code is confined to platform discovery/I/O and lifecycle adapter concerns. | ✓ VERIFIED | `src/{core,protocol,ports,platform}` separation is substantive; `usb_platform` covers Linux exact descriptors and portable macOS registry/suspend cases. |
 | 4 | Normal operation is event-driven and bounded; timers are explicit recovery/freshness deadlines rather than a busy loop. | ✓ VERIFIED | `RuntimeCoordinator::run` uses `tokio::select!`; `herdr_parity::healthy_push_idle_is_not_fallback_but_eof_is_recoverable`, lifecycle idle metrics, and `resource_bounds` passed. |
 | 5 | Native Linux/macOS release definitions, bundles, dependency/provenance/hash verification, and later aggregation are deterministic and locally contract-verified. | ✓ VERIFIED | `release_bundle` (10), `verify_bundle.py --check-workflow-contract`, and collector aggregation-contract check passed. Hosted execution is expressly parked by roadmap/requirements authority. |
 | 6 | Production launch exposes no developer/test/runtime leakage and retains bounded redacted diagnostics. | ✓ VERIFIED | `production_surface` validates Python-free status with empty `PATH`, closed commands, and source/environment boundaries; `lifecycle_resource` validates default-off safe stderr logs and bounded read-only status. |
-| 7 | Linux installation has native startup/status/restart/single-authority/config-state/removal-of-Python coverage; physical recovery remains Phase 5. | ✓ VERIFIED | `production_surface` process tests passed. Recorded deployment evidence in 04-10-SUMMARY identifies a ready/running installed native process, same-config process replacement, preserved read-only binding, and no legacy Python bridge; this report makes no device claim. |
+| 7 | Linux installation has native startup/status/restart/single-authority/config-state/removal-of-Python coverage; physical recovery remains Phase 5. | ✓ VERIFIED | `production_surface` lifecycle/process tests passed. Post-merge recorded native deployment status twice reported bridge running, device ready, Herdr running, Codex ready, no error, mode-0600 bridge socket/lock, and native-only process; this report makes no device claim. |
 | 8 | Differential, malformed-input, lifecycle/resource/platform/bundle/release-contract checks are automated without a hosted/macOS/signing/publication claim. | ✓ VERIFIED | Locked suite ran 101 tests; deterministic oracle, collector (8 tests), bundle workflow contract, and release build all exited 0. |
 | 9 | The maintained composed proof directly covers Herdr invalidation/read, committed projection, matching snapshot-ACK actionability, exact focus, sole `agent.focus`, and Herdr-owned lifecycle. | ✓ VERIFIED | Accepted 04-01 WR-01 amendment names `RuntimeCoordinator` plus `black_box_parity` (8), `projection_focus_parity` (10), `herdr_parity` (4), `usb_platform` (17), and `production_surface` (6). The re-verification command ran these five suites: 45 passed, 0 failed. |
 
@@ -87,6 +87,7 @@ No dynamic production render/transport value traced to a static fallback, empty 
 | Release native executable build | `cargo build --locked --release --manifest-path host/herdr_keypad/native/Cargo.toml` | Exit 0 | ✓ PASS |
 | Python oracle determinism and frozen behavioral suite | `PYTHONPATH=host/herdr_keypad/src:tools/phase1_bringup/src python host/herdr_keypad/tests/export_rust_oracle.py --verify-determinism --rust-manifest host/herdr_keypad/native/Cargo.toml && python -m unittest …` | Two roots byte-identical; Rust fixture validation passed twice; 37 tests passed | ✓ PASS |
 | Current Python-host discovery after clean cutover | `PYTHONPATH=host/herdr_keypad/src:tools/phase1_bringup/src python -m unittest discover -s host/herdr_keypad/tests` | 70 passed, 0 failed | ✓ PASS |
+| Codex 0.151 control-status wiring | `cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test codex_parity --test production_surface -- --test-threads=1` | 16 passed, 0 failed; 1 explicitly ignored authenticated live diagnostic | ✓ PASS |
 | Future release aggregation machinery | `python -m unittest host.herdr_keypad.release.test_collect_phase4_evidence && python host/herdr_keypad/release/collect_phase4_evidence.py --workflow .github/workflows/native-release.yml --check-aggregation-contract` | 8 tests passed; aggregation contract verified | ✓ PASS |
 | Target workflow/bundle policy | `python host/herdr_keypad/release/verify_bundle.py --workflow .github/workflows/native-release.yml --check-workflow-contract` | Workflow contract verified | ✓ PASS |
 | WR-01 maintained composed proof | `cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test black_box_parity --test projection_focus_parity --test herdr_parity --test usb_platform --test production_surface -- --test-threads=1` | 45 passed, 0 failed (5 suites) | ✓ PASS |
@@ -98,12 +99,11 @@ No Phase 4 probe script was declared and no `scripts/**/probe-*.sh` file exists.
 ## Requirements Coverage
 
 | Requirement | Supporting direct evidence | Status |
-|---|---|---|
-| RUST-01 | Python-oracle byte determinism; `black_box_parity`, projection/focus, Herdr, and Codex parity suites | ✓ SATISFIED |
+| RUST-01 | Python-oracle byte determinism; `black_box_parity`, projection/focus, Herdr, and current Codex 0.151 parity/status suites | ✓ SATISFIED |
 | RUST-02 | `protocol_parity`, `usb_platform`, projection/focus action-surface tests, closed `agent.focus` port | ✓ SATISFIED |
 | RUST-03 | Event-driven `RuntimeCoordinator`, Herdr/Codex recovery suites, lifecycle/resource and resource-bound tests | ✓ SATISFIED |
 | RUST-04 | Linux/macOS adapters plus 17 `usb_platform` tests for exact descriptor, frozen binding, fresh hello/session authority | ✓ SATISFIED |
-| RUST-05 | Direct native plugin manifest, lifecycle/control tests, production binary restart/single-authority tests, recorded installed-Linux evidence | ✓ SATISFIED |
+| RUST-05 | Direct native plugin manifest, lifecycle/control tests, production binary restart/single-authority tests, and recorded installed-Linux ready native status | ✓ SATISFIED |
 | RUST-06 | Closed bundle/release schema, 10 release-bundle tests, workflow-contract and aggregation-contract checks | ✓ SATISFIED |
 | RUST-07 | Empty-PATH Python-free binary smoke, closed manifest/action surface, privacy/log/status/bundle tests | ✓ SATISFIED |
 | RUST-08 | Differential/malformed/lifecycle/resource/platform/bundle/collector tests; local release build and future-hosted contract checks | ✓ SATISFIED |
@@ -142,8 +142,10 @@ The former tracer gap is closed. Commit `ee3fe41` amended Plan 04-01 and its SUM
 
 Commit `4f974ae` then removed two obsolete Python-production lifecycle tests that asserted the deleted shell/Python launcher. Its diff removes only those launcher-specific imports and tests; current host discovery passes 70/70, while the retained Plan 04-02 oracle check still passes 37/37 plus its two Rust validator runs. This strengthens rather than removes current parity coverage.
 
+Commit `221a0dfe` fixes control-status wiring that had bypassed a successful Codex collector and hardcoded `unavailable`. The focused post-merge suites passed 16 active tests with one explicitly ignored authenticated diagnostic; the added deterministic 0.151 regression proves a successful bounded initialize/initialized/account/read/rate-limits collection produces `codex_state: ready`. Recorded live evidence confirms the same normalized, redacted collector handshake and two ready native deployment statuses. No firmware, hosted-release, UAT, or physical-device claim is added.
+
 All current Phase 4 must-haves and RUST-01 through RUST-08 have direct evidence. Hosted GitHub execution, macOS native execution, signing/notarization, publication, upload, and physical-device acceptance are explicitly parked by current planning authority and are not gaps.
 
 ---
-_Verified: 2026-08-30T07:37:04Z_  
+_Verified: 2026-08-30T07:54:31Z_  
 _Verifier: the agent (gsd-verifier)_
