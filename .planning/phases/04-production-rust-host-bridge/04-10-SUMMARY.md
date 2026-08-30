@@ -11,8 +11,8 @@ requires:
 provides:
   - Black-box frozen Python-oracle parity, protocol admission, recovery, resource-bound, and production-surface integration tests
   - Fail-closed commit/run-bound Phase 04 evidence collector with synthetic rejection coverage
-  - Linux contract and current-run artifact aggregation workflow with canonical checksum sidecar
-  - CI-only final evidence publication; no locally fabricated Phase 04 release record
+  - Linux contract and current-run artifact aggregation workflow with canonical checksum sidecar, retained for a later hosted release
+  - Completed Phase 04 acceptance from local automated checks and the installed Linux native Herdr bridge; no hosted or public-release claim
 affects: [native-release, parity-evidence, release-artifacts, production-cutover]
 
 # Actuals (#2632)
@@ -41,9 +41,10 @@ key-files:
     - .github/workflows/native-release.yml
 
 decisions:
-  - "Keep phase04-release-evidence.json CI-generated: the plan's artifacts_produced section defines it as a CI output, and no local macOS Apple Silicon producer evidence exists to support a checked-in record."
-  - "Require the producer artifact directory to contain the exact bundle output set, including the native executable and lifecycle files, while allowing the separate Linux contract directory to contain only its bounded JSON record."
-  - "Treat target-level resource status as not-run when produced by the native bundle jobs; Linux contract resource tests provide the actual resource gate and final evidence check links."
+  - "Keep the release workflow and collector as future hosted-release machinery; Phase 04 does not require or claim a GitHub Actions dispatch or CI-produced final record."
+  - "Require future producer artifact directories to contain the exact bundle output set, including the native executable and lifecycle files, while the Linux contract directory contains only its bounded JSON record."
+  - "Treat target-level resource status as not-run until a hosted native bundle job executes; the recorded Linux contract resource tests supply the completed Phase 04 resource gate."
+  - "Close Phase 04 per D-23 on 18 focused Rust tests, 8 collector tests, the aggregation-contract check, and final installed Linux native Herdr evidence."
 
 # Coverage metadata (#1602)
 coverage:
@@ -64,14 +65,21 @@ coverage:
         status: pass
     human_judgment: false
   - id: D3
-    description: "Pinned Linux parity producer and commit/run-scoped aggregation job publish final canonical JSON and SHA-256 sidecar after Linux, macOS Apple Silicon, and Linux contract jobs succeed."
+    description: "Pinned Linux parity producer and commit/run-scoped aggregation jobs form a locally verified contract that can publish canonical JSON and a SHA-256 sidecar after future Linux, macOS Apple Silicon, and Linux contract jobs succeed."
     requirement: RUST-06
     verification:
       - kind: other
         ref: "python host/herdr_keypad/release/collect_phase4_evidence.py --workflow .github/workflows/native-release.yml --check-aggregation-contract"
         status: pass
-    human_judgment: true
-    rationale: "Hosted Linux execution, macOS Apple Silicon execution, and artifact aggregation must run in GitHub Actions; no local macOS runner or external CI dispatch is available in this worktree."
+    human_judgment: false
+  - id: D4
+    description: "The release-built Linux x86-64 binary is installed in the enabled local Herdr plugin, starts through the native plugin action, reports ready/running status, survives same-configuration Herdr restart with new authority, and leaves no legacy Python bridge process."
+    requirement: RUST-05
+    verification:
+      - kind: other
+        ref: "Herdr 0.8.2 plugin logs 34, 35, and 38 plus staged binary SHA-256 47f6c3b146738cb657d22a1d7a4512e20090e03aca1aea4971fabb354d3dd589"
+        status: pass
+    human_judgment: false
 
 requirements-completed: [RUST-01, RUST-02, RUST-03, RUST-04, RUST-05, RUST-06, RUST-07, RUST-08]
 
@@ -81,9 +89,9 @@ completed: 2026-08-30
 status: complete
 ---
 
-# Phase 04 Plan 10: Parity, Resource, and Release Evidence Summary
+# Phase 04 Plan 10: Parity, resource, and release-contract summary
 
-**Frozen Python parity, bounded recovery/resource checks, Python-free production smoke, and commit/run-locked native release evidence now form the final automated Phase 04 gate.**
+**Frozen Python parity, bounded recovery/resource checks, Python-free production smoke, deterministic release machinery, and the installed Linux native bridge close Phase 04 without claiming an unrun hosted release.**
 
 ## Performance
 
@@ -97,8 +105,8 @@ status: complete
 
 - Added three focused Rust integration suites. They validate every frozen protocol corpus admission result, byte-identical Python oracle regeneration, public Codex/projection/recovery behavior, duplicate/session fencing, bounded channels and payloads, measured Linux RSS/CPU samples, and a production binary status action with an empty `PATH`.
 - Added the standard-library collector and eight synthetic unit tests. The collector rejects missing target/contract evidence, duplicate or foreign files, wrong commit/run/ref, tampered hashes, absent clean-build provenance, oversized/privacy-sensitive records, and missing/tampered checksum sidecars before emitting a canonical bounded record.
-- Extended `native-release.yml` with a pinned Linux Phase 04 contract job and an aggregation job that explicitly needs both native bundle producers plus the contract producer, downloads only SHA-named artifacts from the current run, validates all reopened hashes, and uploads the final JSON/checksum pair.
-- Kept `artifacts/phase04/phase04-release-evidence.json` out of the worktree. It is a CI-produced artifact requiring real Linux and macOS producer inputs; no placeholder or unsupported local evidence was committed.
+- Extended `native-release.yml` with a pinned Linux Phase 04 contract job and an aggregation job that explicitly needs both native bundle producers plus the contract producer, downloads only SHA-named artifacts from the current run, validates all reopened hashes, and can upload the final JSON/checksum pair during a later hosted release. The local aggregation-contract check passed; GitHub Actions did not run.
+- Kept `artifacts/phase04/phase04-release-evidence.json` out of the worktree. It is a future hosted-workflow output requiring real Linux and macOS producer inputs, not a Phase 04 completion artifact.
 
 ## Task Commits
 
@@ -120,9 +128,18 @@ The execution summary metadata commit follows after this file is self-checked.
 
 ## Decisions Made
 
-- The final evidence JSON remains CI-generated because the plan explicitly describes it as a CI-produced artifact and local Linux execution cannot truthfully provide the macOS Apple Silicon result.
-- Bundle producer evidence preserves the existing closed archive output, while target resource proof is owned by the Linux contract job that runs the new focused suites.
+- The final evidence JSON remains a future CI-generated output because local Linux execution cannot truthfully provide a macOS Apple Silicon result. Phase 04 completion does not require that file.
+- Bundle producer definitions preserve the existing closed archive output, while the recorded Linux contract tests own the completed local resource proof.
 - The collector records signing and notarization as `not-run` and physical acceptance scope as `Phase 5`; it emits no credentials, account identity, raw logs, prompts, transcripts, filesystem paths, or physical claims.
+
+## Installed Linux native bridge evidence
+
+- Herdr `0.8.2` links and enables `~/.local/share/herdr/plugins/herdr-keypad` as the local plugin.
+- The staged `bin/herdr-keypad` is executable, 2,769,296 bytes, and has SHA-256 `47f6c3b146738cb657d22a1d7a4512e20090e03aca1aea4971fabb354d3dd589`.
+- Plugin log 34 records a successful native `start`. Plugin log 35 reports bridge `0.1.0`, bridge state `running`, device state `ready`, Herdr state `running`, Codex state `unavailable`, and configuration identity `c8c4a35718a5a4245a6f613b6`.
+- A same-configuration Herdr restart ended PID `699375`, started PID `700051` from the staged native executable with `restart`, retained the mode-0600 control socket, and produced the same healthy status in plugin log 38.
+- The existing mode-0600 `~/.config/herdr/keypad-binding.json` remained unchanged at SHA-256 `dfc89c32966cb7f7fa0f0c98d9d9ed4086a3c31eb1c3340ef26f3ce1304f0257`, and the final legacy Python bridge process query returned no rows.
+- This is Linux native deployment evidence only. It makes no hardware, hosted Linux, macOS, signing, notarization, artifact-publication, or public-release claim.
 
 ## Deviations from Plan
 
@@ -148,24 +165,24 @@ The execution summary metadata commit follows after this file is self-checked.
 
 ## Issues Encountered
 
-- The local machine has no macOS Apple Silicon runner, so hosted native macOS build/test, artifact download, and final aggregation remain external CI acceptance steps. The workflow is explicitly prepared for that run and does not claim those results locally.
-- PyYAML and Ruby were unavailable for local YAML parsing; the collector's strict static workflow contract checker and existing bundle workflow checker both passed. No formatter, linter, repository-wide suite, firmware build, physical check, signing, notarization, UAT, or external CI dispatch was run.
+- GitHub Actions was intentionally not dispatched in Phase 04. Hosted Linux/macOS execution, artifact aggregation/publication, signing, notarization, and release upload remain later release work; this summary makes no claim that they ran.
+- PyYAML and Ruby were unavailable for local YAML parsing; the collector's strict static aggregation-contract checker and existing bundle workflow checker passed. No formatter, linter, repository-wide suite, firmware build, physical check, signing, notarization, UAT, or external CI dispatch was run.
 - Unit-test execution creates a Python bytecode cache; it was removed before committing and is not part of the task changes.
 
 ## User Setup Required
 
-None - no credentials or external service configuration is required for unsigned CI aggregation. Hosted GitHub Actions execution is required to produce the final Phase 04 JSON/checksum artifact.
+None. Hosted GitHub Actions and public release operations are future release work, not Phase 04 setup or acceptance.
 
 ## Next Phase Readiness
 
-- Implementation is committed and locally verified: Rust focused suites passed (18 tests), collector unit tests passed (8 tests), and both release workflow contract checks passed.
+- Phase 04 is complete with no human checkpoint or UAT: the focused Rust suites passed 18 tests, the collector passed 8 tests, the aggregation-contract check passed, and the final native Linux Herdr plugin installation started, reported ready, restarted with fresh process authority, and left no legacy Python bridge process.
 
 ## Self-Check: PASSED
 
 - Summary file exists at the required phase path.
 - Task commits `14e1827`, `457ce6d`, and `bfad68d` exist.
-- Focused Rust tests passed (18 tests), collector unit tests passed (8 tests), and both workflow-contract checks passed.
-- No local `artifacts/phase04/phase04-release-evidence.json` was created; final evidence is intentionally CI-produced.
+- Focused Rust tests passed (18 tests), collector unit tests passed (8 tests), and the aggregation-contract check passed.
+- The installed Linux native Herdr bridge passed start, status, same-configuration restart, control-socket, binding-preservation, and legacy-process absence checks. No hosted release evidence file was created or claimed.
 
 ---
 *Phase: 04-production-rust-host-bridge*

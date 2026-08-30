@@ -37,14 +37,14 @@ Requirements for the initial release. Each maps to exactly one roadmap phase.
 
 ### Production Rust Host Bridge
 
-- [ ] **RUST-01**: One platform-independent Rust core preserves the Python bridge's authoritative three-entry inbox projection, exact focus, Codex normalization, freshness/error policy, diagnostics, and complete-snapshot readiness behavior without copying Python-only implementation structure.
-- [ ] **RUST-02**: The Rust bridge preserves the closed four-message v2 protocol, bounded admission and queues, fresh USB sessions, ACK/generation/identity fences, sole typed `agent.focus` authority, and firmware-owned fixed-Space HID behavior without adding a provider, action, command, key, or protocol capability.
-- [ ] **RUST-03**: Herdr, Codex, USB, and control boundaries run through event-driven intake and explicit bounded timers, recover independently with capped backoff, discard old authority on interruption, and require complete authoritative resynchronization before focus becomes actionable.
-- [ ] **RUST-04**: Linux x86-64 and macOS Apple Silicon adapters discover and open only the exact measured composite CDC interface, then authorize it through the unchanged read-only `~/.config/herdr/keypad-binding.json` format and fresh application hello rather than a transient device path or first match.
-- [ ] **RUST-05**: The bundled plugin follows the verified Herdr v0.8.2 contract: direct one-shot startup, Herdr-bound exit, one lock-authoritative bridge, explicit idempotent start/stop/restart, read-only status, restart-applied configuration only under `HERDR_PLUGIN_CONFIG_DIR`, and default-off bounded redacted stderr tracing, with no OS service or hidden supervisor.
-- [ ] **RUST-06**: Release automation builds and tests native Linux x86-64 and macOS Apple Silicon executables, bundles the matching executable in the plugin, records target/toolchain/dependency/hash evidence, and requires no Python, Node, JVM, installed Rust runtime, or separately installed bridge package in production.
-- [ ] **RUST-07**: The supported production path launches only the bundled Rust executable and exposes only approved lifecycle, repair, re-pair, and read-only status operations; Python remains test-oracle-only, and production status/logs/bundles contain no credentials, account identity, prompts, transcripts, raw upstream errors, host paths, developer commands, fixtures, or evidence payloads.
-- [ ] **RUST-08**: Automated differential, malformed-input, lifecycle, resource, platform, bundle, and release checks prove Python behavioral parity, firmware compatibility, bounded idle/traffic operation, independent recovery, reproducible unsigned artifacts, and a Python-free production smoke on Linux plus native build/test on macOS Apple Silicon without claiming signing or notarization that did not run.
+- [x] **RUST-01**: One platform-independent Rust core preserves the Python bridge's authoritative three-entry inbox projection, exact focus, Codex normalization, freshness/error policy, diagnostics, and complete-snapshot readiness behavior without copying Python-only implementation structure.
+- [x] **RUST-02**: The Rust bridge preserves the closed four-message v2 protocol, bounded admission and queues, fresh USB sessions, ACK/generation/identity fences, sole typed `agent.focus` authority, and firmware-owned fixed-Space HID behavior without adding a provider, action, command, key, or protocol capability.
+- [x] **RUST-03**: Herdr, Codex, USB, and control boundaries run through event-driven intake and explicit bounded timers, recover independently with capped backoff, discard old authority on interruption, and require complete authoritative resynchronization before focus becomes actionable.
+- [x] **RUST-04**: Linux x86-64 and macOS Apple Silicon adapters discover and open only the exact measured composite CDC interface, then authorize it through the unchanged read-only `~/.config/herdr/keypad-binding.json` format and fresh application hello rather than a transient device path or first match.
+- [x] **RUST-05**: The bundled plugin follows the verified Herdr v0.8.2 contract: direct one-shot startup, Herdr-bound exit, one lock-authoritative bridge, explicit idempotent start/stop/restart, read-only status, restart-applied configuration only under `HERDR_PLUGIN_CONFIG_DIR`, and default-off bounded redacted stderr tracing, with no OS service or hidden supervisor.
+- [x] **RUST-06**: Deterministic release automation specifies native Linux x86-64 and macOS Apple Silicon build/test jobs, bundles the matching executable in the plugin, and records target, toolchain, dependency, provenance, and hash evidence. Phase 4 completion requires locally verified workflow, bundle, and aggregation contracts plus the installed native Linux bridge; hosted target execution and artifact publication remain later release work. Production requires no Python, Node, JVM, installed Rust runtime, or separately installed bridge package.
+- [x] **RUST-07**: The supported production path launches only the bundled Rust executable and exposes only approved lifecycle, repair, re-pair, and read-only status operations; Python remains test-oracle-only, and production status/logs/bundles contain no credentials, account identity, prompts, transcripts, raw upstream errors, host paths, developer commands, fixtures, or evidence payloads.
+- [x] **RUST-08**: Automated differential, malformed-input, lifecycle, resource, platform, bundle, and release-contract checks prove Python behavioral parity, firmware compatibility, bounded idle/traffic operation, independent recovery, reproducible unsigned artifact definitions, and a Python-free production smoke on Linux. Portable macOS adapter tests and the native Apple Silicon build/test/aggregation contracts are verified locally; actual hosted macOS execution, artifact publication, signing, notarization, and release upload are not Phase 4 completion claims.
 
 ### Codex Usage
 
@@ -105,6 +105,7 @@ Deferred capabilities tracked for later releases; they are not part of the curre
 | Queued or replayed keypresses | The visible target may change during an outage, making replay unsafe. |
 | Hybrid transport, battery portability, or expansion modules in v1 | They add authority, power, provisioning, or discovery work unrelated to validating the connected Linux/herdr loop. |
 | Unbudgeted decorative animation | Motion can obscure stale/error states. *(Amended 2026-08-18, Phase 02.2 — per 02.2-CONTEXT D-13/D-14 and 02.2-RESEARCH R-1, theme-specific ambient motion is permitted under a measured animation budget: complete compose-then-flush frames only, total animation flush time ≤ 30 % of loop wall time measured on device, degradation to half cadence then static frames, semantic states/fences/feedback always preempt, no per-frame allocation. The blanket exclusion is superseded; unbudgeted or semantics-obscuring motion remains out of scope.)* |
+| Hosted GitHub Actions target execution, public artifact/release publication, signing, notarization, or release upload | Phase 4 retains and locally verifies the deterministic release workflow and collector, while these hosted release operations remain discoverable for a later, not-yet-numbered release phase. |
 
 ## Traceability
 
@@ -128,14 +129,14 @@ Every v1 requirement maps to exactly one roadmap phase.
 | HOLD-03 | Phase 03.2 | Complete |
 | HOLD-04 | Phase 03.2 | Complete |
 | HOLD-05 | Phase 03.2 | Complete |
-| RUST-01 | Phase 4 | Pending |
-| RUST-02 | Phase 4 | Pending |
-| RUST-03 | Phase 4 | Pending |
-| RUST-04 | Phase 4 | Pending |
-| RUST-05 | Phase 4 | Pending |
-| RUST-06 | Phase 4 | Pending |
-| RUST-07 | Phase 4 | Pending |
-| RUST-08 | Phase 4 | Pending |
+| RUST-01 | Phase 4 | Complete |
+| RUST-02 | Phase 4 | Complete |
+| RUST-03 | Phase 4 | Complete |
+| RUST-04 | Phase 4 | Complete |
+| RUST-05 | Phase 4 | Complete |
+| RUST-06 | Phase 4 | Complete |
+| RUST-07 | Phase 4 | Complete |
+| RUST-08 | Phase 4 | Complete |
 | CODEX-01 | Phase 3 | Complete |
 | CODEX-02 | Phase 3 | Complete |
 | CODEX-03 | Phase 3 | Complete |
@@ -160,5 +161,5 @@ Every v1 requirement maps to exactly one roadmap phase.
 
 ---
 *Requirements defined: 2026-08-16*
-*Last updated: 2026-08-30 — Added RUST-01 through RUST-08 for the Phase 4 Production Rust Host Bridge migration.*
+*Last updated: 2026-08-30 — Closed RUST-01 through RUST-08 on the implemented bridge, local Linux deployment, and deterministic release contracts; hosted release execution remains later work.*
 *Previous amendment: 2026-08-18 — Phase 02.2 amendments to SYNC-02 and the decorative-animation exclusion (R-1/R-2).*

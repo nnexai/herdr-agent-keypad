@@ -15,7 +15,7 @@ Herdr Agent Keypad reaches its first usable release through nine roadmap phases:
 - [x] **Phase 3: Truthful Codex Capacity and Device Menu** - The fourth key reports both Codex windows truthfully while the encoder exposes diagnostics and persistent brightness. (completed 2026-08-21)
 - [x] **Phase 03.1: High-Fidelity Animation and Interaction Polish** - Smooth and stable motion, transitions, and feedback are measured and refined on the actual keypad without weakening semantic clarity, input responsiveness, or focus safety. (INSERTED) (completed 2026-08-21)
 - [x] **Phase 03.2: Focus-Then-Hold USB Keyboard** - A short agent-key press remains focus-only, while a deliberate hold first focuses the exact rendered pane and then behaves as a real held Space key through composite USB HID. (INSERTED) (completed 2026-08-22)
-- [ ] **Phase 4: Production Rust Host Bridge** - A dependency-free native Rust bridge preserves the Python bridge's end-user behavior across Linux and macOS with an event-driven portable core.
+- [x] **Phase 4: Production Rust Host Bridge** - A dependency-free native Rust bridge preserves the Python bridge's behavior through an event-driven portable core, runs as the installed Linux Herdr integration, and retains deterministic Linux/macOS release machinery for a later hosted release. (completed 2026-08-30)
 - [ ] **Phase 5: Independent Recovery and Actual-Device Acceptance** - Every boundary recovers through authoritative resynchronization and the full workflow passes on the real setup.
 
 ## Phase Details
@@ -366,7 +366,7 @@ Plans:
 
 ### Phase 4: Production Rust Host Bridge
 
-**Goal:** As a keypad user, I want the production host bridge to provide the same inbox projection, exact focus, truthful Codex capacity, freshness/error states, reconnect behavior, and authorized focus-then-hold workflow as the Python bridge, but as one efficient native Rust executable that runs on Linux and macOS without a separately installed language runtime or bridge dependency.
+**Goal:** As a keypad user, I want the production host bridge to preserve the Python bridge's inbox projection, exact focus, truthful Codex capacity, freshness/error states, reconnect behavior, and authorized focus-then-hold workflow as one efficient native Rust executable installed on Linux, with a portable macOS adapter and deterministic cross-target release automation ready for a later hosted release.
 **Mode:** mvp
 **Depends on:** Phase 03.2
 **Requirements:** RUST-01, RUST-02, RUST-03, RUST-04, RUST-05, RUST-06, RUST-07, RUST-08
@@ -378,12 +378,12 @@ Plans:
   2. The Rust bridge keeps the closed v2 device protocol and all existing firmware semantics compatible, including bounded frames, fresh sessions, ACK/readiness fencing, identity-bound focus results, no replay after interruption, and no new arbitrary Herdr or keyboard-action surface.
   3. The implementation has a platform-independent core containing protocol validation, normalized domain state, projection and focus state machines, freshness/error policy, bounded queues, reconnect timers, and orchestration contracts; Linux and macOS adapters contain only OS-specific device discovery/I/O, Herdr endpoint/process integration, filesystem/config paths, locking, signals, and packaging concerns.
   4. Normal operation is event-driven and resource-bounded: serial and Herdr/Codex streams wake the core only on input, timers cover only reconnect/freshness/explicit refresh deadlines, fallback polling is used only when the installed Herdr interface cannot provide push events, and no fixed-rate busy loop or unnecessary polling remains.
-  5. Release builds produce a native Linux executable and a native macOS executable that require no Python, Node, JVM, shared bridge package, or separately installed Rust runtime; all application dependencies are compiled into the binary, with only documented operating-system facilities and permissions remaining.
+  5. Deterministic release automation specifies isolated native Linux x86-64 and macOS Apple Silicon builds, tests, plugin bundles, dependency inspection, provenance, and hash-linked aggregation without Python, Node, JVM, a separately installed Rust runtime, or a separate bridge package in production. Phase 4 acceptance comes from local automation/bundle contract verification and the installed Linux native bridge; it does not claim that hosted jobs produced artifacts.
   6. The production launch path contains no tracer, fixture, acceptance harness, debug-only command, developer filesystem assumption, credential output, transcript/path leakage, or test fallback; bounded user-facing health/error diagnostics and structured logs required for operation remain redacted and explicitly limited.
-  7. Linux and macOS installation and lifecycle behavior are documented and exercised: ordinary-user startup, exact keypad discovery/reconnect, Herdr and Codex child-process/socket failure recovery, clean shutdown, single-instance enforcement, configuration/state placement, and removal of the Python launcher from the supported production path.
-  8. Focused native tests and end-to-end smoke checks compare Rust against the frozen Python contract with malformed/oversized frames, duplicate messages, stale identities, reconnects, missing optional Codex fields, unavailable push events, and sustained idle/traffic resource measurements; the final release artifacts are reproducible, versioned, and free of development-only dependencies.
+  7. The installed Linux Herdr plugin exercises native startup, status, same-configuration restart, single-instance authority, configuration/state placement, and removal of the Python launcher from the supported production path. Exact-device reconnect, source recovery, and clean shutdown retain automated contract coverage; Phase 5 owns physical acceptance. The corresponding macOS adapter, lifecycle, and bundle behavior remain covered by portable tests and deterministic release contracts, not an unrun hosted claim.
+  8. Focused native tests and local release checks compare Rust against the frozen Python contract with malformed/oversized frames, duplicate messages, stale identities, reconnects, missing optional Codex fields, unavailable push events, and sustained idle/traffic resource measurements. The retained workflow defines reproducible, versioned, unsigned target artifacts for a later hosted run; Phase 4 makes no macOS execution, signing, notarization, publication, or upload claim.
 
-**Plans:** 9/10 plans executed
+**Plans:** 10/10 plans executed
 
 Plans:
 
@@ -413,7 +413,9 @@ Plans:
 
 **Wave 6** *(requires Wave 5)*
 
-- [ ] 04-10-PLAN.md - Aggregate commit-bound CI artifacts and publish automated parity, resource, production-surface, and release evidence.
+- [x] 04-10-PLAN.md - Implement commit-bound Linux/macOS release aggregation machinery and close Phase 4 on 18 Rust tests, 8 collector tests, the local aggregation-contract check, and the installed Linux native Herdr bridge.
+
+**Future release work (not a numbered phase):** Run the retained GitHub Actions Linux and macOS jobs, publish their artifacts and aggregate evidence, perform any chosen signing/notarization, and upload a public release. None of these hosted operations ran during Phase 4.
 
 ### Phase 5: Independent Recovery and Actual-Device Acceptance
 
@@ -448,5 +450,5 @@ Plans:
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
 | 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
-| 4. Production Rust Host Bridge | 9/10 | In Progress|  |
+| 4. Production Rust Host Bridge | 10/10 | Complete | 2026-08-30 |
 | 5. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |

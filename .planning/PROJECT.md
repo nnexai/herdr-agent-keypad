@@ -33,6 +33,7 @@ The device must make agents that need attention immediately visible and let the 
 - A general-purpose configurable macro system — the Phase 03.2 Space hold is fixed and focus-authorized; arbitrary keys, text, commands, and macros remain out of scope.
 - Copilot, Anthropic, and other provider subscription collectors — planned follow-on integrations after the Codex display is proven.
 - A standalone non-herdr server and hook-integration ecosystem — future generalization, not part of the personal-first v1.
+- Hosted GitHub Actions execution, public artifact or release publication, signing, notarization, and release upload. Phase 4 keeps the release workflow and aggregation machinery ready for this later release work, but no numbered release phase exists yet.
 - Battery operation or portability — the connected device can remain USB powered for v1.
 
 ## Context
@@ -45,6 +46,7 @@ The device must make agents that need attention immediately visible and let the 
 - Work Louder's Codex Micro is interaction inspiration: physical controls reflect live agent state and make high-frequency agent actions tactile. The S3 Pro design must adapt that idea to a much smaller four-key surface.
 - The preliminary Hermes research note is input, not a final plan. Its useful principles include host-side credentials, normalized device data, truthful stale/offline states, bounded actions, and validating the real hardware early.
 - The longer-term direction is a separable firmware, reusable device library, herdr plugin, and potentially a standalone bridge/server. v1 may remain tailored to this machine as long as it does not unnecessarily prevent that evolution.
+- Phase 4 closes on the implemented Rust release-automation and bundle contracts plus a locally built, installed, and restarted Linux native bridge. No hosted Linux or macOS GitHub Actions job or public release ran; those operations remain later release work.
 
 ## Constraints
 
@@ -70,6 +72,7 @@ The device must make agents that need attention immediately visible and let the 
 | Prefer USB while researching transport | The device is already wired for power, but the exact USB class composition must be proven on real hardware | **Hardware CDC/JTAG validated in Phase 1; composite CDC + HID is the sole Phase 03.2 feasibility target, with alternatives considered only after a recorded failure** |
 | Require physical end-to-end validation for v1 | A simulated bridge or renderer alone does not establish that the companion hardware is useful or reliable | **Phase 1 is the original hardware baseline; Phase 03.2 must add exact-device composite-input evidence before Phase 5 acceptance** |
 | Preserve the long baseline; qualify the changed composition separately | Repeating an unchanged 30-minute profile adds operator cost, but replacing the USB class composition invalidates transport assumptions | Do not rerun the legacy profile as if unchanged; run a bounded Phase 03.2 composite CDC + HID qualification covering the new risks |
+| Separate implementation readiness from hosted release publication | The native Linux deployment and deterministic cross-target release machinery can be proven locally without fabricating macOS or public-release results | **Phase 4 complete; hosted Linux/macOS execution and publication parked for a later release phase** |
 
 ## Evolution
 
@@ -89,4 +92,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-29 after moving the Production Rust Host Bridge before actual-device acceptance*
+*Last updated: 2026-08-30 after closing Phase 4 on local Linux deployment and release-contract readiness while parking hosted publication*

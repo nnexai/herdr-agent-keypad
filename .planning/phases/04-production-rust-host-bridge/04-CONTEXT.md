@@ -1,12 +1,12 @@
 # Phase 04: Production Rust Host Bridge - Context
 
 **Gathered:** 2026-08-29
-**Status:** Ready for planning
+**Status:** Complete
 
 <domain>
 ## Phase Boundary
 
-Replace the current Python host bridge with one production Rust executable bundled into the Herdr plugin. Preserve the Python bridge's complete observable contract: authoritative inbox projection, exact generation/session-bound focus, truthful Codex and freshness states, closed v2 device protocol, independent boundary recovery, and the device-owned focus-authorized HID Space workflow. The executable must use an event-driven portable core, isolate Linux and macOS integration behind platform adapters, run without a separately installed language runtime or bridge dependency, and become the sole supported production path. This phase does not add device actions, protocol capabilities, providers, a standalone public server, or Phase 5 physical acceptance.
+Replace the current Python host bridge with one production Rust executable bundled into the Herdr plugin. Preserve the Python bridge's complete observable contract: authoritative inbox projection, exact generation/session-bound focus, truthful Codex and freshness states, closed v2 device protocol, independent boundary recovery, and the device-owned focus-authorized HID Space workflow. The executable must use an event-driven portable core, isolate Linux and macOS integration behind platform adapters, run without a separately installed language runtime or bridge dependency, and become the sole supported production path. This phase does not add device actions, protocol capabilities, providers, a standalone public server, or Phase 5 physical acceptance. It closes on local automated implementation and bundle-contract proof plus the installed Linux native bridge; hosted GitHub Actions target execution and release publication remain outside Phase 4.
 
 </domain>
 
@@ -43,10 +43,13 @@ Replace the current Python host bridge with one production Rust executable bundl
 - **D-21:** Status is read-only. Explicit plugin start, stop, restart, repair, and re-pair operations remain separate and auditable; observing status cannot mutate bridge, pairing, source, focus, or HID authority.
 - **D-22:** Existing privacy limits remain absolute across status and logs: no credentials, account identity, prompts, transcripts, raw upstream errors, host filesystem paths, or developer evidence payloads. Only bounded operational codes, short safe identities, versions, state transitions, and timings needed to operate the bridge may appear.
 
+### Phase completion and future release
+- **D-23:** Keep the implemented GitHub release and aggregation workflow as production release machinery, but close Phase 4 without dispatching it. Phase 4 acceptance is the 18 focused Rust tests, 8 collector tests, local aggregation-contract verification, and the built, installed, restarted Linux x86-64 native Herdr bridge. Actual hosted Linux/macOS execution, artifact publication, signing, notarization, and release upload belong to a later, not-yet-planned release phase. No Phase 4 artifact may claim those operations ran.
+
 ### the agent's Discretion
 - Select the maintained Rust crates, async runtime, serialization strategy, serial/device discovery APIs, locking/IPC mechanism, and platform adapter boundaries after mandatory migration and platform research.
-- Define exact capped-backoff schedules, bounded transition-history size, status/config identity encoding, optional stderr event schema, and restart handshake while preserving D-01 through D-22.
-- Choose reproducible build, signing/notarization, and plugin-bundle mechanics required for the two selected release targets. Do not expand the architecture matrix or distribution channels.
+- Define exact capped-backoff schedules, bounded transition-history size, status/config identity encoding, optional stderr event schema, and restart handshake while preserving D-01 through D-23.
+- Keep the reproducible build and plugin-bundle mechanics for Linux x86-64 and macOS Apple Silicon per D-23. Hosted target execution, signing, notarization, artifact publication, and release upload are outside Phase 4 acceptance.
 - Implement the verified Herdr 0.8.2 contract directly: one-shot startup, process/socket-bound exit, explicit idempotent lifecycle actions, status over same-user local IPC, restart-applied config under `HERDR_PLUGIN_CONFIG_DIR`, optional stderr tracing, and update activation on restart or next Herdr start. Do not wait for unavailable supervision, stop hooks, status publication, log ingestion, or live settings APIs, and do not replace them with an OS service or daemon.
 
 </decisions>
@@ -121,17 +124,18 @@ No external specification was named during discussion. Research verified Herdr v
 - Repeated matching plugin starts are idempotent. Changed configuration requires an explicit restart; it never creates competing authorities or triggers live reconfiguration.
 - Plugin installation remains one product install: the correct Linux x86-64 or macOS Apple Silicon binary is already inside the plugin. An update activates on restart or the next Herdr start.
 - The read-only status action is the first operational view and includes a bounded recent transition history. Device HEALTH remains glanceable source truth. Optional stderr tracing is disabled by default.
+- The Linux x86-64 native bridge is the locally exercised production installation. The macOS Apple Silicon adapter and release bundle remain covered by portable tests and the deterministic workflow contract until a later hosted release run.
 
 </specifics>
 
 <deferred>
-## Deferred Ideas
+## Future release work outside Phase 4
 
-None — discussion stayed within the Phase 4 Rust migration, lifecycle, packaging, configuration, and diagnostics boundary.
+Run the retained hosted Linux and macOS GitHub Actions jobs, publish their aggregate evidence and target artifacts, perform any selected signing/notarization, and upload a public release. This is not an incomplete Phase 4 task, and no numbered release phase exists yet.
 
 </deferred>
 
 ---
 
 *Phase: 04-Production Rust Host Bridge*
-*Context gathered: 2026-08-29*
+*Context updated: 2026-08-30 after D-23 closed Phase 4 on local Linux deployment and release-contract readiness*
