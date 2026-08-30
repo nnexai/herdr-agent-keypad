@@ -202,7 +202,7 @@
     }
   ],
   "family": "protocol",
-  "fixture_sha256": "2932b2011de5ef781fe4520819993db38926ecd36925d8edefdc0894e5f9321c",
+  "fixture_sha256": "b1f1a7d23d903d15f16c2881d7226ee01ad39a03a7bda87f97a9d8a7a3606838",
   "schema_version": 1,
   "sources": [
     {
@@ -248,7 +248,7 @@
     {
       "kind": "oracle-source",
       "path": "host/herdr_keypad/tests/test_integration.py",
-      "sha256": "734624bc9e7f3df3b09d2bbb2b5f252fd669d2e26bf76a50b6d9a0571b9f8bb5"
+      "sha256": "b4d1f97fe8180bfb1c94accb4f4ffe88ea2e9d2b39c884acfa214076e2c43e69"
     },
     {
       "kind": "oracle-source",

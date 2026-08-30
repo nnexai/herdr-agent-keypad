@@ -120,7 +120,7 @@
     }
   ],
   "family": "lifecycle",
-  "fixture_sha256": "9e5a2aa0faac4fc193acec86e38a208487b776cf020b3303880c36c75b86c8d2",
+  "fixture_sha256": "afbee638897054283693a692c20a1d5eeeef99bf0e39eff73bead9607f531429",
   "schema_version": 1,
   "sources": [
     {
@@ -166,7 +166,7 @@
     {
       "kind": "oracle-source",
       "path": "host/herdr_keypad/tests/test_integration.py",
-      "sha256": "734624bc9e7f3df3b09d2bbb2b5f252fd669d2e26bf76a50b6d9a0571b9f8bb5"
+      "sha256": "b4d1f97fe8180bfb1c94accb4f4ffe88ea2e9d2b39c884acfa214076e2c43e69"
     },
     {
       "kind": "oracle-source",

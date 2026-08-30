@@ -279,7 +279,7 @@
     }
   ],
   "family": "codex",
-  "fixture_sha256": "474bffd5a58ca9303338ec7c2885cffe53fd5f067bfccbce9f08abc0c5edfe93",
+  "fixture_sha256": "083646a4280b0cdc774b4e52a6793135a24ca87458065024619d17812564fb5c",
   "schema_version": 1,
   "sources": [
     {
@@ -325,7 +325,7 @@
     {
       "kind": "oracle-source",
       "path": "host/herdr_keypad/tests/test_integration.py",
-      "sha256": "734624bc9e7f3df3b09d2bbb2b5f252fd669d2e26bf76a50b6d9a0571b9f8bb5"
+      "sha256": "b4d1f97fe8180bfb1c94accb4f4ffe88ea2e9d2b39c884acfa214076e2c43e69"
     },
     {
       "kind": "oracle-source",
