@@ -52,9 +52,24 @@ fn copy_test_binary(destination: &Path) {
 
 #[cfg(target_os = "macos")]
 fn copy_test_binary(destination: &Path) {
+    let output = Command::new("lipo")
+        .args(["-archs", TEST_BINARY])
+        .output()
+        .expect("lipo available for release tests");
+    assert!(output.status.success(), "inspect native test executable");
+    let architectures =
+        String::from_utf8(output.stdout).expect("lipo architecture output is UTF-8");
+    let architecture = ["arm64", "arm64e"]
+        .into_iter()
+        .find(|candidate| {
+            architectures
+                .split_whitespace()
+                .any(|value| value == *candidate)
+        })
+        .expect("native test executable includes an Apple Silicon architecture");
     let status = Command::new("lipo")
         .arg(TEST_BINARY)
-        .args(["-thin", "arm64", "-output"])
+        .args(["-thin", architecture, "-output"])
         .arg(destination)
         .status()
         .expect("lipo available for release tests");
