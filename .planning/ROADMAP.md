@@ -383,7 +383,7 @@ Plans:
   7. Linux and macOS installation and lifecycle behavior are documented and exercised: ordinary-user startup, exact keypad discovery/reconnect, Herdr and Codex child-process/socket failure recovery, clean shutdown, single-instance enforcement, configuration/state placement, and removal of the Python launcher from the supported production path.
   8. Focused native tests and end-to-end smoke checks compare Rust against the frozen Python contract with malformed/oversized frames, duplicate messages, stale identities, reconnects, missing optional Codex fields, unavailable push events, and sustained idle/traffic resource measurements; the final release artifacts are reproducible, versioned, and free of development-only dependencies.
 
-**Plans:** 7/10 plans executed
+**Plans:** 8/10 plans executed
 
 Plans:
 
@@ -405,7 +405,7 @@ Plans:
 
 **Wave 4** *(requires Wave 3)*
 
-- [ ] 04-08-PLAN.md - Bundle the lifecycle/removal/recovery procedure, cut the plugin manifest to native startup, and retire the launcher.
+- [x] 04-08-PLAN.md - Bundle the lifecycle/removal/recovery procedure, cut the plugin manifest to native startup, and retire the launcher.
 
 **Wave 5** *(requires Wave 4)*
 
@@ -448,5 +448,5 @@ Plans:
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
 | 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
-| 4. Production Rust Host Bridge | 7/10 | In Progress|  |
+| 4. Production Rust Host Bridge | 8/10 | In Progress|  |
 | 5. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
