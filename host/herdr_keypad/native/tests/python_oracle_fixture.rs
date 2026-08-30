@@ -2,6 +2,7 @@ use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -42,7 +43,12 @@ fn repo_root() -> PathBuf {
 fn sha256_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
-    format!("{:x}", hasher.finalize())
+    let digest = hasher.finalize();
+    let mut encoded = String::with_capacity(64);
+    for byte in digest.iter() {
+        write!(&mut encoded, "{byte:02x}").expect("write SHA-256 hex");
+    }
+    encoded
 }
 
 fn canonical(value: &Value) -> Value {
