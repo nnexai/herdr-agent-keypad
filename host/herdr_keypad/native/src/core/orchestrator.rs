@@ -751,4 +751,43 @@ mod tests {
     fn unavailable_diagnostics_match_python_and_device_admission_sentinel() {
         assert_eq!(UNAVAILABLE_DIAGNOSTIC, "UNAVAL");
     }
+
+    #[test]
+    fn focus_payload_keeps_authorization_tied_to_accepted_and_focused() {
+        let intent = ModelFocusIntent::new(
+            "action",
+            Binding {
+                host_epoch: "epoch".into(),
+                snapshot_revision: 4,
+                slot: 0,
+                entry_id: "pane-1".into(),
+                identity: Identity {
+                    pane_id: "pane-1".into(),
+                    terminal_id: "terminal-1".into(),
+                    agent_session: Some("herdr:omp:omp:path".into()),
+                    source_revision: 7,
+                    workspace_id: String::new(),
+                    tab_id: String::new(),
+                },
+            },
+        );
+
+        let accepted: FocusResultPayload = serde_json::from_value(focus_payload(
+            &intent,
+            FocusStatus::Accepted,
+            true,
+        ))
+        .expect("accepted focus payload");
+        assert_eq!(accepted.outcome, FocusOutcome::Accepted);
+        assert!(accepted.focused);
+
+        let rejected: FocusResultPayload = serde_json::from_value(focus_payload(
+            &intent,
+            FocusStatus::SessionChanged,
+            false,
+        ))
+        .expect("rejected focus payload");
+        assert_eq!(rejected.outcome, FocusOutcome::Rejected);
+        assert!(!rejected.focused);
+    }
 }

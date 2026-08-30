@@ -274,8 +274,8 @@ impl HerdrClient {
             .to_owned();
         let agent_session = object
             .get("agent_session")
-            .and_then(Value::as_str)
-            .map(str::to_owned);
+            .cloned()
+            .unwrap_or(Value::Null);
         Ok(HerdrFocusAck {
             pane_id,
             terminal_id,

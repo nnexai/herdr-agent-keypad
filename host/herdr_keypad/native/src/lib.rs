@@ -199,6 +199,6 @@ pub struct HerdrSnapshot {
 pub struct HerdrFocusAck {
     pub pane_id: String,
     pub terminal_id: String,
-    pub agent_session: Option<String>,
+    pub agent_session: Value,
     pub focused: bool,
 }
