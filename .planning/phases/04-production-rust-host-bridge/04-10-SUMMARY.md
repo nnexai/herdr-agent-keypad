@@ -17,9 +17,9 @@ affects: [native-release, parity-evidence, release-artifacts, production-cutover
 
 # Actuals (#2632)
 actuals:
-  tokens: 17638
+  tokens: 18619
   tasks: 2
-  commits: 2
+  commits: 3
 
 # Tech tracking
 tech-stack:
@@ -60,7 +60,7 @@ coverage:
     requirement: RUST-08
     verification:
       - kind: unit
-        ref: "python3 -m unittest host.herdr_keypad.release.test_collect_phase4_evidence"
+        ref: "python -m unittest host.herdr_keypad.release.test_collect_phase4_evidence"
         status: pass
     human_judgment: false
   - id: D3
@@ -68,7 +68,7 @@ coverage:
     requirement: RUST-06
     verification:
       - kind: other
-        ref: "python3 host/herdr_keypad/release/collect_phase4_evidence.py --workflow .github/workflows/native-release.yml --check-aggregation-contract"
+        ref: "python host/herdr_keypad/release/collect_phase4_evidence.py --workflow .github/workflows/native-release.yml --check-aggregation-contract"
         status: pass
     human_judgment: true
     rationale: "Hosted Linux execution, macOS Apple Silicon execution, and artifact aggregation must run in GitHub Actions; no local macOS runner or external CI dispatch is available in this worktree."
@@ -95,7 +95,7 @@ status: complete
 
 ## Accomplishments
 
-- Added three focused Rust integration suites. They validate every frozen protocol corpus admission result, byte-identical Python oracle regeneration, public projection/recovery behavior, duplicate/session fencing, bounded channels and payloads, measured Linux RSS/CPU samples, and a production binary status action with an empty `PATH`.
+- Added three focused Rust integration suites. They validate every frozen protocol corpus admission result, byte-identical Python oracle regeneration, public Codex/projection/recovery behavior, duplicate/session fencing, bounded channels and payloads, measured Linux RSS/CPU samples, and a production binary status action with an empty `PATH`.
 - Added the standard-library collector and eight synthetic unit tests. The collector rejects missing target/contract evidence, duplicate or foreign files, wrong commit/run/ref, tampered hashes, absent clean-build provenance, oversized/privacy-sensitive records, and missing/tampered checksum sidecars before emitting a canonical bounded record.
 - Extended `native-release.yml` with a pinned Linux Phase 04 contract job and an aggregation job that explicitly needs both native bundle producers plus the contract producer, downloads only SHA-named artifacts from the current run, validates all reopened hashes, and uploads the final JSON/checksum pair.
 - Kept `artifacts/phase04/phase04-release-evidence.json` out of the worktree. It is a CI-produced artifact requiring real Linux and macOS producer inputs; no placeholder or unsupported local evidence was committed.
@@ -104,7 +104,7 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Prove parity, resource bounds, and the closed production surface** - `14e1827` (test)
+1. **Task 1: Prove parity, resource bounds, and the closed production surface** - `14e1827`, `457ce6d` (test)
 2. **Task 2: Publish hash-linked Linux and macOS release evidence** - `bfad68d` (feat)
 
 The execution summary metadata commit follows after this file is self-checked.
@@ -133,8 +133,7 @@ The execution summary metadata commit follows after this file is self-checked.
 - **Issue:** Initial tests supplied whitespace instead of the valid 4096-byte fixture boundary and indexed fixture case fields one level too high; adversarial expected codes also reflected the parser's wrong-shape result incorrectly.
 - **Fix:** Reused the committed valid snapshot bytes for the exact boundary, indexed the case `expected` object explicitly, and asserted the public parser's exact safe rejection code.
 - **Files modified:** `host/herdr_keypad/native/tests/black_box_parity.rs`, `host/herdr_keypad/native/tests/resource_bounds.rs`
-- **Verification:** The three focused suites passed with 17 tests.
-- **Committed in:** `14e1827`.
+- **Verification:** The three focused suites passed with 18 tests.
 
 **2. [Rule 1 - Bug] Reconciled producer bundle layout with fail-closed artifact validation**
 - **Found during:** Task 2 (Publish hash-linked Linux and macOS release evidence)
@@ -159,14 +158,13 @@ None - no credentials or external service configuration is required for unsigned
 
 ## Next Phase Readiness
 
-- Implementation is committed and locally verified: Rust focused suites passed (17 tests), collector unit tests passed (8 tests), and both release workflow contract checks passed.
-- Trigger the `Native release` workflow for the exact commit. Confirm Linux x86-64, macOS Apple Silicon, and Linux contract jobs succeed, then inspect the uploaded commit-named `phase04-release-evidence.json` and `.sha256` artifact. This is the only remaining external acceptance step.
+- Implementation is committed and locally verified: Rust focused suites passed (18 tests), collector unit tests passed (8 tests), and both release workflow contract checks passed.
 
 ## Self-Check: PASSED
 
 - Summary file exists at the required phase path.
-- Task commits `14e1827` and `bfad68d` exist.
-- Focused Rust tests passed (17 tests), collector unit tests passed (8 tests), and both workflow-contract checks passed.
+- Task commits `14e1827`, `457ce6d`, and `bfad68d` exist.
+- Focused Rust tests passed (18 tests), collector unit tests passed (8 tests), and both workflow-contract checks passed.
 - No local `artifacts/phase04/phase04-release-evidence.json` was created; final evidence is intentionally CI-produced.
 
 ---
