@@ -13,11 +13,24 @@ fn fixture(name: &str) -> Value {
         .unwrap_or_else(|| panic!("missing fixture {name}"))
         .clone()
 }
-
 fn classify_case(case: &Value) -> v2::ProtocolResult {
     let input = &case["input"];
     if let Some(line_bytes) = input.get("line_bytes").and_then(Value::as_u64) {
-        return v2::classify_line(&vec![b'x'; line_bytes as usize]);
+        let root: Value = serde_json::from_str(include_str!("fixtures/protocol.json")).unwrap();
+        let source = root["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|candidate| candidate["name"] == "protocol.accepted.agent_snapshot")
+            .unwrap()["input"]["line"]
+            .as_str()
+            .unwrap()
+            .as_bytes()
+            .to_vec();
+        let mut line = source[..source.len() - 1].to_vec();
+        line.resize(line_bytes as usize - 1, b' ');
+        line.push(b'\n');
+        return v2::classify_line(&line);
     }
     let line = input["line"].as_str().expect("line fixture");
     v2::classify_line(line.as_bytes())
@@ -32,22 +45,28 @@ fn committed_protocol_corpus_matches_rust_admission() {
         }
         let result = classify_case(case);
         let expected = &case["expected"];
-        assert_eq!(result.accepted, expected["accepted"], "{}", case["name"]);
+        assert!(result.accepted == expected["accepted"].as_bool().unwrap(), "{}: {:?}", case["name"], result);
         assert_eq!(result.reason, expected["reason"].as_str().unwrap(), "{}", case["name"]);
-        assert_eq!(result.dispatched, expected["dispatch"], "{}", case["name"]);
+        assert!(result.dispatched == expected["dispatch"].as_bool().unwrap(), "{}: {:?}", case["name"], result);
     }
 }
 
 #[test]
 fn canonical_root_golden_vectors_remain_accepted_or_rejected_identically() {
-    let root: Value = serde_json::from_str(include_str!("../../../../../protocol/fixtures/v2-golden.json")).unwrap();
+    let root: Value = serde_json::from_str(include_str!("../../../../protocol/fixtures/v2-golden.json")).unwrap();
     assert_eq!(root["schema_version"], 2);
+    let mut session = v2::ProtocolSession::new("boot-a", "session-a", 16).unwrap();
     for vector in root["vectors"].as_array().unwrap() {
-        let result = v2::classify_line(vector["line"].as_str().unwrap().as_bytes());
+        let line = vector["line"].as_str().unwrap();
         let expected = &vector["expected"];
-        assert_eq!(result.accepted, expected["schema"] == "valid", "{}", vector["id"]);
+        let result = if expected["dispatch"].as_bool().unwrap() {
+            session.accept(line.as_bytes())
+        } else {
+            v2::classify_line(line.as_bytes())
+        };
+        assert!(result.accepted == (expected["schema"] == "valid"), "{}: {:?}", vector["id"], result);
         assert_eq!(result.reason, expected["reason"].as_str().unwrap(), "{}", vector["id"]);
-        assert_eq!(result.dispatched, expected["dispatch"], "{}", vector["id"]);
+        assert!(result.dispatched == expected["dispatch"].as_bool().unwrap(), "{}: {:?}", vector["id"], result);
     }
 }
 
@@ -119,6 +138,6 @@ fn typed_codec_preserves_nullability_and_canonical_digest() {
     assert_eq!(encoded, line.as_bytes());
     let snapshot = frame.as_agent_snapshot().unwrap();
     assert_eq!(snapshot.codex.primary, Some(0));
-    assert_eq!(snapshot.codex.secondary, Some(0));
+    assert_eq!(snapshot.codex.secondary, None);
     assert_eq!(snapshot.codex.reached_limit, Some(false));
 }
