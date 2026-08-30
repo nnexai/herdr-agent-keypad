@@ -16,9 +16,9 @@ affects: [native-release, herdr-keypad-packaging, ci-artifacts]
 
 # Actuals (#2632)
 actuals:
-  tokens: 16122
+  tokens: 16394
   tasks: 2
-  commits: 6
+  commits: 8
 
 # Tech tracking
 tech-stack:
@@ -101,7 +101,7 @@ status: complete
 
 Each task was committed atomically:
 
-1. **Task 1: Define and verify a closed target bundle** - `da3f5f5` (test), `ed187be` (feat), `1b948f8` (test coverage)
+1. **Task 1: Define and verify a closed target bundle** - `da3f5f5` (test), `ed187be` (feat), `1b948f8` (test coverage), `fe8ee20` (fix)
 2. **Task 2: Build and test both native targets in CI** - `8d2e758` (feat), `f51b951` (fix)
 
 The execution summary metadata commit follows after this file is self-checked.
@@ -140,8 +140,16 @@ The execution summary metadata commit follows after this file is self-checked.
 - **Verification:** Workflow contract verifier passed after the correction.
 - **Committed in:** `f51b951`.
 
-**Total deviations:** 2 auto-fixed (2 Rule 1 bugs)
-**Impact on plan:** Both fixes were directly necessary for the scoped tests/workflow to execute; no runtime or packaging scope was added.
+**3. [Rule 1 - Bug] Made release policy tests target-portable**
+- **Found during:** Task 1 (Define and verify a closed target bundle)
+- **Issue:** The first focused tests used Linux-only `sha256sum` and hard-coded Linux ELF fixture metadata, which would make the mandated macOS native test job fail before packaging.
+- **Fix:** Use the existing Rust `sha2` dependency for hashing and select target-native `/bin/true`, target metadata, dependency tool, and expected target at compile time.
+- **Files modified:** `host/herdr_keypad/native/tests/release_bundle.rs`
+- **Verification:** Locked Linux release-bundle suite passed; macOS-specific branches are compile-time selected for the hosted Apple Silicon job.
+- **Committed in:** `fe8ee20`.
+
+**Total deviations:** 3 auto-fixed (3 Rule 1 bugs)
+**Impact on plan:** All fixes were directly necessary for the scoped tests/workflow to execute on both target families; no runtime or packaging scope was added.
 
 ## Issues Encountered
 
@@ -161,7 +169,7 @@ None - no credentials or external service configuration is required for the unsi
 
 - Summary file exists at the required phase path.
 - Release workflow, manifest schema, verifier, and focused test file exist.
-- Task commits `da3f5f5`, `ed187be`, `1b948f8`, `8d2e758`, and `f51b951` exist.
+- Task commits `da3f5f5`, `ed187be`, `1b948f8`, `8d2e758`, `f51b951`, and `fe8ee20` exist.
 - Locked release-bundle tests passed (10 tests).
 - Workflow-contract verification and Python/schema static parsing passed.
 - On-disk file and commit existence checks passed; the summary was the only expected untracked file before its metadata commit.
