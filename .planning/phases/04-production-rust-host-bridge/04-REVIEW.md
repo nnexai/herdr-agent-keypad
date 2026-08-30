@@ -1,6 +1,6 @@
 ---
 phase: 04-production-rust-host-bridge
-reviewed: 2026-08-30T06:48:53Z
+reviewed: 2026-08-30T07:04:37Z
 depth: deep
 files_reviewed: 51
 files_reviewed_list:
@@ -56,62 +56,44 @@ files_reviewed_list:
   - host/herdr_keypad/scripts/ensure-bridge.sh
   - host/herdr_keypad/tests/export_rust_oracle.py
 findings:
-  critical: 2
-  warning: 1
+  critical: 0
+  warning: 0
   info: 0
-  total: 3
-status: issues_found
+  total: 0
+status: clean
 ---
 
 # Phase 04: Code Review Report
 
-**Reviewed:** 2026-08-30T06:48:53Z  
-**Depth:** deep  
+**Reviewed:** 2026-08-30T07:04:37Z  
+**Depth:** deep; narrow closure check of CR-01, CR-02, and WR-01  
 **Files Reviewed:** 51  
-**Status:** issues_found
+**Status:** clean
 
 ## Summary
 
-Review scope was computed from all ten `04-*-SUMMARY.md` artifacts and cross-checked against `git diff 89e7462^..HEAD`; the latter additionally includes the current native control-socket lifecycle fix. Phase context, plans, research, and the frozen Python oracle were used to assess the Rust cutover contract. Hosted release execution and GitHub Actions runs are intentionally not reviewed as Phase 04 blockers.
+Review scope was computed from all ten `04-*-SUMMARY.md` artifacts and cross-checked against `git diff 89e7462^..HEAD`; the latter includes the native control-socket lifecycle fix. Phase context, plans, research, and the frozen Python oracle informed the original review. Hosted release execution and GitHub Actions runs remain intentionally outside the Phase 04 blocker boundary.
 
-The direct startup/control smoke test covers `start → status → stop`, but two core lifecycle paths remain observably incorrect: `restart` does not restart the process or adopt a changed configuration, and a routine USB disconnect is permanently rejected until the device reboots. The crate also retains a second public, pre-cutover coordinator with materially weaker socket safety, creating an unsupported production-capable path beside `RuntimeCoordinator`.
+The narrow closure review inspected only the merged implementations and regression coverage for the three prior findings. All three findings are resolved. The focused merged suite is reported by the integration owner as 50/50 passing, `cargo check` passes, and live deployment proved a same-config restart replaced PID `699375` with `700051`, exited the old process, recreated `bridge.sock`, and returned running status. No UAT or hardware action is required for this closure.
 
 ## Narrative Findings (AI reviewer)
 
-## Critical Issues
+## Resolved Findings
 
-### CR-01: `restart` acknowledges success without restarting or applying the requested configuration
+### CR-01: Resolved — restart crosses a real process boundary and reloads startup configuration
 
-**File:** `host/herdr_keypad/native/src/ports/lifecycle.rs:149-157`, `host/herdr_keypad/native/src/core/orchestrator.rs:220-228`
+**Evidence:** `LifecycleOwner::request_restart` now accepts the requested identity and marks the current authority for shutdown (`host/herdr_keypad/native/src/ports/lifecycle.rs:195-217`). Once the `restarted` reply has been sent, `RuntimeCoordinator::run` invokes `shutdown_for_restart` and exits (`host/herdr_keypad/native/src/core/orchestrator.rs:220-233`), closing ingress and dropping authority before the replacement binary starts. `production_binary_restart_replaces_pid_reloads_config_and_reopens_socket` proves changed-config and same-config restart paths: replacement PID, old-process exit, socket recreation, changed configuration identity, and subsequent stop (`host/herdr_keypad/native/tests/production_surface.rs:128-215`). Current live deployment corroborates the same-config PID replacement and running control socket/status.
 
-**Issue:** A `restart` control request whose `config_identity` differs from the running process is always converted to `RestartRequired` at `LifecycleOwner::handle_control`; no pending configuration is installed and no replacement process is started. For an identity that matches, `restart_with_pending()` only mutates in-memory lifecycle flags (`active`, `herdr_alive`, `sessions_valid`, and `session_epoch`). The coordinator then continues its existing Herdr event stream, Codex state, USB session, and startup-derived configuration. It sends a `restarted` reply at line 222 without a process restart or resource reinitialization.
+### CR-02: Resolved — a same-boot keypad reconnects through a fresh host session
 
-This violates the explicit lifecycle command contract: configuration is startup-only, so a changed config must take effect through `restart`; a same-config restart must still actually recreate the runtime boundary. The current `production_binary_start_status_stop_owns_control_socket_for_authority_lifetime` test never invokes `restart`, so it cannot detect this false-success path.
+**Evidence:** `UsbPort` no longer stores or rejects `previous_device_boot` (`host/herdr_keypad/native/src/ports/usb.rs:370-392,487-494,548-553`). Each hello still creates a fresh host session and requires it in the acknowledgement (`host/herdr_keypad/native/src/ports/usb.rs:458-490`); post-hello receive admission continues to require exact current boot/session identity and strictly increasing sequence. The added regression `same_boot_id_reconnects_with_fresh_host_session_and_rejects_old_frames` exercises a reconnect with unchanged device boot ID, verifies a fresh session, and rejects stale-session frames (`host/herdr_keypad/native/tests/usb_platform.rs:230-308`).
 
-**Fix:** Make restart a process-boundary operation. After replying (or with an acknowledgement/hand-off protocol), request coordinator shutdown and let the Herdr action start a new native process with freshly loaded `StartupConfig`; do not manufacture `Restarted` from `LifecycleOwner` alone. If the existing action model cannot launch a replacement, return a bounded rejection such as `restart_required` and document/implement the explicit `stop` then `start` sequence instead. Add an integration test that changes `config.toml`, invokes `restart`, and proves the replacement PID/config identity and reopened control socket; also test same-config restart reinitializes the runtime.
+### WR-01: Resolved — obsolete public coordinator and unsafe Herdr socket path were removed
 
-### CR-02: USB reconnects to the same still-booted keypad are rejected forever
-
-**File:** `host/herdr_keypad/native/src/ports/usb.rs:489-491`, `host/herdr_keypad/native/src/ports/usb.rs:553-556`
-
-**Issue:** Every disconnect/error calls `reset_link`, which saves the connected device's `device_boot_id` in `previous_device_boot`. On the next `connect`, `perform_hello` rejects the exact same boot ID with `SessionMismatch`. A normal cable/CDC reset or host-side reconnect does not reboot the keypad, so its boot ID remains unchanged. The coordinator consequently backs off and retries indefinitely, never restoring the USB session, snapshots, or keypress focus path until the physical device is rebooted.
-
-This directly contradicts the required fresh-session-on-reconnect behavior. The host already creates a new opaque `host_session` for every hello (lines 460-464), so the previous host session's sequence/ACK authority is fenced without treating a stable device boot ID as invalid.
-
-**Fix:** Remove the `previous_device_boot` rejection (and the state whose sole purpose is that comparison), while retaining the new host session ID and strict boot/session equality checks in `receive_v2`. Add a regression test that completes hello, closes the transport without changing the fixture device boot ID, then reconnects and successfully publishes/ACKs a fresh snapshot; verify frames from the old session remain rejected.
-
-## Warnings
-
-### WR-01: Obsolete public coordinator retains an unsafe alternate Herdr implementation after production cutover
-
-**File:** `host/herdr_keypad/native/src/lib.rs:623-982`
-
-**Issue:** `lib.rs` still exports the older public `Coordinator`/`HerdrSocket` implementation alongside the actual `core::RuntimeCoordinator`. It has a different projection/focus protocol and an unbounded `BufReader::read_until` allocation before its length check (`lib.rs:886-893`), while its socket operations have no I/O deadline. This is not merely unused test scaffolding: `Coordinator` is public and callable by any crate consumer, so it preserves a reachable alternate bridge path that can hang on a silent socket or allocate beyond `HERDR_LINE_LIMIT`. Maintaining two coordinator implementations also defeats the intended Python-to-Rust clean cutover and makes future fixes prone to landing on the wrong behavior.
-
-**Fix:** Delete the superseded `Coordinator`, `HerdrSocket`, and their legacy boundary types if they have no remaining caller. If a portable coordinator is intentionally retained, make it private/test-only and refactor it to use the bounded, timeout-enforced `ports::herdr::HerdrClient` contract; do not expose both production paths.
+**Evidence:** `host/herdr_keypad/native/src/lib.rs` is now the 204-line domain/port contract module. The duplicate public `Coordinator` and `HerdrSocket` implementation, including its unbounded `read_until` path, are absent; production wiring remains through `core::RuntimeCoordinator`. The merged diff removes 926 lines from the obsolete path, and the associated obsolete tracer test was removed in the follow-up cleanup commit.
 
 ---
 
-_Reviewed: 2026-08-30T06:48:53Z_  
+_Reviewed: 2026-08-30T07:04:37Z_  
 _Reviewer: the agent (gsd-code-reviewer)_  
-_Depth: deep_
+_Depth: deep closure review_
