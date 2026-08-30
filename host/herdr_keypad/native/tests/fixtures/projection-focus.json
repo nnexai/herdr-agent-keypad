@@ -664,7 +664,7 @@
     }
   ],
   "family": "projection-focus",
-  "fixture_sha256": "6ab0f20723b4ae49afc166df039a9ca554a75477a35c73a78a3ce31781d05876",
+  "fixture_sha256": "30fc00bb25a5291d34fff9379732dec312f3b59c803606205ff2a36956e9d9d7",
   "schema_version": 1,
   "sources": [
     {
@@ -710,7 +710,7 @@
     {
       "kind": "oracle-source",
       "path": "host/herdr_keypad/tests/test_integration.py",
-      "sha256": "734624bc9e7f3df3b09d2bbb2b5f252fd669d2e26bf76a50b6d9a0571b9f8bb5"
+      "sha256": "b4d1f97fe8180bfb1c94accb4f4ffe88ea2e9d2b39c884acfa214076e2c43e69"
     },
     {
       "kind": "oracle-source",
