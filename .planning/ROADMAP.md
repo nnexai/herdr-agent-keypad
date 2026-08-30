@@ -383,7 +383,7 @@ Plans:
   7. The installed Linux Herdr plugin exercises native startup, status, same-configuration restart, single-instance authority, configuration/state placement, and removal of the Python launcher from the supported production path. Exact-device reconnect, source recovery, and clean shutdown retain automated contract coverage; Phase 5 owns physical acceptance. The corresponding macOS adapter, lifecycle, and bundle behavior remain covered by portable tests and deterministic release contracts, not an unrun hosted claim.
   8. Focused native tests and local release checks compare Rust against the frozen Python contract with malformed/oversized frames, duplicate messages, stale identities, reconnects, missing optional Codex fields, unavailable push events, and sustained idle/traffic resource measurements. The retained workflow defines reproducible, versioned, unsigned target artifacts for a later hosted run; Phase 4 makes no macOS execution, signing, notarization, publication, or upload claim.
 
-**Plans:** 10/10 plans executed
+**Plans:** 10/10 plans complete
 
 Plans:
 
@@ -450,5 +450,5 @@ Plans:
 | 3. Truthful Codex Capacity and Device Menu | 9/9 | Complete    | 2026-08-21 |
 | 03.1 High-Fidelity Animation and Interaction Polish | 8/8 | Complete    | 2026-08-21 |
 | 03.2 Focus-Then-Hold USB Keyboard | 10/10 | Complete | 2026-08-22 |
-| 4. Production Rust Host Bridge | 10/10 | Complete | 2026-08-30 |
+| 4. Production Rust Host Bridge | 10/10 | Complete    | 2026-08-30 |
 | 5. Independent Recovery and Actual-Device Acceptance | 0/TBD | Not started | - |
