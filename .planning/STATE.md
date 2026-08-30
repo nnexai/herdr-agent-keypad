@@ -1,39 +1,20 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.0
-current_phase: 02.1
-current_phase_name: Reliable Live Synchronization, Focus, and Flicker-Free Rendering
-status: planning
-stopped_at: Phase 04 complete, ready to plan Phase 02.1
-last_updated: "2026-08-30T08:01:34.613Z"
-last_activity: 2026-08-30
-last_activity_desc: Phase 04 complete, transitioned to Phase 02.1
-state_head: 519f0d03101363b0eedcc019e7ad08527faf51cf
-progress:
-  total_phases: 9
-  completed_phases: 6
-  total_plans: 63
-  completed_plans: 63
-milestone_name: milestone
----
-
-Total Phases: 6
----
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
 current_phase: 5
 current_phase_name: Independent Recovery and Actual-Device Acceptance
 status: planning
 stopped_at: Phase 04 complete, ready to plan Phase 5
-last_updated: "2026-08-21T01:20:00Z"
-last_activity: 2026-08-21
+last_updated: "2026-08-30T08:01:34.613Z"
+last_activity: 2026-08-30
 last_activity_desc: Phase 04 complete, transitioned to Phase 5
-progress:[██████████] 100%
-  total_phases: 7
-  completed_phases: 4
-  total_plans: 35
-  completed_plans: 34
+state_head: 519f0d03101363b0eedcc019e7ad08527faf51cf
+progress:
+  total_phases: 9
+  completed_phases: 8
+  total_plans: 63
+  completed_plans: 63
+milestone_name: milestone
 ---
 
 # Project State
@@ -43,22 +24,22 @@ progress:[██████████] 100%
 See: .planning/PROJECT.md (updated 2026-08-20)
 
 **Core value:** The device must make agents that need attention immediately visible and let the user switch to the right herdr agent with one physical keypress.
-**Current focus:** Phase 04 — Production Rust Host Bridge
+**Current focus:** Phase 5 — Independent Recovery and Actual-Device Acceptance
 
 ## Current Position
 
-Phase: 02.1 — Reliable Live Synchronization, Focus, and Flicker-Free Rendering
+Phase: 5 — Independent Recovery and Actual-Device Acceptance
 Plan: Not started
-Status: Executing Phase 04
-Last activity: 2026-08-30 — Phase 04 complete, transitioned to Phase 02.1
+Status: Planning
+Last activity: 2026-08-30 — Phase 04 complete, transitioned to Phase 5
 
-Progress: [██████████] 100%
+Progress: [██████████] 100% (63/63 existing plans; 8/9 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 33
+- Total plans completed: 63
 - Average duration: 14 min
 - Total execution time: 0.2 hours
 
@@ -264,7 +245,7 @@ None yet.
 
 ## Session Continuity
 
-**Resume file:** .planning/phases/04-production-rust-host-bridge/04-CONTEXT.md
+**Resume file:** .planning/ROADMAP.md
 
-Last session: 2026-08-29T21:35:58.025Z
-Stopped at: Phase 04 complete, ready to plan Phase 02.1
+Last session: 2026-08-30T08:01:34.613Z
+Stopped at: Phase 04 complete, ready to plan Phase 5
