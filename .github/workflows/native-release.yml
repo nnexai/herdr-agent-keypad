@@ -1,0 +1,232 @@
+name: Native release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x86_64:
+    name: Linux x86-64 unsigned bundle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout workflow commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Build, test, inspect, and package two clean Linux roots
+        shell: bash
+        env:
+          TARGET: x86_64-unknown-linux-gnu
+          PLUGIN: host/herdr_keypad
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/herdr-keypad-$TARGET"
+          rm -rf "$WORK"
+          mkdir -p "$WORK/root-a" "$WORK/root-b" "$WORK/out"
+
+          # These are independent archive streams of the exact workflow commit.
+          git archive --format=tar "$GITHUB_SHA" > "$WORK/source-a.tar"
+          tar -xf "$WORK/source-a.tar" -C "$WORK/root-a"
+          git archive --format=tar "$GITHUB_SHA" > "$WORK/source-b.tar"
+          tar -xf "$WORK/source-b.tar" -C "$WORK/root-b"
+          test -f "$WORK/root-a/$PLUGIN/native/rust-toolchain.toml"
+          test -f "$WORK/root-b/$PLUGIN/native/rust-toolchain.toml"
+
+          TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$WORK/root-a/$PLUGIN/native/rust-toolchain.toml" | head -n 1)"
+          test -n "$TOOLCHAIN"
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --target "$TARGET"
+          rustup show active-toolchain
+
+          (
+            cd "$WORK/root-a"
+            export CARGO_HOME="$WORK/cargo-home-a"
+            export CARGO_TARGET_DIR="$WORK/target-a"
+            export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
+            cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
+            cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform
+            cargo build --release --locked --target x86_64-unknown-linux-gnu --manifest-path "$PLUGIN/native/Cargo.toml"
+          )
+          (
+            cd "$WORK/root-b"
+            export CARGO_HOME="$WORK/cargo-home-b"
+            export CARGO_TARGET_DIR="$WORK/target-b"
+            export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
+            cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
+            cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform
+            cargo build --release --locked --target x86_64-unknown-linux-gnu --manifest-path "$PLUGIN/native/Cargo.toml"
+          )
+
+          BIN_A="$WORK/root-a/$PLUGIN/native/target/$TARGET/release/herdr-keypad-native"
+          BIN_B="$WORK/root-b/$PLUGIN/native/target/$TARGET/release/herdr-keypad-native"
+          test -x "$BIN_A" && test -x "$BIN_B"
+          HASH_A="$(sha256sum "$BIN_A" | cut -d ' ' -f 1)"
+          HASH_B="$(sha256sum "$BIN_B" | cut -d ' ' -f 1)"
+          test "$HASH_A" = "$HASH_B"
+          readelf -h "$BIN_A"
+          ldd "$BIN_A"
+          readelf -h "$BIN_B"
+          ldd "$BIN_B"
+
+          mkdir -p "$WORK/out/bin"
+          cp "$WORK/root-a/$PLUGIN/herdr-plugin.toml" "$WORK/out/herdr-plugin.toml"
+          cp "$WORK/root-a/$PLUGIN/LIFECYCLE.md" "$WORK/out/LIFECYCLE.md"
+          cp "$BIN_A" "$WORK/out/bin/herdr-keypad"
+          python3 "$WORK/root-a/$PLUGIN/release/verify_bundle.py" \
+            --write-manifest \
+            --output "$WORK/out/release-manifest.json" \
+            --schema "$WORK/root-a/$PLUGIN/bundle/manifest.schema.json" \
+            --plugin-root "$WORK/root-a/$PLUGIN" \
+            --binary "$WORK/out/bin/herdr-keypad" \
+            --binary-b "$BIN_B" \
+            --target "$TARGET" \
+            --source-revision "$GITHUB_SHA" \
+            --source-archive-a "$WORK/source-a.tar" \
+            --source-archive-b "$WORK/source-b.tar" \
+            --cargo-lock "$WORK/root-a/$PLUGIN/native/Cargo.lock" \
+            --toolchain "$TOOLCHAIN" \
+            --rustc "$(rustc --version)" \
+            --cargo "$(cargo --version)" \
+            --test-command "cargo test --locked --manifest-path $PLUGIN/native/Cargo.toml --test release_bundle"
+          python3 "$WORK/root-a/$PLUGIN/release/verify_bundle.py" \
+            --bundle "$WORK/out" \
+            --target "$TARGET" \
+            --schema "$WORK/root-a/$PLUGIN/bundle/manifest.schema.json" \
+            --source-revision "$GITHUB_SHA"
+          grep -q '"status": "not-run"' "$WORK/out/release-manifest.json"
+          sha256sum "$WORK/source-a.tar" > "$WORK/out/source-a.sha256"
+          sha256sum "$WORK/source-b.tar" > "$WORK/out/source-b.sha256"
+          sha256sum "$BIN_A" > "$WORK/out/binary-a.sha256"
+          sha256sum "$BIN_B" > "$WORK/out/binary-b.sha256"
+          printf 'source_revision=%s\nsource_a_sha256=%s\nsource_b_sha256=%s\nbinary_a_sha256=%s\nbinary_b_sha256=%s\n' \
+            "$GITHUB_SHA" "$(cut -d ' ' -f 1 "$WORK/out/source-a.sha256")" \
+            "$(cut -d ' ' -f 1 "$WORK/out/source-b.sha256")" "$HASH_A" "$HASH_B" \
+            > "$WORK/out/provenance-$TARGET.txt"
+          tar -czf "$WORK/out/herdr-keypad-$TARGET.tar.gz" -C "$WORK/out" \
+            herdr-plugin.toml LIFECYCLE.md bin/herdr-keypad release-manifest.json
+
+      - name: Upload Linux unsigned bundle and provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: herdr-keypad-linux-x86_64
+          if-no-files-found: error
+          path: ${{ runner.temp }}/herdr-keypad-x86_64-unknown-linux-gnu/out
+
+  macos-arm64:
+    name: macOS Apple Silicon unsigned bundle
+    runs-on: macos-14-xlarge
+    timeout-minutes: 30
+    steps:
+      - name: Checkout workflow commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Build, test, inspect, and package two clean Apple Silicon roots
+        shell: bash
+        env:
+          TARGET: aarch64-apple-darwin
+          PLUGIN: host/herdr_keypad
+        run: |
+          set -euo pipefail
+          if [[ "$(uname -m)" != "arm64" ]]; then
+            echo "macOS release requires an Apple Silicon arm64 runner" >&2
+            exit 1
+          fi
+          WORK="$RUNNER_TEMP/herdr-keypad-$TARGET"
+          rm -rf "$WORK"
+          mkdir -p "$WORK/root-a" "$WORK/root-b" "$WORK/out"
+
+          # Each source root is a fresh extraction of the commit being released.
+          git archive --format=tar "$GITHUB_SHA" > "$WORK/source-a.tar"
+          tar -xf "$WORK/source-a.tar" -C "$WORK/root-a"
+          git archive --format=tar "$GITHUB_SHA" > "$WORK/source-b.tar"
+          tar -xf "$WORK/source-b.tar" -C "$WORK/root-b"
+          test -f "$WORK/root-a/$PLUGIN/native/rust-toolchain.toml"
+          test -f "$WORK/root-b/$PLUGIN/native/rust-toolchain.toml"
+
+          TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$WORK/root-a/$PLUGIN/native/rust-toolchain.toml" | head -n 1)"
+          test -n "$TOOLCHAIN"
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --target "$TARGET"
+          rustup show active-toolchain
+
+          (
+            cd "$WORK/root-a"
+            export CARGO_HOME="$WORK/cargo-home-a"
+            export CARGO_TARGET_DIR="$WORK/target-a"
+            export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
+            cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
+            cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform macos_
+            cargo build --release --locked --target aarch64-apple-darwin --manifest-path "$PLUGIN/native/Cargo.toml"
+          )
+          (
+            cd "$WORK/root-b"
+            export CARGO_HOME="$WORK/cargo-home-b"
+            export CARGO_TARGET_DIR="$WORK/target-b"
+            export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
+            cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
+            cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform macos_
+            cargo build --release --locked --target aarch64-apple-darwin --manifest-path "$PLUGIN/native/Cargo.toml"
+          )
+
+          BIN_A="$WORK/root-a/$PLUGIN/native/target/$TARGET/release/herdr-keypad-native"
+          BIN_B="$WORK/root-b/$PLUGIN/native/target/$TARGET/release/herdr-keypad-native"
+          test -x "$BIN_A" && test -x "$BIN_B"
+          HASH_A="$(shasum -a 256 "$BIN_A" | cut -d ' ' -f 1)"
+          HASH_B="$(shasum -a 256 "$BIN_B" | cut -d ' ' -f 1)"
+          test "$HASH_A" = "$HASH_B"
+          otool -hv "$BIN_A"
+          otool -L "$BIN_A"
+          otool -hv "$BIN_B"
+          otool -L "$BIN_B"
+
+          mkdir -p "$WORK/out/bin"
+          cp "$WORK/root-a/$PLUGIN/herdr-plugin.toml" "$WORK/out/herdr-plugin.toml"
+          cp "$WORK/root-a/$PLUGIN/LIFECYCLE.md" "$WORK/out/LIFECYCLE.md"
+          cp "$BIN_A" "$WORK/out/bin/herdr-keypad"
+          python3 "$WORK/root-a/$PLUGIN/release/verify_bundle.py" \
+            --write-manifest \
+            --output "$WORK/out/release-manifest.json" \
+            --schema "$WORK/root-a/$PLUGIN/bundle/manifest.schema.json" \
+            --plugin-root "$WORK/root-a/$PLUGIN" \
+            --binary "$WORK/out/bin/herdr-keypad" \
+            --binary-b "$BIN_B" \
+            --target "$TARGET" \
+            --source-revision "$GITHUB_SHA" \
+            --source-archive-a "$WORK/source-a.tar" \
+            --source-archive-b "$WORK/source-b.tar" \
+            --cargo-lock "$WORK/root-a/$PLUGIN/native/Cargo.lock" \
+            --toolchain "$TOOLCHAIN" \
+            --rustc "$(rustc --version)" \
+            --cargo "$(cargo --version)" \
+            --test-command "cargo test --locked --manifest-path $PLUGIN/native/Cargo.toml --test release_bundle"
+          python3 "$WORK/root-a/$PLUGIN/release/verify_bundle.py" \
+            --bundle "$WORK/out" \
+            --target "$TARGET" \
+            --schema "$WORK/root-a/$PLUGIN/bundle/manifest.schema.json" \
+            --source-revision "$GITHUB_SHA"
+          grep -q '"status": "not-run"' "$WORK/out/release-manifest.json"
+          shasum -a 256 "$WORK/source-a.tar" > "$WORK/out/source-a.sha256"
+          shasum -a 256 "$WORK/source-b.tar" > "$WORK/out/source-b.sha256"
+          shasum -a 256 "$BIN_A" > "$WORK/out/binary-a.sha256"
+          shasum -a 256 "$BIN_B" > "$WORK/out/binary-b.sha256"
+          printf 'source_revision=%s\nsource_a_sha256=%s\nsource_b_sha256=%s\nbinary_a_sha256=%s\nbinary_b_sha256=%s\n' \
+            "$GITHUB_SHA" "$(cut -d ' ' -f 1 "$WORK/out/source-a.sha256")" \
+            "$(cut -d ' ' -f 1 "$WORK/out/source-b.sha256")" "$HASH_A" "$HASH_B" \
+            > "$WORK/out/provenance-$TARGET.txt"
+          tar -czf "$WORK/out/herdr-keypad-$TARGET.tar.gz" -C "$WORK/out" \
+            herdr-plugin.toml LIFECYCLE.md bin/herdr-keypad release-manifest.json
+
+      - name: Upload macOS unsigned bundle and provenance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: herdr-keypad-macos-arm64
+          if-no-files-found: error
+          path: ${{ runner.temp }}/herdr-keypad-aarch64-apple-darwin/out
