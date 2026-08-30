@@ -2,15 +2,27 @@
 status: awaiting_human_verify
 trigger: "User reports live physical focus switching still does not work and Codex limits show unavailable while native status reports ready. This is ground truth: runtime is not stable or production-ready."
 created: 2026-08-30T12:29:01Z
-updated: 2026-08-30T13:18:00Z
+updated: 2026-08-30T13:14:53Z
 ---
 
 ## Current Focus
 
-hypothesis: confirmed — readiness used live collector/link lifecycle rather than acknowledged display state and successful action-path evidence
-test: after deployment, use one ordinary agent-key press to exercise the current-generation focus path once; then inspect bounded read-only status evidence without retries or other device stimulus
-expecting: ready remains false while action_path is untested/rejected or the exact acknowledged Codex payload is unavailable; only an accepted focus result for the current host epoch/revision plus an ACKed displayable current Codex window can make ready
-next_action: human presses exactly one agent key once for the pane Herdr should focus, does not retry or use menu/encoder/other keys, and reports whether focus changed; Main then reads status to capture the resulting focus_accepted or focus_rejected/device_unavailable evidence
+reasoning_checkpoint:
+  hypothesis: "confirmed — RuntimeCoordinator authorized physical focus against transient InboxProjection.current instead of the exact snapshot the device ACKed and still displayed; invalidation and pending refresh therefore changed authorization ownership before display ownership changed."
+  confirming_evidence:
+    - "RED ordinary-invalidation case returned Stale instead of Accepted for the exact displayed binding; GREEN after explicit acknowledged-snapshot authorization."
+    - "RED newer-unacknowledged-generation case returned WrongRevision instead of Accepted; GREEN while all exact identity fences remained enabled."
+    - "RED ACKed-Codex case returned Unavailable instead of Ready after only an unrelated pending generation advanced; GREEN after status ownership moved to the full ACKed view."
+    - "RED current Codex collection retained CodexUnavailable and unchanged ACK/Codex churn evicted FocusRejected; both GREEN after corrected assignment and state-change-only recording."
+  falsification_test: "Any focused regression returning Stale/WrongRevision for the retained displayed view, any negative fence accepting a changed identity, or ordinary churn evicting FocusRejected would falsify the fix."
+  fix_rationale: "PendingPublication now owns the exact projection and displayed Codex state sent on the wire; only an exact accepted ACK installs that full view, and FocusExecutor requires it as its authorization snapshot while still performing a complete live identity read."
+  blind_spots: "The tested release is now deployed with sole native serial authority, but no post-deploy physical focus gesture has occurred. One human key press remains the final behavioral oracle."
+  candidate_causes:
+    - "code/state: transient refreshed/invalidation projection and exact displayed projection were conflated."
+    - "environment/timing: Herdr invalidation and Codex cadence interleaved between device ACK and intent."
+    - "data/status: successful Codex collection assigned CodexUnavailable, while unchanged ACK/republication events flooded the bounded transition ring."
+  and_gate: "yes — valid displayed data plus intervening current-generation churn triggered focus rejection; independent Codex assignment and transition-recording defects explained the inconsistent status and lost evidence."
+next_action: "Human presses exactly one agent key once for the pane Herdr should focus, does not retry or use menu, encoder, another key, firmware, or probe, and reports whether focus changed; Main then performs the bounded read-only follow-up."
 
 ## Symptoms
 
@@ -67,44 +79,95 @@ started: after deployment of host ACK/readiness fixes
   found: "No firmware, probe, menu, encoder, key, or synthetic focus stimulus was used during validation or deployment."
   implication: "The active checkpoint remains awaiting_human_verify. One normal agent-key press is now required to produce the bounded focus-path evidence."
 
+- timestamp: 2026-08-30T12:59:16Z
+  checked: user multi-key focus attempt and bounded post-attempt status supplied as ground truth
+  found: "The user pressed multiple agent keys and none focused. Latest status is aggregate stale with device ready, Herdr stale, Codex unavailable, and last_error=focus_rejected. The bounded transition ring no longer retains the actionable focus outcome because snapshot_acknowledged/codex_connected churn overwrote it."
+  implication: "The deployed readiness proof did not repair physical focus execution. Investigation must bind intent and status to the exact ACKed/displayed projection, keep Herdr source health independently truthful, correct Codex error clearing, and preserve actionable focus evidence against ordinary ACK/republication churn. No further user gesture is permitted before a source fix is deployed."
+
+- timestamp: 2026-08-30T13:02:58Z
+  checked: five deterministic focused regression cases before source changes
+  found: "RED: ordinary invalidation returned FocusStatus::Stale instead of Accepted; newer unacknowledged projection returned WrongRevision instead of Accepted; ACKed displayable Codex became Unavailable instead of Ready when only a pending Herdr generation advanced; successful current Codex collection retained Some(CodexUnavailable); 36 repeated unchanged exact ACK/Codex publications evicted FocusRejected from the 32-entry transition ring."
+  implication: "The root causes are confirmed at the acknowledged-view ownership, Codex error assignment, and transition recording seams. These are deterministic state-management Bohrbugs triggered by live event ordering, not protocol schema mismatches."
+
+- timestamp: 2026-08-30T13:09:22Z
+  checked: focused GREEN and held-out regression fences after acknowledged-view cutover
+  found: "GREEN: core::orchestrator::tests 19/19; production_surface 7/7; projection_focus_parity 10/10; herdr_parity different_structured_session_remains_rejected 1/1; codex_parity sparse_invalid_shapes_are_transactional_and_account_reset_discards_cache 1/1. The exact five former RED cases are included and pass."
+  implication: "Acknowledged focus/Codex ownership, current Codex error clearing, bounded transition retention, and all existing epoch/revision/slot/entry/pane/terminal/session/source-revision plus selection-only fences hold deterministically. No live/deploy/commit/archive action was taken."
+
+- timestamp: 2026-08-30T13:14:53Z
+  checked: final acknowledged-view integration validation and atomic source/test commit
+  found: "Focused locked suites passed 19 orchestrator + 7 production_surface + 10 projection_focus_parity + 1 structured-session fence + 1 Codex transaction fence = 38 tests. Full cargo test --locked passed 126 tests across 15 suites with 1 ignored. The four native source/test files were committed atomically as 9e25f95."
+  implication: "The displayed-view ownership fix and its held-out identity, production, projection, and Codex fences are committed and deterministically GREEN."
+
+- timestamp: 2026-08-30T13:14:53Z
+  checked: clean locked release build and byte-identical installed-plugin staging
+  found: "cargo clean followed by cargo build --locked --release succeeded. target/release/herdr-keypad-native and /home/nnex/.local/share/herdr/plugins/herdr-keypad/bin/herdr-keypad both have SHA-256 c96d726868d97d6c62d85c5092f1f24b59134095a97884b8d7a7b213870a1d3c, and cmp reported exact identity."
+  implication: "The enabled Herdr plugin contains exactly the tested release bytes."
+
+- timestamp: 2026-08-30T13:14:53Z
+  checked: exactly one Herdr-managed restart and sole native production authority
+  found: "Herdr action plugin-log-69 is the sole valid restart dispatch. One malformed CLI argument-order attempt exited 2 before action dispatch and caused no restart. Old native PID 1399642 exited; sole new native PID 1502977 runs the staged bin/herdr-keypad restart authority, owns FD 9 -> /dev/ttyACM0, and fuser reports only 1502977. The Python keypad-runtime process scan returned no rows."
+  implication: "Exactly one managed authority replacement activated the staged Rust release; it is the sole serial owner and Python remains absent."
+
+- timestamp: 2026-08-30T13:14:53Z
+  checked: single post-startup read-only status and human-verification boundary
+  found: "The only post-deploy status action, plugin-log-70, succeeded with state=stale, device_state=ready, herdr_state=running, codex_state=ready, reconnect_attempt=0, backoff_ms=0, last_error=null. Its transitions are bridge_started@0, codex_connected@1, snapshot_acknowledged@2, codex_unavailable@3, codex_connected@4; no focus outcome exists. No firmware, probe, menu, encoder, key, or synthetic focus stimulus was used."
+  implication: "Startup, acknowledged display ownership, Codex recovery, and truthful pre-gesture stale state are live. The checkpoint stays active and unresolved pending exactly one ordinary agent-key press."
+
 ## Resolution
 
 root_cause:
-  - "Codex: status consumed the collector's latest in-memory `current` view while the physical device displayed the last exact ACKed payload. PendingPublication did not retain whether that payload had a displayable current primary/secondary window, so collector success could report ready over an ACKed unavailable tile."
-  - "Focus: snapshot/link ACK was treated as sufficient action readiness. RuntimeCoordinator discarded FocusOutcome after transmission and retained no generation-scoped success proof or rejection/transmit evidence, so untested, rejected, failed, or lost focus operations could coexist with ready and last_error null."
-  - "The installed Codex 0.151.0 and Herdr 0.8.2 schemas match the production adapters; focus target, method, response extraction, and native/firmware result field serialization are not the diagnosed mismatches."
+  - "Focus authorization had two competing owners: the device emitted an intent from its exact ACKed/displayed projection, but FocusExecutor compared it with InboxProjection.current. Ordinary Herdr invalidation immediately manufactured and published a newer stale revision, and a fully refreshed but not-yet-ACKed generation also replaced current; both made every still-visible binding fail before any live identity/focus call."
+  - "PendingPublication retained only epoch/revision/source plus a Codex boolean, and acknowledged state retained only a tuple. Status therefore compared ACK evidence and focus proof with transient current and the live Codex collector instead of the exact displayed generation."
+  - "A successful current Codex collection assigned Some(CodexUnavailable) instead of clearing it."
+  - "Every exact ACK and every Codex republication appended transitions even when no state changed. Alternating snapshot_acknowledged/codex_connected events could evict the actionable focus_rejected evidence from the fixed 32-entry ring."
 fix:
-  - "Pending publications now carry a boolean derived from the exact serialized Codex payload: source_state=current and at least one non-null primary/secondary window. Exact snapshot ACK commits this display evidence for the same host epoch/revision; collector health alone cannot promote Codex or aggregate readiness."
-  - "A successful exact FocusOutcome whose focus_result write succeeds records generation-scoped focus proof. Rejection or unavailable outcome clears it; transmit/link failure clears it through the existing fail-closed USB reset."
-  - "Bounded TransitionRing evidence records only SafeCode values (`codex_connected`, `codex_unavailable`, `snapshot_acknowledged`, `focus_accepted`, `focus_rejected`, and existing device failures). No identity, path, raw provider payload, or arbitrary error text is persisted."
-  - "Aggregate ready now requires device ready, Herdr running/current actionable projection, acknowledged displayable Codex for that current generation, and proven focus path for the same host epoch/revision."
+  - "PendingPublication now owns PublishedProjection: the full exact ProjectionSnapshot plus the displayed Codex BridgeStatus derived from the serialized payload. Only a matching accepted ACK installs it as acknowledged_projection."
+  - "FocusExecutor now requires an explicit acknowledged ProjectionSnapshot. RuntimeCoordinator authorizes epoch/revision/slot/entry/pane/terminal/session/source-revision against that displayed view, then performs the existing complete live read and selection-only agent.focus acknowledgement checks."
+  - "Ordinary Herdr invalidation only marks refresh dirty and coalesces. A successful complete refresh publishes only a material change; actual read/normalization failure still marks Herdr unhealthy, creates stale/offline/unavailable source truth, publishes it, and schedules recovery."
+  - "Codex and focus readiness are computed from acknowledged_projection, independent of unrelated current/pending Herdr generations. Herdr health remains computed from current complete-refresh truth."
+  - "Current Codex collection clears CodexUnavailable. Collector transitions and ACK/display transitions are emitted only when their corresponding state changes; repeated ACK/republication churn no longer consumes the bounded ring."
+state_invariants:
+  - "current is the latest successfully completed Herdr projection, or explicit stale/offline/unavailable truth after a real failure; ordinary invalidation alone never changes or publishes it."
+  - "pending_publication is the one exact serialized view awaiting ACK; later changes set publication_dirty without changing pending ownership."
+  - "acknowledged_projection is the last full exact view accepted by an exact reply-to/epoch/revision/source-status ACK and is never replaced by collection, refresh, invalidation, or an unacknowledged publication."
+  - "focus authorization and proof, device displayability, and Codex status share acknowledged_projection ownership; Herdr health remains an independent current-source signal."
+  - "focus remains selection-only and fail-closed across device session, host epoch, revision, slot, entry, pane, terminal, agent session, source revision, live disappearance/reuse, malformed response, timeout, offline, and unsuccessful focused acknowledgement."
+  - "transition memory remains bounded at 32 SafeCode-only entries, but ordinary unchanged ACK/republication cadence does not overwrite actionable focus evidence."
 verification:
   oracle_type: specified
   red:
-    - "collector_ready_cannot_override_acknowledged_unavailable_codex_projection: failed Ready != Stale"
-    - "snapshot_ack_without_confirmed_successful_focus_result_is_not_ready: failed Ready != Stale"
+    - "displayed_binding_survives_ordinary_herdr_invalidation_until_refresh_finishes: Stale != Accepted"
+    - "displayed_binding_survives_newer_unacknowledged_projection: WrongRevision != Accepted"
+    - "acknowledged_codex_remains_ready_while_unrelated_generation_is_pending: Unavailable != Ready"
+    - "successful_current_codex_collection_clears_unavailable_error: Some(CodexUnavailable) != None"
+    - "ordinary_ack_republication_churn_retains_actionable_focus_evidence: FocusRejected absent after unchanged churn"
   green:
-    - "cargo test --lib core::orchestrator::tests — 14 passed"
+    - "cargo test --lib core::orchestrator::tests — 19 passed"
     - "cargo test --test production_surface — 7 passed"
+    - "cargo test --test projection_focus_parity — 10 passed"
     - "cargo test --test herdr_parity different_structured_session_remains_rejected — 1 passed"
-    - "cargo test --test projection_focus_parity focus_policy_maps_fences_and_failures_without_other_effects — 1 passed"
     - "cargo test --test codex_parity sparse_invalid_shapes_are_transactional_and_account_reset_discards_cache — 1 passed"
-  guardrail_verdict: accepted for deterministic native behavior; live physical subtype intentionally unverified until controlled deployment
-  deployment:
-    source_commit: "3970d60"
-    native_tests: "focused 14+7+1+1+1 passed; full locked suite 121 passed across 15 suites, 1 ignored"
-    build_stage_sha256: "8e6c3921a4b1219d67727f748b1ef03ce132a9bed7b8f9f60c51647f421ad800"
-    restart_count: 1
-    restart_log: "plugin-log-66"
-    old_pid: 1248978
-    new_pid: 1399642
-    serial_fd: "9 -> /dev/ttyACM0, sole owner"
-    python_runtime: "absent"
-    post_deploy_status: "plugin-log-67: stale/ready/running/unavailable, reconnect_attempt=0, backoff_ms=0, last_error=null"
-    transitions: "32 entries: snapshot_acknowledged/codex_connected alternating at_ms 512..543; no focus evidence"
-    disposition: "awaiting_human_verify; active checkpoint retained in place"
-    human_verification: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, or another key; report whether focus changed."
+  guardrail_verdict: "accepted for deterministic native behavior and deployed with sole native authority; awaiting one ordinary physical gesture"
+  live_disposition: "The acknowledged-view release is deployed as source commit 9e25f95 and installed SHA-256 c96d726868d97d6c62d85c5092f1f24b59134095a97884b8d7a7b213870a1d3c on native PID 1502977. Pre-gesture status is truthfully stale with device ready, Herdr running, Codex ready, and no last_error."
+  next_gesture: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, another key, firmware, or probe; report whether focus changed."
+deployment:
+  source_commit: "9e25f95"
+  native_tests: "focused 38 passed; full cargo test --locked 126 passed across 15 suites, 1 ignored"
+  build_stage_sha256: "c96d726868d97d6c62d85c5092f1f24b59134095a97884b8d7a7b213870a1d3c"
+  restart_count: 1
+  restart_log: "plugin-log-69"
+  old_pid: 1399642
+  new_pid: 1502977
+  serial_fd: "9 -> /dev/ttyACM0, sole owner"
+  python_runtime: "absent"
+  post_deploy_status: "plugin-log-70: stale/ready/running/ready, reconnect_attempt=0, backoff_ms=0, last_error=null"
+  transitions: "bridge_started@0, codex_connected@1, snapshot_acknowledged@2, codex_unavailable@3, codex_connected@4; no focus outcome"
+  disposition: "awaiting_human_verify; active checkpoint retained in place"
+  human_verification: "Press exactly one agent key once for the pane Herdr should focus; do not retry or use menu, encoder, another key, firmware, or probe; report whether focus changed."
 files_changed:
   - host/herdr_keypad/native/src/core/orchestrator.rs
-  - host/herdr_keypad/native/tests/production_surface.rs
+  - host/herdr_keypad/native/src/core/focus.rs
+  - host/herdr_keypad/native/tests/herdr_parity.rs
+  - host/herdr_keypad/native/tests/projection_focus_parity.rs
   - .planning/debug/native-ready-but-physically-unusable.md
