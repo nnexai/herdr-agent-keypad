@@ -126,6 +126,13 @@ fn production_binary_start_status_stop_owns_control_socket_for_authority_lifetim
         status["herdr_state"], "herdr_unavailable",
         "a running authority without a successful complete Herdr snapshot must not report Herdr running"
     );
+    assert_eq!(status["copilot_usage"]["provider"], "github_copilot");
+    assert_eq!(status["copilot_usage"]["source_state"], "unavailable");
+    assert!(status["copilot_usage"]["used_credits"].is_null());
+    assert!(status["copilot_usage"]["included_credits"].is_null());
+    for key in ["token", "login", "host", "path", "prompt", "transcript", "raw_response"] {
+        assert!(status.get(key).is_none(), "private status key leaked: {key}");
+    }
     let bounded_states = [
         "stopped",
         "running",

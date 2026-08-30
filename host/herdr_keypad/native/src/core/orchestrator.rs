@@ -11,18 +11,21 @@ use super::projection::InboxProjection;
 use crate::ports::codex::{CodexCollector, FULL_POLL_INTERVAL};
 use crate::ports::config::StartupConfig;
 use crate::ports::control::{ControlEndpoint, ControlReply, ControlRequest};
+use crate::ports::copilot::{CopilotCollector, CopilotProcessFactory, StdCopilotProcessFactory};
 use crate::ports::herdr::{HerdrClient, HerdrError, HerdrEventStream};
 use crate::ports::lifecycle::{LifecycleCommand, LifecycleOwner, ResourceMetrics, RuntimePaths};
 use crate::ports::logging::{SafeLogger, TraceConfig};
-use crate::ports::status::{BridgeStatus, SafeCode, StatusSnapshot, TransitionRing, STATUS_HISTORY_LIMIT};
+use crate::ports::status::{BridgeStatus, CopilotUsageStatus, SafeCode, StatusSnapshot, TransitionRing, STATUS_HISTORY_LIMIT};
 use crate::ports::usb::{UsbError, UsbEvent, UsbPort};
 use crate::protocol::v2::{self, Agent, AgentSnapshot, Codex, Diagnostics, FocusIntentPayload, FocusOutcome, FocusResultPayload, FrameType, Payload, ProtocolFrame, SourceStatus as WireSourceStatus};
 use crate::{BridgeError, Cancellation};
 use serde_json::{json, Value};
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::future::{pending, ready, Future};
 use std::time::Duration;
 use tokio::time::{sleep, Instant};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 const DEFAULT_HERDR_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_SNAPSHOT_ACK_TIMEOUT: Duration = Duration::from_secs(2);
@@ -91,13 +94,13 @@ struct PendingPublication {
     published: PublishedProjection,
     ack_deadline: Instant,
 }
-
 /// One production coordinator joining every completed port.
 pub struct RuntimeCoordinator {
     lifecycle: LifecycleOwner,
     herdr: HerdrClient,
     herdr_events: HerdrEventStream,
     codex: CodexCollector,
+    copilot: CopilotCollector,
     usb: UsbPort,
     projection: InboxProjection,
     logger: SafeLogger,
@@ -122,6 +125,9 @@ pub struct RuntimeCoordinator {
     usb_delay: Duration,
     usb_due: Option<Instant>,
     codex_due: Option<Instant>,
+    copilot_due: Option<Instant>,
+    copilot_updates: (UnboundedSender<CopilotCollector>, UnboundedReceiver<CopilotCollector>),
+    copilot_poll_active: bool,
     device_link_ready: bool,
     usb_reconnect_attempt: u32,
     usb_last_error: Option<SafeCode>,
@@ -150,15 +156,36 @@ impl RuntimeCoordinator {
         platform: Box<dyn crate::ports::usb::PlatformSerial>,
         config: CoordinatorConfig,
     ) -> Result<Self, BridgeError> {
+        Self::with_config_and_copilot_transport(
+            paths,
+            startup,
+            binding_path,
+            platform,
+            config,
+            Arc::new(StdCopilotProcessFactory),
+        )
+    }
+
+    pub fn with_config_and_copilot_transport(
+        paths: RuntimePaths,
+        startup: StartupConfig,
+        binding_path: impl Into<std::path::PathBuf>,
+        platform: Box<dyn crate::ports::usb::PlatformSerial>,
+        config: CoordinatorConfig,
+        copilot_transport: Arc<dyn CopilotProcessFactory>,
+    ) -> Result<Self, BridgeError> {
         let config = config.validate()?;
         let herdr = HerdrClient::new(paths.herdr_socket.clone(), config.herdr_timeout)
             .map_err(|error| BridgeError::protocol(format!("herdr client: {error}")))?;
         let herdr_events = HerdrEventStream::new(herdr.clone());
         let codex = CodexCollector::try_new("codex", config.codex_deadline)
             .map_err(|error| BridgeError::invalid_input(error))?;
+        let copilot = CopilotCollector::with_transport("copilot", config.codex_deadline, copilot_transport)
+            .map_err(|error| BridgeError::invalid_input(error))?;
         let logging_enabled = startup.effective.logging_enabled;
         let lifecycle = LifecycleOwner::from_startup(paths.clone(), startup)
             .map_err(|error| BridgeError::protocol(format!("lifecycle authority: {error:?}")))?;
+        let copilot_updates = unbounded_channel();
         let host_epoch = format!("host-{}", std::process::id());
         let projection = InboxProjection::new(host_epoch)
             .map_err(|error| BridgeError::invalid_input(error.to_string()))?;
@@ -167,6 +194,7 @@ impl RuntimeCoordinator {
             herdr,
             herdr_events,
             codex,
+            copilot,
             usb: UsbPort::new(platform, binding_path),
             projection,
             logger: SafeLogger::new(TraceConfig { enabled: logging_enabled }),
@@ -191,6 +219,9 @@ impl RuntimeCoordinator {
             usb_delay: config.reconnect_initial,
             usb_due: None,
             codex_due: None,
+            copilot_due: None,
+            copilot_updates,
+            copilot_poll_active: false,
             device_link_ready: false,
             usb_reconnect_attempt: 0,
             usb_last_error: None,
@@ -235,6 +266,7 @@ impl RuntimeCoordinator {
                 .as_ref()
                 .map(|published| published.codex_state)
                 .unwrap_or(BridgeStatus::Unavailable);
+            status.copilot_usage = copilot_status(&self.copilot.view());
             let focus_path_proven = self.focus_proof.as_ref().is_some_and(|(epoch, revision)| {
                 self.acknowledged_projection.as_ref().is_some_and(|published| {
                     let snapshot = &published.projection;
@@ -305,6 +337,7 @@ impl RuntimeCoordinator {
         self.try_connect_herdr().await;
         self.try_connect_usb().await;
         self.collect_codex_and_publish().await;
+        self.collect_copilot().await;
         loop {
             let publication_ack_due = self
                 .pending_publication
@@ -391,6 +424,16 @@ impl RuntimeCoordinator {
                 _ = codex_sleep(self.codex_due) => {
                     self.codex_due = None;
                     self.collect_codex_and_publish().await;
+                }
+                Some(collector) = self.copilot_updates.1.recv() => {
+                    self.copilot = collector;
+                    self.copilot_poll_active = false;
+                    self.copilot_due = Some(Instant::now() + self.config.codex_interval);
+                    self.resource_metrics.timer_fires = self.resource_metrics.timer_fires.saturating_add(1);
+                }
+                _ = copilot_sleep(self.copilot_due) => {
+                    self.copilot_due = None;
+                    self.start_copilot_poll();
                 }
             }
         }
@@ -584,6 +627,24 @@ impl RuntimeCoordinator {
         if let Some(snapshot) = self.current.as_ref() {
             let _ = self.publish_snapshot(snapshot.clone()).await;
         }
+    }
+    async fn collect_copilot(&mut self) {
+        let _result = self.copilot.collect_async().await;
+        self.copilot_due = Some(Instant::now() + self.config.codex_interval);
+        self.resource_metrics.timer_fires = self.resource_metrics.timer_fires.saturating_add(1);
+    }
+
+    fn start_copilot_poll(&mut self) {
+        if self.copilot_poll_active {
+            return;
+        }
+        self.copilot_poll_active = true;
+        let sender = self.copilot_updates.0.clone();
+        let mut collector = self.copilot.clone();
+        tokio::spawn(async move {
+            let _ = collector.collect_async().await;
+            let _ = sender.send(collector);
+        });
     }
 
     async fn publish_current(&mut self) {
@@ -836,7 +897,30 @@ fn reconnect_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
 fn codex_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
     reconnect_sleep(deadline)
 }
+fn copilot_sleep(deadline: Option<Instant>) -> impl Future<Output = ()> {
+    reconnect_sleep(deadline)
+}
 
+fn copilot_status(view: &crate::ports::copilot::CopilotView) -> CopilotUsageStatus {
+    CopilotUsageStatus {
+        provider: view.provider.clone(),
+        source_state: view.source_state.as_str().to_owned(),
+        has_quota: view.has_quota,
+        used_credits: view.used_credits,
+        included_credits: view.included_credits,
+        used_percent: view.used_percent,
+        overage_used: view.overage_used,
+        overage_limit: view.overage_limit,
+        overage_permitted: view.overage_permitted,
+        usage_allowed_with_exhausted_quota: view.usage_allowed_with_exhausted_quota,
+        overage_allowed_with_exhausted_quota: view.overage_allowed_with_exhausted_quota,
+        reset_text: view.reset_text.clone(),
+        observation_age: view.observation_age.clone(),
+        unlimited: view.unlimited,
+        reached_limit: view.reached_limit,
+        failure_reason: view.failure_reason.as_str().to_owned(),
+    }
+}
 fn displayed_codex_state(payload: &Value) -> BridgeStatus {
     let Some(codex) = payload.get("codex").and_then(Value::as_object) else {
         return BridgeStatus::Unavailable;
@@ -1008,6 +1092,9 @@ mod tests {
     use crate::ports::codex::{
         ChildExit, CodexChildError, CodexProcess, CodexProcessFactory,
     };
+    use crate::ports::copilot::{
+        CopilotConnection, CopilotFuture, CopilotProcessFactory, CopilotTransportError,
+    };
     use crate::ports::usb::{
         DeviceCandidate, PlatformSerial, SerialConnection, SnapshotAck, UsbError,
         EXPECTED_CDC_INTERFACE, EXPECTED_PID, EXPECTED_SERIAL, EXPECTED_VID,
@@ -1041,6 +1128,58 @@ mod tests {
     impl Drop for TestRoot {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    struct FakeCopilotConnection {
+        replies: VecDeque<Result<Value, CopilotTransportError>>,
+    }
+
+    impl CopilotConnection for FakeCopilotConnection {
+        fn connect<'a>(&'a mut self) -> CopilotFuture<'a, Result<Value, CopilotTransportError>> {
+            Box::pin(async { self.replies.pop_front().unwrap_or(Err(CopilotTransportError::Closed)) })
+        }
+
+        fn current_auth<'a>(&'a mut self) -> CopilotFuture<'a, Result<Value, CopilotTransportError>> {
+            Box::pin(async { self.replies.pop_front().unwrap_or(Err(CopilotTransportError::Closed)) })
+        }
+
+        fn quota<'a>(&'a mut self) -> CopilotFuture<'a, Result<Value, CopilotTransportError>> {
+            Box::pin(async { self.replies.pop_front().unwrap_or(Err(CopilotTransportError::Closed)) })
+        }
+
+        fn shutdown<'a>(&'a mut self) -> CopilotFuture<'a, Result<(), CopilotTransportError>> {
+            Box::pin(async { Ok(()) })
+        }
+    }
+
+    struct FakeCopilotFactory {
+        replies: Mutex<Option<VecDeque<Result<Value, CopilotTransportError>>>>,
+    }
+
+    impl FakeCopilotFactory {
+        fn current() -> Arc<Self> {
+            Arc::new(Self {
+                replies: Mutex::new(Some(VecDeque::from([
+                    Ok(json!({"ok":true,"protocolVersion":3,"version":"1.0.81"})),
+                    Ok(json!({"authInfo":{"type":"user","host":"https://example.ghe.com","login":"enterprise-user"}})),
+                    Ok(json!({"quotaSnapshots":{"premium_interactions":{
+                        "tokenBasedBilling":true,"hasQuota":true,"entitlementRequests":1500,
+                        "usedRequests":500,"remainingPercentage":67,"isUnlimitedEntitlement":false,
+                        "overage":0,"overageEntitlement":100,"usageAllowedWithExhaustedQuota":false,
+                        "overageAllowedWithExhaustedQuota":false
+                    }}})),
+                ]))),
+            })
+        }
+    }
+
+    impl CopilotProcessFactory for FakeCopilotFactory {
+        fn start<'a>(&'a self, _executable: &'a str) -> CopilotFuture<'a, Result<Box<dyn CopilotConnection>, CopilotTransportError>> {
+            let replies = self.replies.lock().expect("Copilot replies").take().unwrap_or_default();
+            Box::pin(async move {
+                Ok(Box::new(FakeCopilotConnection { replies }) as Box<dyn CopilotConnection>)
+            })
         }
     }
 
@@ -1100,6 +1239,13 @@ mod tests {
     }
 
     fn unconnected_coordinator(config: CoordinatorConfig) -> (TestRoot, RuntimeCoordinator) {
+        unconnected_coordinator_with_transport(config, Arc::new(StdCopilotProcessFactory))
+    }
+
+    fn unconnected_coordinator_with_transport(
+        config: CoordinatorConfig,
+        copilot_transport: Arc<dyn CopilotProcessFactory>,
+    ) -> (TestRoot, RuntimeCoordinator) {
         let root = TestRoot::new();
         let config_dir = root.0.join("config");
         let state_dir = root.0.join("state");
@@ -1119,7 +1265,7 @@ mod tests {
             root.0.join("herdr"),
             std::process::id(),
         );
-        let coordinator = RuntimeCoordinator::with_config(
+        let coordinator = RuntimeCoordinator::with_config_and_copilot_transport(
             paths,
             startup,
             &binding,
@@ -1127,6 +1273,7 @@ mod tests {
                 streams: Arc::new(Mutex::new(VecDeque::new())),
             }),
             config,
+            copilot_transport,
         )
         .expect("coordinator");
         (root, coordinator)
@@ -2247,5 +2394,23 @@ mod tests {
         .expect("rejected focus payload");
         assert_eq!(rejected.outcome, FocusOutcome::Rejected);
         assert!(!rejected.focused);
+    }
+
+    #[tokio::test]
+    async fn copilot_collection_updates_labelled_status_independently_of_codex_state() {
+        let (_root, mut coordinator) = unconnected_coordinator_with_transport(
+            CoordinatorConfig::default(),
+            FakeCopilotFactory::current(),
+        );
+        let _ = coordinator.lifecycle.handle(LifecycleCommand::Start);
+        coordinator.collect_copilot().await;
+        let status = coordinator.status();
+        assert_eq!(status.codex_state, BridgeStatus::Unavailable);
+        assert_eq!(status.copilot_usage.provider, "github_copilot");
+        assert_eq!(status.copilot_usage.used_credits, Some(500));
+        assert_eq!(status.copilot_usage.included_credits, Some(1500));
+        assert_eq!(status.copilot_usage.used_percent, Some(33));
+        assert_eq!(status.copilot_usage.reset_text, "RESET N/A");
+        assert!(coordinator.copilot_due.is_some());
     }
 }

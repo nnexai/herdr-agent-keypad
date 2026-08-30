@@ -15,7 +15,7 @@ use config::StartupConfig;
 use control::{AuthorityLock, ControlReply, ControlRequest, CONTROL_PAYLOAD_LIMIT};
 use lifecycle::{LifecycleCommand, LifecycleOwner, RuntimePaths};
 use logging::{SafeLogger, TraceConfig};
-use status::{BridgeStatus, SafeCode, StatusSnapshot, TransitionRing, STATUS_PAYLOAD_LIMIT};
+use status::{BridgeStatus, CopilotUsageStatus, SafeCode, StatusSnapshot, TransitionRing, STATUS_PAYLOAD_LIMIT};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -180,6 +180,25 @@ fn status_logging_resource_status_is_read_only_bounded_and_has_at_most_32_safe_t
     assert_eq!(decoded.state, BridgeStatus::Stopped);
     assert_eq!(decoded.transitions.len(), 32);
     assert!(!decoded.has_mutating_fields());
+}
+
+#[test]
+fn status_snapshot_includes_closed_copilot_usage_without_private_or_device_fields() {
+    let mut snapshot = StatusSnapshot::stopped("cfg123");
+    assert_eq!(snapshot.schema_version, 2);
+    assert_eq!(snapshot.copilot_usage, CopilotUsageStatus::default());
+    let encoded = snapshot.encode().expect("status encode");
+    let json = String::from_utf8(encoded.clone()).expect("status utf8");
+    assert!(json.contains("\"copilot_usage\""));
+    for forbidden in ["token", "login", "host", "path", "prompt", "transcript", "raw_response"] {
+        assert!(!json.contains(forbidden), "{forbidden}");
+    }
+    let decoded = StatusSnapshot::decode(&encoded).expect("status decode");
+    assert_eq!(decoded.copilot_usage.source_state, "unavailable");
+    snapshot.copilot_usage.source_state = "unknown".to_owned();
+    assert!(snapshot.encode().is_err());
+    let duplicate = format!("{},\"copilot_usage\":{{}}}}", json.trim_end_matches('}'));
+    assert!(StatusSnapshot::decode(duplicate.as_bytes()).is_err());
 }
 
 #[test]

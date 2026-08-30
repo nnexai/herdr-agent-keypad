@@ -11,6 +11,89 @@ use std::fmt;
 pub const STATUS_PAYLOAD_LIMIT: usize = 16 * 1024;
 pub const STATUS_HISTORY_LIMIT: usize = 32;
 pub const STATUS_IDENTITY_LIMIT: usize = 25;
+pub const COPILOT_STATUS_TEXT_LIMIT: usize = 64;
+pub const COPILOT_STATUS_MAX_CREDITS: u64 = 1_000_000_000;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CopilotUsageStatus {
+    pub provider: String,
+    pub source_state: String,
+    pub has_quota: Option<bool>,
+    pub used_credits: Option<u64>,
+    pub included_credits: Option<u64>,
+    pub used_percent: Option<u8>,
+    pub overage_used: Option<u64>,
+    pub overage_limit: Option<u64>,
+    pub overage_permitted: Option<bool>,
+    pub usage_allowed_with_exhausted_quota: Option<bool>,
+    pub overage_allowed_with_exhausted_quota: Option<bool>,
+    pub reset_text: String,
+    pub observation_age: String,
+    pub unlimited: bool,
+    pub reached_limit: Option<bool>,
+    pub failure_reason: String,
+}
+
+impl Default for CopilotUsageStatus {
+    fn default() -> Self {
+        Self {
+            provider: "github_copilot".to_owned(),
+            source_state: "unavailable".to_owned(),
+            has_quota: None,
+            used_credits: None,
+            included_credits: None,
+            used_percent: None,
+            overage_used: None,
+            overage_limit: None,
+            overage_permitted: None,
+            usage_allowed_with_exhausted_quota: None,
+            overage_allowed_with_exhausted_quota: None,
+            reset_text: "RESET N/A".to_owned(),
+            observation_age: "AGE N/A".to_owned(),
+            unlimited: false,
+            reached_limit: None,
+            failure_reason: "quota_unavailable".to_owned(),
+        }
+    }
+}
+
+fn bounded_copilot_text(value: &str, limit: usize) -> bool {
+    value.len() <= limit
+        && value.is_ascii()
+        && value.bytes().all(|byte| byte >= 0x20 && byte != 0x7f)
+}
+
+impl CopilotUsageStatus {
+    pub fn validate(&self) -> Result<(), StatusError> {
+        if self.provider != "github_copilot"
+            || !matches!(self.source_state.as_str(), "current" | "stale" | "auth_required" | "unavailable")
+            || !matches!(
+                self.failure_reason.as_str(),
+                "" | "auth_required"
+                    | "cli_missing"
+                    | "cli_version_mismatch"
+                    | "protocol_mismatch"
+                    | "unsupported_host"
+                    | "quota_unavailable"
+                    | "billing_mode_unsupported"
+                    | "malformed_quota"
+                    | "timeout"
+                    | "transport_unavailable"
+            )
+            || !bounded_copilot_text(&self.reset_text, COPILOT_STATUS_TEXT_LIMIT)
+            || !bounded_copilot_text(&self.observation_age, 16)
+            || self.used_credits.is_some_and(|value| value > COPILOT_STATUS_MAX_CREDITS)
+            || self.included_credits.is_some_and(|value| value > COPILOT_STATUS_MAX_CREDITS)
+            || self.overage_used.is_some_and(|value| value > COPILOT_STATUS_MAX_CREDITS)
+            || self.overage_limit.is_some_and(|value| value > COPILOT_STATUS_MAX_CREDITS)
+            || self.used_percent.is_some_and(|value| value > 100)
+        {
+            return Err(StatusError::Invalid);
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -123,6 +206,7 @@ pub struct StatusSnapshot {
     pub device_state: BridgeStatus,
     pub herdr_state: BridgeStatus,
     pub codex_state: BridgeStatus,
+    pub copilot_usage: CopilotUsageStatus,
     pub config_identity: String,
     pub reconnect_attempt: u32,
     pub backoff_ms: u64,
@@ -133,12 +217,13 @@ pub struct StatusSnapshot {
 impl StatusSnapshot {
     pub fn stopped(config_identity: impl Into<String>) -> Self {
         let mut snapshot = Self {
-            schema_version: 1,
+            schema_version: 2,
             bridge_version: env!("CARGO_PKG_VERSION").to_owned(),
             state: BridgeStatus::Stopped,
             device_state: BridgeStatus::DeviceUnavailable,
             herdr_state: BridgeStatus::Unavailable,
             codex_state: BridgeStatus::Unavailable,
+            copilot_usage: CopilotUsageStatus::default(),
             config_identity: config_identity.into(),
             reconnect_attempt: 0,
             backoff_ms: 0,
@@ -155,7 +240,7 @@ impl StatusSnapshot {
     }
 
     pub fn validate(&self) -> Result<(), StatusError> {
-        if self.schema_version != 1
+        if self.schema_version != 2
             || self.transitions.len() > STATUS_HISTORY_LIMIT
             || self.bridge_version.len() > 32
             || !self.bridge_version.is_ascii()
@@ -171,7 +256,7 @@ impl StatusSnapshot {
         if self.backoff_ms > 8_000 {
             return Err(StatusError::Invalid);
         }
-        Ok(())
+        self.copilot_usage.validate()
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, StatusError> {
