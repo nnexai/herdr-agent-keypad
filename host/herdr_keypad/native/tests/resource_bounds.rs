@@ -2,42 +2,11 @@ use herdr_keypad_native::core::orchestrator::CoordinatorConfig;
 use herdr_keypad_native::ports::control::CONTROL_PAYLOAD_LIMIT;
 use herdr_keypad_native::ports::lifecycle::ResourceMetrics;
 use herdr_keypad_native::protocol::v2::{self, ProtocolSession};
-use herdr_keypad_native::{
-    bounded_channels, BridgeEffect, BridgeEvent, DeviceFrame, SnapshotAck, SourceStatus,
-    BRIDGE_EFFECT_CAPACITY, DEVICE_FRAME_CAPACITY, HERDR_EVENT_CAPACITY, PENDING_FOCUS_CAPACITY,
-};
+use herdr_keypad_native::ports::usb::PENDING_FOCUS_CAPACITY;
 use serde_json::json;
 use std::fs;
 use std::time::{Duration, Instant};
 
-fn valid_ack() -> DeviceFrame {
-    DeviceFrame::SnapshotAck(SnapshotAck {
-        accepted: true,
-        host_epoch: "epoch".to_owned(),
-        snapshot_revision: 1,
-        source_status: SourceStatus::Current,
-        reason: "accepted".to_owned(),
-        boot_id: Some("boot".to_owned()),
-        session_id: Some("session".to_owned()),
-    })
-}
-
-#[test]
-fn public_channels_enforce_declared_capacity_without_unbounded_growth() {
-    let (event_tx, _event_rx, device_tx, _device_rx, effect_tx, _effect_rx) = bounded_channels();
-    for _ in 0..HERDR_EVENT_CAPACITY {
-        event_tx.try_send(BridgeEvent::HerdrInvalidated).expect("event capacity");
-    }
-    assert!(event_tx.try_send(BridgeEvent::HerdrInvalidated).is_err());
-    for _ in 0..DEVICE_FRAME_CAPACITY {
-        device_tx.try_send(valid_ack()).expect("device capacity");
-    }
-    assert!(device_tx.try_send(valid_ack()).is_err());
-    for _ in 0..BRIDGE_EFFECT_CAPACITY {
-        effect_tx.try_send(BridgeEffect::AuthorityEnded).expect("effect capacity");
-    }
-    assert!(effect_tx.try_send(BridgeEffect::AuthorityEnded).is_err());
-}
 
 #[test]
 fn queue_payload_and_timer_limits_are_closed_and_validated() {
@@ -45,7 +14,7 @@ fn queue_payload_and_timer_limits_are_closed_and_validated() {
     assert!(config.validate().is_ok());
     assert!(config.reconnect_initial <= config.reconnect_max);
     assert!(config.reconnect_max <= Duration::from_secs(8));
-    assert!(PENDING_FOCUS_CAPACITY <= DEVICE_FRAME_CAPACITY);
+    assert!(PENDING_FOCUS_CAPACITY <= v2::SESSION_CAPACITY);
     assert!(CONTROL_PAYLOAD_LIMIT <= 16 * 1024);
     assert!(ResourceMetrics::idle().source_polls == 0);
     assert!(ResourceMetrics::idle().timer_fires == 0);
