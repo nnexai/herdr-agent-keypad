@@ -1,0 +1,106 @@
+use serde_json::Value;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const PLUGIN_MANIFEST: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../herdr-plugin.toml");
+
+fn temp_root() -> PathBuf {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).expect("clock").as_nanos();
+    let root = std::env::temp_dir().join(format!("herdr-keypad-production-{}-{stamp}", std::process::id()));
+    fs::create_dir_all(&root).expect("temporary root");
+    root
+}
+
+fn binary() -> &'static str {
+    env!("CARGO_BIN_EXE_herdr-keypad-native")
+}
+
+#[test]
+fn plugin_manifest_is_cross_platform_direct_argv_and_has_no_developer_runtime() {
+    let manifest = fs::read_to_string(PLUGIN_MANIFEST).expect("plugin manifest");
+    let parsed: toml::Value = toml::from_str(&manifest).expect("valid plugin TOML");
+    assert_eq!(parsed["platforms"].as_array().map(|items| items.len()), Some(2));
+    assert!(manifest.contains("platforms = [\"linux\", \"macos\"]"));
+    assert!(manifest.contains("command = [\"bin/herdr-keypad\", \"startup\"]"));
+
+    let forbidden = [
+        "python", "PYTHONPATH", "venv", "pip", "npm", "node", "tracer", "fixture", "evidence", "shell",
+        "ensure-bridge.sh", "state.json", "history.jsonl", "flock", "/proc/",
+    ];
+    for word in forbidden {
+        assert!(!manifest.to_ascii_lowercase().contains(&word.to_ascii_lowercase()), "manifest contains forbidden {word}");
+    }
+
+    let startup = parsed["startup"].as_array().expect("startup array");
+    assert_eq!(startup.len(), 1);
+    assert_eq!(startup[0]["command"], toml::Value::Array(vec!["bin/herdr-keypad".into(), "startup".into()]));
+    let actions = parsed["actions"].as_array().expect("action array");
+    assert_eq!(actions.len(), 6);
+    for action in actions {
+        let command = action["command"].as_array().expect("direct action command");
+        assert_eq!(command.len(), 2);
+        assert_eq!(command[0].as_str(), Some("bin/herdr-keypad"));
+        assert!(matches!(command[1].as_str(), Some("start" | "stop" | "restart" | "status" | "repair" | "re-pair")));
+    }
+}
+
+#[test]
+fn production_binary_status_works_with_python_removed_from_path() {
+    let root = temp_root();
+    let config = root.join("config");
+    let state = root.join("state");
+    let home = root.join("home");
+    fs::create_dir_all(&config).expect("config");
+    fs::create_dir_all(&state).expect("state");
+    fs::create_dir_all(home.join(".config/herdr")).expect("home config");
+    fs::write(config.join("config.toml"), "logging_enabled = false\n").expect("settings");
+
+    let output = Command::new(binary())
+        .arg("status")
+        .env("PATH", "")
+        .env("HOME", &home)
+        .env("HERDR_PLUGIN_CONFIG_DIR", &config)
+        .env("HERDR_PLUGIN_STATE_DIR", &state)
+        .env("HERDR_SOCKET_PATH", root.join("herdr.sock"))
+        .env("HERDR_BIN_PATH", "/bin/true")
+        .env("HERDR_PID", "0")
+        .output()
+        .expect("native production binary");
+    assert!(output.status.success(), "status failed: {}", String::from_utf8_lossy(&output.stderr));
+    let status: Value = serde_json::from_slice(&output.stdout).expect("bounded JSON status");
+    assert_eq!(status["reply"], "status");
+    assert_eq!(status["state"], "stopped");
+    let combined = format!("{}{}", String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr)).to_ascii_lowercase();
+    for forbidden in ["python", "prompt", "transcript", "secret", "/home/", "path"] {
+        assert!(!combined.contains(forbidden), "production output leaked {forbidden}");
+    }
+    assert!(fs::read_dir(&state).expect("state directory").next().is_none(), "read-only status created state");
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
+#[test]
+fn developer_and_generic_commands_are_not_in_production_surface() {
+    for command in ["--help", "tracer", "fixture", "evidence", "doctor", "shell", "run-tests"] {
+        let output = Command::new(binary()).arg(command).output().expect("binary invocation");
+        assert!(!output.status.success(), "forbidden command accepted: {command}");
+        let error = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+        assert!(!error.contains("python"));
+        assert!(!error.contains("prompt"));
+        assert!(!error.contains("transcript"));
+    }
+}
+
+#[test]
+fn binary_source_and_environment_boundary_exclude_private_developer_surfaces() {
+    let source = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/main.rs")).expect("entrypoint source");
+    for forbidden in ["PYTHONPATH", "python", "venv", "fixture", "tracer", "state.json", "history.jsonl", "/proc/"] {
+        assert!(!source.to_ascii_lowercase().contains(&forbidden.to_ascii_lowercase()), "entrypoint contains {forbidden}");
+    }
+    let bytes = fs::read(binary()).expect("built production binary");
+    let text = String::from_utf8_lossy(&bytes).to_ascii_lowercase();
+    for forbidden in ["pythonpath", "history.jsonl", "state.json", "run-tests", "tracer"] {
+        assert!(!text.contains(forbidden), "binary contains forbidden developer marker {forbidden}");
+    }
+}

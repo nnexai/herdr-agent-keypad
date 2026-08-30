@@ -111,10 +111,39 @@ jobs:
           tar -czf "$WORK/out/herdr-keypad-$TARGET.tar.gz" -C "$WORK/out" \
             herdr-plugin.toml LIFECYCLE.md bin/herdr-keypad release-manifest.json
 
+          ARCHIVE_SHA="$(sha256sum "$WORK/out/herdr-keypad-$TARGET.tar.gz" | cut -d ' ' -f 1)"
+          MANIFEST_SHA="$(sha256sum "$WORK/out/release-manifest.json" | cut -d ' ' -f 1)"
+          PROVENANCE_SHA="$(sha256sum "$WORK/out/provenance-$TARGET.txt" | cut -d ' ' -f 1)"
+          cat > "$WORK/out/phase04-linux-evidence.json" <<EOF
+          {
+            "schema_version": 1,
+            "kind": "phase04-producer",
+            "source_revision": "$GITHUB_SHA",
+            "workflow_run_id": "$GITHUB_RUN_ID",
+            "workflow_ref": "$GITHUB_REF",
+            "target": "$TARGET",
+            "archive_name": "herdr-keypad-$TARGET.tar.gz",
+            "archive_sha256": "$ARCHIVE_SHA",
+            "manifest_name": "release-manifest.json",
+            "manifest_sha256": "$MANIFEST_SHA",
+            "provenance_name": "provenance-$TARGET.txt",
+            "provenance_sha256": "$PROVENANCE_SHA",
+            "binary_sha256": "$HASH_A",
+            "source_a_sha256": "$(cut -d ' ' -f 1 "$WORK/out/source-a.sha256")",
+            "source_b_sha256": "$(cut -d ' ' -f 1 "$WORK/out/source-b.sha256")",
+            "binary_a_sha256": "$HASH_A",
+            "binary_b_sha256": "$HASH_B",
+            "reproducibility": {"status": "passed"},
+            "tests": {"status": "passed"},
+            "resource": {"status": "not-run"}
+          }
+          EOF
+          python3 -m json.tool "$WORK/out/phase04-linux-evidence.json" >/dev/null
+
       - name: Upload Linux unsigned bundle and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: herdr-keypad-linux-x86_64
+          name: herdr-keypad-linux-x86_64-${{ github.sha }}
           if-no-files-found: error
           path: ${{ runner.temp }}/herdr-keypad-x86_64-unknown-linux-gnu/out
 
@@ -224,9 +253,185 @@ jobs:
           tar -czf "$WORK/out/herdr-keypad-$TARGET.tar.gz" -C "$WORK/out" \
             herdr-plugin.toml LIFECYCLE.md bin/herdr-keypad release-manifest.json
 
+          ARCHIVE_SHA="$(shasum -a 256 "$WORK/out/herdr-keypad-$TARGET.tar.gz" | cut -d ' ' -f 1)"
+          MANIFEST_SHA="$(shasum -a 256 "$WORK/out/release-manifest.json" | cut -d ' ' -f 1)"
+          PROVENANCE_SHA="$(shasum -a 256 "$WORK/out/provenance-$TARGET.txt" | cut -d ' ' -f 1)"
+          cat > "$WORK/out/phase04-macos-evidence.json" <<EOF
+          {
+            "schema_version": 1,
+            "kind": "phase04-producer",
+            "source_revision": "$GITHUB_SHA",
+            "workflow_run_id": "$GITHUB_RUN_ID",
+            "workflow_ref": "$GITHUB_REF",
+            "target": "$TARGET",
+            "archive_name": "herdr-keypad-$TARGET.tar.gz",
+            "archive_sha256": "$ARCHIVE_SHA",
+            "manifest_name": "release-manifest.json",
+            "manifest_sha256": "$MANIFEST_SHA",
+            "provenance_name": "provenance-$TARGET.txt",
+            "provenance_sha256": "$PROVENANCE_SHA",
+            "binary_sha256": "$HASH_A",
+            "source_a_sha256": "$(cut -d ' ' -f 1 "$WORK/out/source-a.sha256")",
+            "source_b_sha256": "$(cut -d ' ' -f 1 "$WORK/out/source-b.sha256")",
+            "binary_a_sha256": "$HASH_A",
+            "binary_b_sha256": "$HASH_B",
+            "reproducibility": {"status": "passed"},
+            "tests": {"status": "passed"},
+            "resource": {"status": "not-run"}
+          }
+          EOF
+          python3 -m json.tool "$WORK/out/phase04-macos-evidence.json" >/dev/null
+
       - name: Upload macOS unsigned bundle and provenance
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: herdr-keypad-macos-arm64
-          if-no-files-found: error
+          name: herdr-keypad-macos-arm64-${{ github.sha }}
           path: ${{ runner.temp }}/herdr-keypad-aarch64-apple-darwin/out
+
+  linux-phase4-contract:
+    name: Linux Phase 04 parity and resource contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout workflow commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Run focused contract and production smoke
+        shell: bash
+        env:
+          TARGET: x86_64-unknown-linux-gnu
+          PLUGIN: host/herdr_keypad
+        run: |
+          set -euo pipefail
+          WORK="$RUNNER_TEMP/herdr-keypad-phase04-contract"
+          rm -rf "$WORK"
+          mkdir -p "$WORK/out" "$WORK/config" "$WORK/state" "$WORK/home/.config/herdr"
+          TOOLCHAIN="$(sed -n 's/^channel = "\([^"]*\)"/\1/p' "$PLUGIN/native/rust-toolchain.toml" | head -n 1)"
+          test -n "$TOOLCHAIN"
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --target "$TARGET"
+          export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
+          export CARGO_HOME="$WORK/cargo-home"
+          export CARGO_TARGET_DIR="$WORK/target"
+          cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" \
+            --test black_box_parity --test resource_bounds --test production_surface \
+            -- --test-threads=1 > "$WORK/contract-tests.log" 2>&1
+          cargo build --release --locked --target "$TARGET" --manifest-path "$PLUGIN/native/Cargo.toml"
+          BIN="$WORK/target/$TARGET/release/herdr-keypad-native"
+          test -x "$BIN"
+          printf 'logging_enabled = false\n' > "$WORK/config/config.toml"
+          PATH="" HOME="$WORK/home" \
+            HERDR_PLUGIN_CONFIG_DIR="$WORK/config" \
+            HERDR_PLUGIN_STATE_DIR="$WORK/state" \
+            HERDR_SOCKET_PATH="$WORK/herdr.sock" \
+            HERDR_BIN_PATH="/bin/true" HERDR_PID="0" \
+            "$BIN" status > "$WORK/production-smoke.json"
+          python3 -m json.tool "$WORK/production-smoke.json" >/dev/null
+          TEST_BYTES="$(wc -c < "$WORK/contract-tests.log" | tr -d ' ')"
+          TEST_LINES="$(wc -l < "$WORK/contract-tests.log" | tr -d ' ')"
+          TEST_SHA="$(sha256sum "$WORK/contract-tests.log" | cut -d ' ' -f 1)"
+          SMOKE_BYTES="$(wc -c < "$WORK/production-smoke.json" | tr -d ' ')"
+          SMOKE_SHA="$(sha256sum "$WORK/production-smoke.json" | cut -d ' ' -f 1)"
+          cat > "$WORK/out/phase04-linux-contract.json" <<EOF
+          {
+            "schema_version": 1,
+            "kind": "phase04-contract",
+            "source_revision": "$GITHUB_SHA",
+            "workflow_run_id": "$GITHUB_RUN_ID",
+            "workflow_ref": "$GITHUB_REF",
+            "target": "$TARGET",
+            "tests": {
+              "status": "passed",
+              "output_sha256": "$TEST_SHA",
+              "output_bytes": $TEST_BYTES,
+              "line_count": $TEST_LINES
+            },
+            "resource": {
+              "status": "passed",
+              "output_sha256": "$TEST_SHA",
+              "output_bytes": $TEST_BYTES
+            },
+            "production_smoke": {
+              "status": "passed",
+              "output_sha256": "$SMOKE_SHA",
+              "output_bytes": $SMOKE_BYTES
+            }
+          }
+          EOF
+          python3 -m json.tool "$WORK/out/phase04-linux-contract.json" >/dev/null
+
+      - name: Upload Linux contract evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: herdr-keypad-phase04-contract-${{ github.sha }}
+          if-no-files-found: error
+          path: ${{ runner.temp }}/herdr-keypad-phase04-contract/out
+
+  aggregate-phase4-evidence:
+    name: Aggregate Phase 04 release evidence
+    needs:
+      - linux-x86_64
+      - macos-arm64
+      - linux-phase4-contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout workflow commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Download Linux native evidence for this run and commit
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: herdr-keypad-linux-x86_64-${{ github.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/phase04-input/linux
+
+      - name: Download macOS native evidence for this run and commit
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: herdr-keypad-macos-arm64-${{ github.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/phase04-input/macos
+
+      - name: Download Linux contract evidence for this run and commit
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: herdr-keypad-phase04-contract-${{ github.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/phase04-input/contract
+
+      - name: Collect and verify hash-linked evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUT="$RUNNER_TEMP/phase04-output"
+          mkdir -p "$OUT"
+          python3 host/herdr_keypad/release/collect_phase4_evidence.py \
+            --input-root "$RUNNER_TEMP/phase04-input" \
+            --source-root "$GITHUB_WORKSPACE" \
+            --commit "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --workflow-ref "$GITHUB_REF" \
+            --output "$OUT/phase04-release-evidence.json" \
+            --checksum "$OUT/phase04-release-evidence.json.sha256"
+          sha256sum -c "$OUT/phase04-release-evidence.json.sha256"
+
+      - name: Upload final Phase 04 evidence and checksum
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: herdr-keypad-phase04-release-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/phase04-output/phase04-release-evidence.json
+            ${{ runner.temp }}/phase04-output/phase04-release-evidence.json.sha256
