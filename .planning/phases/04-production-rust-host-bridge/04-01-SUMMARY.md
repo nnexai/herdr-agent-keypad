@@ -9,8 +9,24 @@ provides:
   - "Bounded BridgeEvent, BridgeEffect, Generation, Clock, Deadline, Cancellation, and boundary-port contracts."
   - "Authoritative Herdr snapshot normalization with fixed three-slot projection and matching snapshot-ACK readiness."
   - "Exact identity/session-bound focus revalidation and correlated focus result with no host HID effect."
-  - "Thin native process entrypoint that invokes the same Coordinator API as the tracer."
+  - "Thin native process entrypoint wired only to the maintained core::RuntimeCoordinator."
 affects: [04-02, 04-03, 04-04, 04-05, 04-06, 04-07, native-host-bridge]
+
+current-authority:
+  amendment: "WR-01 accepted clean-cutover supersession"
+  production-composition: "host/herdr_keypad/native/src/core/orchestrator.rs#RuntimeCoordinator"
+  proof:
+    - "host/herdr_keypad/native/tests/black_box_parity.rs#python_oracle_export_is_byte_identical_to_checked_in_corpus"
+    - "host/herdr_keypad/native/tests/black_box_parity.rs#every_protocol_trace_matches_public_rust_admission_contract"
+    - "host/herdr_keypad/native/tests/black_box_parity.rs#session_trace_fences_duplicate_stale_and_foreign_authority"
+    - "host/herdr_keypad/native/tests/black_box_parity.rs#projection_traces_match_python_observable_views"
+    - "host/herdr_keypad/native/tests/projection_focus_parity.rs#focus_policy_revalidates_exact_identity_and_allows_one_retry"
+    - "host/herdr_keypad/native/tests/projection_focus_parity.rs#focus_policy_maps_fences_and_failures_without_other_effects"
+    - "host/herdr_keypad/native/tests/herdr_parity.rs#correlated_subscribe_ack_admits_only_typed_invalidation_events"
+    - "host/herdr_keypad/native/tests/herdr_parity.rs#complete_reads_correlate_ids_and_focus_is_the_only_write"
+    - "host/herdr_keypad/native/tests/usb_platform.rs#exact_hello_then_snapshot_ack_gates_readiness_and_close_clears_focus"
+    - "host/herdr_keypad/native/tests/usb_platform.rs#same_boot_id_reconnects_with_fresh_host_session_and_rejects_old_frames"
+    - "host/herdr_keypad/native/tests/production_surface.rs#production_binary_start_status_stop_owns_control_socket_for_authority_lifetime"
 
 actuals:
   tokens: 18099
@@ -30,6 +46,13 @@ key-files:
     - host/herdr_keypad/native/src/main.rs
     - host/herdr_keypad/native/tests/production_tracer.rs
   modified: []
+  current:
+    - host/herdr_keypad/native/src/core/orchestrator.rs
+    - host/herdr_keypad/native/tests/black_box_parity.rs
+    - host/herdr_keypad/native/tests/projection_focus_parity.rs
+    - host/herdr_keypad/native/tests/herdr_parity.rs
+    - host/herdr_keypad/native/tests/usb_platform.rs
+    - host/herdr_keypad/native/tests/production_surface.rs
 
 key-decisions:
   - "Pin the currently available verified stable compiler, Rust 1.98.0, because the research-era workstation Rust 1.82.0 cannot parse the maintained direct dependency set (notably sha2/toml transitive edition requirements)."
@@ -37,6 +60,8 @@ key-decisions:
   - "Use independent explicit capacities for Herdr events, device frames, effects, pending focus, and Herdr/device line lengths; no fixed-rate wakeup is introduced."
 
 requirements-completed: [RUST-01, RUST-02, RUST-03]
+
+coverage-scope: "Historical completion evidence from the original task commits; current authority is the WR-01 composed proof above."
 
 coverage:
   - id: D1
@@ -70,6 +95,24 @@ coverage:
 
 **Locked Rust native bridge crate with bounded Herdr authority, complete snapshot-ACK readiness, exact focus revalidation, and cancellation-safe process entrypoint.**
 
+## Current-state amendment: WR-01 clean-cutover supersession
+
+This summary preserves the original Plan 04-01 task and commit history. The first execution introduced a root `Coordinator` and `tests/production_tracer.rs`; the completion evidence below accurately records what existed at those commits.
+
+The Phase 04 closure review later resolved WR-01 by removing that duplicate coordinator, its unsafe unbounded Herdr socket reader, and the coupled tracer. `src/main.rs` now constructs only `core::RuntimeCoordinator`. Restoring the deleted path would recreate a second production composition root and break the clean cutover.
+
+Current verification authority is the maintained composed proof:
+
+| Original contract segment | Maintained path and exact test |
+|---|---|
+| Frozen Python parity and closed protocol/session/projection admission | `black_box_parity.rs`: `python_oracle_export_is_byte_identical_to_checked_in_corpus`, `every_protocol_trace_matches_public_rust_admission_contract`, `session_trace_fences_duplicate_stale_and_foreign_authority`, `projection_traces_match_python_observable_views` |
+| Committed projection binding and exact focus behavior | `projection_focus_parity.rs`: `focus_policy_revalidates_exact_identity_and_allows_one_retry`, `focus_policy_maps_fences_and_failures_without_other_effects` |
+| Typed Herdr invalidation, complete authoritative read, and sole `agent.focus` write | `herdr_parity.rs`: `correlated_subscribe_ack_admits_only_typed_invalidation_events`, `complete_reads_correlate_ids_and_focus_is_the_only_write` |
+| Fresh USB authority and matching snapshot-ACK readiness | `usb_platform.rs`: `exact_hello_then_snapshot_ack_gates_readiness_and_close_clears_focus`, `same_boot_id_reconnects_with_fresh_host_session_and_rejects_old_frames` |
+| Production composition and Herdr-owned process lifetime | `src/main.rs` to `core/orchestrator.rs#RuntimeCoordinator`; `production_surface.rs`: `production_binary_start_status_stop_owns_control_socket_for_authority_lifetime` |
+
+Together, these authorities cover the original Herdr invalidation to complete read, projection, USB session and snapshot ACK, exact focus revalidation, sole Herdr write, correlated focus result, and lifecycle contract through the maintained production boundaries. This amendment accepts that composed proof. It does not claim a rerun of the removed tracer or alter the original task commits.
+
 ## Performance
 
 - **Duration:** 31 minutes (first task commit through final task commit)
@@ -78,20 +121,22 @@ coverage:
 - **Tasks:** 2
 - **Files modified:** 6 created
 
-## Accomplishments
+## Original accomplishments
 
-- Added the locked native Cargo crate and thin `main.rs` entrypoint around one reusable `Coordinator` API.
+The entries in this section describe the initial task commits:
+
+- Added the locked native Cargo crate and thin `main.rs` entrypoint around the initial reusable coordinator API.
 - Implemented complete Herdr `session.snapshot`/`agent.list`/`workspace.list` reads, rank ordering, fixed three-slot projection, explicit line bounds, and typed boundary contracts.
 - Enforced matching host epoch, snapshot revision, boot/session authority, slot, entry, and immutable agent identity before one revalidation and the sole `agent.focus` write.
 - Added cancellation and bounded-channel behavior that clears pending focus work and exposes only `AuthorityEnded`; no HID or keyboard effect is representable.
 - Added the focused black-box tracer and cancellation test, with a local Unix socket Herdr endpoint and bounded device-frame ingress.
 
-## Task Commits
+## Original task commits
 
 1. **Task 1: Carry one exact focus path through every production layer** - `89e7462` (test RED), `e4fbccd` (feat GREEN)
 2. **Task 2: Pin the compiler and freeze downstream interface ownership** - `25a0994` (chore)
 
-## Files Created/Modified
+## Original files created/modified
 
 - `host/herdr_keypad/native/Cargo.toml` - approved direct dependency manifest and explicit Tokio capabilities.
 - `host/herdr_keypad/native/Cargo.lock` - locked direct and transitive dependency resolution.
@@ -100,13 +145,13 @@ coverage:
 - `host/herdr_keypad/native/src/main.rs` - thin bundled process entrypoint invoking `Coordinator`.
 - `host/herdr_keypad/native/tests/production_tracer.rs` - Herdr socket tracer and authority cancellation proof.
 
-## Decisions Made
+## Original decisions
 
 - Rust 1.98.0 is pinned after an actual stable-toolchain probe and successful locked build/test/metadata runs; the locally preinstalled 1.82.0 compiler cannot parse the maintained dependency graph. This supersedes the research workstation observation without adding a prerelease or unsupported target.
 - The public effect enum is intentionally closed to `PublishSnapshot`, `FocusResult`, and `AuthorityEnded`; there is no host HID authority and no generic Herdr method forwarding.
 - Snapshot publication is not action readiness: a complete projection is published first, then matching device ACK plus generation/identity equality permits exact focus.
 
-## Deviations from Plan
+## Original deviations from plan
 
 ### Auto-fixed Issues
 
@@ -140,7 +185,7 @@ coverage:
 
 None - no external service configuration required.
 
-## Next Phase Readiness
+## Original downstream readiness
 
 - Plans 03-06 can consume the stable root `BridgeEvent`, `BridgeEffect`, `Generation`, `Clock`, `Deadline`, `Cancellation`, bounded-capacity constants, and Herdr/Device port contracts without redefining process or HID authority.
 - Plan 03 owns strict v2 protocol/domain additions; Plan 04 owns concrete Herdr/Codex ports; Plan 05 owns USB/platform PTY adapters; Plan 06 owns lifecycle/config/control/status/logging; Plan 07 alone owns shared root integration.
@@ -150,8 +195,8 @@ None - no external service configuration required.
 *Phase: 04-production-rust-host-bridge*
 *Completed: 2026-08-30*
 
-## Self-Check: PASSED
+## Original self-check: passed at completion
 
-- All six planned native artifacts and this SUMMARY exist.
+- At the original completion commit, all six planned native artifacts and this SUMMARY existed.
 - Task commits `89e7462`, `e4fbccd`, `25a0994`, and summary commit `4f573ee` exist.
-- Working tree was clean after summary creation.
+- The WR-01 amendment replaces current authority with the maintained paths listed above; it does not assert that the deleted tracer still exists.
