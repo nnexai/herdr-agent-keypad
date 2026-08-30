@@ -1,3 +1,5 @@
+use sha2::{Digest, Sha256};
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -14,6 +16,34 @@ const ARCHIVE_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const ARCHIVE_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 const LOCK_HASH: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
+#[cfg(target_os = "linux")]
+const TEST_TARGET: &str = "x86_64-unknown-linux-gnu";
+#[cfg(target_os = "macos")]
+const TEST_TARGET: &str = "aarch64-apple-darwin";
+#[cfg(target_os = "linux")]
+const WRONG_TARGET: &str = "aarch64-apple-darwin";
+#[cfg(target_os = "macos")]
+const WRONG_TARGET: &str = "x86_64-unknown-linux-gnu";
+#[cfg(target_os = "linux")]
+const TEST_BINARY: &str = "/bin/true";
+#[cfg(target_os = "macos")]
+const TEST_BINARY: &str = "/usr/bin/true";
+#[cfg(target_os = "linux")]
+const TEST_OS: &str = "linux";
+#[cfg(target_os = "macos")]
+const TEST_OS: &str = "macos";
+#[cfg(target_os = "linux")]
+const TEST_ARCH: &str = "x86_64";
+#[cfg(target_os = "macos")]
+const TEST_ARCH: &str = "arm64";
+#[cfg(target_os = "linux")]
+const DEPENDENCY_TOOL: &str = "ldd";
+#[cfg(target_os = "macos")]
+const DEPENDENCY_TOOL: &str = "otool -L";
+#[cfg(target_os = "linux")]
+const DEPENDENCY_LIBRARIES: &str = "[\"libc.so.6\", \"ld-linux-x86-64.so.2\"]";
+#[cfg(target_os = "macos")]
+const DEPENDENCY_LIBRARIES: &str = "[\"/usr/lib/libSystem.B.dylib\"]";
 struct BundleFixture {
     root: PathBuf,
     binary_hash: String,
@@ -25,7 +55,7 @@ impl BundleFixture {
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!("herdr-keypad-release-bundle-{id}"));
         fs::create_dir_all(root.join("bin")).expect("create bundle fixture");
-        fs::copy("/bin/true", root.join("bin/herdr-keypad")).expect("copy native test executable");
+        fs::copy(TEST_BINARY, root.join("bin/herdr-keypad")).expect("copy native test executable");
         fs::copy(
             Path::new(PLUGIN_ROOT).join("herdr-plugin.toml"),
             root.join("herdr-plugin.toml"),
@@ -68,19 +98,14 @@ impl Drop for BundleFixture {
         let _ = fs::remove_dir_all(&self.root);
     }
 }
-
 fn sha256(path: &Path) -> String {
-    let output = Command::new("sha256sum")
-        .arg(path)
-        .output()
-        .expect("sha256sum available for release tests");
-    assert!(output.status.success());
-    String::from_utf8(output.stdout)
-        .expect("sha256sum output")
-        .split_whitespace()
-        .next()
-        .expect("sha256sum digest")
-        .to_owned()
+    let bytes = fs::read(path).expect("read file for release test hash");
+    let digest = Sha256::digest(bytes);
+    let mut encoded = String::with_capacity(64);
+    for byte in digest {
+        write!(&mut encoded, "{byte:02x}").expect("write release test hash");
+    }
+    encoded
 }
 
 fn release_manifest(binary_hash: &str, binary_size: u64, lifecycle_hash: &str) -> String {
@@ -89,7 +114,7 @@ fn release_manifest(binary_hash: &str, binary_size: u64, lifecycle_hash: &str) -
   "schema_version": 1,
   "plugin": {{"id": "herdr-keypad", "version": "0.1.0"}},
   "bridge": {{"version": "0.1.0"}},
-  "target": {{"triple": "x86_64-unknown-linux-gnu", "os": "linux", "arch": "x86_64"}},
+  "target": {{"triple": "{target}", "os": "{os}", "arch": "{arch}"}},
   "compiler": {{"toolchain": "1.98.0", "rustc": "rustc 1.98.0", "cargo": "cargo 1.98.0"}},
   "source": {{
     "revision": "{REVISION}",
@@ -102,11 +127,16 @@ fn release_manifest(binary_hash: &str, binary_size: u64, lifecycle_hash: &str) -
   "lifecycle": {{"path": "LIFECYCLE.md", "sha256": "{lifecycle_hash}"}},
   "binary": {{"path": "bin/herdr-keypad", "sha256": "{binary_hash}", "size": {binary_size}}},
   "reproducibility": {{"status": "passed", "hash_a": "{binary_hash}", "hash_b": "{binary_hash}", "equal": true}},
-  "dependencies": {{"tool": "ldd", "status": "passed", "libraries": ["libc.so.6", "ld-linux-x86-64.so.2"]}},
+  "dependencies": {{"tool": "{dependency_tool}", "status": "passed", "libraries": {dependency_libraries}}},
   "tests": {{"status": "passed", "command": "cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test release_bundle"}},
   "signing": {{"status": "not-run", "reason": "Unsigned CI artifact"}},
   "notarization": {{"status": "not-run", "reason": "Unsigned CI artifact"}}
-}}"#
+}}"#,
+        target = TEST_TARGET,
+        os = TEST_OS,
+        arch = TEST_ARCH,
+        dependency_tool = DEPENDENCY_TOOL,
+        dependency_libraries = DEPENDENCY_LIBRARIES,
     )
 }
 
@@ -122,7 +152,7 @@ fn assert_rejected(output: std::process::Output, expected: &str) {
 #[test]
 fn valid_linux_bundle_passes_closed_policy() {
     let fixture = BundleFixture::new();
-    let output = fixture.verify("x86_64-unknown-linux-gnu");
+    let output = fixture.verify(TEST_TARGET);
     assert!(
         output.status.success(),
         "valid bundle rejected: {}",
@@ -134,7 +164,7 @@ fn valid_linux_bundle_passes_closed_policy() {
 #[test]
 fn wrong_target_is_rejected_before_archive_acceptance() {
     let fixture = BundleFixture::new();
-    assert_rejected(fixture.verify("aarch64-apple-darwin"), "target");
+    assert_rejected(fixture.verify(WRONG_TARGET), "target");
 }
 
 #[test]
@@ -149,7 +179,7 @@ fn extra_runtime_source_fixture_or_evidence_file_is_rejected() {
         let path = fixture.root.join(name);
         fs::create_dir_all(path.parent().unwrap()).expect("create forbidden path parent");
         fs::write(&path, b"not part of a production plugin").expect("write forbidden path");
-        assert_rejected(fixture.verify("x86_64-unknown-linux-gnu"), expected);
+        assert_rejected(fixture.verify(TEST_TARGET), expected);
         if name.contains('/') {
             fs::remove_dir_all(path.parent().unwrap()).expect("remove forbidden path parent");
         } else {
@@ -167,7 +197,7 @@ fn unresolved_manifest_argv_is_rejected() {
         manifest.replace("bin/herdr-keypad", "bin/missing-keypad"),
     )
     .expect("replace argv");
-    assert_rejected(fixture.verify("x86_64-unknown-linux-gnu"), "argv");
+    assert_rejected(fixture.verify(TEST_TARGET), "argv");
 }
 
 #[test]
@@ -182,7 +212,7 @@ fn binary_hash_and_metadata_must_match() {
             .replace(&fixture.binary_size.to_string(), "1"),
     )
     .expect("corrupt manifest evidence");
-    assert_rejected(fixture.verify("x86_64-unknown-linux-gnu"), "hash");
+    assert_rejected(fixture.verify(TEST_TARGET), "hash");
 }
 
 #[test]
@@ -195,7 +225,7 @@ fn signing_and_notarization_must_not_claim_unrun_operations() {
         manifest.replace("\"status\": \"not-run\"", "\"status\": \"passed\""),
     )
     .expect("claim signing evidence");
-    assert_rejected(fixture.verify("x86_64-unknown-linux-gnu"), "signing");
+    assert_rejected(fixture.verify(TEST_TARGET), "signing");
 }
 
 #[test]
@@ -208,7 +238,7 @@ fn unknown_manifest_fields_are_rejected_by_closed_schema() {
         manifest.replacen("\"schema_version\"", "\"unexpected\": true,\n  \"schema_version\"", 1),
     )
     .expect("add unknown field");
-    assert_rejected(fixture.verify("x86_64-unknown-linux-gnu"), "schema");
+    assert_rejected(fixture.verify(TEST_TARGET), "schema");
 }
 
 #[test]
@@ -218,7 +248,7 @@ fn lifecycle_document_is_reopened_and_privacy_checked() {
     let lifecycle = fs::read_to_string(&lifecycle_path).expect("lifecycle");
     fs::write(&lifecycle_path, lifecycle.replace("HERDR_PLUGIN_ROOT", "/home/secret"))
         .expect("corrupt lifecycle");
-    assert_rejected(fixture.verify("x86_64-unknown-linux-gnu"), "lifecycle");
+    assert_rejected(fixture.verify(TEST_TARGET), "lifecycle");
 }
 
 #[test]
@@ -239,7 +269,7 @@ fn valid_linux_tar_archive_passes_closed_policy() {
         .status()
         .expect("tar available for release tests");
     assert!(status.success(), "tar archive creation failed");
-    let output = fixture.verify_path(&archive, "x86_64-unknown-linux-gnu");
+    let output = fixture.verify_path(&archive, TEST_TARGET);
     let _ = fs::remove_file(&archive);
     assert!(
         output.status.success(),
