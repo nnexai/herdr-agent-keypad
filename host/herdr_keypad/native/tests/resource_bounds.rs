@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 fn queue_payload_and_timer_limits_are_closed_and_validated() {
     let config = CoordinatorConfig::default();
     assert!(config.validate().is_ok());
+    assert!(config.snapshot_ack_timeout <= Duration::from_secs(120));
     assert!(config.reconnect_initial <= config.reconnect_max);
     assert!(config.reconnect_max <= Duration::from_secs(8));
     assert!(FOCUS_QUEUE_CAPACITY <= v2::SESSION_CAPACITY);

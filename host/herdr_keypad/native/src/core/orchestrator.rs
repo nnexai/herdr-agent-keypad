@@ -14,7 +14,7 @@ use crate::ports::control::{ControlEndpoint, ControlReply, ControlRequest};
 use crate::ports::herdr::{HerdrClient, HerdrError, HerdrEventStream};
 use crate::ports::lifecycle::{LifecycleCommand, LifecycleOwner, ResourceMetrics, RuntimePaths};
 use crate::ports::logging::{SafeLogger, TraceConfig};
-use crate::ports::status::{BridgeStatus, StatusSnapshot};
+use crate::ports::status::{BridgeStatus, SafeCode, StatusSnapshot};
 use crate::ports::usb::{UsbError, UsbEvent, UsbPort};
 use crate::protocol::v2::{self, Agent, AgentSnapshot, Codex, Diagnostics, FocusIntentPayload, FocusOutcome, FocusResultPayload, FrameType, Payload, ProtocolFrame, SourceStatus as WireSourceStatus};
 use crate::{BridgeError, Cancellation};
@@ -25,6 +25,7 @@ use std::time::Duration;
 use tokio::time::{sleep, Instant};
 
 const DEFAULT_HERDR_TIMEOUT: Duration = Duration::from_secs(2);
+const DEFAULT_SNAPSHOT_ACK_TIMEOUT: Duration = Duration::from_secs(2);
 const DEFAULT_CODEX_DEADLINE: Duration = Duration::from_secs(15);
 const DEFAULT_RECONNECT_INITIAL: Duration = Duration::from_millis(500);
 const DEFAULT_RECONNECT_MAX: Duration = Duration::from_secs(8);
@@ -38,6 +39,7 @@ const UNAVAILABLE_DIAGNOSTIC: &str = "UNAVAL";
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CoordinatorConfig {
     pub herdr_timeout: Duration,
+    pub snapshot_ack_timeout: Duration,
     pub codex_deadline: Duration,
     pub codex_interval: Duration,
     pub reconnect_initial: Duration,
@@ -48,6 +50,7 @@ impl Default for CoordinatorConfig {
     fn default() -> Self {
         Self {
             herdr_timeout: DEFAULT_HERDR_TIMEOUT,
+            snapshot_ack_timeout: DEFAULT_SNAPSHOT_ACK_TIMEOUT,
             codex_deadline: DEFAULT_CODEX_DEADLINE,
             codex_interval: FULL_POLL_INTERVAL,
             reconnect_initial: DEFAULT_RECONNECT_INITIAL,
@@ -60,6 +63,8 @@ impl CoordinatorConfig {
     pub fn validate(self) -> Result<Self, BridgeError> {
         if self.herdr_timeout.is_zero()
             || self.herdr_timeout > Duration::from_secs(120)
+            || self.snapshot_ack_timeout.is_zero()
+            || self.snapshot_ack_timeout > Duration::from_secs(120)
             || self.codex_deadline.is_zero()
             || self.codex_deadline > Duration::from_secs(120)
             || self.codex_interval.is_zero()
@@ -80,6 +85,7 @@ struct PendingPublication {
     host_epoch: String,
     snapshot_revision: u64,
     source_status: String,
+    ack_deadline: Instant,
 }
 
 /// One production coordinator joining every completed port.
@@ -105,7 +111,9 @@ pub struct RuntimeCoordinator {
     usb_delay: Duration,
     usb_due: Option<Instant>,
     codex_due: Option<Instant>,
-    device_ready: bool,
+    device_link_ready: bool,
+    usb_reconnect_attempt: u32,
+    usb_last_error: Option<SafeCode>,
     event_count: u64,
     publication_count: u64,
     resource_metrics: ResourceMetrics,
@@ -165,7 +173,9 @@ impl RuntimeCoordinator {
             usb_delay: config.reconnect_initial,
             usb_due: None,
             codex_due: None,
-            device_ready: false,
+            device_link_ready: false,
+            usb_reconnect_attempt: 0,
+            usb_last_error: None,
             event_count: 0,
             publication_count: 0,
             resource_metrics: ResourceMetrics::idle(),
@@ -183,15 +193,20 @@ impl RuntimeCoordinator {
     pub fn status(&self) -> StatusSnapshot {
         let mut status = self.lifecycle.status();
         if status.state != BridgeStatus::Stopped {
-            status.device_state = if self.usb.connected() && self.device_ready {
+            status.device_state = if self.usb.connected() && self.device_link_ready {
                 BridgeStatus::Ready
             } else {
                 BridgeStatus::DeviceUnavailable
             };
-            status.herdr_state = if self.herdr_healthy && self.current.is_some() {
-                BridgeStatus::Running
-            } else {
-                BridgeStatus::HerdrUnavailable
+            status.herdr_state = match (
+                self.herdr_healthy,
+                self.current.as_ref().map(|snapshot| snapshot.source_status),
+            ) {
+                (true, Some(ModelSourceStatus::Current | ModelSourceStatus::Empty)) => {
+                    BridgeStatus::Running
+                }
+                (true, Some(ModelSourceStatus::Stale)) => BridgeStatus::Stale,
+                _ => BridgeStatus::HerdrUnavailable,
             };
             status.codex_state = match self.codex.view().source_state.as_str() {
                 "current" => BridgeStatus::Ready,
@@ -199,6 +214,19 @@ impl RuntimeCoordinator {
                 "codex_offline" => BridgeStatus::CodexUnavailable,
                 _ => BridgeStatus::Unavailable,
             };
+            status.reconnect_attempt = self.usb_reconnect_attempt;
+            status.backoff_ms = self
+                .usb_due
+                .map(|deadline| {
+                    deadline
+                        .saturating_duration_since(Instant::now())
+                        .as_millis()
+                        .min(u128::from(u64::MAX)) as u64
+                })
+                .unwrap_or(0);
+            if let Some(error) = self.usb_last_error {
+                status.last_error = Some(error);
+            }
             status.state = aggregate_runtime_state(
                 status.device_state,
                 status.herdr_state,
@@ -239,6 +267,10 @@ impl RuntimeCoordinator {
         self.try_connect_usb().await;
         self.collect_codex_and_publish().await;
         loop {
+            let publication_ack_due = self
+                .pending_publication
+                .as_ref()
+                .map(|publication| publication.ack_deadline);
             tokio::select! {
                 _ = self.cancellation.cancelled() => {
                     self.shutdown(false);
@@ -314,6 +346,9 @@ impl RuntimeCoordinator {
                     self.usb_due = None;
                     self.try_connect_usb().await;
                 }
+                _ = reconnect_sleep(publication_ack_due) => {
+                    self.mark_usb_unavailable(SafeCode::DeviceUnavailable);
+                }
                 _ = codex_sleep(self.codex_due) => {
                     self.codex_due = None;
                     self.collect_codex_and_publish().await;
@@ -327,11 +362,9 @@ impl RuntimeCoordinator {
             Ok(Some(crate::BridgeEvent::HerdrInvalidated)) => {
                 self.event_count = self.event_count.saturating_add(1);
                 self.resource_metrics.wakes = self.resource_metrics.wakes.saturating_add(1);
-                self.projection.invalidate("stale");
+                self.current = Some(self.projection.invalidate("stale"));
                 self.herdr_dirty = true;
-                self.device_ready = false;
                 self.publish_current().await;
-                self.device_ready = false;
             }
             Ok(Some(crate::BridgeEvent::HerdrAuthorityEnded)) | Ok(Some(crate::BridgeEvent::AuthorityCancelled)) => {
                 self.shutdown(true);
@@ -349,14 +382,14 @@ impl RuntimeCoordinator {
     async fn handle_usb_event(&mut self, event: Result<Option<UsbEvent>, UsbError>) -> Result<(), BridgeError> {
         match event {
             Ok(Some(UsbEvent::Connected { .. })) => {
-                self.device_ready = false;
+                self.device_link_ready = false;
                 self.usb_due = None;
                 self.usb_delay = self.config.reconnect_initial;
                 self.publish_current().await;
             }
             Ok(Some(UsbEvent::SnapshotAck(ack))) => {
                 let Some(expected) = self.pending_publication.take() else {
-                    self.mark_usb_unavailable();
+                    self.mark_usb_unavailable(SafeCode::PayloadRejected);
                     return Ok(());
                 };
                 let accepted = ack.accepted
@@ -365,26 +398,31 @@ impl RuntimeCoordinator {
                     && ack.snapshot_revision == expected.snapshot_revision
                     && ack.source_status == expected.source_status;
                 if !accepted {
-                    self.mark_usb_unavailable();
+                    self.mark_usb_unavailable(SafeCode::PayloadRejected);
                     return Ok(());
                 }
                 self.publication_count = self.publication_count.saturating_add(1);
                 self.resource_metrics.wakes = self.resource_metrics.wakes.saturating_add(1);
+                self.device_link_ready = true;
+                self.usb_reconnect_attempt = 0;
+                self.usb_last_error = None;
                 if self.publication_dirty {
                     self.publication_dirty = false;
                     self.publish_current().await;
-                } else {
-                    self.device_ready = true;
                 }
             }
             Ok(Some(UsbEvent::FocusIntent(intent))) => {
                 self.accept_focus_payload(intent.payload, intent.sequence)?;
             }
-            Ok(Some(UsbEvent::Disconnected)) => self.mark_usb_unavailable(),
-            Ok(Some(UsbEvent::Failed { .. })) | Err(_) => self.mark_usb_unavailable(),
+            Ok(Some(UsbEvent::Disconnected)) => {
+                self.mark_usb_unavailable(SafeCode::DeviceUnavailable)
+            }
+            Ok(Some(UsbEvent::Failed { .. })) | Err(_) => {
+                self.mark_usb_unavailable(SafeCode::DeviceUnavailable)
+            }
             Ok(None) => {}
         }
-        if self.device_ready {
+        if self.device_link_ready {
             self.drain_focus().await?;
         }
         Ok(())
@@ -407,12 +445,12 @@ impl RuntimeCoordinator {
     async fn try_connect_usb(&mut self) {
         match self.usb.connect().await {
             Ok(UsbEvent::Connected { .. }) => {
-                self.device_ready = false;
+                self.device_link_ready = false;
                 self.usb_due = None;
                 self.usb_delay = self.config.reconnect_initial;
                 self.publish_current().await;
             }
-            Ok(_) | Err(_) => self.mark_usb_unavailable(),
+            Ok(_) | Err(_) => self.mark_usb_unavailable(SafeCode::DeviceUnavailable),
         }
     }
 
@@ -438,13 +476,14 @@ impl RuntimeCoordinator {
         self.herdr_events.close();
         self.projection.invalidate(if reason == "offline" { "offline" } else { "unavailable" });
         self.current = self.projection.current.clone();
-        self.device_ready = false;
         self.publish_current().await;
         self.schedule_herdr();
     }
 
-    fn mark_usb_unavailable(&mut self) {
-        self.device_ready = false;
+    fn mark_usb_unavailable(&mut self, error: SafeCode) {
+        self.device_link_ready = false;
+        self.usb_reconnect_attempt = self.usb_reconnect_attempt.saturating_add(1);
+        self.usb_last_error = Some(error);
         self.pending_focus.clear();
         self.pending_publication = None;
         self.publication_dirty = false;
@@ -486,9 +525,10 @@ impl RuntimeCoordinator {
                     host_epoch: snapshot.host_epoch,
                     snapshot_revision: u64::from(snapshot.snapshot_revision),
                     source_status,
+                    ack_deadline: Instant::now() + self.config.snapshot_ack_timeout,
                 });
             }
-            Err(_) => self.mark_usb_unavailable(),
+            Err(_) => self.mark_usb_unavailable(SafeCode::DeviceUnavailable),
         }
         Ok(())
     }
@@ -594,7 +634,7 @@ impl RuntimeCoordinator {
     }
 
     async fn drain_focus(&mut self) -> Result<(), BridgeError> {
-        if !self.device_ready || !self.herdr_healthy {
+        if !self.device_link_ready {
             return Ok(());
         }
         while let Some(intent) = self.pending_focus.pop_front() {
@@ -608,7 +648,7 @@ impl RuntimeCoordinator {
             };
             let payload = focus_payload(&intent, outcome.status, outcome.success());
             if self.usb.send_focus_result(payload).await.is_err() {
-                self.mark_usb_unavailable();
+                self.mark_usb_unavailable(SafeCode::DeviceUnavailable);
                 break;
             }
         }
@@ -635,7 +675,9 @@ impl RuntimeCoordinator {
         self.pending_focus.clear();
         self.pending_publication = None;
         self.publication_dirty = false;
-        self.device_ready = false;
+        self.device_link_ready = false;
+        self.usb_reconnect_attempt = 0;
+        self.usb_last_error = None;
         self.herdr_events.close();
         self.usb.close();
     }
@@ -710,14 +752,17 @@ fn wire_agent(entry: &super::model::AgentEntry) -> Agent {
         discriminator: entry.discriminator.clone(),
         since: entry.since.clone(),
         age: entry.age.clone(),
-        state: match entry.state.as_str() {
-            "blocked" => v2::AgentState::Blocked,
-            "finished" => v2::AgentState::Finished,
-            "working" => v2::AgentState::Working,
-            "idle" => v2::AgentState::Idle,
-            "settled" => v2::AgentState::Settled,
-            "empty" => v2::AgentState::Empty,
-            _ => v2::AgentState::Unknown,
+        state: if entry.identity.is_none() {
+            v2::AgentState::Empty
+        } else {
+            match entry.state.as_str() {
+                "blocked" => v2::AgentState::Blocked,
+                "finished" => v2::AgentState::Finished,
+                "working" => v2::AgentState::Working,
+                "idle" => v2::AgentState::Idle,
+                "settled" => v2::AgentState::Settled,
+                _ => v2::AgentState::Unknown,
+            }
         },
         pane_id,
         terminal_id,
@@ -805,8 +850,8 @@ mod tests {
         ChildExit, CodexChildError, CodexProcess, CodexProcessFactory,
     };
     use crate::ports::usb::{
-        DeviceCandidate, PlatformSerial, SerialConnection, UsbError, EXPECTED_CDC_INTERFACE,
-        EXPECTED_PID, EXPECTED_SERIAL, EXPECTED_VID,
+        DeviceCandidate, PlatformSerial, SerialConnection, SnapshotAck, UsbError,
+        EXPECTED_CDC_INTERFACE, EXPECTED_PID, EXPECTED_SERIAL, EXPECTED_VID,
     };
     use serde_json::json;
     use std::collections::VecDeque;
@@ -868,6 +913,102 @@ mod tests {
                 .map(|stream| Box::new(stream) as SerialConnection)
                 .ok_or(UsbError::OpenFailed)
         }
+    }
+
+    #[derive(Clone)]
+    struct CountingPlatform {
+        streams: Arc<Mutex<VecDeque<DuplexStream>>>,
+        opens: Arc<AtomicUsize>,
+    }
+
+    impl PlatformSerial for CountingPlatform {
+        fn enumerate(&self) -> Result<Vec<DeviceCandidate>, UsbError> {
+            FakePlatform {
+                streams: Arc::new(Mutex::new(VecDeque::new())),
+            }
+            .enumerate()
+        }
+
+        fn open(&self, _: &DeviceCandidate) -> Result<SerialConnection, UsbError> {
+            self.opens.fetch_add(1, Ordering::SeqCst);
+            self.streams
+                .lock()
+                .expect("stream queue")
+                .pop_front()
+                .map(|stream| Box::new(stream) as SerialConnection)
+                .ok_or(UsbError::OpenFailed)
+        }
+    }
+
+    fn unconnected_coordinator(config: CoordinatorConfig) -> (TestRoot, RuntimeCoordinator) {
+        let root = TestRoot::new();
+        let config_dir = root.0.join("config");
+        let state_dir = root.0.join("state");
+        std::fs::create_dir(&config_dir).expect("config directory");
+        std::fs::create_dir(&state_dir).expect("state directory");
+        let binding = root.0.join("binding.json");
+        std::fs::write(
+            &binding,
+            br#"{"schema_version":1,"device_id":"paired-device","protocol":1,"firmware":"phase1-bringup"}"#,
+        )
+        .expect("binding");
+        let startup = StartupConfig::load(&config_dir, &binding);
+        let paths = RuntimePaths::new(
+            &config_dir,
+            &state_dir,
+            root.0.join("herdr.sock"),
+            root.0.join("herdr"),
+            std::process::id(),
+        );
+        let coordinator = RuntimeCoordinator::with_config(
+            paths,
+            startup,
+            &binding,
+            Box::new(FakePlatform {
+                streams: Arc::new(Mutex::new(VecDeque::new())),
+            }),
+            config,
+        )
+        .expect("coordinator");
+        (root, coordinator)
+    }
+
+    fn pending_publication() -> PendingPublication {
+        PendingPublication {
+            request_sequence: 7,
+            host_epoch: "host-test".to_owned(),
+            snapshot_revision: 11,
+            source_status: "current".to_owned(),
+            ack_deadline: Instant::now() + DEFAULT_SNAPSHOT_ACK_TIMEOUT,
+        }
+    }
+
+    fn exact_ack() -> SnapshotAck {
+        SnapshotAck {
+            reply_to: 7,
+            accepted: true,
+            host_epoch: "host-test".to_owned(),
+            snapshot_revision: 11,
+            source_status: "current".to_owned(),
+            reason: "committed".to_owned(),
+        }
+    }
+
+    fn install_stale_projection(coordinator: &mut RuntimeCoordinator) -> ProjectionSnapshot {
+        let current = coordinator
+            .projection
+            .refresh(
+                &[herdr_agent(false)],
+                &[json!({"workspace_id":"workspace-1","label":"repo"})],
+            )
+            .expect("current projection");
+        coordinator.current = Some(current);
+        let stale = coordinator.projection.invalidate("stale");
+        coordinator
+            .payload_for(&stale)
+            .expect("stale coalesced projection must remain publishable");
+        coordinator.current = Some(stale.clone());
+        stale
     }
 
     struct RepeatingCodexFactory {
@@ -1071,6 +1212,48 @@ mod tests {
         writer.write_all(&bytes).await.expect("device frame write");
     }
 
+    async fn serve_device_without_snapshot_ack(stream: DuplexStream) {
+        let (read_half, mut write_half) = tokio::io::split(stream);
+        let mut lines = BufReader::new(read_half).lines();
+        let hello_line = lines
+            .next_line()
+            .await
+            .expect("hello read")
+            .expect("hello line");
+        let hello: Value = serde_json::from_str(&hello_line).expect("hello JSON");
+        let session = hello["session_id"].as_str().expect("session");
+        let hello_payload = json!({
+            "accepted":true,
+            "device_id":"paired-device",
+            "firmware":"phase1-bringup",
+            "protocol":1
+        });
+        let mut hello_ack = serde_json::to_vec(&json!({
+            "v":1,
+            "type":"hello_ack",
+            "boot_id":"device-boot-1",
+            "session_id":session,
+            "seq":1,
+            "reply_to":1,
+            "digest":test_digest(&hello_payload),
+            "payload":hello_payload
+        }))
+        .expect("hello ACK JSON");
+        hello_ack.push(b'\n');
+        write_half
+            .write_all(&hello_ack)
+            .await
+            .expect("hello ACK write");
+        let snapshot = lines
+            .next_line()
+            .await
+            .expect("snapshot read")
+            .expect("snapshot line");
+        let frame: Value = serde_json::from_str(&snapshot).expect("snapshot JSON");
+        assert_eq!(frame["type"], "agent_snapshot");
+        pending::<()>().await;
+    }
+
     async fn serve_device(
         stream: DuplexStream,
         snapshots: Arc<AtomicUsize>,
@@ -1173,6 +1356,196 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn invalidation_before_an_exact_ack_still_establishes_link_readiness() {
+        let (_root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
+        coordinator.pending_publication = Some(pending_publication());
+        coordinator.publication_dirty = true;
+        install_stale_projection(&mut coordinator);
+
+        coordinator
+            .handle_usb_event(Ok(Some(UsbEvent::SnapshotAck(exact_ack()))))
+            .await
+            .expect("exact ACK handling");
+
+        assert!(
+            coordinator.device_link_ready,
+            "an accepted exact ACK proves link health even when a newer generation is coalesced"
+        );
+        assert!(!coordinator.publication_dirty);
+        assert!(
+            coordinator.last_payload.is_some(),
+            "the coalesced generation must continue publication after the accepted ACK"
+        );
+        assert_eq!(
+            coordinator.current.as_ref().map(|snapshot| snapshot.source_status),
+            Some(ModelSourceStatus::Stale)
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn focus_waiting_during_coalesced_publication_gets_a_bounded_result() {
+        let (_root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
+        coordinator.pending_publication = Some(pending_publication());
+        coordinator.publication_dirty = true;
+        install_stale_projection(&mut coordinator);
+        coordinator.pending_focus.push_back(ModelFocusIntent::new(
+            "focus-during-coalesce",
+            Binding {
+                host_epoch: "host-test".to_owned(),
+                snapshot_revision: 10,
+                slot: 0,
+                entry_id: "pane-1".to_owned(),
+                identity: Identity {
+                    pane_id: "pane-1".to_owned(),
+                    terminal_id: "terminal-1".to_owned(),
+                    agent_session: None,
+                    source_revision: 1,
+                    workspace_id: String::new(),
+                    tab_id: String::new(),
+                },
+            },
+        ));
+
+        coordinator
+            .handle_usb_event(Ok(Some(UsbEvent::SnapshotAck(exact_ack()))))
+            .await
+            .expect("exact ACK handling");
+
+        assert!(
+            coordinator.pending_focus.is_empty(),
+            "stale-generation focus must be rejected and published rather than waiting for quiescence"
+        );
+    }
+
+    #[tokio::test]
+    async fn mismatched_snapshot_ack_fields_never_establish_link_readiness() {
+        let mut mismatches = Vec::new();
+        let mut rejected = exact_ack();
+        rejected.accepted = false;
+        mismatches.push(rejected);
+        let mut wrong_reply = exact_ack();
+        wrong_reply.reply_to += 1;
+        mismatches.push(wrong_reply);
+        let mut wrong_epoch = exact_ack();
+        wrong_epoch.host_epoch = "wrong-host".to_owned();
+        mismatches.push(wrong_epoch);
+        let mut wrong_revision = exact_ack();
+        wrong_revision.snapshot_revision += 1;
+        mismatches.push(wrong_revision);
+        let mut wrong_source = exact_ack();
+        wrong_source.source_status = "stale".to_owned();
+        mismatches.push(wrong_source);
+
+        for ack in mismatches {
+            let (_root, mut coordinator) =
+                unconnected_coordinator(CoordinatorConfig::default());
+            coordinator.pending_publication = Some(pending_publication());
+            coordinator
+                .handle_usb_event(Ok(Some(UsbEvent::SnapshotAck(ack))))
+                .await
+                .expect("mismatched ACK handling");
+            assert!(!coordinator.device_link_ready);
+            assert_eq!(coordinator.usb_last_error, Some(SafeCode::PayloadRejected));
+        }
+    }
+
+    #[test]
+    fn ack_timeout_recovery_surfaces_bounded_safe_status() {
+        let (_root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
+        let _ = coordinator.lifecycle.handle(LifecycleCommand::Start);
+        coordinator.mark_usb_unavailable(SafeCode::DeviceUnavailable);
+
+        let status = coordinator.status();
+        assert_eq!(status.device_state, BridgeStatus::DeviceUnavailable);
+        assert_eq!(status.last_error, Some(SafeCode::DeviceUnavailable));
+        assert_eq!(status.reconnect_attempt, 1);
+        assert!(status.backoff_ms <= coordinator.config.reconnect_max.as_millis() as u64);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn sent_publication_without_ack_reconnects_within_the_bounded_deadline() {
+        let root = TestRoot::new();
+        let config_dir = root.0.join("config");
+        let state_dir = root.0.join("state");
+        std::fs::create_dir(&config_dir).expect("config directory");
+        std::fs::create_dir(&state_dir).expect("state directory");
+        let binding = root.0.join("binding.json");
+        std::fs::write(
+            &binding,
+            br#"{"schema_version":1,"device_id":"paired-device","protocol":1,"firmware":"phase1-bringup"}"#,
+        )
+        .expect("binding");
+        let herdr_socket = root.0.join("herdr.sock");
+        let listener = UnixListener::bind(&herdr_socket).expect("Herdr listener");
+        let herdr_task = tokio::spawn(serve_herdr(listener));
+        let mut host_streams = VecDeque::new();
+        let mut device_tasks = Vec::new();
+        for _ in 0..2 {
+            let (host_stream, device_stream) = tokio::io::duplex(64 * 1024);
+            host_streams.push_back(host_stream);
+            device_tasks.push(tokio::spawn(serve_device_without_snapshot_ack(device_stream)));
+        }
+        let opens = Arc::new(AtomicUsize::new(0));
+        let platform = CountingPlatform {
+            streams: Arc::new(Mutex::new(host_streams)),
+            opens: opens.clone(),
+        };
+        let startup = StartupConfig::load(&config_dir, &binding);
+        let paths = RuntimePaths::new(
+            &config_dir,
+            &state_dir,
+            &herdr_socket,
+            root.0.join("herdr"),
+            std::process::id(),
+        );
+        let config = CoordinatorConfig {
+            herdr_timeout: Duration::from_millis(250),
+            snapshot_ack_timeout: Duration::from_millis(40),
+            codex_deadline: Duration::from_millis(250),
+            codex_interval: Duration::from_millis(100),
+            reconnect_initial: Duration::from_millis(10),
+            reconnect_max: Duration::from_millis(20),
+        };
+        let mut coordinator = RuntimeCoordinator::with_config(
+            paths,
+            startup,
+            &binding,
+            Box::new(platform),
+            config,
+        )
+        .expect("coordinator");
+        coordinator.codex = CodexCollector::with_factory(
+            "codex",
+            Duration::from_millis(250),
+            Arc::new(RepeatingCodexFactory {
+                spawns: Arc::new(AtomicUsize::new(0)),
+            }),
+        )
+        .expect("Codex collector");
+        let cancellation = coordinator.cancellation();
+        let runtime = tokio::spawn(coordinator.run());
+
+        tokio::time::timeout(Duration::from_millis(500), async {
+            while opens.load(Ordering::SeqCst) < 2 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("missing snapshot ACK never triggered bounded reconnect");
+
+        cancellation.cancel();
+        tokio::time::timeout(Duration::from_secs(1), runtime)
+            .await
+            .expect("runtime cancellation")
+            .expect("runtime task")
+            .expect("runtime result");
+        herdr_task.abort();
+        for task in device_tasks {
+            task.abort();
+        }
+    }
+
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn production_coordinator_advances_codex_cadence_and_focus_together() {
         let root = TestRoot::new();
@@ -1213,6 +1586,7 @@ mod tests {
         );
         let config = CoordinatorConfig {
             herdr_timeout: Duration::from_millis(250),
+            snapshot_ack_timeout: Duration::from_millis(100),
             codex_deadline: Duration::from_millis(250),
             codex_interval: Duration::from_millis(40),
             reconnect_initial: Duration::from_millis(100),
@@ -1301,6 +1675,19 @@ mod tests {
         let config = CoordinatorConfig::default();
         assert!(config.validate().is_ok());
         assert!(config.reconnect_max <= DEFAULT_RECONNECT_MAX);
+        assert!(config.snapshot_ack_timeout <= Duration::from_secs(120));
+
+        let mut zero = config;
+        zero.snapshot_ack_timeout = Duration::ZERO;
+        assert!(zero.validate().is_err());
+
+        let mut maximum = config;
+        maximum.snapshot_ack_timeout = Duration::from_secs(120);
+        assert!(maximum.validate().is_ok());
+
+        let mut over_maximum = config;
+        over_maximum.snapshot_ack_timeout = Duration::from_secs(121);
+        assert!(over_maximum.validate().is_err());
     }
 
     #[test]
