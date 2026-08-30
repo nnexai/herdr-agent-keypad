@@ -118,6 +118,103 @@ fn production_binary_start_status_stop_owns_control_socket_for_authority_lifetim
 
     fs::remove_dir_all(root).expect("cleanup");
 }
+#[cfg(unix)]
+fn socket_marker(path: &Path) -> (u64, u64) {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = fs::metadata(path).expect("control socket metadata");
+    (metadata.dev(), metadata.ino())
+}
+
+#[test]
+fn production_binary_restart_replaces_pid_reloads_config_and_reopens_socket() {
+    let root = temp_root();
+    fs::create_dir_all(root.join("config")).expect("config");
+    fs::create_dir_all(root.join("state")).expect("state");
+    fs::create_dir_all(root.join("home/.config/herdr")).expect("home config");
+    fs::write(root.join("config/config.toml"), "logging_enabled = false\n").expect("settings");
+    fs::write(
+        root.join("home/.config/herdr/keypad-binding.json"),
+        br#"{"schema_version":1,"device_id":"kbd-123","protocol":1,"firmware":"phase1-bringup"}"#,
+    )
+    .expect("binding");
+
+    let start = lifecycle_command(&root, "start")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("start authority");
+    let mut authority = ChildGuard(start);
+    let socket = root.join("state/bridge.sock");
+    assert!(wait_until(Duration::from_secs(5), || socket.exists()), "start never created bridge.sock");
+    let initial_pid = authority.0.id();
+    let initial_socket = socket_marker(&socket);
+    let initial_status = lifecycle_command(&root, "status").output().expect("initial status");
+    let initial_status: Value = serde_json::from_slice(&initial_status.stdout).expect("initial status JSON");
+    let initial_identity = initial_status["config_identity"].as_str().expect("initial config identity").to_owned();
+
+    fs::write(root.join("config/config.toml"), "logging_enabled = true\n").expect("changed settings");
+    let restart = lifecycle_command(&root, "restart")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("restart authority");
+    let mut restarted = ChildGuard(restart);
+    assert_ne!(restarted.0.id(), initial_pid, "restart reused the original process");
+    assert!(
+        wait_until(Duration::from_secs(5), || authority.0.try_wait().expect("old authority state").is_some()),
+        "old authority remained alive after restart"
+    );
+    assert!(wait_until(Duration::from_secs(5), || socket.exists()), "restart never recreated bridge.sock");
+    assert_ne!(socket_marker(&socket), initial_socket, "restart did not recreate bridge.sock");
+    assert!(
+        restarted.0.try_wait().expect("restarted authority state").is_none(),
+        "replacement authority exited before serving"
+    );
+    let changed_status = lifecycle_command(&root, "status").output().expect("changed status");
+    assert!(changed_status.status.success(), "changed status failed: {}", String::from_utf8_lossy(&changed_status.stderr));
+    let changed_status: Value = serde_json::from_slice(&changed_status.stdout).expect("changed status JSON");
+    assert_ne!(
+        changed_status["config_identity"].as_str().expect("changed config identity"),
+        initial_identity,
+        "restart did not reload changed StartupConfig"
+    );
+
+    let same_config_socket = socket_marker(&socket);
+    let second_restart = lifecycle_command(&root, "restart")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("same-config restart authority");
+    let mut same_config = ChildGuard(second_restart);
+    assert_ne!(same_config.0.id(), restarted.0.id(), "same-config restart reused the previous process");
+    assert!(
+        wait_until(Duration::from_secs(5), || restarted.0.try_wait().expect("previous authority state").is_some()),
+        "previous authority remained alive after same-config restart"
+    );
+    assert!(wait_until(Duration::from_secs(5), || socket.exists()), "same-config restart removed bridge.sock");
+    assert_ne!(socket_marker(&socket), same_config_socket, "same-config restart did not recreate bridge.sock");
+    let same_config_status = lifecycle_command(&root, "status").output().expect("same-config status");
+    assert!(same_config_status.status.success(), "same-config status failed: {}", String::from_utf8_lossy(&same_config_status.stderr));
+    let same_config_status: Value = serde_json::from_slice(&same_config_status.stdout).expect("same-config status JSON");
+    assert_eq!(
+        same_config_status["config_identity"].as_str(),
+        changed_status["config_identity"].as_str(),
+        "same-config restart changed effective configuration"
+    );
+
+    let stop_output = lifecycle_command(&root, "stop").output().expect("stop replacement");
+    assert!(stop_output.status.success(), "stop failed: {}", String::from_utf8_lossy(&stop_output.stderr));
+    assert!(
+        wait_until(Duration::from_secs(5), || same_config.0.try_wait().expect("replacement state").is_some()),
+        "replacement authority did not exit after stop"
+    );
+    assert!(!socket.exists(), "control socket remained after replacement stop");
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
 
 #[test]
 fn plugin_manifest_is_cross_platform_direct_argv_and_has_no_developer_runtime() {

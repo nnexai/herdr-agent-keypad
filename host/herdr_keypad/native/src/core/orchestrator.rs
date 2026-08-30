@@ -218,12 +218,18 @@ impl RuntimeCoordinator {
                         _ => continue,
                     };
                     let stopping = matches!(&request, ControlRequest::Stop { .. });
+                    let restarting = matches!(&request, ControlRequest::Restart { .. });
                     let reply = self.lifecycle.handle_control(request);
                     ControlEndpoint::send_reply(&mut stream, &reply)
                         .await
                         .map_err(|error| BridgeError::protocol(format!("control reply: {error:?}")))?;
-                    if stopping {
-                        self.close_boundaries();
+                    let restart_ack = restarting && matches!(&reply, crate::ports::control::ControlReply::Restarted { .. });
+                    if stopping || restart_ack {
+                        if restarting {
+                            self.shutdown_for_restart();
+                        } else {
+                            self.close_boundaries();
+                        }
                         return Ok(());
                     }
                 }
@@ -562,6 +568,11 @@ impl RuntimeCoordinator {
         self.device_ready = false;
         self.herdr_events.close();
         self.usb.close();
+    }
+
+    fn shutdown_for_restart(&mut self) {
+        self.close_boundaries();
+        self.lifecycle.on_restart();
     }
 
     fn shutdown(&mut self, herdr_exit: bool) {

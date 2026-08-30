@@ -62,19 +62,18 @@ fn lifecycle_control_matching_start_is_idempotent_and_changed_config_requires_re
         config_identity: startup.effective.identity().to_owned(),
     });
 
-    let mut changed = startup.effective.clone();
-    changed.logging_enabled = true;
-    assert_eq!(owner.start_with_config(changed), ControlReply::RestartRequired {
-        active_config_identity: startup.effective.identity().to_owned(),
-        requested_config_identity: owner.requested_identity_for_test(true),
-    });
     let changed_identity = owner.requested_identity_for_test(true);
-    assert_eq!(owner.handle(LifecycleCommand::Restart), ControlReply::Restarted {
-        version: env!("CARGO_PKG_VERSION").to_owned(),
-        config_identity: changed_identity,
-    });
-
-    owner.handle(LifecycleCommand::Stop);
+    assert_eq!(
+        owner.handle_control(ControlRequest::restart(changed_identity.clone())),
+        ControlReply::Restarted {
+            version: env!("CARGO_PKG_VERSION").to_owned(),
+            config_identity: changed_identity.clone(),
+        }
+    );
+    assert!(owner.restart_requested(), "restart acknowledgement must request a process handoff");
+    assert_eq!(owner.effective_config().identity(), startup.effective.identity());
+    owner.on_restart();
+    assert!(!owner.restart_requested());
     assert_eq!(owner.status().state, BridgeStatus::Stopped);
     fs::remove_dir_all(root).expect("cleanup");
 }
