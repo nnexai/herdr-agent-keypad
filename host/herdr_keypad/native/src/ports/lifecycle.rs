@@ -82,7 +82,7 @@ pub struct LifecycleOwner {
     paths: RuntimePaths,
     lock: Option<AuthorityLock>,
     effective: EffectiveConfig,
-    pending_config: Option<EffectiveConfig>,
+    restart_requested: bool,
     active: bool,
     herdr_alive: bool,
     sessions_valid: bool,
@@ -99,7 +99,7 @@ impl LifecycleOwner {
             paths,
             lock: Some(lock),
             effective,
-            pending_config: None,
+            restart_requested: false,
             active: false,
             herdr_alive: true,
             sessions_valid: false,
@@ -146,16 +146,7 @@ impl LifecycleOwner {
                     }
                 }
             }
-            ControlRequest::Restart { config_identity, .. } => {
-                if config_identity == self.effective.identity() {
-                    self.handle(LifecycleCommand::Restart)
-                } else {
-                    ControlReply::RestartRequired {
-                        active_config_identity: self.effective.identity().to_owned(),
-                        requested_config_identity: config_identity,
-                    }
-                }
-            }
+            ControlRequest::Restart { config_identity, .. } => self.request_restart(config_identity),
             ControlRequest::Stop { .. } => self.handle(LifecycleCommand::Stop),
             ControlRequest::Status { .. } => self.handle(LifecycleCommand::Status),
             ControlRequest::Repair { .. } => self.handle(LifecycleCommand::Repair),
@@ -170,7 +161,7 @@ impl LifecycleOwner {
                 self.stop();
                 ControlReply::Stopped
             }
-            LifecycleCommand::Restart => self.restart_with_pending(),
+            LifecycleCommand::Restart => self.request_restart(self.effective.identity().to_owned()),
             LifecycleCommand::Status => ControlReply::Status(self.status()),
             // Repair and re-pair remain explicit commands rather than status
             // side effects. Their actual pairing operation is owned by Plan 07.
@@ -180,7 +171,6 @@ impl LifecycleOwner {
 
     pub fn start_with_config(&mut self, requested: EffectiveConfig) -> ControlReply {
         if requested.identity() != self.effective.identity() && self.active {
-            self.pending_config = Some(requested.clone());
             self.transitions.push(SafeCode::RestartRequired, 0);
             return ControlReply::RestartRequired {
                 active_config_identity: self.effective.identity().to_owned(),
@@ -202,27 +192,29 @@ impl LifecycleOwner {
         ControlReply::active(env!("CARGO_PKG_VERSION"), self.effective.identity())
     }
 
-    pub fn restart_with_config(&mut self, requested: EffectiveConfig) -> ControlReply {
-        self.pending_config = Some(requested);
-        self.restart_with_pending()
-    }
-
-    fn restart_with_pending(&mut self) -> ControlReply {
-        if let Some(config) = self.pending_config.take() {
-            self.effective = config;
-        }
+    fn request_restart(&mut self, requested_identity: String) -> ControlReply {
         if self.ensure_authority().is_err() {
             return ControlReply::Rejected { code: "authority_unavailable".to_owned() };
         }
-        self.active = true;
-        self.herdr_alive = true;
-        self.sessions_valid = true;
-        self.session_epoch = self.session_epoch.saturating_add(1);
+        self.restart_requested = true;
+        self.active = false;
+        self.sessions_valid = false;
         self.transitions.push(SafeCode::BridgeRestarted, 0);
         ControlReply::Restarted {
             version: env!("CARGO_PKG_VERSION").to_owned(),
-            config_identity: self.effective.identity().to_owned(),
+            config_identity: requested_identity,
         }
+    }
+
+    pub fn restart_requested(&self) -> bool {
+        self.restart_requested
+    }
+
+    pub fn on_restart(&mut self) {
+        self.active = false;
+        self.sessions_valid = false;
+        self.restart_requested = false;
+        self.lock.take();
     }
 
     fn ensure_authority(&mut self) -> Result<(), LifecycleError> {

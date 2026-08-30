@@ -7,14 +7,18 @@
 
 use herdr_keypad_native::core::RuntimeCoordinator;
 use herdr_keypad_native::ports::config::StartupConfig;
-use herdr_keypad_native::ports::control::{ControlReply, ControlRequest, CONTROL_PAYLOAD_LIMIT, CONTROL_SOCKET_NAME};
+use herdr_keypad_native::ports::control::{
+    AuthorityLock, ControlReply, ControlRequest, CONTROL_PAYLOAD_LIMIT, CONTROL_SOCKET_NAME,
+};
 use herdr_keypad_native::ports::lifecycle::RuntimePaths;
 use herdr_keypad_native::ports::status::StatusSnapshot;
 use herdr_keypad_native::ports::usb::PlatformSerial;
 use herdr_keypad_native::BridgeError;
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::UnixStream;
+use tokio::time::{sleep, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProductionCommand {
@@ -86,6 +90,26 @@ fn platform() -> Result<Box<dyn PlatformSerial>, BridgeError> {
         Err(BridgeError::invalid_input("unsupported native production target"))
     }
 }
+const RESTART_HANDOFF_TIMEOUT: Duration = Duration::from_secs(5);
+const RESTART_HANDOFF_POLL: Duration = Duration::from_millis(20);
+
+async fn wait_for_authority_release(paths: &RuntimePaths) -> Result<(), BridgeError> {
+    let deadline = Instant::now() + RESTART_HANDOFF_TIMEOUT;
+    loop {
+        match AuthorityLock::acquire(paths.state_dir()) {
+            Ok(authority) => {
+                drop(authority);
+                return Ok(());
+            }
+            Err(error) if error.safe_code() == "already_owned" => {}
+            Err(_) => return Err(BridgeError::protocol("restart handoff failed")),
+        }
+        if Instant::now() >= deadline {
+            return Err(BridgeError::protocol("restart handoff timed out"));
+        }
+        sleep(RESTART_HANDOFF_POLL).await;
+    }
+}
 
 async fn run_runtime() -> Result<(), BridgeError> {
     let paths = runtime_paths()?;
@@ -133,6 +157,11 @@ async fn invoke(command: ProductionCommand) -> Result<(), BridgeError> {
         ProductionCommand::Startup => return run_runtime().await,
     };
     match request_control(&paths, request).await {
+        Ok(reply @ ControlReply::Restarted { .. }) if command == ProductionCommand::Restart => {
+            print_reply(&reply)?;
+            wait_for_authority_release(&paths).await?;
+            run_runtime().await
+        }
         Ok(reply) => print_reply(&reply),
         Err(_) if matches!(command, ProductionCommand::Start | ProductionCommand::Restart) => run_runtime().await,
         Err(_) if command == ProductionCommand::Status => {
