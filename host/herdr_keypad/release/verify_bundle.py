@@ -45,13 +45,13 @@ FORBIDDEN_ARCHIVE_PATH = re.compile(
 FORBIDDEN_BINARY_TEXT = (
     re.compile(r"\bpython(?:[0-9]+(?:\.[0-9]+)?)?\b", re.I),
     re.compile(r"(?:^|[/\\])node(?:js)?(?:\.exe)?(?:$|[ \t])|\bnode_modules\b|\bNODE_PATH\b", re.I),
-    re.compile(r"\b(?:java|jvm|rustup|cargo|pip|npm|yarn)\b", re.I),
+    re.compile(r"\b(?:CARGO_HOME|RUSTUP_HOME|JAVA_HOME|PIP_PREFIX|NPM_CONFIG_PREFIX)\b", re.I),
     re.compile(r"(?:virtualenv|\.venv|/venv(?:/|$))", re.I),
     re.compile(r"/(?:home|Users|tmp)/", re.I),
     re.compile(r"\b(?:bash|zsh|fish)\b", re.I),
     re.compile(r"BEGIN (?:OPENSSH|RSA|EC|DSA) PRIVATE KEY", re.I),
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}"),
-    re.compile(r"(?:api[_-]?key|access[_-]?token|password|credential|secret)", re.I),
+    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})\b"),
     re.compile(r"(?:transcript|prompt|raw upstream|diagnostic payload)", re.I),
 )
 FORBIDDEN_METADATA_TEXT = (

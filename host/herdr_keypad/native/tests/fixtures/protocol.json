@@ -202,7 +202,7 @@
     }
   ],
   "family": "protocol",
-  "fixture_sha256": "1ae8bdf61734563c08aef501c043a0d2c70c9aa48cee5562181ba995dcf06979",
+  "fixture_sha256": "4373c6d5fc08f9143c115acb653b5c728603db7a07f34f13b7f7308910ea32e9",
   "schema_version": 1,
   "sources": [
     {
@@ -228,7 +228,7 @@
     {
       "kind": "oracle-source",
       "path": "host/herdr_keypad/tests/test_protocol.py",
-      "sha256": "1473c354eee68abfb97cf1d8a431d0a5e3dc424b573da9b567bb38780e1fac06"
+      "sha256": "43fc58c4d3ea01ca34c50464532c050f6f11a1a104ee3eddf775d69797939f4a"
     },
     {
       "kind": "oracle-source",
