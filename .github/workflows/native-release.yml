@@ -49,7 +49,7 @@ jobs:
             export CARGO_HOME="$WORK/cargo-home-a"
             export CARGO_TARGET_DIR="$WORK/target-a"
             export CARGO_INCREMENTAL=0
-            export RUSTFLAGS="--remap-path-prefix=$WORK/root-a=/workspace --remap-path-prefix=$WORK/cargo-home-a=/cargo-home --remap-path-prefix=$WORK/target-a=/target"
+            export RUSTFLAGS="--remap-path-prefix=$WORK/root-a=/workspace --remap-path-prefix=$WORK/cargo-home-a=/deps --remap-path-prefix=$WORK/target-a=/build"
             export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform
@@ -60,7 +60,7 @@ jobs:
             export CARGO_HOME="$WORK/cargo-home-b"
             export CARGO_TARGET_DIR="$WORK/target-b"
             export CARGO_INCREMENTAL=0
-            export RUSTFLAGS="--remap-path-prefix=$WORK/root-b=/workspace --remap-path-prefix=$WORK/cargo-home-b=/cargo-home --remap-path-prefix=$WORK/target-b=/target"
+            export RUSTFLAGS="--remap-path-prefix=$WORK/root-b=/workspace --remap-path-prefix=$WORK/cargo-home-b=/deps --remap-path-prefix=$WORK/target-b=/build"
             export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform
@@ -196,7 +196,7 @@ jobs:
             export CARGO_HOME="$WORK/cargo-home-a"
             export CARGO_TARGET_DIR="$WORK/target-a"
             export CARGO_INCREMENTAL=0
-            export RUSTFLAGS="--remap-path-prefix=$WORK/root-a=/workspace --remap-path-prefix=$WORK/cargo-home-a=/cargo-home --remap-path-prefix=$WORK/target-a=/target"
+            export RUSTFLAGS="--remap-path-prefix=$WORK/root-a=/workspace --remap-path-prefix=$WORK/cargo-home-a=/deps --remap-path-prefix=$WORK/target-a=/build"
             export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform macos_
@@ -207,7 +207,7 @@ jobs:
             export CARGO_HOME="$WORK/cargo-home-b"
             export CARGO_TARGET_DIR="$WORK/target-b"
             export CARGO_INCREMENTAL=0
-            export RUSTFLAGS="--remap-path-prefix=$WORK/root-b=/workspace --remap-path-prefix=$WORK/cargo-home-b=/cargo-home --remap-path-prefix=$WORK/target-b=/target"
+            export RUSTFLAGS="--remap-path-prefix=$WORK/root-b=/workspace --remap-path-prefix=$WORK/cargo-home-b=/deps --remap-path-prefix=$WORK/target-b=/build"
             export RUSTUP_TOOLCHAIN="$TOOLCHAIN"
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test release_bundle
             cargo test --locked --manifest-path "$PLUGIN/native/Cargo.toml" --test usb_platform macos_

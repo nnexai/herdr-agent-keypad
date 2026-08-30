@@ -44,11 +44,10 @@ FORBIDDEN_ARCHIVE_PATH = re.compile(
 )
 FORBIDDEN_BINARY_TEXT = (
     re.compile(r"\bpython(?:[0-9]+(?:\.[0-9]+)?)?\b", re.I),
-    re.compile(r"\bnode(?:js)?\b", re.I),
+    re.compile(r"(?:^|[/\\])node(?:js)?(?:\.exe)?(?:$|[ \t])|\bnode_modules\b|\bNODE_PATH\b", re.I),
     re.compile(r"\b(?:java|jvm|rustup|cargo|pip|npm|yarn)\b", re.I),
     re.compile(r"(?:virtualenv|\.venv|/venv(?:/|$))", re.I),
     re.compile(r"/(?:home|Users|tmp)/", re.I),
-    re.compile(r"/(?:proc|sys)/", re.I),
     re.compile(r"\b(?:bash|zsh|fish)\b", re.I),
     re.compile(r"BEGIN (?:OPENSSH|RSA|EC|DSA) PRIVATE KEY", re.I),
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}"),

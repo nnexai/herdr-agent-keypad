@@ -127,7 +127,7 @@ impl PlatformSerial for MacOsPlatform {
                         vendor_id: Some(usb.vid),
                         product_id: Some(usb.pid),
                         serial_number: usb.serial_number,
-                        interface: usb.interface,
+                        interface: usb.interface.map(|interface| interface.to_string()),
                         location: None,
                         device: Some(port.port_name),
                         permission: None,

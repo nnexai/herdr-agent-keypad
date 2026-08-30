@@ -371,6 +371,7 @@ fn linux_transient_enumeration_resolves_one_exact_stable_by_id_alias() {
             serial_number: Some(EXPECTED_SERIAL.to_owned()),
             manufacturer: Some("Espressif".to_owned()),
             product: Some("TinyUSB CDC".to_owned()),
+            interface: Some(1),
         }),
     };
 
