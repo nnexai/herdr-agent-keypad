@@ -185,3 +185,138 @@ fn lifecycle_document_is_symbolic_and_privacy_bounded() {
         assert!(LIFECYCLE.contains(required), "document omits {required:?}");
     }
 }
+const MANIFEST: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../herdr-plugin.toml"));
+
+fn manifest_value() -> toml::Value {
+    toml::from_str(MANIFEST).expect("plugin manifest must be valid TOML")
+}
+
+fn string_array(value: &toml::Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(toml::Value::as_array)
+        .unwrap_or_else(|| panic!("manifest entry is missing array {key:?}"))
+        .iter()
+        .map(|item| {
+            item.as_str()
+                .unwrap_or_else(|| panic!("manifest array {key:?} must contain strings"))
+                .to_owned()
+        })
+        .collect()
+}
+
+fn map_array<'a>(value: &'a toml::Value, key: &str) -> &'a [toml::Value] {
+    value
+        .get(key)
+        .and_then(toml::Value::as_array)
+        .unwrap_or_else(|| panic!("manifest is missing array {key:?}"))
+}
+
+#[test]
+fn manifest_cutover_declares_only_supported_targets_and_static_content() {
+    let manifest = manifest_value();
+    assert_eq!(manifest["id"].as_str(), Some("herdr-keypad"));
+    assert_eq!(manifest["min_herdr_version"].as_str(), Some("0.8.2"));
+    assert_eq!(
+        string_array(&manifest, "platforms"),
+        ["linux".to_owned(), "macos".to_owned()]
+    );
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("native crate must be nested under the plugin root");
+    assert!(root.join("LIFECYCLE.md").is_file());
+    assert!(!root.join("scripts/ensure-bridge.sh").exists());
+
+    let startup = map_array(&manifest, "startup");
+    assert_eq!(startup.len(), 1);
+    assert_eq!(string_array(&startup[0], "platforms"), ["linux", "macos"]);
+    assert_eq!(
+        string_array(&startup[0], "command"),
+        ["bin/herdr-keypad", "startup"]
+    );
+    assert!(manifest.get("events").is_none(), "event watchdogs are not supported");
+}
+
+#[test]
+fn manifest_cutover_exposes_exact_direct_native_action_surface() {
+    let manifest = manifest_value();
+    let actions = map_array(&manifest, "actions");
+    let mut ids = actions
+        .iter()
+        .map(|action| {
+            action["id"]
+                .as_str()
+                .expect("action id must be a string")
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    ids.sort();
+    assert_eq!(
+        ids,
+        ["re-pair", "repair", "restart", "start", "status", "stop"]
+    );
+
+    for action in actions {
+        let id = action["id"].as_str().expect("action id must be a string");
+        assert_eq!(string_array(action, "platforms"), ["linux", "macos"]);
+        assert_eq!(
+            string_array(action, "command"),
+            ["bin/herdr-keypad".to_owned(), id.to_owned()]
+        );
+        assert!(!action["command"].as_array().unwrap().iter().any(|part| {
+            part.as_str()
+                .is_some_and(|part| part.contains('/') && part != "bin/herdr-keypad")
+        }));
+    }
+
+    let status = actions
+        .iter()
+        .find(|action| action["id"].as_str() == Some("status"))
+        .expect("status action must be present");
+    assert_eq!(string_array(status, "contexts"), ["global"]);
+    let status_text = format!(
+        "{} {}",
+        status["title"].as_str().unwrap_or_default(),
+        status["description"].as_str().unwrap_or_default()
+    )
+    .to_ascii_lowercase();
+    assert!(status_text.contains("read-only"));
+}
+
+#[test]
+fn manifest_cutover_has_no_legacy_runtime_or_hidden_authority() {
+    let lower = MANIFEST.to_ascii_lowercase();
+    for forbidden in [
+        "shell",
+        "python",
+        "venv",
+        "pythonpath",
+        "source checkout",
+        "ensure-bridge",
+        "watchdog",
+        "service",
+        "daemon",
+        "supervisor",
+        "flock",
+        "/proc",
+        "logout",
+        "live callback",
+        "structured-log ingestion",
+    ] {
+        assert!(!lower.contains(forbidden), "manifest contains forbidden {forbidden:?}");
+    }
+    assert!(!lower.contains("pane.agent_detected"));
+
+    let manifest = manifest_value();
+    let startup = map_array(&manifest, "startup");
+    let startup_command = string_array(&startup[0], "command");
+    assert_eq!(startup_command.first().map(String::as_str), Some("bin/herdr-keypad"));
+    assert!(startup_command.iter().all(|arg| !arg.starts_with('-')));
+    for action in map_array(&manifest, "actions") {
+        let command = string_array(action, "command");
+        assert_eq!(command.first().map(String::as_str), Some("bin/herdr-keypad"));
+        assert_eq!(command.len(), 2);
+    }
+}
