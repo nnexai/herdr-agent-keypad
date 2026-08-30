@@ -377,7 +377,6 @@ pub struct UsbPort {
     binding: Option<PairingBinding>,
     session: Option<Session>,
     pending_focus: VecDeque<FocusIntent>,
-    previous_device_boot: Option<String>,
 }
 
 impl UsbPort {
@@ -390,7 +389,6 @@ impl UsbPort {
             binding: None,
             session: None,
             pending_focus: VecDeque::with_capacity(PENDING_FOCUS_CAPACITY),
-            previous_device_boot: None,
         }
     }
 
@@ -486,9 +484,6 @@ impl UsbPort {
             if firmware != binding.firmware {
                 return Err(UsbError::FirmwareMismatch);
             }
-            if self.previous_device_boot.as_deref() == Some(frame.boot_id.as_str()) {
-                return Err(UsbError::SessionMismatch);
-            }
             return Ok(Session {
                 candidate: DeviceCandidate::exact("", EXPECTED_SERIAL, EXPECTED_CDC_INTERFACE),
                 device_boot_id: frame.boot_id,
@@ -551,9 +546,7 @@ impl UsbPort {
     pub fn close(&mut self) { self.reset_link(); }
 
     fn reset_link(&mut self) {
-        if let Some(session) = self.session.take() {
-            self.previous_device_boot = Some(session.device_boot_id);
-        }
+        self.session = None;
         self.reader = None;
         self.binding = None;
         self.pending_focus.clear();
