@@ -23,3 +23,13 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Why not caught:** no gate existed for a structured non-string agent_session at the real Herdr socket-to-focus-authorization seam
 - **Recurrence guard:** `host/herdr_keypad/native/tests/herdr_parity.rs:already_focused_structured_session_is_authorized` and `different_structured_session_remains_rejected`
 ---
+
+## native-ack-churn-never-ready — Exact ACKs could not establish readiness under publication churn and missing ACKs never expired
+- **Date:** 2026-08-30
+- **Error patterns:** stale, device_unavailable, exact ACK, publication churn, reconnect_attempt 0, last_error null, focus starvation
+- **Root cause(s):** Accepted exact snapshot ACK link health was incorrectly gated on publication_dirty becoming quiescent, so continuous coalescing never established readiness or drained focus; PendingPublication had no bounded ACK deadline or expiry transition, so a missing ACK remained pending forever without reconnect or safe error evidence.
+- **Fix:** RuntimeCoordinator now tracks authenticated device link readiness independently from Herdr generation usability, establishes link health on one exact accepted ACK, continues coalesced publication separately, and expires missing ACKs into fail-closed session teardown, bounded reconnect, and safe status evidence.
+- **Files changed:** host/herdr_keypad/native/src/core/orchestrator.rs, host/herdr_keypad/native/tests/resource_bounds.rs
+- **Why not caught:** No coordinator regression gate independently modeled authenticated ACK link health under endless generation invalidation or expired a sent publication that never receives an ACK.
+- **Recurrence guard:** `host/herdr_keypad/native/src/core/orchestrator.rs` tests `invalidation_before_an_exact_ack_still_establishes_link_readiness`, `focus_waiting_during_coalesced_publication_gets_a_bounded_result`, `sent_publication_without_ack_reconnects_within_the_bounded_deadline`, `mismatched_snapshot_ack_fields_never_establish_link_readiness`, and `ack_timeout_recovery_surfaces_bounded_safe_status`.
+---
