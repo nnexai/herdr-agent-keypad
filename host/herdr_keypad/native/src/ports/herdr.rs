@@ -318,6 +318,7 @@ pub struct HerdrEventStream {
     subscriptions: Vec<Value>,
     reader: Option<OwnedReadHalf>,
     writer: Option<OwnedWriteHalf>,
+    read_buffer: Vec<u8>,
     next_id: u64,
     request_id: Option<u64>,
     mode: HerdrStreamMode,
@@ -335,6 +336,7 @@ impl HerdrEventStream {
             subscriptions,
             reader: None,
             writer: None,
+            read_buffer: Vec::new(),
             next_id: 0,
             request_id: None,
             mode: HerdrStreamMode::Unclassified,
@@ -375,6 +377,7 @@ impl HerdrEventStream {
 
     fn fallback(&mut self, reason: HerdrErrorCode) {
         self.reader = None;
+        self.read_buffer.clear();
         self.writer = None;
         self.mode = HerdrStreamMode::Fallback;
         self.reason = Some(reason);
@@ -383,6 +386,7 @@ impl HerdrEventStream {
 
     pub fn close(&mut self) {
         self.reader = None;
+        self.read_buffer.clear();
         self.writer = None;
         self.request_id = None;
         self.mode = HerdrStreamMode::Closed;
@@ -394,6 +398,7 @@ impl HerdrEventStream {
             return Err(HerdrError::new(HerdrErrorCode::InvalidInput));
         }
         self.reader = None;
+        self.read_buffer.clear();
         self.writer = None;
         self.request_id = None;
         self.mode = HerdrStreamMode::Unclassified;
@@ -425,13 +430,14 @@ impl HerdrEventStream {
                 .flush()
                 .await
                 .map_err(|_| HerdrError::new(HerdrErrorCode::Unavailable))?;
-            let ack = read_bounded_line(&mut reader, MAX_LINE_BYTES).await?;
-            Ok::<_, HerdrError>((reader, writer, ack))
+            let mut read_buffer = Vec::new();
+            let ack = read_buffered_line(&mut reader, &mut read_buffer, MAX_LINE_BYTES).await?;
+            Ok::<_, HerdrError>((reader, writer, read_buffer, ack))
         })
         .await
         .map_err(|_| HerdrError::new(HerdrErrorCode::Timeout))?;
 
-        let (reader, writer, ack) = match result {
+        let (reader, writer, read_buffer, ack) = match result {
             Ok(value) => value,
             Err(error) => {
                 self.fallback(error.kind());
@@ -469,6 +475,7 @@ impl HerdrEventStream {
         }
         self.reader = Some(reader);
         self.writer = Some(writer);
+        self.read_buffer = read_buffer;
         self.request_id = Some(request_id);
         self.mode = HerdrStreamMode::Push;
         self.reason = None;
@@ -484,7 +491,7 @@ impl HerdrEventStream {
         }
         let result = {
             let reader = self.reader.as_mut().expect("active stream has reader");
-            tokio::time::timeout(deadline, read_bounded_line(reader, MAX_LINE_BYTES)).await
+            tokio::time::timeout(deadline, read_buffered_line(reader, &mut self.read_buffer, MAX_LINE_BYTES)).await
         };
         let line = match result {
             Err(_) => return Ok(None),
@@ -510,6 +517,49 @@ impl HerdrEventStream {
 
     pub async fn rebuild(&mut self, deadline: Duration) -> Result<(), HerdrError> {
         self.connect(deadline).await
+    }
+}
+
+async fn read_buffered_line<R: AsyncRead + Unpin>(
+    reader: &mut R,
+    buffer: &mut Vec<u8>,
+    limit: usize,
+) -> Result<Vec<u8>, HerdrError> {
+    loop {
+        if let Some(newline) = buffer.iter().position(|byte| *byte == b'\n') {
+            if newline > limit {
+                return Err(HerdrError::new(HerdrErrorCode::LineTooLong));
+            }
+            let line = buffer[..newline].to_vec();
+            buffer.drain(..=newline);
+            return Ok(line);
+        }
+        if buffer.len() > limit {
+            return Err(HerdrError::new(HerdrErrorCode::LineTooLong));
+        }
+        let mut chunk = [0_u8; 4096];
+        let read = reader
+            .read(&mut chunk)
+            .await
+            .map_err(|_| HerdrError::new(HerdrErrorCode::Unavailable))?;
+        if read == 0 {
+            return Err(HerdrError::new(if buffer.is_empty() {
+                HerdrErrorCode::EndOfStream
+            } else {
+                HerdrErrorCode::Malformed
+            }));
+        }
+        if let Some(newline) = chunk[..read].iter().position(|byte| *byte == b'\n') {
+            if buffer.len().saturating_add(newline) > limit {
+                return Err(HerdrError::new(HerdrErrorCode::LineTooLong));
+            }
+            buffer.extend_from_slice(&chunk[..read]);
+        } else {
+            if buffer.len().saturating_add(read) > limit {
+                return Err(HerdrError::new(HerdrErrorCode::LineTooLong));
+            }
+            buffer.extend_from_slice(&chunk[..read]);
+        }
     }
 }
 

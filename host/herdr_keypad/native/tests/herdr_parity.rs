@@ -113,13 +113,8 @@ async fn correlated_subscribe_ack_admits_only_typed_invalidation_events() {
         let ack = json!({"jsonrpc":"2.0","id":id,"result":{"subscribed":true}});
         let mut bytes = serde_json::to_vec(&ack).expect("ack JSON");
         bytes.push(b'\n');
-        stream.write_all(&bytes).await.expect("ack");
-        stream.flush().await.expect("flush ack");
-        tokio::time::sleep(Duration::from_millis(5)).await;
-        stream
-            .write_all(b"{\"event\":\"pane.updated\",\"data\":{\"pane_id\":\"private\"}}\n")
-            .await
-            .expect("event");
+        bytes.extend_from_slice(b"{\"event\":\"pane.updated\",\"data\":{\"pane_id\":\"private\"}}\n");
+        stream.write_all(&bytes).await.expect("event stream");
     });
     let client = HerdrClient::new(&path, Duration::from_secs(1)).expect("client");
     let mut stream = HerdrEventStream::new(client);
