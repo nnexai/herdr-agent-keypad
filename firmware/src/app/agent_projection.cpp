@@ -223,6 +223,7 @@ bool isCodexCapture(CaptureScene scene) {
 
 RenderState codexCaptureFixture(CaptureScene scene) {
   RenderState state = captureFixture(CaptureScene::Working);
+  state.usage_provider = UsageProvider::Codex;
   state.codex.source_state = CodexSourceState::Current;
   state.codex.primary = 42;
   state.codex.secondary = 78;
@@ -278,6 +279,66 @@ RenderState codexCaptureFixture(CaptureScene scene) {
       state.codex.secondary = 100;
       state.codex.reset_text = "RESET WEEK 999D";
       state.codex.observation_age = "AGE 999H";
+      break;
+    default:
+      break;
+  }
+  return state;
+}
+bool isCopilotCapture(CaptureScene scene) {
+  return scene >= CaptureScene::CopilotCurrent && scene <= CaptureScene::CopilotAllowed;
+}
+
+RenderState copilotCaptureFixture(CaptureScene scene) {
+  RenderState state = captureFixture(CaptureScene::Working);
+  state.usage_provider = UsageProvider::Copilot;
+  state.copilot.source_state = CopilotSourceState::Current;
+  state.copilot.used_credits = 42;
+  state.copilot.included_credits = 100;
+  state.copilot.used_percent = 42;
+  state.copilot.reset_text = "RESET 2D";
+  state.copilot.observation_age = "AGE 2M";
+  state.copilot.unlimited = false;
+  state.copilot.reached_limit = 0;
+  state.copilot.usage_allowed = 1;
+  state.copilot.overage_allowed = 0;
+  state.copilot.failure_reason = "";
+  switch (scene) {
+    case CaptureScene::CopilotStale:
+      state.copilot.source_state = CopilotSourceState::Stale;
+      state.copilot.observation_age = "AGE 18M";
+      break;
+    case CaptureScene::CopilotAuthRequired:
+      state.copilot.source_state = CopilotSourceState::AuthRequired;
+      state.copilot.used_credits = -1;
+      state.copilot.included_credits = -1;
+      state.copilot.used_percent = -1;
+      state.copilot.reset_text = "RESET N/A";
+      state.copilot.observation_age = "AGE N/A";
+      state.copilot.usage_allowed = 0;
+      state.copilot.overage_allowed = 0;
+      state.copilot.failure_reason = "auth_required";
+      break;
+    case CaptureScene::CopilotUnavailable:
+      state.copilot.source_state = CopilotSourceState::Unavailable;
+      state.copilot.used_credits = -1;
+      state.copilot.included_credits = -1;
+      state.copilot.used_percent = -1;
+      state.copilot.reset_text = "RESET N/A";
+      state.copilot.observation_age = "AGE N/A";
+      state.copilot.usage_allowed = 0;
+      state.copilot.overage_allowed = 0;
+      state.copilot.failure_reason = "quota_unavailable";
+      break;
+    case CaptureScene::CopilotLimit:
+      state.copilot.reached_limit = 1;
+      state.copilot.usage_allowed = 0;
+      state.copilot.overage_allowed = 0;
+      break;
+    case CaptureScene::CopilotAllowed:
+      state.copilot.reached_limit = 1;
+      state.copilot.usage_allowed = 1;
+      state.copilot.overage_allowed = 1;
       break;
     default:
       break;
@@ -1127,7 +1188,8 @@ bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer,
   }
   RenderState state =
       scene == CaptureScene::Current ? renderState(micros()) :
-      (isCodexCapture(scene) ? codexCaptureFixture(scene) : captureFixture(scene));
+      (isCodexCapture(scene) ? codexCaptureFixture(scene) :
+       (isCopilotCapture(scene) ? copilotCaptureFixture(scene) : captureFixture(scene)));
   applyCapturePresentation(state, level, phase);
   if (panel < kSlotCount) selected.composeTile(g_composition, panel, state);
   else selected.composePanel4(g_composition, state);
@@ -1136,7 +1198,6 @@ bool AgentProjection::capturePanel(uint8_t panel, ThemeRenderer* renderer,
 const uint16_t* AgentProjection::capturePixels() const {
   return static_cast<const uint16_t*>(g_composition.getBuffer());
 }
-
 void AgentProjection::renderFeedback(BoardAdapter& board, uint8_t slot) {
   if (slot >= kSlotCount || !committed_ || syncing_) return;
   renderTile(board, slot, committed_generation_.tiles[slot], feedback_[slot]);

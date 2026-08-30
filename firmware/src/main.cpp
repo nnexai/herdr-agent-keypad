@@ -356,6 +356,13 @@ bool parseCaptureRequest(const char* stimulus, uint8_t& panel, ThemeRenderer*& r
     case 'h': scene = CaptureScene::HostOffline; break;
     case 'l': scene = CaptureScene::CodexLimit; break;
     case 'g': scene = CaptureScene::CodexLong; break;
+    case 'D': scene = CaptureScene::CopilotCurrent; break;
+    case 'G': scene = CaptureScene::CopilotStale; break;
+    case 'H': scene = CaptureScene::CopilotAuthRequired; break;
+    case 'J': scene = CaptureScene::CopilotUnavailable; break;
+    case 'K': scene = CaptureScene::CopilotLimit; break;
+    case 'q': scene = CaptureScene::CopilotAllowed; break;
+    case 'z': scene = CaptureScene::UsageUnavailable; break;
     case 'j': scene = CaptureScene::HoldPending; break;
     case 'k': scene = CaptureScene::SpaceActiveOwner; break;
     case 'q': scene = CaptureScene::CancellationReturn; break;

@@ -231,10 +231,10 @@ class SignalEdgeTheme final : public ThemeRenderer {
       sprite.drawString("COPILOT", 16, 4);
       drawCopilotRowsText(sprite, copilot, 16, 120, 22, 42);
       drawCodexTrack(sprite, 16, 32, 108, 8, copilot.used_percent,
-                     copilotHasLimit(copilot) ? kDestructive : kAccent, kSettled);
+                     copilotHardLimit(copilot) ? kDestructive : kAccent, kSettled);
       drawCopilotMetaText(sprite, copilot, 16, 70, 16, 86);
       const bool alert = copilot.source_state != CopilotSourceState::Current ||
-                         copilotHasLimit(copilot);
+                         copilotHardLimit(copilot);
       if (alert) {
         sprite.fillRect(0, 104, 128, 24, kDestructive);
         sprite.setTextColor(kBackground, kDestructive);
@@ -243,7 +243,8 @@ class SignalEdgeTheme final : public ThemeRenderer {
                           16, 114);
       } else {
         sprite.setTextColor(kMetadata, kBackground);
-        sprite.drawString("CURRENT", 16, 114);
+        sprite.drawString(copilot.reached_limit == 1 ? copilotLimitWord(copilot) : "CURRENT",
+                          16, 114);
       }
       return;
     }

@@ -102,6 +102,25 @@ JsonDocument snapshot_document(uint32_t revision, const char* state0 = "working"
   diagnostics["error_code"] = "";
   return document;
 }
+void add_copilot(JsonDocument& document, const char* source_state = "current",
+                 int used = 42, int included = 100, int percent = 42) {
+  JsonObject copilot = document["copilot"].to<JsonObject>();
+  copilot["source_state"] = source_state;
+  if (used < 0) copilot["used_credits"] = nullptr;
+  else copilot["used_credits"] = used;
+  if (included < 0) copilot["included_credits"] = nullptr;
+  else copilot["included_credits"] = included;
+  if (percent < 0) copilot["used_percent"] = nullptr;
+  else copilot["used_percent"] = percent;
+  copilot["reset_text"] = "RESET 2D";
+  copilot["observation_age"] = "AGE 2M";
+  copilot["unlimited"] = false;
+  if (source_state == std::string("auth_required")) copilot["reached_limit"] = nullptr;
+  else copilot["reached_limit"] = false;
+  copilot["usage_allowed"] = source_state == std::string("auth_required") ? false : true;
+  copilot["overage_allowed"] = false;
+  copilot["failure_reason"] = source_state == std::string("auth_required") ? "auth_required" : "";
+}
 
 JsonDocument focus_result_document(const char* action_id, const char* outcome) {
   JsonDocument document;
@@ -308,10 +327,11 @@ void test_flush_ordering_one_push_per_panel_sequential() {
   resetLog();
   TEST_ASSERT_TRUE(projection.commitSnapshot(board));
   const std::vector<int> order = pushOrder();
-  TEST_ASSERT_EQUAL_UINT32(3, order.size());
+  TEST_ASSERT_EQUAL_UINT32(4, order.size());
   TEST_ASSERT_EQUAL_INT(0, order[0]);
   TEST_ASSERT_EQUAL_INT(1, order[1]);
   TEST_ASSERT_EQUAL_INT(2, order[2]);
+  TEST_ASSERT_EQUAL_INT(3, order[3]);
   // Every drawing op precedes its panel's single push: the log must never
   // contain a draw entry after the final push.
   size_t last_push = 0;
@@ -583,7 +603,7 @@ void test_ordinary_refresh_skips_sync_veil() {
   TEST_ASSERT_TRUE(projection.commitSnapshot(board));
   TEST_ASSERT_EQUAL_UINT32(0, g_sync_draw_count);
   // Direct cut: exactly one push per panel, nothing else.
-  TEST_ASSERT_EQUAL_UINT32(3, countPushes());
+  TEST_ASSERT_EQUAL_UINT32(4, countPushes());
 }
 
 void test_mid_reveal_failure_falls_back_to_sync_on_all_panels() {
@@ -1536,6 +1556,7 @@ void test_panel4_compositions_are_honest() {
   ThemeRenderer* themes[] = {&signalEdgeTheme(), &ledgerTheme(), &beaconTheme(), &instrumentTheme()};
   LGFX_Sprite sprite;
   RenderState rest;
+  rest.usage_provider = UsageProvider::Codex;
   for (ThemeRenderer* theme : themes) {
     resetLog();
     theme->composePanel4(sprite, rest);
@@ -1552,9 +1573,89 @@ ThemeRenderer* codexThemes[] = {
 void renderCodex(ThemeRenderer& theme, const CodexRenderView& codex) {
   LGFX_Sprite sprite;
   RenderState state;
+  state.usage_provider = UsageProvider::Codex;
   state.codex = codex;
   resetLog();
   theme.composePanel4(sprite, state);
+}
+void renderCopilot(ThemeRenderer& theme, const CopilotRenderView& copilot) {
+  LGFX_Sprite sprite;
+  RenderState state;
+  state.usage_provider = UsageProvider::Copilot;
+  state.copilot = copilot;
+  resetLog();
+  theme.composePanel4(sprite, state);
+}
+
+void test_copilot_panel4_is_bounded_and_truthful() {
+  CopilotRenderView view;
+  view.source_state = CopilotSourceState::Current;
+  view.used_credits = 42;
+  view.included_credits = 100;
+  view.used_percent = 42;
+  view.reset_text = "RESET 2D";
+  view.observation_age = "AGE 2M";
+  view.usage_allowed = 1;
+  for (ThemeRenderer* theme : codexThemes) {
+    renderCopilot(*theme, view);
+    TEST_ASSERT_TRUE(logContainsText("COPILOT"));
+    TEST_ASSERT_TRUE(logContainsText("USED"));
+    TEST_ASSERT_TRUE(logContainsText("INCL"));
+    TEST_ASSERT_FALSE(logContainsText("5H"));
+    TEST_ASSERT_FALSE(logContainsText("WEEK"));
+    assertPanelTextBounded();
+  }
+  view.reached_limit = 1;
+  view.usage_allowed = 0;
+  view.overage_allowed = 0;
+  renderCopilot(signalEdgeTheme(), view);
+  TEST_ASSERT_TRUE(logContainsText("LIMIT"));
+  view.usage_allowed = 1;
+  view.overage_allowed = 1;
+  renderCopilot(signalEdgeTheme(), view);
+  TEST_ASSERT_TRUE(logContainsText("OVERAGE"));
+  TEST_ASSERT_FALSE(logContainsText("LIMIT"));
+  view.reached_limit = 0;
+  view.source_state = CopilotSourceState::Stale;
+  renderCopilot(signalEdgeTheme(), view);
+  TEST_ASSERT_TRUE(logContainsText("STALE"));
+  view.source_state = CopilotSourceState::AuthRequired;
+  view.used_credits = -1;
+  view.included_credits = -1;
+  view.used_percent = -1;
+  renderCopilot(signalEdgeTheme(), view);
+  TEST_ASSERT_TRUE(logContainsText("AUTH REQUIRED"));
+  TEST_ASSERT_TRUE(logContainsText("N/A"));
+}
+
+void test_provider_selection_alternates_and_preempts_on_availability() {
+  AgentProjection projection;
+  BoardAdapter board;
+  JsonDocument first = snapshot_document(2);
+  add_copilot(first);
+  TEST_ASSERT_TRUE(projection.stageSnapshot(first.as<JsonObjectConst>()));
+  resetLog();
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  const UsageProvider initial = projection.usageProvider();
+  resetLog();
+  projection.tick(board, 100000000UL);
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(initial == UsageProvider::Codex ? UsageProvider::Copilot : UsageProvider::Codex),
+                        static_cast<int>(projection.usageProvider()));
+  TEST_ASSERT_EQUAL_UINT32(1, countPushes());
+
+  JsonDocument unavailable = snapshot_document(3);
+  unavailable["codex"]["source_state"] = "unavailable";
+  unavailable["codex"]["primary"] = nullptr;
+  unavailable["codex"]["secondary"] = nullptr;
+  unavailable["codex"]["reset_text"] = "RESET N/A";
+  unavailable["codex"]["reached_limit"] = nullptr;
+  TEST_ASSERT_TRUE(projection.stageSnapshot(unavailable.as<JsonObjectConst>()));
+  resetLog();
+  TEST_ASSERT_TRUE(projection.commitSnapshot(board));
+  TEST_ASSERT_EQUAL_INT(static_cast<int>(UsageProvider::None),
+                        static_cast<int>(projection.usageProvider()));
+  TEST_ASSERT_TRUE(logContainsText("USAGE"));
+  TEST_ASSERT_TRUE(logContainsText("UNAVAILABLE"));
 }
 }  // namespace
 
@@ -2064,6 +2165,7 @@ void test_signal_edge_polish_geometry() {
 void test_usage_placeholders_follow_theme_geometry() {
   LGFX_Sprite sprite;
   RenderState state;
+  state.usage_provider = UsageProvider::Codex;
 
   resetLog();
   signalEdgeTheme().composePanel4(sprite, state);
@@ -2189,7 +2291,7 @@ void test_beacon_and_instrument_fences_empty_and_codex_are_phase_static() {
   state.source_status = "offline";
   state.slots[0].occupied = false;
   state.slots[0].state = TileState::Empty;
-  state.transition_active = true;
+  state.usage_provider = UsageProvider::Codex;
   state.transition_phase = 0;
   for (ThemeRenderer* theme : {&beaconTheme(), &instrumentTheme()}) {
     resetLog();
@@ -2431,6 +2533,7 @@ void test_signal_edge_and_ledger_phase_motion_is_distinct_and_semantically_fixed
 void test_signal_edge_and_ledger_fences_empty_and_codex_are_phase_static() {
   LGFX_Sprite sprite;
   RenderState state;
+  state.usage_provider = UsageProvider::Codex;
   state.source_status = "stale";
   state.slots[0].occupied = false;
   state.slots[0].state = TileState::Empty;
@@ -2518,7 +2621,7 @@ void test_static_commit_flushes_complete_semantics_without_motion() {
   TEST_ASSERT_TRUE(projection.stageSnapshot(second.as<JsonObjectConst>()));
   resetLog();
   TEST_ASSERT_TRUE(projection.commitSnapshot(board));
-  TEST_ASSERT_EQUAL_UINT32(3, countPushes());
+  TEST_ASSERT_EQUAL_UINT32(4, countPushes());
   const RenderState state = projection.renderState(0);
   TEST_ASSERT_FALSE(state.transition_active);
   TEST_ASSERT_TRUE(projection.hasBinding(0));
@@ -4390,6 +4493,8 @@ int runAllTests() {
   RUN_TEST(test_theme_by_id_dispatches_all_four);
   RUN_TEST(test_ledger_empty_and_blocked_inversion);
   RUN_TEST(test_panel4_compositions_are_honest);
+  RUN_TEST(test_copilot_panel4_is_bounded_and_truthful);
+  RUN_TEST(test_provider_selection_alternates_and_preempts_on_availability);
   RUN_TEST(test_codex_rows_preserve_null_zero_partial_and_populated_values);
   RUN_TEST(test_codex_source_precedence_clears_or_retains_values_truthfully);
   RUN_TEST(test_codex_limit_layers_without_hiding_source_state);

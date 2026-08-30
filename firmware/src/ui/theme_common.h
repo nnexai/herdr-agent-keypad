@@ -349,6 +349,14 @@ inline bool copilotHasLimit(const CopilotRenderView& view) {
   return view.reached_limit == 1;
 }
 
+inline bool copilotHardLimit(const CopilotRenderView& view) {
+  return copilotHasLimit(view) && view.usage_allowed != 1 && view.overage_allowed != 1;
+}
+
+inline const char* copilotLimitWord(const CopilotRenderView& view) {
+  return view.overage_allowed == 1 ? "OVERAGE" : "ALLOWED";
+}
+
 inline int32_t copilotValue(const CopilotRenderView& view, bool used) {
   if (copilotClearsValues(view)) return -1;
   return used ? view.used_credits : view.included_credits;
@@ -403,10 +411,10 @@ inline void drawCopilotPanel(LGFX_Sprite& sprite, const CopilotRenderView& view,
   sprite.drawString("COPILOT", centered ? centeredX("COPILOT") : 16, 4);
   drawCopilotRowsText(sprite, view, centered ? 8 : 16, 120, 22, 42);
   drawCodexTrack(sprite, 16, 32, 108, 8, view.used_percent,
-                 copilotHasLimit(view) ? kDestructive : kAccent, kSettled);
+                 copilotHardLimit(view) ? kDestructive : kAccent, kSettled);
   drawCopilotMetaText(sprite, view, 16, 70, 16, 86, centered);
   const bool alert = view.source_state != CopilotSourceState::Current ||
-                     copilotHasLimit(view);
+                     copilotHardLimit(view);
   if (alert) {
     sprite.fillRect(0, 104, 128, 24, kDestructive);
     sprite.setTextColor(kBackground, kDestructive);
@@ -415,7 +423,10 @@ inline void drawCopilotPanel(LGFX_Sprite& sprite, const CopilotRenderView& view,
                       centered ? centeredX(copilotStateWord(view.source_state)) : 16, 114);
   } else {
     sprite.setTextColor(kMetadata, kBackground);
-    sprite.drawString("CURRENT", centered ? centeredX("CURRENT") : 16, 114);
+    sprite.drawString(view.reached_limit == 1 ? copilotLimitWord(view) : "CURRENT",
+                      centered ? centeredX(view.reached_limit == 1 ? copilotLimitWord(view)
+                                                                    : "CURRENT") : 16,
+                      114);
   }
 }
 
