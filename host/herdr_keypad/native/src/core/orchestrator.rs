@@ -208,7 +208,16 @@ impl RuntimeCoordinator {
                     } else {
                         pending().await
                     }
-                } => self.handle_herdr_event(event).await?,
+                } => {
+                    if matches!(
+                        &event,
+                        Ok(Some(crate::BridgeEvent::HerdrAuthorityEnded | crate::BridgeEvent::AuthorityCancelled))
+                    ) {
+                        self.shutdown(true);
+                        return Ok(());
+                    }
+                    self.handle_herdr_event(event).await?;
+                }
                 frame = async {
                     if self.usb.connected() {
                         self.usb.poll().await
@@ -245,7 +254,6 @@ impl RuntimeCoordinator {
             }
             Ok(Some(crate::BridgeEvent::HerdrAuthorityEnded)) | Ok(Some(crate::BridgeEvent::AuthorityCancelled)) => {
                 self.shutdown(true);
-                return Err(BridgeError::protocol("Herdr authority ended"));
             }
             Ok(Some(crate::BridgeEvent::HerdrUnavailable)) | Err(_) => {
                 self.mark_herdr_unavailable("offline").await;
