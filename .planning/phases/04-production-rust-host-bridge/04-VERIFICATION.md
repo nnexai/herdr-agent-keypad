@@ -1,6 +1,6 @@
 ---
 phase: 04-production-rust-host-bridge
-verified: 2026-08-30T07:28:56Z
+verified: 2026-08-30T07:37:04Z
 status: passed
 score: 38/38 must-haves verified
 behavior_unverified: 0
@@ -22,7 +22,7 @@ decision_coverage:
 
 **Phase Goal:** As a keypad user, I want the production host bridge to preserve the Python bridge's inbox projection, exact focus, truthful Codex capacity, freshness/error states, reconnect behavior, and authorized focus-then-hold workflow as one efficient native Rust executable installed on Linux, with a portable macOS adapter and deterministic cross-target release automation ready for a later hosted release.
 
-**Verified:** 2026-08-30T07:28:56Z  
+**Verified:** 2026-08-30T07:37:04Z  
 **Status:** passed  
 **Re-verification:** Yes — after WR-01 clean-cutover authority amendment
 
@@ -86,6 +86,7 @@ No dynamic production render/transport value traced to a static fallback, empty 
 | Full native contract, including all integration tests | `cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml` | 101 passed, 0 failed (15 suites) | ✓ PASS |
 | Release native executable build | `cargo build --locked --release --manifest-path host/herdr_keypad/native/Cargo.toml` | Exit 0 | ✓ PASS |
 | Python oracle determinism and frozen behavioral suite | `PYTHONPATH=host/herdr_keypad/src:tools/phase1_bringup/src python host/herdr_keypad/tests/export_rust_oracle.py --verify-determinism --rust-manifest host/herdr_keypad/native/Cargo.toml && python -m unittest …` | Two roots byte-identical; Rust fixture validation passed twice; 37 tests passed | ✓ PASS |
+| Current Python-host discovery after clean cutover | `PYTHONPATH=host/herdr_keypad/src:tools/phase1_bringup/src python -m unittest discover -s host/herdr_keypad/tests` | 70 passed, 0 failed | ✓ PASS |
 | Future release aggregation machinery | `python -m unittest host.herdr_keypad.release.test_collect_phase4_evidence && python host/herdr_keypad/release/collect_phase4_evidence.py --workflow .github/workflows/native-release.yml --check-aggregation-contract` | 8 tests passed; aggregation contract verified | ✓ PASS |
 | Target workflow/bundle policy | `python host/herdr_keypad/release/verify_bundle.py --workflow .github/workflows/native-release.yml --check-workflow-contract` | Workflow contract verified | ✓ PASS |
 | WR-01 maintained composed proof | `cargo test --locked --manifest-path host/herdr_keypad/native/Cargo.toml --test black_box_parity --test projection_focus_parity --test herdr_parity --test usb_platform --test production_surface -- --test-threads=1` | 45 passed, 0 failed (5 suites) | ✓ PASS |
@@ -116,6 +117,7 @@ All eight Phase 4 requirement IDs are claimed by Plan 04-10; no orphaned Phase 4
 | Native Rust integration suite | RUST-01..RUST-08 | 101 | 0 | No | Value and behavioral | ✓ PASS |
 | Python oracle exporter + focused Python suite | RUST-01, RUST-02, RUST-08 | 37 | 0 | No — expected corpus is independently regenerated from frozen Python oracle and Rust validates separate roots | Value and behavioral | ✓ PASS |
 | Collector tests | RUST-06, RUST-08 | 8 | 0 | No — synthetic producer records are rejected/accepted by independent collector policy | Value and behavioral | ✓ PASS |
+| Current Python-host discovery | Historical Python bridge behavior only; not production launch | 70 | 0 | No | Value and behavioral | ✓ PASS |
 
 Disabled-test scan found no disabled requirement test. The `pending` matches in the scan are ordinary variable names, not disabled-test annotations. Assertions test outcomes, exact safe error codes, bounded capacities, process replacement, and privacy policy—not merely presence or type.
 
@@ -138,8 +140,10 @@ N/A — this is an infrastructure/foundation migration phase. Every current Phas
 
 The former tracer gap is closed. Commit `ee3fe41` amended Plan 04-01 and its SUMMARY with accepted WR-01 clean-cutover supersession authority: the obsolete root coordinator and coupled tracer must remain deleted, while maintained `RuntimeCoordinator` composition and five named public-boundary suites are the current proof. The verifier inspected that amendment and ran its exact focused command successfully (45 tests).
 
+Commit `4f974ae` then removed two obsolete Python-production lifecycle tests that asserted the deleted shell/Python launcher. Its diff removes only those launcher-specific imports and tests; current host discovery passes 70/70, while the retained Plan 04-02 oracle check still passes 37/37 plus its two Rust validator runs. This strengthens rather than removes current parity coverage.
+
 All current Phase 4 must-haves and RUST-01 through RUST-08 have direct evidence. Hosted GitHub execution, macOS native execution, signing/notarization, publication, upload, and physical-device acceptance are explicitly parked by current planning authority and are not gaps.
 
 ---
-_Verified: 2026-08-30T07:28:56Z_  
+_Verified: 2026-08-30T07:37:04Z_  
 _Verifier: the agent (gsd-verifier)_
