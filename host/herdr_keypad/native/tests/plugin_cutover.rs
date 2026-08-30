@@ -67,7 +67,7 @@ fn lifecycle_document_proves_ordinary_install_and_explicit_actions() {
         &install.join("\n"),
         &[
             "Install the selected known release through Herdr",
-            "Herdr places the plugin under HERDR_PLUGIN_ROOT",
+            "Herdr places the plugin under `HERDR_PLUGIN_ROOT`",
             "No additional configuration is required",
             "Use the plugin's startup action",
         ],
@@ -81,10 +81,10 @@ fn lifecycle_document_proves_ordinary_install_and_explicit_actions() {
     assert_ordered(
         &lifecycle.join("\n"),
         &[
-            "Invoke start",
-            "Invoke status",
-            "Invoke stop",
-            "Invoke restart",
+            "Invoke `start`",
+            "Invoke `status`",
+            "Invoke `stop`",
+            "Invoke `restart`",
         ],
     );
     assert!(
@@ -100,7 +100,16 @@ fn lifecycle_document_requires_successful_stop_before_each_removal_operation() {
         let body = section_body(LIFECYCLE, heading);
         let steps = numbered_steps(&body);
         assert!(steps.len() >= 3, "{heading} procedure is not complete: {steps:?}");
-        assert_ordered(&steps.join("\n"), &["Invoke stop", "Confirm a successful stop", "Invoke"]);
+        let final_step = match heading {
+            "## Disable" => "Invoke `disable`",
+            "## Unlink" => "Invoke `unlink`",
+            "## Remove" => "Invoke `remove`",
+            _ => unreachable!(),
+        };
+        assert_ordered(
+            &steps.join("\n"),
+            &["Invoke `stop`", "Confirm a successful stop", final_step],
+        );
         assert!(
             body.contains("does not stop an already-running bridge"),
             "{heading} must not imply that Herdr stops a live bridge"
@@ -137,10 +146,10 @@ fn lifecycle_document_binds_update_and_recovery_order() {
     assert_ordered(
         &steps.join("\n"),
         &[
-            "Invoke stop",
-            "manually reinstall one specifically selected known plugin release through Herdr",
-            "Invoke start",
-            "Invoke status",
+            "Invoke `stop`",
+            "Manually reinstall one specifically selected known plugin release through Herdr",
+            "Invoke `start`",
+            "Invoke `status`",
         ],
     );
     assert!(recovery.contains("No automatic rollback"));
