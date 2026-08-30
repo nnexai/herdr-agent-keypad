@@ -10,6 +10,7 @@ use super::model::{Binding, FocusIntent as ModelFocusIntent, FocusStatus, Identi
 use super::projection::InboxProjection;
 use crate::ports::codex::{CodexCollector, FULL_POLL_INTERVAL};
 use crate::ports::config::StartupConfig;
+use crate::ports::control::{ControlEndpoint, ControlRequest};
 use crate::ports::herdr::{HerdrClient, HerdrError, HerdrEventStream};
 use crate::ports::lifecycle::{LifecycleCommand, LifecycleOwner, ResourceMetrics, RuntimePaths};
 use crate::ports::logging::{SafeLogger, TraceConfig};
@@ -28,6 +29,7 @@ const DEFAULT_CODEX_DEADLINE: Duration = Duration::from_secs(15);
 const DEFAULT_RECONNECT_INITIAL: Duration = Duration::from_millis(500);
 const DEFAULT_RECONNECT_MAX: Duration = Duration::from_secs(8);
 const EVENT_WAIT: Duration = Duration::from_secs(24 * 60 * 60);
+const CONTROL_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 const FOCUS_QUEUE_LIMIT: usize = 16;
 
 /// Integration timing knobs.  All values are bounded and deadlines are created
@@ -187,6 +189,11 @@ impl RuntimeCoordinator {
     pub async fn run(mut self) -> Result<(), BridgeError> {
         let _trace = self.logger.install_stderr();
         let _ = self.lifecycle.handle(LifecycleCommand::Start);
+        let control = self
+            .lifecycle
+            .bind_control()
+            .await
+            .map_err(|error| BridgeError::protocol(format!("control endpoint: {error:?}")))?;
         self.try_connect_herdr().await;
         self.try_connect_usb().await;
         self.collect_codex_and_publish().await;
@@ -195,6 +202,30 @@ impl RuntimeCoordinator {
                 _ = self.cancellation.cancelled() => {
                     self.shutdown(false);
                     return Ok(());
+                }
+                control_stream = control.accept_same_user() => {
+                    let mut stream = match control_stream {
+                        Ok(stream) => stream,
+                        Err(_) => continue,
+                    };
+                    let request = match tokio::time::timeout(
+                        CONTROL_REQUEST_TIMEOUT,
+                        control.receive_request(&mut stream),
+                    )
+                    .await
+                    {
+                        Ok(Ok(request)) => request,
+                        _ => continue,
+                    };
+                    let stopping = matches!(&request, ControlRequest::Stop { .. });
+                    let reply = self.lifecycle.handle_control(request);
+                    ControlEndpoint::send_reply(&mut stream, &reply)
+                        .await
+                        .map_err(|error| BridgeError::protocol(format!("control reply: {error:?}")))?;
+                    if stopping {
+                        self.close_boundaries();
+                        return Ok(());
+                    }
                 }
                 _ = async {
                     if self.herdr_dirty { ready(()) } else { pending().await }
@@ -526,11 +557,15 @@ impl RuntimeCoordinator {
         }
     }
 
-    fn shutdown(&mut self, herdr_exit: bool) {
+    fn close_boundaries(&mut self) {
         self.pending_focus.clear();
         self.device_ready = false;
         self.herdr_events.close();
         self.usb.close();
+    }
+
+    fn shutdown(&mut self, herdr_exit: bool) {
+        self.close_boundaries();
         if herdr_exit {
             self.lifecycle.on_herdr_exit();
         } else {
