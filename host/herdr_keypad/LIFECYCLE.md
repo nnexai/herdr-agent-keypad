@@ -7,6 +7,7 @@ This procedure is for ordinary users of the Herdr keypad plugin. Herdr owns plug
 - The supported release targets are **Linux x86-64** and **macOS Apple Silicon**.
 - Herdr selects the package for the host target. The package contains `herdr-plugin.toml`, `bin/herdr-keypad`, and `LIFECYCLE.md`.
 - The native executable uses Herdr-provided runtime information and the installed Codex command. No separately installed bridge runtime or package is needed.
+- For a new Apple Silicon Mac, follow the [macOS setup guide](https://github.com/nnexai/herdr-agent-keypad/blob/main/host/herdr_keypad/SETUP_MACOS.md).
 
 ## Install with Herdr
 
