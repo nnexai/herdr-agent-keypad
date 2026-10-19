@@ -29,7 +29,7 @@ from .protocol import (
     new_v2_frame,
 )
 from .pairing import PairingStore
-from .serial_link import SerialLink
+from .serial_link import SerialLink, open_leased_serial
 
 THEMES = ("SIGNAL EDGE", "LEDGER", "BEACON", "INSTRUMENT")
 GRAMMARS = ("RAIL ECHO", "EXCEPTION", "FIELD EXT", "METER+LAMPS")
@@ -296,11 +296,7 @@ def run_device(port: str, output: Path, firmware: Path | None = None,
 
 def _run_device(port: str, output: Path, evidence: SmokeEvidence,
                 *, expected_device_id: str | None = None) -> int:
-    try:
-        import serial  # type: ignore
-    except ImportError as exc:
-        raise RuntimeError("pyserial is required for --port device runs") from exc
-    with serial.Serial(port, 115200, timeout=0.25) as connection:
+    with open_leased_serial(port, timeout=0.25) as connection:
         session = DeviceSession(connection)
         hello = session.hello()
         hello_payload = hello.get("payload", {})

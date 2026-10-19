@@ -31,7 +31,7 @@ See: .planning/PROJECT.md (updated 2026-08-20)
 Phase: 5 — Independent Recovery and Actual-Device Acceptance
 Plan: Not started
 Status: Planning
-Last activity: 2026-10-19 - Completed quick task 261018-x6c: Plan Rust runtime / Python diagnostics cleanup (planning only; implementation not started)
+Last activity: 2026-10-19 - Completed quick task 261019-dpf: Execute Rust/Python cleanup, update active Herdr plugin, and verify connected keypad capture/handoff
 
 Progress: [██████████] 100% (63/63 existing plans; 8/9 phases complete)
 
@@ -246,6 +246,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Current roadmap decision
 | [260830-t2s - Alternate Codex and Copilot on panel 4](./quick/260830-t2s-display-codex-and-copilot-usage-on-the-f/) | 2026-08-30 | complete - `713bef4` |
 | [260831-0hp - Theme and fit Copilot usage presentation](./quick/260831-0hp-fix-ui-presentation-of-copilot-usage-to-/) | 2026-08-31 | complete - `c41b764` |
 | [261018-x6c - Plan Rust runtime / Python diagnostics cleanup](./quick/261018-x6c-plan-repository-cleanup-separating-rust-/261018-x6c-PLAN.md) | 2026-10-19 | complete — planning only; cleanup not executed |
+| [261019-dpf - Execute Rust/Python cleanup and verify updated plugin on hardware](./quick/261019-dpf-execute-rust-bridge-cleanup-verify-conne/261019-dpf-SUMMARY.md) | 2026-10-19 | complete — cleanup deployed; real USB capture/handoff verified; physical key/optical acceptance not claimed |
 
 ## Session Continuity
 

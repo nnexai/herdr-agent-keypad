@@ -21,10 +21,11 @@ Do not treat a framebuffer capture as proof of physical brightness, viewing-angl
 
 ## Preconditions
 
-Run commands from the repository root. Use the supplied environment for every Python or PlatformIO operation:
+Run commands from the repository root. Use the supplied environment for every Python or PlatformIO operation, including the lease runner:
 
-```text
-tools/phase1_bringup/.venv/bin/python3
+```bash
+PY=tools/phase1_bringup/.venv/bin/python3
+LEASE="$PY tools/keypad_lease.py"
 ```
 
 Require:
@@ -32,40 +33,35 @@ Require:
 - A paired keypad binding at `~/.config/herdr/keypad-binding.json`.
 - The keypad enumerated as the exact paired USB identity.
 - Firmware containing the capture seam and `tools/capture_panel.py`.
-- Exclusive serial ownership. Stop the bridge before direct capture or firmware upload:
+- Exclusive serial ownership through the Rust bridge's existing authority lock. Discover and cache its state directory **while the installed bridge is running**, then stop through Herdr and confirm the stopped state:
 
 ```bash
-host/herdr_keypad/scripts/ensure-bridge.sh stop-for-acceptance
+STATE_DIR="$($LEASE locate)"
+# Continue only if locate succeeded; do not rediscover after stopping.
+# In Herdr's herdr-keypad plugin actions, invoke stop, then status.
+# Continue only when status reports stopped.
 ```
 
-The bridge may be restarted after capture or upload. Never select the first arbitrary `/dev/ttyACM*`; `capture_panel.py` uses exact pairing and fresh hello validation.
+For a non-default installation, pass `--plugin-root /absolute/plugin/root` to `locate`. Prefix every device command with `$LEASE run --state-dir "$STATE_DIR" --`; never fabricate fd 9 or lease environment variables. The runner never stops or restarts Herdr and never creates a missing lock. This is cooperative same-user mutual exclusion, not a security boundary.
+
+Never select the first arbitrary `/dev/ttyACM*`; `capture_panel.py` uses exact pairing and fresh hello validation.
 
 ## Standard Capture
 
 1. Build and upload the current firmware when source changed:
 
    ```bash
-   tools/phase1_bringup/.venv/bin/python3 -m platformio run
-   tools/phase1_bringup/.venv/bin/python3 -m platformio run -t upload
+   $PY -m platformio run -e selected-usb
+   $LEASE run --state-dir "$STATE_DIR" -- $PY -m platformio run -e selected-usb -t upload
    ```
 
-2. Publish a current authoritative snapshot if tile captures need real agent content:
-
-   ```bash
-   PYTHONPATH=host/herdr_keypad/src:tools/phase1_bringup/src \
-     tools/phase1_bringup/.venv/bin/python3 -m herdr_keypad \
-     --smoke \
-     --binding "$HOME/.config/herdr/keypad-binding.json" \
-     --evidence artifacts/phase2/capture-smoke.json
-   ```
-
-   The snapshot command requires the bridge or direct host session according to the current runtime. If the bridge owns the serial device, stop it before invoking a direct capture.
+2. Choose the capture meaning before interpreting pixels. A live `current` capture happens **after the Rust host session ended** and shows whatever the firmware renders at that point. Record the observed device state; do not claim it is a still-live authoritative host snapshot. There is no Python snapshot publisher. Use deterministic `--theme` / `--scene` fixtures as the primary visual regression path.
 
 3. Capture one zero-based panel. Panel `0`–`2` are agent tiles; panel `3` is panel 4:
 
    ```bash
-   tools/phase1_bringup/.venv/bin/python3 \
-     tools/capture_panel.py 0 artifacts/phase2/panel-1.ppm
+   $PY tools/keypad_lease.py run --state-dir "$STATE_DIR" -- \
+     $PY tools/capture_panel.py 0 artifacts/phase2/panel-1.ppm
    ```
 
    The utility sends the bounded `probe` stimulus `CAPTURE:N` for a live capture or the extended deterministic fixture form when `--theme` / `--scene` is present. It waits for `probe_ack`, validates the `SCREENSHOT-RGB565\n` marker, reads exactly `128 × 128 × 2` bytes, and writes both PPM and a `.rgb565` sidecar.
@@ -82,7 +78,7 @@ The bridge may be restarted after capture or upload. Never select the first arbi
 
    ```bash
    for n in 0 1 2 3; do
-     tools/phase1_bringup/.venv/bin/python3 tools/capture_panel.py \
+     $LEASE run --state-dir "$STATE_DIR" -- $PY tools/capture_panel.py \
        "$n" "artifacts/phase2/panel-$((n + 1)).ppm"
      ffmpeg -hide_banner -loglevel error \
        -f image2 -i "artifacts/phase2/panel-$((n + 1)).ppm" \
@@ -103,16 +99,16 @@ The bridge may be restarted after capture or upload. Never select the first arbi
 Use the on-device fixture renderer to inspect every theme and semantic state without changing NVS, the active theme, inbox bindings, or host data:
 
 ```bash
-tools/phase1_bringup/.venv/bin/python3 tools/capture_panel.py \
+$LEASE run --state-dir "$STATE_DIR" -- $PY tools/capture_panel.py \
   0 artifacts/phase2/beacon-blocked.ppm \
   --theme beacon --scene blocked
 
-tools/phase1_bringup/.venv/bin/python3 tools/capture_panel.py \
+$LEASE run --state-dir "$STATE_DIR" -- $PY tools/capture_panel.py \
   3 artifacts/phase2/instrument-menu.ppm \
   --theme instrument --scene menu-led
 ```
 
-`--theme` selects one of the four renderers. `--scene` selects a resting state, source fence, feedback state, sync screen, or menu row; use `tools/capture_panel.py --help` for the exact current choices. Capture menu scenes from panel `3`; capture tile scenes from panel `0`–`2`. The fixture uses long bounded title, discriminator, and time values so clipping and overlap failures remain visible.
+`--theme` selects one of the four renderers. `--scene` selects a resting state, source fence, feedback state, sync screen, or menu row; use `$PY tools/capture_panel.py --help` for the exact current choices (hardware-free; no lease required). Capture menu scenes from panel `3`; capture tile scenes from panel `0`–`2`. The fixture uses long bounded title, discriminator, and time values so clipping and overlap failures remain visible.
 
 ## Pixel Interpretation
 
@@ -159,7 +155,7 @@ Repeat this bounded loop for each rendering change:
 3. Make the smallest geometry, palette, or primitive change.
 4. Run `git diff --check` on changed source.
 5. Rebuild with the supplied venv.
-6. Stop the bridge, upload firmware, publish a controlled snapshot if needed, and recapture the affected panel.
+6. Cache the state directory while the bridge runs, stop through Herdr and confirm `status` is stopped, then upload and recapture under `$LEASE run --state-dir "$STATE_DIR" --`. Use deterministic scenes for controlled content; a `current` capture records post-stop rendering.
 7. Inspect the new PNG and compare against the previous capture.
 8. Keep the change only when the pixel evidence improves the contract without regressing semantic cues or safe bounds.
 
@@ -167,17 +163,22 @@ Avoid optical screenshots for this comparison loop. Use them only after logical 
 
 ## Safety and Cleanup
 
-Keep capture frames bounded and diagnostic-only. Do not add credentials, transcripts, filesystem paths, or unbounded payloads to the device protocol. Do not leave the bridge and direct capture utility competing for `/dev/ttyACM0`. Restart the bridge only when host-driven live behavior is needed:
+Keep capture frames bounded and diagnostic-only. Do not add credentials, transcripts, filesystem paths, or unbounded payloads to the device protocol. Never let the bridge and direct tools compete for the paired device. Exit codes `4` (lease still held) and `5` (device still open) mean **not released**: inspect the printed PIDs and resolve holders before proceeding. After a failed release or interrupted runner, require this recheck to exit `0`:
 
 ```bash
-host/herdr_keypad/scripts/ensure-bridge.sh
+$LEASE run --state-dir "$STATE_DIR" --wait-seconds 0 -- true
 ```
+
+Check the exact paired device with `fuser` for remaining holders before explicitly restarting the bridge. Do not start if a known holder remains. The runner's fresh `flock` proves shared authority release; supplementary `/proc` scans are best-effort. A visibility-limited warning identifies inaccessible PIDs and means absence of other tty holders cannot be proved; `fuser` may have the same visibility limitation. Shared lock exclusion remains enforced. The final scan also cannot prevent a non-cooperating process from opening the device afterward.
+
+In Herdr's `herdr-keypad` plugin actions, explicitly invoke `start` only after the release and device-holder checks succeed.
 
 Keep generated PPM/PNG/RGB565 artifacts out of commits unless the task explicitly requests visual fixtures. Commit source, utility, and skill changes only.
 
 ## Additional Resources
 
 - `tools/capture_panel.py` — exact paired-device framebuffer capture utility.
+- `tools/keypad_lease.py` — shared Rust authority lease runner; see `tools/README.md` for limits and exit codes.
 - `firmware/src/app/agent_projection.cpp` — composition sprite and capture seam.
 - `firmware/src/main.cpp` — bounded `CAPTURE:N` probe dispatch and USB stream.
 - `firmware/src/ui/theme_common.h` — shared RGB565 palette and state vocabulary.

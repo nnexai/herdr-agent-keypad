@@ -15,7 +15,7 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from .protocol import MAX_LINE_BYTES, PROTOCOL_VERSION
 from .pairing import PairingStore
-from .serial_link import reconnect_exact
+from .serial_link import open_leased_serial, reconnect_exact
 
 PROFILE_ID = "usb-v1-product-shaped"
 MANIFEST_SCHEMA_VERSION = 1
@@ -450,10 +450,6 @@ def run_qualification(
     smoke_mode = smoke_seconds is not None
     if binding is None:
         raise QualificationError("no exact paired keypad binding exists; run pair before qualify")
-    try:
-        import serial
-    except ImportError as exc:
-        raise QualificationError("pyserial 3.5 is required in the plan-owned environment") from exc
 
     traffic: list[dict[str, Any]] = []
     transitions: list[dict[str, Any]] = []
@@ -483,7 +479,7 @@ def run_qualification(
 
     try:
         def opener(candidate: Any) -> Any:
-            return serial.Serial(candidate.device, baudrate=115200, timeout=0.2, write_timeout=3)
+            return open_leased_serial(candidate.device, timeout=0.2, write_timeout=3)
 
         candidate, base_link, session, recovery = reconnect_exact(binding, None, opener, timeout=3.0)
         link = base_link

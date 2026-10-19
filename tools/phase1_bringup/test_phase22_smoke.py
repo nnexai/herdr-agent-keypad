@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import sys
-import types
 from pathlib import Path
 from unittest.mock import patch
 import pytest
@@ -85,9 +83,8 @@ def test_device_run_uses_one_fresh_epoch_per_process() -> None:
         def wait_for_type(self, frame_type: str, timeout: float) -> dict[str, object]:
             raise TimeoutError("end setup-only replay")
 
-    fake_serial = types.SimpleNamespace(Serial=FakeSerial)
     with (
-        patch.dict(sys.modules, {"serial": fake_serial}),
+        patch.object(smoke, "open_leased_serial", FakeSerial),
         patch.object(smoke, "DeviceSession", RecordingSession),
         patch("builtins.input", return_value=""),
     ):
@@ -306,31 +303,7 @@ def test_pre_arm_discard_removes_stale_complete_and_partial_intents() -> None:
 
 def test_request_preserves_unmatched_focus_intent_for_later_wait() -> None:
     intent = focus_intent_frame("queued-action")
-    metrics_ack = encode_frame(
-        "metrics_ack",
-        "device-boot",
-        "host-session",
-        38,
-        {
-            "acknowledged": 1,
-            "digest_mismatch": 0,
-            "duplicate": 0,
-            "largest_free_block": 1,
-            "malformed": 0,
-            "max_display_flush_us": 1,
-            "max_key_poll_gap_us": 1,
-            "minimum_free_heap": 1,
-            "out_of_order": 0,
-            "parser_high_water": 1,
-            "queue_high_water": 1,
-            "received": 1,
-            "rejected": 0,
-            "sent": 1,
-            "watchdog_reset": 0,
-        },
-        version=1,
-        reply_to=1,
-    )
+    metrics_ack = metrics_ack_frame(sequence=38)
     connection = FragmentedConnection([intent + metrics_ack])
     session = DeviceSession(connection, timeout=0.05)
     session.session_id = "host-session"
@@ -338,8 +311,8 @@ def test_request_preserves_unmatched_focus_intent_for_later_wait() -> None:
     response = session.request("metrics", {"request": "proof"}, version=1)
     preserved = session.wait_for_type("focus_intent", 0.05)
 
-    assert response["type"] == "metrics_ack"
-    assert preserved["payload"]["action_id"] == "queued-action"
+    assert response == json.loads(metrics_ack)
+    assert preserved == json.loads(intent)
 
 
 def test_focus_intent_replay_covers_serial_read_boundaries() -> None:

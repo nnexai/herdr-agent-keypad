@@ -167,6 +167,69 @@ fn production_binary_start_status_stop_owns_control_socket_for_authority_lifetim
     fs::remove_dir_all(root).expect("cleanup");
 }
 
+#[test]
+fn production_binary_start_fails_closed_while_external_lease_holds_authority() {
+    let root = temp_root();
+    fs::create_dir_all(root.join("config")).expect("config");
+    fs::create_dir_all(root.join("state")).expect("state");
+    fs::create_dir_all(root.join("home/.config/herdr")).expect("home config");
+    fs::write(root.join("config/config.toml"), "logging_enabled = false\n").expect("settings");
+    fs::write(
+        root.join("home/.config/herdr/keypad-binding.json"),
+        br#"{"schema_version":1,"device_id":"kbd-123","protocol":1,"firmware":"phase1-bringup"}"#,
+    )
+    .expect("binding");
+    let lease = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(root.join("state/bridge.lock"))
+        .expect("external lease file");
+    fs2::FileExt::try_lock_exclusive(&lease).expect("external authority lease");
+    let socket = root.join("state/bridge.sock");
+
+    let blocked = lifecycle_command(&root, "start").output().expect("blocked start");
+    assert!(!blocked.status.success(), "start ignored the external authority lease");
+    assert!(!socket.exists(), "blocked start created a control socket");
+    let error = String::from_utf8_lossy(&blocked.stderr).to_ascii_lowercase();
+    for forbidden in ["python", "path", "/home/"] {
+        assert!(!error.contains(forbidden), "blocked start leaked {forbidden}");
+    }
+    assert!(
+        !error.contains(&root.to_string_lossy().to_ascii_lowercase()),
+        "blocked start leaked the temporary state path"
+    );
+
+    drop(lease);
+    let start = lifecycle_command(&root, "start")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("start after lease release");
+    let mut authority = ChildGuard(start);
+    assert!(
+        wait_until(Duration::from_secs(5), || socket.exists()),
+        "start after lease release never created bridge.sock"
+    );
+    assert!(
+        authority.0.try_wait().expect("authority state").is_none(),
+        "authority exited after lease release"
+    );
+
+    let stop = lifecycle_command(&root, "stop").output().expect("stop authority");
+    assert!(stop.status.success(), "stop failed: {}", String::from_utf8_lossy(&stop.stderr));
+    let stopped: Value = serde_json::from_slice(&stop.stdout).expect("stopped reply");
+    assert_eq!(stopped["reply"], "stopped");
+    assert!(
+        wait_until(Duration::from_secs(5), || authority.0.try_wait().expect("authority state").is_some()),
+        "authority did not exit after stop"
+    );
+    assert!(!socket.exists(), "control socket remained after stop");
+    fs::remove_dir_all(root).expect("cleanup");
+}
+
 #[cfg(unix)]
 #[test]
 fn production_status_keeps_codex_unavailable_until_displayable_payload_is_acked() {

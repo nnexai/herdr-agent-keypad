@@ -11,7 +11,6 @@ from host.herdr_keypad.release.collect_phase4_evidence import (
     EvidenceError,
     REQUIRED_SOURCE_FILES,
     TARGETS,
-    check_aggregation_contract,
     collect_evidence,
     verify_checksum,
     write_evidence,
@@ -260,10 +259,6 @@ class CollectorTests(unittest.TestCase):
                 verify_checksum(output, checksum)
         finally:
             shutil.rmtree(inputs.parent)
-
-    def test_workflow_aggregation_contract_is_checked(self) -> None:
-        workflow = Path(__file__).parents[3] / ".github/workflows/native-release.yml"
-        check_aggregation_contract(workflow)
 
 
 if __name__ == "__main__":

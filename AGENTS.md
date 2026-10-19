@@ -27,6 +27,8 @@ The initial product consists of firmware for the keypad and a host-side bridge i
 
 ## Technology Stack
 
+**Current implementation — 2026-10-19 (quick 261018-x6c):** `host/herdr_keypad/native/` is the sole production host bridge, implemented in Rust and bundled with the Herdr plugin. The Python bridge is retired; retained Python is limited to developer diagnostics under `tools/` and stdlib-only CI/release evidence tooling under `host/herdr_keypad/release/`. The recommendation tables below, sourced from `research/STACK.md`, are historical design research, not the current runtime contract; see `.planning/REQUIREMENTS.md` RUST-07/RUST-08 and `tools/README.md`.
+
 ## Recommendation in One Sentence
 
 ## Recommended Stack

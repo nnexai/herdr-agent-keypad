@@ -132,6 +132,10 @@ def validate_frame(frame: Any) -> dict[str, Any]:
         raise ProtocolError("unknown_type", "frame type must be a string")
     if frame["type"] not in FRAME_TYPES:
         raise ProtocolError("unknown_type", "frame type is not in the closed v1 set")
+    _require_string(frame["boot_id"], "boot_id")
+    _require_string(frame["session_id"], "session_id")
+    if not _is_int(frame["seq"]) or not 1 <= frame["seq"] <= 0xFFFFFFFF:
+        raise ProtocolError("invalid_sequence", "seq must be a positive uint32")
     if frame["reply_to"] is not None and (not _is_int(frame["reply_to"]) or not 1 <= frame["reply_to"] <= 0xFFFFFFFF):
         raise ProtocolError("invalid_reply_to", "reply_to must be null or a positive uint32")
     if not isinstance(frame["digest"], str) or not DIGEST_PATTERN.fullmatch(frame["digest"]):
@@ -753,7 +757,6 @@ def protocol_golden_check(fixture_path: Any, schema_path: Any) -> int:
         schema_outcome = "not_evaluated"
         if line_value == "synthetic:oversized":
             line = b"x" * MAX_LINE_BYTES + b"\n"
-            schema_outcome = "invalid"
         elif isinstance(line_value, str):
             line = line_value.encode("utf-8")
         else:

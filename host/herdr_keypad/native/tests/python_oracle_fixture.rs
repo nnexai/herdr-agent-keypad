@@ -1,3 +1,9 @@
+//! Frozen Python oracle corpus. Exported by
+//! `host/herdr_keypad/tests/export_rust_oracle.py` and last proven byte-identical
+//! at commit `c9a9720f64f221225d0364a29f4e6e995066628a` (261018-x6c B0).
+//! The Python bridge was retired in 261018-x6c. Fixture bytes must not be
+//! regenerated or edited. Behavior changes extend Rust-native tests.
+
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,18 +19,24 @@ const FILES: [(&str, &str); 4] = [
     ("codex.json", "codex"),
     ("lifecycle.json", "lifecycle"),
 ];
-const SOURCE_PATHS: [&str; 11] = [
-    "host/herdr_keypad/src/herdr_keypad/bridge.py",
-    "host/herdr_keypad/src/herdr_keypad/projection.py",
-    "host/herdr_keypad/src/herdr_keypad/focus.py",
-    "host/herdr_keypad/src/herdr_keypad/codex.py",
-    "host/herdr_keypad/tests/test_protocol.py",
-    "host/herdr_keypad/tests/test_projection.py",
-    "host/herdr_keypad/tests/test_focus.py",
-    "host/herdr_keypad/tests/test_codex.py",
-    "host/herdr_keypad/tests/test_integration.py",
-    "protocol/schema/v2.json",
-    "protocol/fixtures/v2-golden.json",
+const FROZEN_SOURCES: [(&str, &str); 11] = [
+    ("host/herdr_keypad/src/herdr_keypad/bridge.py", "b4cd6b8fe5bdd3cdfb32f31793e02e7424ffe2ca4ef03762b9c202f74902fc01"),
+    ("host/herdr_keypad/src/herdr_keypad/projection.py", "390b37bd4b5ce56577890611dbde4182453ff23728f7c3220fe0132fd3095bbc"),
+    ("host/herdr_keypad/src/herdr_keypad/focus.py", "faf48b234d1d5e0b552f92e8eb327766bfc452d002af4a3fc68779b4c96cbea3"),
+    ("host/herdr_keypad/src/herdr_keypad/codex.py", "ca2715e9e6ab88171c76974bde7e9058b4c9e2c05ba1295ded520afd597803a6"),
+    ("host/herdr_keypad/tests/test_protocol.py", "43fc58c4d3ea01ca34c50464532c050f6f11a1a104ee3eddf775d69797939f4a"),
+    ("host/herdr_keypad/tests/test_projection.py", "eb74a619bc067ae479ff511c7d5d1787d158df8ba9678e9abee1741477c4ba2d"),
+    ("host/herdr_keypad/tests/test_focus.py", "b749163c23873dde7025b4dbb3930cf557286b17bf4a37c9278f42bac48e4674"),
+    ("host/herdr_keypad/tests/test_codex.py", "13839ba699d7c954211992d0cb47164680c4ef7396b4b433f2f5aecfc0e91e06"),
+    ("host/herdr_keypad/tests/test_integration.py", "b4d1f97fe8180bfb1c94accb4f4ffe88ea2e9d2b39c884acfa214076e2c43e69"),
+    ("protocol/schema/v2.json", "0c69cce6f4e725d373751b020b40458b64324d74a8ada1c17c41581e6d343860"),
+    ("protocol/fixtures/v2-golden.json", "d7982bf989d7aca5d95a48d0b69effc98336fed22a3ae31494dea3a4400110c2"),
+];
+const FROZEN_FIXTURE_FILES: [(&str, &str); 4] = [
+    ("protocol.json", "8f51d9ca1441e448dcfc85dc58ee01b88578973697d1ce4bf6c526395a86da93"),
+    ("projection-focus.json", "23c4252f8b6eea37d9f84d56427d7df17c7023b72ab85102870ca2c0891447d8"),
+    ("codex.json", "1b7d7174cfad1544e90791cfda39c6d16300355c19bef47c1a5187d59b4625b6"),
+    ("lifecycle.json", "fa09227ebcb771ec6c7e48986b857c31b0f963113aa77d2053150356f1adb39f"),
 ];
 const PROTOCOL_TYPES: [&str; 4] = [
     "agent_snapshot",
@@ -32,13 +44,6 @@ const PROTOCOL_TYPES: [&str; 4] = [
     "focus_intent",
     "focus_result",
 ];
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .canonicalize()
-        .expect("repository root")
-}
 
 fn sha256_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -70,15 +75,13 @@ fn canonical_bytes(value: &Value) -> Vec<u8> {
 }
 
 fn source_records() -> Vec<Value> {
-    let root = repo_root();
-    SOURCE_PATHS
+    FROZEN_SOURCES
         .iter()
-        .map(|path| {
-            let bytes = fs::read(root.join(path)).expect("source fixture input");
+        .map(|(path, sha256)| {
             json!({
                 "kind": "oracle-source",
                 "path": path,
-                "sha256": sha256_bytes(&bytes),
+                "sha256": sha256,
             })
         })
         .collect()
@@ -145,16 +148,21 @@ fn synthetic_valid_corpus_passes() {
 }
 
 #[test]
-fn synthetic_environment_root_passes() {
-    let Some(root) = env::var_os("HERDR_ORACLE_FIXTURE_ROOT") else {
-        return;
-    };
-    validate_fixture_root(Path::new(&root)).expect("exported oracle corpus");
+fn checked_in_corpus_is_the_frozen_python_export() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    let mut names = BTreeSet::new();
+    for (filename, expected_hash) in FROZEN_FIXTURE_FILES {
+        let path = root.join(filename);
+        let bytes = fs::read(&path).expect("frozen Python corpus");
+        assert_eq!(sha256_bytes(&bytes), expected_hash, "frozen export bytes: {filename}");
+        let family = expected_family(filename).expect("frozen fixture family");
+        validate_fixture_file(&path, family, &mut names).expect("frozen Python corpus is valid");
+    }
 }
 
 #[test]
 fn synthetic_tampered_corpora_fail_closed() {
-    let mutations: [(&str, fn(&mut PathBuf)); 7] = [
+    let mutations: [(&str, fn(&mut PathBuf)); 8] = [
         ("duplicate case names", tamper_duplicate_case_names),
         ("unknown field", tamper_unknown_field),
         ("oversized records", tamper_oversized_records),
@@ -162,6 +170,7 @@ fn synthetic_tampered_corpora_fail_closed() {
         ("absolute path", tamper_absolute_path),
         ("missing parity family", tamper_missing_family),
         ("fifth protocol type", tamper_protocol_expansion),
+        ("recorded source hash", tamper_source_hash),
     ];
     for (label, mutate) in mutations {
         let root = unique_temp_root("tampered");
@@ -230,9 +239,18 @@ fn tamper_protocol_expansion(root: &mut PathBuf) {
     });
 }
 
+fn tamper_source_hash(root: &mut PathBuf) {
+    rewrite(root, "protocol.json", |value| {
+        value["sources"][0]["sha256"] = json!("0".repeat(64));
+        let object = value.as_object_mut().expect("corpus object");
+        object.remove("fixture_sha256");
+        let digest = sha256_bytes(&canonical_bytes(value));
+        value["fixture_sha256"] = json!(digest);
+    });
+}
+
 const MAX_FILE_BYTES: usize = 1_048_576;
 const MAX_CASES: usize = 256;
-const MAX_SOURCES: usize = 32;
 const MAX_CASE_BYTES: usize = 131_072;
 const MAX_NAME_BYTES: usize = 128;
 const MAX_SOURCE_PATH_BYTES: usize = 256;
@@ -360,35 +378,23 @@ fn validate_sources(value: &Value) -> Result<(), String> {
     let sources = value
         .as_array()
         .ok_or_else(|| "sources must be an array".to_string())?;
-    if sources.is_empty() || sources.len() > MAX_SOURCES || sources.len() != SOURCE_PATHS.len() {
+    if sources.len() != FROZEN_SOURCES.len() {
         return validation_error("sources count is outside the fixed lineage".to_string());
     }
-    let root = repo_root();
-    let mut seen = BTreeSet::new();
-    for source in sources {
+    for (source, (expected_path, expected_hash)) in sources.iter().zip(FROZEN_SOURCES) {
         let source = object(source, "source")?;
         exact_keys(source, &["kind", "path", "sha256"], "source")?;
         if bounded_string(&source["kind"], 32, "source.kind")? != "oracle-source" {
             return validation_error("source kind is not oracle-source".to_string());
         }
         let path = bounded_string(&source["path"], MAX_SOURCE_PATH_BYTES, "source.path")?;
-        if path.starts_with('/')
-            || path.starts_with('\\')
-            || path.contains("..")
-            || !seen.insert(path)
-            || !expected_source_paths().contains(path)
-        {
-            return validation_error("source path is not an allowed relative source".to_string());
+        if path != expected_path {
+            return validation_error("source path or order differs from the frozen lineage".to_string());
         }
-        let actual = fs::read(root.join(path))
-            .map_err(|_| format!("recorded source is missing: {path}"))?;
-        let expected = hex_sha256(&source["sha256"], "source.sha256")?;
-        if sha256_bytes(&actual) != expected {
+        let recorded_hash = hex_sha256(&source["sha256"], "source.sha256")?;
+        if recorded_hash != expected_hash {
             return validation_error(format!("recorded source hash mismatch: {path}"));
         }
-    }
-    if seen != expected_source_paths() {
-        return validation_error("source lineage is incomplete".to_string());
     }
     Ok(())
 }
@@ -479,10 +485,6 @@ fn validate_fixture_root(root: &Path) -> Result<(), String> {
         validate_fixture_file(&root.join(filename), family, &mut names)?;
     }
     Ok(())
-}
-
-fn expected_source_paths() -> BTreeSet<&'static str> {
-    SOURCE_PATHS.into_iter().collect()
 }
 
 fn protocol_types() -> BTreeSet<&'static str> {

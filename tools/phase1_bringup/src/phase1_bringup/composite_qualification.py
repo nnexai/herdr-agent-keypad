@@ -1926,18 +1926,14 @@ def _serial_ports() -> list[Any]:
 
 def _exact_paired_port(binding_path: Path) -> tuple[Any, dict[str, Any]]:
     from .pairing import PairingStore
-    from .serial_link import reconnect_exact
+    from .serial_link import open_leased_serial, reconnect_exact
 
     binding = PairingStore(binding_path).load()
     if binding is None:
         raise CompositeQualificationError(f"pairing binding is missing: {binding_path}")
 
     def opener(candidate: Any) -> Any:
-        try:
-            import serial
-        except ImportError as exc:
-            raise CompositeQualificationError("pyserial is unavailable for exact pairing") from exc
-        return serial.Serial(candidate.device, 115200, timeout=0.2, write_timeout=2.0)
+        return open_leased_serial(candidate.device, timeout=0.2, write_timeout=2.0)
 
     try:
         selected, link, session, _transitions = reconnect_exact(
@@ -2088,15 +2084,10 @@ def _find_guided_keyboard_event(
 
 
 def _probe_guided_status(cdc_path: str, timeout: float = 8.0) -> dict[str, Any]:
-    try:
-        import serial
-    except ImportError as exc:
-        raise CompositeQualificationError("pyserial is unavailable for tracer preflight") from exc
+    from .serial_link import open_leased_serial
     deadline = time.monotonic() + timeout
     try:
-        connection = serial.Serial(
-            cdc_path, 115200, timeout=0.2, write_timeout=2.0
-        )
+        connection = open_leased_serial(cdc_path, timeout=0.2, write_timeout=2.0)
     except Exception as exc:
         raise CompositeQualificationError(
             f"composite CDC observer could not open {cdc_path}: {exc}"
@@ -2292,16 +2283,9 @@ def wait_for_guided_pairing_challenge(
         raise CompositeQualificationError(
             "guided pairing challenge already exists and cannot be overwritten"
         )
+    from .serial_link import open_leased_serial
     try:
-        import serial
-    except ImportError as exc:
-        raise CompositeQualificationError(
-            "pyserial is unavailable for the physical pairing challenge"
-        ) from exc
-    try:
-        connection = serial.Serial(
-            cdc_path, 115200, timeout=0.2, write_timeout=2.0
-        )
+        connection = open_leased_serial(cdc_path, timeout=0.2, write_timeout=2.0)
     except Exception as exc:
         raise CompositeQualificationError(
             f"guided pairing challenge could not open {cdc_path}: {exc}"

@@ -1,3 +1,8 @@
 .claude/worktrees/
 .pio/libdeps/composite-feasibility/ButtonSense@src-b44ada60de53194df560f16e7fadf522/
 .pio/libdeps/composite-feasibility/LILYGO T-Keyboard-S3-Pro Library/
+__pycache__/
+*.egg-info/
+tools/phase1_bringup/.venv/
+host/herdr_keypad/native/target/
+artifacts/cleanup-*/

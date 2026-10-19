@@ -20,7 +20,7 @@ from .evidence import EvidenceError, EvidenceWriter, MACHINE_BATCH_GATES, _sha25
 from .guide import BATCH_GATE_ORDER, GATES, GUIDED_ORDER, RECOVERY_TOUR_STEPS, BatchRun, GuidedRun, batch_key_event_check, batch_no_ack_check, batch_order_check, batch_parser_check, confirmation_check, guided_order_check, pairing_ui_check, recovery_tour_check, recovery_ui_check
 from .pairing import pairing_check
 from .protocol import FRAME_TYPES, MAX_LINE_BYTES, PROTOCOL_VERSION, V2_FRAME_TYPES, decode_frame, encode_frame, new_frame, protocol_bootstrap_check, protocol_golden_check, validate_frame
-from .serial_link import RECOVERY_ACTIONS, canonical_recovery_action, reconnect_exact, recovery_action_matrix_check, serial_reconnect_check, udev_rule_check, validate_recovery_action_event
+from .serial_link import RECOVERY_ACTIONS, canonical_recovery_action, open_leased_serial, reconnect_exact, recovery_action_matrix_check, serial_reconnect_check, udev_rule_check, validate_recovery_action_event
 from .ui import MIN_HEIGHT, MIN_WIDTH, TerminalUI
  
  
@@ -253,7 +253,6 @@ def run_pair(schema_path: Path, evidence_root: Path, binding_path: Path) -> int:
     """Pair the single physically intended keypad by a fresh displayed challenge."""
     environment = dependency_gate()
     load_schema(schema_path)
-    import serial
 
     from .discovery import enumerate_candidates
     from .pairing import PairingError, PairingStore, new_challenge, pair_exact_candidate
@@ -279,7 +278,7 @@ def run_pair(schema_path: Path, evidence_root: Path, binding_path: Path) -> int:
             raise PairingError("ambiguous", "Multiple compatible keypads detected. Disconnect other candidates and retry; no device was paired.")
         candidate = candidates[0]
         challenge = new_challenge()
-        with serial.Serial(candidate.device, 115200, timeout=0.5) as connection:
+        with open_leased_serial(candidate.device, timeout=0.5) as connection:
             session = ProtocolSession(connection, "host-" + secrets.token_hex(6), "session-" + secrets.token_hex(6))
             session.hello()
             session.stimulate("PAIR", 1, "PAIR-" + challenge)
@@ -301,7 +300,6 @@ def run_recover(schema_path: Path, evidence_root: Path, binding_path: Path, inte
     """Perform one exact-device, fresh-session recovery without manual port selection."""
     environment = dependency_gate()
     load_schema(schema_path)
-    import serial
 
     from .pairing import PairingStore, PairingError
 
@@ -313,7 +311,7 @@ def run_recover(schema_path: Path, evidence_root: Path, binding_path: Path, inte
     discarded_ids = [1]
 
     def opener(candidate: Any) -> Any:
-        return serial.Serial(candidate.device, 115200, timeout=0.5)
+        return open_leased_serial(candidate.device, timeout=0.5)
 
     selected, link, session, transitions = reconnect_exact(binding, None, opener, discarded_ids=discarded_ids)
     try:
@@ -401,7 +399,6 @@ def run_recovery_tour(schema_path: Path, evidence_root: Path, binding_path: Path
     """Run the operator-owned D-12 tour one explicit response at a time."""
     environment = dependency_gate()
     load_schema(schema_path)
-    import serial
 
     from .pairing import PairingStore, PairingError
 
@@ -432,7 +429,7 @@ def run_recovery_tour(schema_path: Path, evidence_root: Path, binding_path: Path
     if binding is None:
         raise PairingError("unpaired", "No paired keypad binding exists; run the physical pairing gate first.")
     def opener(candidate: Any) -> Any:
-        return serial.Serial(candidate.device, 115200, timeout=0.5)
+        return open_leased_serial(candidate.device, timeout=0.5)
 
     while True:
         index = _derive_tour_index(tour_root, tour_id)
@@ -527,7 +524,6 @@ def run_recovery_tour(schema_path: Path, evidence_root: Path, binding_path: Path
 def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -> int:
     environment = dependency_gate()
     load_schema(schema_path)
-    import serial
     from .protocol import ProtocolSession
 
     ui = TerminalUI(output=sys.stdout)
@@ -540,7 +536,7 @@ def run_start(schema_path: Path, evidence_root: Path, port: str | None = None) -
     session = None
     run = GuidedRun(None, writer, ui, run_id)
     try:
-        with serial.Serial(selected_port, 115200, timeout=0.5) as connection:
+        with open_leased_serial(selected_port, timeout=0.5) as connection:
             session = ProtocolSession(connection, "host-" + secrets.token_hex(6), "session-" + secrets.token_hex(6))
             run.session = session
             run.start()
@@ -595,7 +591,6 @@ def run_batch(schema_path: Path, evidence_root: Path, port: str | None = None, d
     """Run the seven physical gates with one explicit confirmation per gate."""
     environment = dependency_gate()
     load_schema(schema_path)
-    import serial
     from .protocol import ProtocolSession
 
     ui = TerminalUI(output=sys.stdout)
@@ -607,7 +602,7 @@ def run_batch(schema_path: Path, evidence_root: Path, port: str | None = None, d
     writer = EvidenceWriter(evidence_root, run_id)
     run = BatchRun(None, writer, ui, run_id, dwell_seconds=dwell_seconds)
     try:
-        with serial.Serial(selected_port, 115200, timeout=0.5) as connection:
+        with open_leased_serial(selected_port, timeout=0.5) as connection:
             session = ProtocolSession(connection, "host-" + secrets.token_hex(6), "session-" + secrets.token_hex(6))
             run.session = session
             run.start()
@@ -668,7 +663,6 @@ def run_machine_only(schema_path: Path, evidence_root: Path, port: str | None = 
     """Capture device observations without reading stdin or authorizing physical PASS."""
     environment = dependency_gate()
     load_schema(schema_path)
-    import serial
     from .protocol import ProtocolSession
 
     ui = TerminalUI(output=sys.stdout)
@@ -680,7 +674,7 @@ def run_machine_only(schema_path: Path, evidence_root: Path, port: str | None = 
     writer = EvidenceWriter(evidence_root, run_id)
     run = BatchRun(None, writer, ui, run_id, dwell_seconds=dwell_seconds, machine_only=True)
     try:
-        with serial.Serial(selected_port, 115200, timeout=0.5) as connection:
+        with open_leased_serial(selected_port, timeout=0.5) as connection:
             run.session = ProtocolSession(connection, "host-" + secrets.token_hex(6), "session-" + secrets.token_hex(6))
             run.start()
             while not run.complete_physical_gates:

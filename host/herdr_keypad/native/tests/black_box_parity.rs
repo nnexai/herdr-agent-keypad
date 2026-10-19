@@ -6,12 +6,10 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 const FIXTURE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
-const ORACLE_EXPORTER: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../tests/export_rust_oracle.py");
 const FAMILIES: [(&str, &str); 4] = [
     ("protocol.json", "protocol"),
     ("projection-focus.json", "projection-focus"),
@@ -223,29 +221,6 @@ fn codex_fixture_views_match_public_collector_contract() {
         unsupported.view().as_payload(),
         expected_case(&root, "codex.unavailable.unsupported-duration")["expected"]["view"]
     );
-}
-
-#[test]
-fn python_oracle_export_is_byte_identical_to_checked_in_corpus() {
-    let root = std::env::temp_dir().join(format!(
-        "herdr-keypad-oracle-{}-{}",
-        std::process::id(),
-        SystemTime::now().duration_since(UNIX_EPOCH).expect("clock").as_nanos()
-    ));
-    fs::create_dir_all(&root).expect("oracle output directory");
-    let output = Command::new("python3")
-        .arg(ORACLE_EXPORTER)
-        .arg("--output-root")
-        .arg(&root)
-        .output()
-        .expect("python3 oracle process");
-    assert!(output.status.success(), "oracle failed: {}", String::from_utf8_lossy(&output.stderr));
-    for (filename, _) in FAMILIES {
-        let generated = fs::read(root.join(filename)).expect("generated fixture");
-        let checked_in = fs::read(Path::new(FIXTURE_ROOT).join(filename)).expect("checked-in fixture");
-        assert_eq!(generated, checked_in, "oracle output drifted for {filename}");
-    }
-    fs::remove_dir_all(root).expect("oracle cleanup");
 }
 
 #[test]

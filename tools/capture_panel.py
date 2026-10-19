@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "phase1_bringup" / "src"))
 
 from phase1_bringup.pairing import PairingStore
-from phase1_bringup.serial_link import reconnect_exact, require_inherited_bridge_lock
+from phase1_bringup.serial_link import open_leased_serial, reconnect_exact
 
 PIXELS = 128 * 128
 BYTES = PIXELS * 2
@@ -81,13 +81,6 @@ SCENES = {
 LEVELS = {"full": "F", "half": "H", "static": "S"}
 
 
-def _open_phase31_serial(candidate: object) -> object:
-    require_inherited_bridge_lock()
-    return __import__("serial").Serial(
-        candidate.device, 115200, timeout=0.2, write_timeout=2.0  # type: ignore[attr-defined]
-    )
-
-
 def read_exact(connection: object, count: int, timeout: float) -> bytes:
     deadline = time.monotonic() + timeout
     data = bytearray()
@@ -130,7 +123,7 @@ def main() -> int:
     selected, link, session, _ = reconnect_exact(
         binding,
         ports=None,
-        opener=_open_phase31_serial,
+        opener=lambda c: open_leased_serial(c.device, timeout=0.2, write_timeout=2.0),
         timeout=args.timeout,
     )
     try:

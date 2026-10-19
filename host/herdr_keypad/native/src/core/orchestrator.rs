@@ -366,6 +366,7 @@ impl RuntimeCoordinator {
                     let restarting = matches!(&request, ControlRequest::Restart { .. });
                     let reply = match request {
                         ControlRequest::Status { .. } => ControlReply::Status(self.status()),
+                        ControlRequest::Stop { .. } => self.stop_for_control(),
                         request => self.lifecycle.handle_control(request),
                     };
                     ControlEndpoint::send_reply(&mut stream, &reply)
@@ -375,8 +376,6 @@ impl RuntimeCoordinator {
                     if stopping || restart_ack {
                         if restarting {
                             self.shutdown_for_restart();
-                        } else {
-                            self.close_boundaries();
                         }
                         return Ok(());
                     }
@@ -871,6 +870,11 @@ impl RuntimeCoordinator {
         self.usb.close();
     }
 
+    fn stop_for_control(&mut self) -> ControlReply {
+        self.close_boundaries();
+        self.lifecycle.handle(LifecycleCommand::Stop)
+    }
+
     fn shutdown_for_restart(&mut self) {
         self.close_boundaries();
         self.lifecycle.on_restart();
@@ -1113,6 +1117,7 @@ mod tests {
     use crate::ports::copilot::{
         CopilotConnection, CopilotFuture, CopilotProcessFactory, CopilotTransportError,
     };
+    use crate::ports::control::AuthorityLock;
     use crate::ports::usb::{
         DeviceCandidate, PlatformSerial, SerialConnection, SnapshotAck, UsbError,
         EXPECTED_CDC_INTERFACE, EXPECTED_PID, EXPECTED_SERIAL, EXPECTED_VID,
@@ -1234,11 +1239,13 @@ mod tests {
     #[derive(Clone)]
     struct CountingPlatform {
         streams: Arc<Mutex<VecDeque<DuplexStream>>>,
+        enumerations: Arc<AtomicUsize>,
         opens: Arc<AtomicUsize>,
     }
 
     impl PlatformSerial for CountingPlatform {
         fn enumerate(&self) -> Result<Vec<DeviceCandidate>, UsbError> {
+            self.enumerations.fetch_add(1, Ordering::SeqCst);
             FakePlatform {
                 streams: Arc::new(Mutex::new(VecDeque::new())),
             }
@@ -1295,6 +1302,97 @@ mod tests {
         )
         .expect("coordinator");
         (root, coordinator)
+    }
+
+    #[tokio::test]
+    async fn stop_closes_device_stream_before_authority_is_released() {
+        let (root, mut coordinator) = unconnected_coordinator(CoordinatorConfig::default());
+        let state_dir = root.0.join("state");
+        let (host_stream, device_stream) = tokio::io::duplex(64 * 1024);
+        coordinator.usb = UsbPort::new(
+            Box::new(FakePlatform {
+                streams: Arc::new(Mutex::new(VecDeque::from([host_stream]))),
+            }),
+            root.0.join("binding.json"),
+        );
+        let (connected, mut device) = tokio::join!(coordinator.usb.connect(), async {
+            let mut device = BufReader::new(device_stream);
+            let mut line = String::new();
+            device.read_line(&mut line).await.expect("hello read");
+            let hello: Value = serde_json::from_str(&line).expect("hello JSON");
+            let payload = json!({
+                "accepted":true,
+                "device_id":"paired-device",
+                "firmware":"phase1-bringup",
+                "protocol":1
+            });
+            write_test_frame(
+                device.get_mut(),
+                json!({
+                    "v":1,
+                    "type":"hello_ack",
+                    "boot_id":"device-boot-1",
+                    "session_id":hello["session_id"],
+                    "seq":1,
+                    "reply_to":1,
+                    "digest":test_digest(&payload),
+                    "payload":payload
+                }),
+            )
+            .await;
+            device
+        });
+        assert!(matches!(connected.expect("USB connection"), UsbEvent::Connected { .. }));
+        assert!(coordinator.usb.connected());
+        match AuthorityLock::acquire(&state_dir) {
+            Err(error) => assert_eq!(error.safe_code(), "already_owned"),
+            Ok(_) => panic!("connected coordinator did not retain authority"),
+        }
+
+        assert!(matches!(coordinator.stop_for_control(), ControlReply::Stopped));
+        assert!(!coordinator.usb.connected());
+        let mut line = String::new();
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), device.read_line(&mut line))
+                .await
+                .expect("stopped reply left the device stream open")
+                .expect("device EOF read"),
+            0,
+            "device received data instead of EOF after stop"
+        );
+        let _authority = AuthorityLock::acquire(&state_dir).expect("authority released after USB close");
+    }
+
+    #[test]
+    fn externally_held_authority_prevents_any_serial_enumeration() {
+        let (root, coordinator) = unconnected_coordinator(CoordinatorConfig::default());
+        drop(coordinator);
+        let config_dir = root.0.join("config");
+        let state_dir = root.0.join("state");
+        let binding = root.0.join("binding.json");
+        let _authority = AuthorityLock::acquire(&state_dir).expect("external authority");
+        let enumerations = Arc::new(AtomicUsize::new(0));
+        let opens = Arc::new(AtomicUsize::new(0));
+        let result = RuntimeCoordinator::new(
+            RuntimePaths::new(
+                &config_dir,
+                &state_dir,
+                root.0.join("herdr.sock"),
+                root.0.join("herdr"),
+                std::process::id(),
+            ),
+            StartupConfig::load(&config_dir, &binding),
+            &binding,
+            Box::new(CountingPlatform {
+                streams: Arc::new(Mutex::new(VecDeque::new())),
+                enumerations: enumerations.clone(),
+                opens: opens.clone(),
+            }),
+        );
+
+        assert!(result.is_err(), "runtime accepted an externally held authority");
+        assert_eq!(enumerations.load(Ordering::SeqCst), 0);
+        assert_eq!(opens.load(Ordering::SeqCst), 0);
     }
 
     fn pending_publication() -> PendingPublication {
@@ -2095,6 +2193,7 @@ mod tests {
         let opens = Arc::new(AtomicUsize::new(0));
         let platform = CountingPlatform {
             streams: Arc::new(Mutex::new(host_streams)),
+            enumerations: Arc::new(AtomicUsize::new(0)),
             opens: opens.clone(),
         };
         let startup = StartupConfig::load(&config_dir, &binding);

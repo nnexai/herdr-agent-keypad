@@ -4,6 +4,7 @@ from __future__ import annotations
 import fcntl
 import os
 import secrets
+import stat
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,29 +15,73 @@ from .pairing import PairingBinding
 from .protocol import MAX_LINE_BYTES, ProtocolSession
 
 
-def phase31_bridge_lock_path() -> Path:
-    runtime = os.environ.get("XDG_RUNTIME_DIR")
-    return Path(runtime or (Path.home() / ".cache")) / "herdr-keypad" / "bridge.lock"
+LEASE_FD = 9
+EXCLUSIVE_ENV = "HERDR_KEYPAD_EXCLUSIVE_LOCK"
+STATE_DIR_ENV = "HERDR_KEYPAD_LEASE_STATE_DIR"
+LOCK_NAME = "bridge.lock"
+
+
+def validate_plugin_state_dir(path: Path) -> Path:
+    """Validate existing private Rust authority files; never create a lock."""
+    path = Path(path)
+    if not path.is_absolute() or ".." in path.parts:
+        raise RuntimeError("plugin state directory must be an absolute path without '..'")
+    try:
+        directory = path.lstat()
+        if (
+            not stat.S_ISDIR(directory.st_mode)
+            or directory.st_uid != os.getuid()
+            or directory.st_mode & 0o077
+            or path.resolve(strict=True) != path
+        ):
+            raise RuntimeError("plugin state directory must be private, owned, and not symlinked")
+        lock = (path / LOCK_NAME).lstat()
+        if (
+            not stat.S_ISREG(lock.st_mode)
+            or lock.st_uid != os.getuid()
+            or lock.st_mode & 0o077
+        ):
+            raise RuntimeError("bridge.lock must be a private regular file owned by this user")
+    except OSError as exc:
+        raise RuntimeError(f"cannot validate existing plugin authority: {exc}") from exc
+    return path
 
 
 def require_inherited_bridge_lock() -> None:
-    """Require the run-exclusive bridge lock before opening an exact device."""
-    if os.environ.get("HERDR_KEYPAD_EXCLUSIVE_LOCK") != "1":
-        raise RuntimeError("Phase 03.1 serial requires run-exclusive bridge lock")
-    fd_path = "/proc/self/fd/9"
+    """Hold shared authority under a cooperative same-user contract, not a security boundary.
+
+    This checks mutual exclusion, not authentication or proof of inheritance:
+    an unlocked correct fd can acquire authority too. Supported invocations use
+    keypad_lease.py run for bounded cleanup and independent release checks.
+    """
+    if os.environ.get(EXCLUSIVE_ENV) != "1":
+        raise RuntimeError("serial access requires the keypad lease runner")
+    value = os.environ.get(STATE_DIR_ENV)
+    if not value:
+        raise RuntimeError("serial access requires the lease plugin state directory")
+    state_dir = validate_plugin_state_dir(Path(value))
     try:
-        if fcntl.fcntl(9, fcntl.F_GETFD) & fcntl.FD_CLOEXEC:
-            raise RuntimeError("Phase 03.1 serial lock fd 9 was not inherited")
-        target = os.readlink(fd_path)
-    except (OSError, ValueError) as exc:
-        raise RuntimeError("Phase 03.1 serial lock fd 9 is not inherited") from exc
-    expected = os.fspath(phase31_bridge_lock_path())
-    if target != expected:
-        raise RuntimeError("Phase 03.1 serial lock fd 9 does not name the bridge lock")
-    try:
-        fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if fcntl.fcntl(LEASE_FD, fcntl.F_GETFD) & fcntl.FD_CLOEXEC:
+            raise RuntimeError("serial authority fd 9 has CLOEXEC set")
+        actual = os.fstat(LEASE_FD)
+        expected = (state_dir / LOCK_NAME).lstat()
+        if (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
+            raise RuntimeError("serial authority fd 9 does not name the validated bridge.lock")
+        fcntl.flock(LEASE_FD, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError as exc:
-        raise RuntimeError("Phase 03.1 serial bridge lock is not held") from exc
+        raise RuntimeError(f"serial authority fd 9 is unavailable or busy: {exc}") from exc
+
+
+def open_leased_serial(
+    device: str, *, timeout: float, write_timeout: float | None = None
+) -> Any:
+    """Open serial only after taking/retaining the Rust bridge's authority."""
+    require_inherited_bridge_lock()
+    import serial
+
+    return serial.Serial(
+        device, 115200, timeout=timeout, write_timeout=write_timeout, exclusive=True
+    )
 
 
 class SerialLinkError(RuntimeError):
@@ -280,6 +325,7 @@ def reconnect_exact(
 
 def serial_reconnect_check() -> None:
     """Exercise bounded reads, fresh session IDs, stale close, and no replay."""
+    from .discovery import EXPECTED_SERIAL
     from .pairing import PairingBinding
     from .protocol import encode_frame, new_frame
 
@@ -289,12 +335,12 @@ def serial_reconnect_check() -> None:
             self.vid = 0x303A
             self.pid = 0x1001
             self.serial_number = serial_number
-            self.location = "1-1:1.0"
+            self.location = "1-1:1.1"
 
 
             self.manufacturer = "Espressif"
-            self.product = "USB JTAG/serial debug unit"
-            self.interface = "00"
+            self.product = "USB composite CDC + keyboard"
+            self.interface = "01"
 
     class FakeConnection:
         def __init__(self, device_id: str, boot_id: str):
@@ -317,7 +363,7 @@ def serial_reconnect_check() -> None:
         def close(self) -> None:
             self.closed = True
 
-    port = Port("/dev/ttyACM9", "paired")
+    port = Port("/dev/ttyACM9", EXPECTED_SERIAL)
     opened: list[FakeConnection] = []
 
     def opener(candidate: Candidate) -> FakeConnection:
